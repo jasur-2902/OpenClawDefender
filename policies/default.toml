@@ -1,0 +1,194 @@
+# ClawAI Default Security Policy
+# This policy defines the default security posture for the ClawAI agent firewall.
+
+[metadata]
+name = "default"
+version = "0.1.0"
+description = "Default security policy for ClawAI -- blocks access to sensitive credentials, prompts on shell execution and network tools, allows project directory reads."
+
+# ===========================================================================
+# BLOCK rules -- deny access to sensitive credentials and secrets
+# ===========================================================================
+
+[rules.block_ssh_keys]
+description = "Block access to SSH private keys"
+action = "block"
+message = "Access to SSH private keys is blocked"
+priority = 10
+
+[rules.block_ssh_keys.match]
+resource_path = ["~/.ssh/id_*", "~/.ssh/*.pem"]
+
+[rules.block_ssh_config]
+description = "Block access to SSH configuration"
+action = "block"
+message = "Access to SSH configuration is blocked"
+priority = 11
+
+[rules.block_ssh_config.match]
+resource_path = ["~/.ssh/config"]
+
+[rules.block_gpg_keys]
+description = "Block access to GPG keyring"
+action = "block"
+message = "Access to GPG keys is blocked"
+priority = 12
+
+[rules.block_gpg_keys.match]
+resource_path = ["~/.gnupg/*"]
+
+[rules.block_aws_credentials]
+description = "Block access to AWS credentials"
+action = "block"
+message = "Access to AWS credentials is blocked"
+priority = 13
+
+[rules.block_aws_credentials.match]
+resource_path = ["~/.aws/*"]
+
+[rules.block_gcloud_credentials]
+description = "Block access to Google Cloud credentials"
+action = "block"
+message = "Access to GCloud credentials is blocked"
+priority = 14
+
+[rules.block_gcloud_credentials.match]
+resource_path = ["~/.config/gcloud/*"]
+
+[rules.block_azure_credentials]
+description = "Block access to Azure credentials"
+action = "block"
+message = "Access to Azure credentials is blocked"
+priority = 15
+
+[rules.block_azure_credentials.match]
+resource_path = ["~/.azure/*"]
+
+[rules.block_kube_config]
+description = "Block access to Kubernetes configuration"
+action = "block"
+message = "Access to kubeconfig is blocked"
+priority = 16
+
+[rules.block_kube_config.match]
+resource_path = ["~/.kube/config"]
+
+[rules.block_shell_history]
+description = "Block access to shell history files"
+action = "block"
+message = "Access to shell history is blocked"
+priority = 17
+
+[rules.block_shell_history.match]
+resource_path = ["~/.bash_history", "~/.zsh_history", "~/.history", "~/.sh_history"]
+
+[rules.block_browser_chrome]
+description = "Block access to Chrome profile data"
+action = "block"
+message = "Access to Chrome browser data is blocked"
+priority = 18
+
+[rules.block_browser_chrome.match]
+resource_path = ["~/Library/Application Support/Google/Chrome/*"]
+
+[rules.block_browser_firefox]
+description = "Block access to Firefox profile data"
+action = "block"
+message = "Access to Firefox browser data is blocked"
+priority = 19
+
+[rules.block_browser_firefox.match]
+resource_path = ["~/Library/Application Support/Firefox/Profiles/*"]
+
+[rules.block_browser_safari]
+description = "Block access to Safari profile data"
+action = "block"
+message = "Access to Safari browser data is blocked"
+priority = 20
+
+[rules.block_browser_safari.match]
+resource_path = ["~/Library/Safari/*"]
+
+[rules.block_keychain]
+description = "Block access to macOS Keychain files"
+action = "block"
+message = "Access to macOS Keychain is blocked"
+priority = 21
+
+[rules.block_keychain.match]
+resource_path = ["~/Library/Keychains/*", "/Library/Keychains/*"]
+
+# ===========================================================================
+# PROMPT rules -- require user approval for dangerous operations
+# ===========================================================================
+
+[rules.prompt_shell_exec]
+description = "Prompt user before shell command execution"
+action = "prompt"
+message = "An AI agent wants to execute a shell command. Allow?"
+priority = 30
+
+[rules.prompt_shell_exec.match]
+tool_name = ["run_command", "execute", "exec", "bash", "shell", "terminal", "subprocess", "system"]
+
+[rules.prompt_network_tools]
+description = "Prompt user before network operations"
+action = "prompt"
+message = "An AI agent wants to perform a network operation. Allow?"
+priority = 31
+
+[rules.prompt_network_tools.match]
+tool_name = ["fetch", "http_request", "curl", "wget", "download", "upload"]
+
+[rules.prompt_sampling]
+description = "Prompt user before sampling/createMessage requests"
+action = "prompt"
+message = "An AI agent is requesting to create a sampling message. Allow?"
+priority = 32
+
+[rules.prompt_sampling.match]
+method = ["sampling/createMessage"]
+
+[rules.prompt_file_write_outside_project]
+description = "Prompt user before writing files outside project directory"
+action = "prompt"
+message = "An AI agent wants to write a file outside the project directory. Allow?"
+priority = 33
+
+[rules.prompt_file_write_outside_project.match]
+tool_name = ["write_file", "create_file", "edit_file"]
+
+# ===========================================================================
+# ALLOW rules -- explicitly permitted operations
+# ===========================================================================
+
+[rules.allow_project_reads]
+description = "Allow reading files within project directories"
+action = "allow"
+message = "Project file read allowed"
+priority = 50
+
+[rules.allow_project_reads.match]
+resource_path = ["~/Projects/**"]
+
+[rules.allow_list_requests]
+description = "Allow read-only listing operations"
+action = "allow"
+message = "Listing operation allowed"
+priority = 51
+
+[rules.allow_list_requests.match]
+method = ["tools/list", "resources/list", "prompts/list"]
+
+# ===========================================================================
+# DEFAULT -- catch-all logging rule
+# ===========================================================================
+
+[rules.default_log]
+description = "Log all unmatched events for auditing"
+action = "log"
+message = "Event logged (no specific rule matched)"
+priority = 1000
+
+[rules.default_log.match]
+any = true

@@ -1,0 +1,26 @@
+[package]
+name = "clawai-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+claw-mcp-proxy = { path = "../crates/claw-mcp-proxy" }
+claw-core = { path = "../crates/claw-core" }
+claw-sensor = { path = "../crates/claw-sensor" }
+
+[[bin]]
+name = "fuzz_jsonrpc_parser"
+path = "fuzz_targets/fuzz_jsonrpc_parser.rs"
+
+[[bin]]
+name = "fuzz_policy_engine"
+path = "fuzz_targets/fuzz_policy_engine.rs"
+
+[[bin]]
+name = "fuzz_eslogger_parser"
+path = "fuzz_targets/fuzz_eslogger_parser.rs"

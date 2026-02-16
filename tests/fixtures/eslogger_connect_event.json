@@ -1,0 +1,17 @@
+{
+  "event_type": "connect",
+  "timestamp": "2026-02-16T12:01:30.000Z",
+  "process": {
+    "pid": 12345,
+    "ppid": 1234,
+    "executable_path": "/usr/bin/curl",
+    "signing_id": "com.apple.curl",
+    "team_id": null,
+    "audit_token": null
+  },
+  "event": {
+    "address": "93.184.216.34",
+    "port": 443,
+    "protocol": "tcp"
+  }
+}

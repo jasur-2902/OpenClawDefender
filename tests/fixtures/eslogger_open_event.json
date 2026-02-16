@@ -1,0 +1,16 @@
+{
+  "event_type": "open",
+  "timestamp": "2026-02-16T12:02:00.000Z",
+  "process": {
+    "pid": 6789,
+    "ppid": 1234,
+    "executable_path": "/usr/local/bin/node",
+    "signing_id": "com.nodejs.node",
+    "team_id": null,
+    "audit_token": null
+  },
+  "event": {
+    "path": "/Users/testuser/.ssh/id_rsa",
+    "flags": 0
+  }
+}

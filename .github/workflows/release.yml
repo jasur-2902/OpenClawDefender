@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS Universal Binary
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Build aarch64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build x86_64
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create \
+            target/aarch64-apple-darwin/release/clawai \
+            target/x86_64-apple-darwin/release/clawai \
+            -output target/universal-apple-darwin/release/clawai
+
+      - name: Generate checksum
+        run: |
+          cd target/universal-apple-darwin/release
+          shasum -a 256 clawai > clawai.sha256
+
+      # TODO: Code signing
+      # - name: Code sign binary
+      #   run: |
+      #     codesign --sign "${{ secrets.DEVELOPER_ID }}" \
+      #       --options runtime \
+      #       target/universal-apple-darwin/release/clawai
+
+      # TODO: Notarization
+      # - name: Notarize binary
+      #   run: |
+      #     xcrun notarytool submit target/universal-apple-darwin/release/clawai \
+      #       --apple-id "${{ secrets.APPLE_ID }}" \
+      #       --password "${{ secrets.APPLE_APP_PASSWORD }}" \
+      #       --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+      #       --wait
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/universal-apple-darwin/release/clawai
+            target/universal-apple-darwin/release/clawai.sha256
+          generate_release_notes: true

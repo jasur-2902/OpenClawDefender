@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+*.swp
+*.swo
+.DS_Store
+*.log
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts

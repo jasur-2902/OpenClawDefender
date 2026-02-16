@@ -1,0 +1,20 @@
+[package]
+name = "claw-sensor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OS-level sensors for process and filesystem monitoring"
+
+[dependencies]
+claw-core = { path = "../claw-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+nix = { version = "0.29", features = ["process", "signal"] }
+notify = "7"
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -1,0 +1,23 @@
+[package]
+name = "claw-mcp-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP protocol proxy with JSON-RPC interception for ClawAI"
+
+[lib]
+name = "claw_mcp_proxy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "claw-mcp-proxy"
+path = "src/main.rs"
+
+[dependencies]
+claw-core = { path = "../claw-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
