@@ -1,0 +1,12 @@
+[package]
+name = "claw-wall-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared data structures for OpenClawDefender eBPF firewall"
+
+[features]
+default = []
+user = ["no-std-net"]
+
+[dependencies]
+no-std-net = { version = "0.6", optional = true }

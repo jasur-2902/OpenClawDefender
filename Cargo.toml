@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "claw-wall-common",
+    "claw-wall-daemon",
+    "xtask",
+]
+
+[workspace.dependencies]
+claw-wall-common = { path = "claw-wall-common" }
