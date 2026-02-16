@@ -1,0 +1,86 @@
+# ============================================================================
+# OpenClawDefender - Test Dockerfile (Multi-stage)
+# ============================================================================
+#
+# Builds and tests the project in a Linux environment.
+# Supports both full eBPF testing (--privileged) and build-only validation.
+#
+# Usage:
+#   # Build the test image:
+#   docker build -f Dockerfile.test -t claw-wall-test .
+#
+#   # Run build validation (no kernel access needed):
+#   docker run --rm claw-wall-test build
+#
+#   # Run full eBPF tests (requires --privileged for BPF syscalls):
+#   docker run --rm --privileged claw-wall-test test
+#
+#   # Drop into a shell for debugging:
+#   docker run --rm -it --privileged claw-wall-test shell
+#
+FROM ubuntu:22.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+
+# Install system dependencies
+RUN apt-get update -qq && apt-get install -y -qq \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    linux-headers-generic \
+    linux-tools-generic \
+    clang-14 \
+    llvm-14 \
+    libelf-dev \
+    curl \
+    git \
+    sudo \
+    iproute2 \
+    bpftool \
+    && ln -sf /usr/bin/clang-14 /usr/bin/clang \
+    && ln -sf /usr/bin/llc-14 /usr/bin/llc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust nightly with rust-src and bpf-linker
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --default-toolchain nightly --component rust-src \
+    && cargo install bpf-linker
+
+# --------------------------------------------------------------------------
+# Build stage
+# --------------------------------------------------------------------------
+FROM base AS builder
+
+WORKDIR /workspace
+COPY . .
+
+# Build eBPF program (cross-compile to bpfel-unknown-none)
+RUN cargo xtask build-ebpf 2>&1 && echo "=== eBPF build: OK ===" \
+    || echo "=== eBPF build: FAILED (see above) ==="
+
+# Build user-space daemon
+RUN cargo build --package claw-wall-daemon 2>&1 && echo "=== Daemon build: OK ===" \
+    || echo "=== Daemon build: FAILED (see above) ==="
+
+# Build common crate tests
+RUN cargo test --package claw-wall-common --no-run 2>&1 && echo "=== Common tests compiled: OK ==="
+
+# --------------------------------------------------------------------------
+# Test runner stage
+# --------------------------------------------------------------------------
+FROM base AS runner
+
+WORKDIR /workspace
+COPY --from=builder /workspace /workspace
+COPY --from=builder /usr/local/cargo /usr/local/cargo
+COPY --from=builder /usr/local/rustup /usr/local/rustup
+
+# Copy the entrypoint script
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["build"]

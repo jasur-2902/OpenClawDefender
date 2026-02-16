@@ -1,0 +1,103 @@
+# ============================================================================
+# OpenClawDefender - Lima VM Configuration for macOS
+# ============================================================================
+#
+# Lima provides lightweight Linux VMs on macOS with automatic file sharing.
+# Unlike Docker, Lima VMs have a real Linux kernel with full BPF support,
+# making them ideal for eBPF development and testing.
+#
+# Prerequisites:
+#   brew install lima
+#
+# Usage:
+#   limactl start lima.yaml           # Create and boot the VM
+#   limactl shell claw-wall           # SSH into the VM
+#   limactl stop claw-wall            # Stop the VM
+#   limactl delete claw-wall          # Remove the VM
+#
+# Or use the helper script:
+#   ./scripts/test-lima.sh
+#
+# The project directory is automatically mounted at the same path inside the VM.
+# ============================================================================
+
+# VM name
+# vmType: "qemu"  # Use QEMU (default, works on both Intel and Apple Silicon)
+
+images:
+  # Ubuntu 22.04 (Jammy) - kernel 5.15+ with full BPF support
+  - location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+cpus: 2
+memory: "4GiB"
+disk: "20GiB"
+
+# Mount the project directory into the VM (writable)
+mounts:
+  - location: "~"
+    writable: false
+  - location: "/tmp/lima"
+    writable: true
+
+# Provision script: install all dependencies for eBPF development
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+
+      echo "=== Installing system packages ==="
+      apt-get update -qq
+      apt-get install -y -qq \
+        build-essential \
+        pkg-config \
+        libssl-dev \
+        linux-headers-$(uname -r) \
+        linux-tools-$(uname -r) \
+        linux-tools-common \
+        clang \
+        llvm \
+        libelf-dev \
+        curl \
+        git
+
+      # Install bpftool if available
+      apt-get install -y -qq bpftool 2>/dev/null || true
+
+      echo "=== Verifying BPF support ==="
+      if [ -f /boot/config-$(uname -r) ]; then
+        grep "CONFIG_BPF=y" /boot/config-$(uname -r) && echo "BPF: OK" || echo "WARNING: CONFIG_BPF not found"
+        grep "CONFIG_BPF_SYSCALL=y" /boot/config-$(uname -r) && echo "BPF_SYSCALL: OK" || echo "WARNING: BPF_SYSCALL not found"
+      fi
+
+      echo "=== System provisioning complete ==="
+
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+
+      echo "=== Installing Rust toolchain ==="
+      if ! command -v rustup >/dev/null 2>&1; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+      fi
+      source "$HOME/.cargo/env"
+
+      echo "=== Installing nightly + rust-src ==="
+      rustup toolchain install nightly --component rust-src
+      rustup default nightly
+
+      echo "=== Installing bpf-linker ==="
+      cargo install bpf-linker
+
+      echo "=== Verifying toolchain ==="
+      rustc --version
+      cargo --version
+      rustup component list --installed | grep rust-src && echo "rust-src: OK"
+      command -v bpf-linker && echo "bpf-linker: OK"
+
+      echo "=== User provisioning complete ==="

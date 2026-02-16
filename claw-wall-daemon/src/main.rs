@@ -1,8 +1,13 @@
+mod ai_analyzer;
+mod tui;
+
 use std::fs;
 use std::io::{self, Write};
 use std::net::Ipv4Addr;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use aya::maps::{HashMap, RingBuf};
@@ -12,10 +17,14 @@ use clap::{Parser, Subcommand};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tokio::signal;
+use tokio::sync::Mutex;
 
+use ai_analyzer::{AiAnalyzer, AiVerdict};
 use claw_wall_common::{
-    BlocklistKey, BlocklistValue, FirewallEvent, EVENT_NETWORK, EVENT_PROCESS,
+    BlocklistKey, BlocklistValue, FirewallEvent, EVENT_DNS, EVENT_NETWORK, EVENT_PROCESS,
+    fnv1a_hash,
 };
+use tui::{AiVerdictRecord, EventRecord, EventType, SharedState, Verdict};
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -73,6 +82,8 @@ struct BlocklistConfig {
     paths: Vec<String>,
     #[serde(default)]
     ips: Vec<String>,
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -90,15 +101,63 @@ fn u32_to_ipv4(ip: u32) -> Ipv4Addr {
     Ipv4Addr::from(ip.to_be())
 }
 
-/// Hash a blocklist entry into a 32-byte BlocklistKey.
-/// Uses a simple djb2-style spread across the key buffer so that lookups
-/// in the eBPF HashMap are deterministic without pulling in a crypto crate.
+/// Hash a blocklist entry into a BlocklistKey using FNV-1a.
 fn make_blocklist_key(value: &str) -> BlocklistKey {
-    let mut key = BlocklistKey { key: [0u8; 32] };
-    let bytes = value.as_bytes();
-    let len = bytes.len().min(32);
-    key.key[..len].copy_from_slice(&bytes[..len]);
-    key
+    BlocklistKey::from_hash(fnv1a_hash(value.as_bytes()))
+}
+
+/// Resolve a process path to an absolute path using CWD information.
+///
+/// If the path is already absolute (starts with '/'), it is returned as-is
+/// after normalizing any `.` and `..` segments. If the path is relative,
+/// it is joined with the CWD to produce an absolute path.
+///
+/// CWD resolution order:
+///   1. Use the cwd field from the eBPF event (if non-empty)
+///   2. Fall back to reading /proc/<pid>/cwd symlink
+///   3. If both fail, return the original path unchanged
+fn resolve_process_path(path: &str, cwd: &str, pid: u32) -> String {
+    if path.is_empty() {
+        return path.to_string();
+    }
+
+    // Already absolute - just normalize it
+    if path.starts_with('/') {
+        return normalize_path(Path::new(path));
+    }
+
+    // Relative path - resolve against CWD
+    let resolved_cwd = if !cwd.is_empty() {
+        Some(PathBuf::from(cwd))
+    } else {
+        // Fallback: read /proc/<pid>/cwd
+        fs::read_link(format!("/proc/{}/cwd", pid)).ok()
+    };
+
+    match resolved_cwd {
+        Some(cwd_path) => normalize_path(&cwd_path.join(path)),
+        None => path.to_string(),
+    }
+}
+
+/// Normalize a path by resolving `.` and `..` components without touching
+/// the filesystem (no symlink resolution). Returns a clean absolute path.
+fn normalize_path(path: &Path) -> String {
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {} // skip "."
+            Component::ParentDir => {
+                // Pop the last component for "..", but never pop past root
+                if !components.is_empty() {
+                    components.pop();
+                }
+            }
+            other => components.push(other),
+        }
+    }
+    let result: PathBuf = components.iter().collect();
+    result.to_string_lossy().into_owned()
 }
 
 /// Read and parse the config file, returning defaults if it doesn't exist.
@@ -220,6 +279,18 @@ async fn run_daemon() -> Result<()> {
         .context("Failed to attach tcp_v4_connect kprobe")?;
     info!("Attached kprobe: tcp_v4_connect");
 
+    // --- Attach kprobe: udp_sendmsg (DNS interception) ---
+    let dns_prog: &mut KProbe = ebpf
+        .program_mut("claw_wall_dns")
+        .context("eBPF program 'claw_wall_dns' not found")?
+        .try_into()
+        .context("Program is not a KProbe")?;
+    dns_prog.load().context("Failed to load DNS kprobe")?;
+    dns_prog
+        .attach("udp_sendmsg", 0)
+        .context("Failed to attach udp_sendmsg kprobe")?;
+    info!("Attached kprobe: udp_sendmsg (DNS)");
+
     // --- Populate blocklist HashMap ---
     let mut blocklist: HashMap<_, BlocklistKey, BlocklistValue> = HashMap::try_from(
         ebpf.map_mut("BLOCKLIST")
@@ -227,7 +298,7 @@ async fn run_daemon() -> Result<()> {
     )
     .context("Failed to open BLOCKLIST as HashMap")?;
 
-    let blocked_val = BlocklistValue { blocked: 1 };
+    let blocked_val = BlocklistValue { blocked: 1, _pad: 0 };
 
     for path in &config.blocklist.paths {
         let key = make_blocklist_key(path);
@@ -245,6 +316,17 @@ async fn run_daemon() -> Result<()> {
         info!("Blocklisted IP: {ip}");
     }
 
+    for domain in &config.blocklist.domains {
+        let key = make_blocklist_key(domain);
+        blocklist
+            .insert(&key, &blocked_val, 0)
+            .context("Failed to insert domain into BLOCKLIST")?;
+        info!("Blocklisted domain: {domain}");
+    }
+
+    // Store domain blocklist for runtime DNS checking
+    let blocked_domains = Arc::new(config.blocklist.domains.clone());
+
     // --- Open the RingBuf for events ---
     let ring_buf = RingBuf::try_from(
         ebpf.map_mut("EVENTS")
@@ -252,13 +334,76 @@ async fn run_daemon() -> Result<()> {
     )
     .context("Failed to open EVENTS as RingBuf")?;
 
+    // --- Create AI analyzer ---
+    let ai_analyzer = Arc::new(AiAnalyzer::new(config.api.key.clone()));
+
+    // Wrap the blocklist in Arc<Mutex<>> so the event loop can insert entries
+    let blocklist = Arc::new(Mutex::new(blocklist));
+
+    // --- Create shared TUI state ---
+    let tui_state = tui::new_shared_state();
+
+    // --- Create shutdown channel for TUI ---
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    // --- Spawn TUI render loop ---
+    let tui_state_clone = tui_state.clone();
+    let tui_handle = tokio::spawn(async move {
+        tui::run_tui(tui_state_clone, shutdown_rx).await;
+    });
+
     info!("Daemon started — listening for eBPF events");
-    event_loop(ring_buf).await
+    let result = event_loop(ring_buf, blocklist, ai_analyzer, blocked_domains, tui_state).await;
+
+    // Signal TUI to shut down and wait for it
+    let _ = shutdown_tx.send(true);
+    let _ = tui_handle.await;
+
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry Router
+// ---------------------------------------------------------------------------
+
+/// Known-safe system paths that should be allowed without AI analysis.
+const SAFE_PATH_PREFIXES: &[&str] = &[
+    "/usr/bin/",
+    "/usr/sbin/",
+    "/bin/",
+    "/sbin/",
+    "/usr/lib/",
+    "/lib/",
+];
+
+/// Check if a process event is known-safe (PID 1 or from a system path).
+fn is_known_safe_process(pid: u32, path: &str) -> bool {
+    if pid == 1 {
+        return true;
+    }
+    SAFE_PATH_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
+}
+
+/// Check if a network event is known-safe (PID 1 or loopback).
+fn is_known_safe_network(pid: u32, dst_ip: u32) -> bool {
+    if pid == 1 {
+        return true;
+    }
+    // Loopback: 127.0.0.0/8 — first byte is 127 in network byte order
+    let first_byte = (dst_ip & 0xFF) as u8;
+    first_byte == 127
 }
 
 /// Main event processing loop. Reads FirewallEvent structs from the ring
-/// buffer and logs them until a SIGTERM/SIGINT is received.
-async fn event_loop(mut ring_buf: RingBuf<&mut aya::maps::MapData>) -> Result<()> {
+/// buffer, filters known-safe events, delegates suspicious ones to AI,
+/// updates the blocklist map on Block verdicts, and pushes records to TUI.
+async fn event_loop(
+    mut ring_buf: RingBuf<&mut aya::maps::MapData>,
+    blocklist: Arc<Mutex<HashMap<&mut aya::maps::MapData, BlocklistKey, BlocklistValue>>>,
+    ai_analyzer: Arc<AiAnalyzer>,
+    blocked_domains: Arc<Vec<String>>,
+    tui_state: SharedState,
+) -> Result<()> {
     loop {
         tokio::select! {
             _ = signal::ctrl_c() => {
@@ -282,7 +427,13 @@ async fn event_loop(mut ring_buf: RingBuf<&mut aya::maps::MapData>) -> Result<()
                     let event: FirewallEvent =
                         unsafe { std::ptr::read_unaligned(data.as_ptr() as *const FirewallEvent) };
 
-                    process_event(&event);
+                    route_event(
+                        event,
+                        Arc::clone(&blocklist),
+                        Arc::clone(&ai_analyzer),
+                        Arc::clone(&blocked_domains),
+                        tui_state.clone(),
+                    );
                 }
 
                 // Small sleep to avoid busy-spinning when no events are available
@@ -292,31 +443,174 @@ async fn event_loop(mut ring_buf: RingBuf<&mut aya::maps::MapData>) -> Result<()
     }
 }
 
-/// Decode and log a single FirewallEvent based on its event_type tag.
-fn process_event(event: &FirewallEvent) {
+/// Route a single event: log it, push to TUI, check if known-safe, and if
+/// not spawn an async AI analysis task that may update the blocklist.
+fn route_event(
+    event: FirewallEvent,
+    blocklist: Arc<Mutex<HashMap<&mut aya::maps::MapData, BlocklistKey, BlocklistValue>>>,
+    ai_analyzer: Arc<AiAnalyzer>,
+    blocked_domains: Arc<Vec<String>>,
+    tui_state: SharedState,
+) {
     match event.event_type {
         EVENT_PROCESS => {
-            // Safety: event_type == EVENT_PROCESS guarantees the process union
-            // variant was written by the eBPF program.
             let proc = unsafe { &event.payload.process };
             let comm = bytes_to_string(&proc.comm);
-            let path = bytes_to_string(&proc.path);
-            info!(
-                "[PROCESS] pid={} uid={} comm=\"{}\" path=\"{}\"",
-                proc.pid, proc.uid, comm, path
+            let raw_path = bytes_to_string(&proc.path);
+            let cwd = bytes_to_string(&proc.cwd);
+            let path = resolve_process_path(&raw_path, &cwd, proc.pid);
+            let pid = proc.pid;
+            let uid = proc.uid;
+
+            let description = if path != raw_path {
+                format!("comm=\"{}\" path=\"{}\" resolved=\"{}\"", comm, raw_path, path)
+            } else {
+                format!("comm=\"{}\" path=\"{}\"", comm, path)
+            };
+
+            info!("[PROCESS] pid={} uid={} {}", pid, uid, description);
+
+            // Push event to TUI
+            let record = EventRecord {
+                timestamp: Instant::now(),
+                event_type: EventType::Process,
+                pid,
+                description: description.clone(),
+                blocked: false,
+            };
+            let tui_for_push = tui_state.clone();
+            tokio::spawn(async move {
+                let mut state = tui_for_push.write().await;
+                state.push_event(record);
+            });
+
+            if is_known_safe_process(pid, &path) {
+                return;
+            }
+
+            let ai_description = format!(
+                "Process execution: pid={} uid={} comm=\"{}\" path=\"{}\"",
+                pid, uid, comm, path
             );
+            let blocklist_key_value = path;
+
+            tokio::spawn(async move {
+                let verdict = ai_analyzer.analyze(&ai_description).await;
+                if verdict == AiVerdict::Block {
+                    let key = make_blocklist_key(&blocklist_key_value);
+                    let val = BlocklistValue { blocked: 1, _pad: 0 };
+                    let mut map = blocklist.lock().await;
+                    if let Err(e) = map.insert(&key, &val, 0) {
+                        error!("Failed to insert blocked path into BLOCKLIST: {e}");
+                    } else {
+                        info!("AI blocked path inserted into BLOCKLIST: {blocklist_key_value}");
+                    }
+                }
+                // Push AI verdict to TUI
+                let mut state = tui_state.write().await;
+                state.push_ai_verdict(AiVerdictRecord {
+                    timestamp: Instant::now(),
+                    target: blocklist_key_value,
+                    verdict: if verdict == AiVerdict::Block {
+                        Verdict::Block
+                    } else {
+                        Verdict::Allow
+                    },
+                });
+            });
         }
         EVENT_NETWORK => {
-            // Safety: event_type == EVENT_NETWORK guarantees the network union
-            // variant was written by the eBPF program.
             let net = unsafe { &event.payload.network };
             let src = u32_to_ipv4(net.src_ip);
             let dst = u32_to_ipv4(net.dst_ip);
             let port = u16::from_be(net.dst_port);
-            info!(
-                "[NETWORK] pid={} {}:{} -> {}:{}",
-                net.pid, src, 0, dst, port
+            let pid = net.pid;
+            let dst_ip_raw = net.dst_ip;
+
+            let description = format!("{} -> {}:{}", src, dst, port);
+
+            info!("[NETWORK] pid={} {}", pid, description);
+
+            // Push event to TUI
+            let record = EventRecord {
+                timestamp: Instant::now(),
+                event_type: EventType::Network,
+                pid,
+                description: description.clone(),
+                blocked: false,
+            };
+            let tui_for_push = tui_state.clone();
+            tokio::spawn(async move {
+                let mut state = tui_for_push.write().await;
+                state.push_event(record);
+            });
+
+            if is_known_safe_network(pid, dst_ip_raw) {
+                return;
+            }
+
+            let dst_str = dst.to_string();
+            let ai_description = format!(
+                "Network connection: pid={} src={} dst={}:{}",
+                pid, src, dst, port
             );
+
+            tokio::spawn(async move {
+                let verdict = ai_analyzer.analyze(&ai_description).await;
+                if verdict == AiVerdict::Block {
+                    let key = make_blocklist_key(&dst_str);
+                    let val = BlocklistValue { blocked: 1, _pad: 0 };
+                    let mut map = blocklist.lock().await;
+                    if let Err(e) = map.insert(&key, &val, 0) {
+                        error!("Failed to insert blocked IP into BLOCKLIST: {e}");
+                    } else {
+                        info!("AI blocked IP inserted into BLOCKLIST: {dst_str}");
+                    }
+                }
+                // Push AI verdict to TUI
+                let mut state = tui_state.write().await;
+                state.push_ai_verdict(AiVerdictRecord {
+                    timestamp: Instant::now(),
+                    target: dst_str,
+                    verdict: if verdict == AiVerdict::Block {
+                        Verdict::Block
+                    } else {
+                        Verdict::Allow
+                    },
+                });
+            });
+        }
+        EVENT_DNS => {
+            let dns = unsafe { &event.payload.dns };
+            let domain = bytes_to_string(&dns.domain);
+            let dst = u32_to_ipv4(dns.dst_ip);
+            let pid = dns.pid;
+
+            let description = format!("query \"{}\" via {}", domain, dst);
+
+            // Check domain against blocklist
+            let is_blocked = blocked_domains.iter().any(|blocked| {
+                domain == *blocked || domain.ends_with(&format!(".{blocked}"))
+            });
+
+            if is_blocked {
+                warn!("[DNS] BLOCKED pid={} {}", pid, description);
+            } else {
+                info!("[DNS] pid={} {}", pid, description);
+            }
+
+            // Push event to TUI
+            let record = EventRecord {
+                timestamp: Instant::now(),
+                event_type: EventType::Dns,
+                pid,
+                description,
+                blocked: is_blocked,
+            };
+            tokio::spawn(async move {
+                let mut state = tui_state.write().await;
+                state.push_event(record);
+            });
         }
         other => {
             warn!("Unknown event_type: {other}");
