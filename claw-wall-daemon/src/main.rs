@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use aya::maps::{HashMap, RingBuf};
+use aya::maps::{Array, HashMap, RingBuf};
 use aya::programs::{KProbe, TracePoint};
 use aya::Ebpf;
 use clap::{Parser, Subcommand};
@@ -21,8 +21,8 @@ use tokio::sync::Mutex;
 
 use ai_analyzer::{AiAnalyzer, AiVerdict};
 use claw_wall_common::{
-    BlocklistKey, BlocklistValue, FirewallEvent, EVENT_DNS, EVENT_NETWORK, EVENT_PROCESS,
-    fnv1a_hash,
+    BlocklistKey, BlocklistValue, FirewallEvent, GlobalConfig, EVENT_DNS, EVENT_NETWORK,
+    EVENT_PROCESS, EVENT_WOULD_BLOCK_NETWORK, EVENT_WOULD_BLOCK_PROCESS, fnv1a_hash,
 };
 use tui::{AiVerdictRecord, EventRecord, EventType, SharedState, Verdict};
 
@@ -64,6 +64,8 @@ const SYSTEMD_UNIT_PATH: &str = "/etc/systemd/system/claw-wall.service";
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct Config {
+    #[serde(default)]
+    audit_mode: bool,
     #[serde(default)]
     api: ApiConfig,
     #[serde(default)]
@@ -253,6 +255,26 @@ async fn run_daemon() -> Result<()> {
     // Optional: initialise aya-log forwarding from eBPF programs
     if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
         warn!("Failed to initialise eBPF logger (non-fatal): {e}");
+    }
+
+    // --- Write global configuration to eBPF CONFIG map ---
+    let mut config_map: Array<_, GlobalConfig> = Array::try_from(
+        ebpf.map_mut("CONFIG")
+            .context("CONFIG map not found in eBPF object")?,
+    )
+    .context("Failed to open CONFIG as Array")?;
+
+    let global_cfg = GlobalConfig {
+        audit_mode: if config.audit_mode { 1 } else { 0 },
+    };
+    config_map
+        .set(0, global_cfg, 0)
+        .context("Failed to write audit_mode to CONFIG map")?;
+
+    if config.audit_mode {
+        warn!("AUDIT MODE ENABLED — blocks will be logged but NOT enforced (dry-run)");
+    } else {
+        info!("Enforce mode active — blocks will be enforced");
     }
 
     // --- Attach tracepoint: sys_enter_execve ---
@@ -611,6 +633,62 @@ fn route_event(
                 let mut state = tui_state.write().await;
                 state.push_event(record);
             });
+        }
+        EVENT_WOULD_BLOCK_PROCESS => {
+            let proc = unsafe { &event.payload.process };
+            let comm = bytes_to_string(&proc.comm);
+            let raw_path = bytes_to_string(&proc.path);
+            let cwd = bytes_to_string(&proc.cwd);
+            let path = resolve_process_path(&raw_path, &cwd, proc.pid);
+            let pid = proc.pid;
+            let uid = proc.uid;
+
+            warn!(
+                "[AUDIT] WOULD_BLOCK process pid={} uid={} comm=\"{}\" path=\"{}\"",
+                pid, uid, comm, path
+            );
+
+            // Push to TUI as blocked (audit)
+            let record = EventRecord {
+                timestamp: Instant::now(),
+                event_type: EventType::Process,
+                pid,
+                description: format!("[AUDIT] comm=\"{}\" path=\"{}\"", comm, path),
+                blocked: true,
+            };
+            let tui_for_push = tui_state.clone();
+            tokio::spawn(async move {
+                let mut state = tui_for_push.write().await;
+                state.push_event(record);
+            });
+            // No AI analysis — this was a static blocklist hit
+        }
+        EVENT_WOULD_BLOCK_NETWORK => {
+            let net = unsafe { &event.payload.network };
+            let src = u32_to_ipv4(net.src_ip);
+            let dst = u32_to_ipv4(net.dst_ip);
+            let port = u16::from_be(net.dst_port);
+            let pid = net.pid;
+
+            warn!(
+                "[AUDIT] WOULD_BLOCK network pid={} {} -> {}:{}",
+                pid, src, dst, port
+            );
+
+            // Push to TUI as blocked (audit)
+            let record = EventRecord {
+                timestamp: Instant::now(),
+                event_type: EventType::Network,
+                pid,
+                description: format!("[AUDIT] {} -> {}:{}", src, dst, port),
+                blocked: true,
+            };
+            let tui_for_push = tui_state.clone();
+            tokio::spawn(async move {
+                let mut state = tui_for_push.write().await;
+                state.push_event(record);
+            });
+            // No AI analysis — this was a static blocklist hit
         }
         other => {
             warn!("Unknown event_type: {other}");

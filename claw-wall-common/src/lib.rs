@@ -28,6 +28,10 @@ pub const EVENT_PROCESS: u32 = 1;
 pub const EVENT_NETWORK: u32 = 2;
 pub const EVENT_DNS: u32 = 3;
 
+/// Event tags for audit mode (WOULD_BLOCK = blocked in enforce mode, allowed in audit mode)
+pub const EVENT_WOULD_BLOCK_PROCESS: u32 = 4;
+pub const EVENT_WOULD_BLOCK_NETWORK: u32 = 5;
+
 // ============================================================================
 // FNV-1a 64-bit Hashing Algorithm (#![no_std] safe)
 // ============================================================================
@@ -213,6 +217,29 @@ pub struct BlocklistValue {
     pub blocked: u32,
     /// Padding for alignment
     pub _pad: u32,
+}
+
+// ============================================================================
+// Global Configuration (eBPF Array Map)
+// ============================================================================
+
+/// Global configuration passed from user-space to kernel via eBPF Array map.
+///
+/// Memory layout (with #[repr(C)]):
+///   offset 0: audit_mode (4 bytes)
+///   Total: 4 bytes
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GlobalConfig {
+    /// 0 = enforce mode (blocks are real), 1 = audit mode (log-only, no blocks)
+    pub audit_mode: u32,
+}
+
+impl GlobalConfig {
+    #[inline(always)]
+    pub const fn zeroed() -> Self {
+        Self { audit_mode: 0 }
+    }
 }
 
 // ============================================================================

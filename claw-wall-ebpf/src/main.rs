@@ -26,13 +26,14 @@ use aya_ebpf::{
     helpers::{bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_get_current_uid_gid,
               bpf_probe_read_kernel, bpf_probe_read_user_str_bytes},
     macros::{tracepoint, kprobe, map},
-    maps::{HashMap, RingBuf},
+    maps::{Array, HashMap, RingBuf},
     programs::{TracePointContext, ProbeContext},
     EbpfContext,
 };
 use claw_wall_common::{
     BlocklistKey, BlocklistValue, DnsEvent, FirewallEvent, NetworkEvent, ProcessEvent,
-    EVENT_DNS, EVENT_NETWORK, EVENT_PROCESS, EventPayload, TASK_COMM_LEN, MAX_PATH_LEN,
+    EVENT_DNS, EVENT_NETWORK, EVENT_PROCESS, EVENT_WOULD_BLOCK_PROCESS, EVENT_WOULD_BLOCK_NETWORK,
+    EventPayload, GlobalConfig, TASK_COMM_LEN, MAX_PATH_LEN,
     MAX_CWD_LEN, MAX_DOMAIN_LEN,
     fnv1a_hash_fixed,
 };
@@ -53,9 +54,25 @@ static BLOCKLIST: HashMap<BlocklistKey, BlocklistValue> =
 #[map]
 static EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
+/// Global configuration array. Single element holding audit_mode flag.
+/// Written by the user-space daemon at startup.
+#[map]
+static CONFIG: Array<GlobalConfig> = Array::with_max_entries(1, 0);
+
 // ============================================================================
 // Tracepoint: sys_enter_execve - Process Execution Interception
 // ============================================================================
+
+/// Check if the firewall is running in audit mode (dry-run).
+/// In audit mode, blocked events are logged as WOULD_BLOCK but allowed to proceed.
+#[inline(always)]
+fn is_audit_mode() -> bool {
+    if let Some(cfg) = unsafe { CONFIG.get(0) } {
+        cfg.audit_mode != 0
+    } else {
+        false // Default: enforce mode
+    }
+}
 
 /// Hook into process execution attempts via the execve syscall.
 ///
@@ -123,7 +140,17 @@ fn try_execve(ctx: &TracePointContext) -> Result<u32, i64> {
     // Check if this path is in the blocklist
     if let Some(val) = unsafe { BLOCKLIST.get(&key) } {
         if val.blocked != 0 {
-            // BLOCKED: Return non-zero to signal denial
+            if is_audit_mode() {
+                // AUDIT MODE: Log as WOULD_BLOCK but allow the syscall
+                let mut fw_event = FirewallEvent::new_process(event);
+                fw_event.event_type = EVENT_WOULD_BLOCK_PROCESS;
+                if let Some(mut entry) = EVENTS.reserve::<FirewallEvent>(0) {
+                    unsafe { core::ptr::write(entry.as_mut_ptr(), fw_event); }
+                    entry.submit(0);
+                }
+                return Ok(0); // ALLOW (audit mode)
+            }
+            // ENFORCE MODE: Deny the syscall
             return Ok(1);
         }
     }
@@ -199,7 +226,17 @@ fn try_connect(ctx: &ProbeContext) -> Result<u32, i64> {
     // Check if this destination IP is in the blocklist
     if let Some(val) = unsafe { BLOCKLIST.get(&key) } {
         if val.blocked != 0 {
-            return Ok(1); // BLOCKED
+            if is_audit_mode() {
+                // AUDIT MODE: Log as WOULD_BLOCK but allow the connection
+                let mut fw_event = FirewallEvent::new_network(event);
+                fw_event.event_type = EVENT_WOULD_BLOCK_NETWORK;
+                if let Some(mut entry) = EVENTS.reserve::<FirewallEvent>(0) {
+                    unsafe { core::ptr::write(entry.as_mut_ptr(), fw_event); }
+                    entry.submit(0);
+                }
+                return Ok(0); // ALLOW (audit mode)
+            }
+            return Ok(1); // ENFORCE: BLOCKED
         }
     }
 
