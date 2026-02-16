@@ -6,14 +6,16 @@ license.workspace = true
 description = "CLI client for interacting with the ClawAI daemon"
 
 [[bin]]
-name = "claw-cli"
+name = "clawai"
 path = "src/main.rs"
 
 [dependencies]
 claw-core = { path = "../../crates/claw-core" }
+claw-mcp-proxy = { path = "../../crates/claw-mcp-proxy" }
 clap = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+chrono = { workspace = true }

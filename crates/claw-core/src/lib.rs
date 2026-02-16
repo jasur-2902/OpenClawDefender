@@ -8,6 +8,7 @@
 
 pub mod audit;
 pub mod config;
+pub mod correlation;
 pub mod event;
 pub mod ipc;
 pub mod policy;
