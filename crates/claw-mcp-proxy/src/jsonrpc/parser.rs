@@ -1,13 +1,78 @@
 //! JSON-RPC newline-delimited stream parser.
 
 use anyhow::{Context, Result};
-use tracing::warn;
+use tracing::{error, warn};
 
 use super::types::JsonRpcMessage;
 
+/// Maximum size for a single JSON-RPC message line (10 MB).
+pub const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+
+/// Maximum buffer size before we clear it to prevent memory exhaustion (20 MB).
+const MAX_BUFFER_SIZE: usize = 20 * 1024 * 1024;
+
+/// Maximum JSON nesting depth to prevent stack overflow attacks.
+const MAX_JSON_DEPTH: usize = 128;
+
 /// Parse a single JSON-RPC message from bytes.
 pub fn parse_message(bytes: &[u8]) -> Result<JsonRpcMessage> {
+    // Enforce maximum message size
+    if bytes.len() > MAX_MESSAGE_SIZE {
+        anyhow::bail!(
+            "JSON-RPC message exceeds maximum size ({} bytes > {} bytes)",
+            bytes.len(),
+            MAX_MESSAGE_SIZE
+        );
+    }
+
+    // Check JSON nesting depth before full parse
+    if exceeds_json_depth(bytes, MAX_JSON_DEPTH) {
+        anyhow::bail!(
+            "JSON-RPC message exceeds maximum nesting depth ({})",
+            MAX_JSON_DEPTH
+        );
+    }
+
     serde_json::from_slice(bytes).context("failed to parse JSON-RPC message")
+}
+
+/// Check if a JSON byte slice exceeds a maximum nesting depth.
+/// This is a fast pre-parse check that only counts `{` and `[` brackets.
+fn exceeds_json_depth(bytes: &[u8], max_depth: usize) -> bool {
+    let mut depth: usize = 0;
+    let mut in_string = false;
+    let mut escape = false;
+
+    for &b in bytes {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if b == b'\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if b == b'"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        match b {
+            b'{' | b'[' => {
+                depth += 1;
+                if depth > max_depth {
+                    return true;
+                }
+            }
+            b'}' | b']' => {
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Serialize a [`JsonRpcMessage`] to JSON bytes with a trailing newline.
@@ -29,19 +94,43 @@ impl StreamParser {
     }
 
     /// Append a chunk of bytes to the internal buffer.
+    ///
+    /// If the buffer exceeds the maximum allowed size without a newline,
+    /// the buffer is cleared and an error is logged.
     pub fn feed(&mut self, chunk: &[u8]) {
         self.buf.extend_from_slice(chunk);
+
+        // Safety check: if buffer grows too large without any newline, clear it
+        if self.buf.len() > MAX_BUFFER_SIZE && !self.buf.contains(&b'\n') {
+            error!(
+                "StreamParser buffer exceeded {} bytes without a newline, clearing to prevent memory exhaustion",
+                MAX_BUFFER_SIZE
+            );
+            self.buf.clear();
+        }
     }
 
     /// Try to extract the next complete newline-delimited message.
     ///
     /// Returns `None` if no complete message is available yet.
     /// Returns `Some(Err(_))` if a complete line was found but contained
-    /// malformed JSON — the line is consumed and parsing continues on the
-    /// next call.
+    /// malformed JSON or exceeded size limits — the line is consumed and
+    /// parsing continues on the next call.
     pub fn next_message(&mut self) -> Option<Result<JsonRpcMessage>> {
         loop {
             let newline_pos = self.buf.iter().position(|&b| b == b'\n')?;
+
+            // Check if this line exceeds the maximum message size
+            if newline_pos > MAX_MESSAGE_SIZE {
+                warn!(
+                    "skipping oversized JSON-RPC line ({} bytes > {} byte limit)",
+                    newline_pos, MAX_MESSAGE_SIZE
+                );
+                // Drain the oversized line and continue to next
+                self.buf.drain(..=newline_pos);
+                continue;
+            }
+
             let line: Vec<u8> = self.buf.drain(..=newline_pos).collect();
             let trimmed = line.strip_suffix(b"\n").unwrap_or(&line);
 
@@ -289,6 +378,57 @@ mod tests {
         let data = format!("\n\n{}\n\n", sample_request_json());
         parser.feed(data.as_bytes());
 
+        let msg = parser.next_message().unwrap().unwrap();
+        assert!(matches!(msg, JsonRpcMessage::Request(_)));
+    }
+
+    // -----------------------------------------------------------------------
+    // Security hardening tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_rejects_oversized_message() {
+        let huge = "x".repeat(MAX_MESSAGE_SIZE + 1);
+        let result = parse_message(huge.as_bytes());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("maximum size"));
+    }
+
+    #[test]
+    fn parse_rejects_deeply_nested_json() {
+        // Build JSON with depth > MAX_JSON_DEPTH
+        let open: String = "{\"a\":".repeat(200);
+        let close: String = "}".repeat(200);
+        let json = format!("{}null{}", open, close);
+        let result = parse_message(json.as_bytes());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("nesting depth"));
+    }
+
+    #[test]
+    fn stream_oversized_line_skipped() {
+        let mut parser = StreamParser::new();
+        // Create a line that exceeds MAX_MESSAGE_SIZE, then a valid message
+        let oversized = "x".repeat(MAX_MESSAGE_SIZE + 100);
+        let data = format!("{}\n{}\n", oversized, sample_request_json());
+        parser.feed(data.as_bytes());
+
+        // The oversized line should be skipped, and the valid message returned
+        let msg = parser.next_message().unwrap().unwrap();
+        assert!(matches!(msg, JsonRpcMessage::Request(_)));
+    }
+
+    #[test]
+    fn stream_buffer_overflow_protection() {
+        let mut parser = StreamParser::new();
+        // Feed data without newlines that exceeds buffer limit
+        let chunk = "x".repeat(MAX_BUFFER_SIZE + 100);
+        parser.feed(chunk.as_bytes());
+        // Buffer should have been cleared
+        assert!(parser.next_message().is_none());
+        // Parser should still work after clearing
+        let data = format!("{}\n", sample_request_json());
+        parser.feed(data.as_bytes());
         let msg = parser.next_message().unwrap().unwrap();
         assert!(matches!(msg, JsonRpcMessage::Request(_)));
     }

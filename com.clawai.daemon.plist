@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.clawai.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/clawai</string>
+        <string>daemon</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/clawai-daemon.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/clawai-daemon.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CLAWAI_LOG</key>
+        <string>info</string>
+    </dict>
+
+    <!--
+    To install:
+      cp com.clawai.daemon.plist ~/Library/LaunchAgents/
+      launchctl load ~/Library/LaunchAgents/com.clawai.daemon.plist
+
+    To uninstall:
+      launchctl unload ~/Library/LaunchAgents/com.clawai.daemon.plist
+      rm ~/Library/LaunchAgents/com.clawai.daemon.plist
+    -->
+</dict>
+</plist>

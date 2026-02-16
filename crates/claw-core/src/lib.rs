@@ -12,3 +12,4 @@ pub mod correlation;
 pub mod event;
 pub mod ipc;
 pub mod policy;
+pub mod rate_limit;

@@ -109,6 +109,18 @@ impl Event for McpEvent {
             rule_matched: None,
             action_taken: String::new(),
             response_time_ms: None,
+            session_id: None,
+            direction: None,
+            server_name: None,
+            client_name: None,
+            jsonrpc_method: None,
+            tool_name: None,
+            arguments: None,
+            classification: None,
+            policy_rule: None,
+            policy_action: None,
+            user_decision: None,
+            proxy_latency_us: None,
         }
     }
 

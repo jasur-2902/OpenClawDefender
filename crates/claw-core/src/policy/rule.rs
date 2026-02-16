@@ -2,10 +2,11 @@
 
 pub use super::{MatchCriteria, PolicyAction, PolicyRule};
 
-use super::matcher::GlobMatcher;
+use super::matcher::{canonicalize_path, GlobMatcher};
 use anyhow::{bail, Result};
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use tracing::warn;
 
 /// Context extracted from an event for matching against policy rules.
 /// This is the bridge between concrete event types and the generic matching logic.
@@ -49,7 +50,16 @@ impl PolicyRule {
         if let Some(ref resource_paths) = criteria.resource_paths {
             has_any_criterion = true;
             if let Some(ref event_path) = ctx.resource_path {
-                if !resource_paths.iter().any(|pat| glob_matches(pat, event_path)) {
+                // Canonicalize the event path before matching to prevent
+                // path traversal attacks (e.g., /project/../etc/passwd).
+                let canonical = match canonicalize_path(event_path) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        warn!("path canonicalization failed for '{}': {e}, rejecting match", event_path);
+                        return false;
+                    }
+                };
+                if !resource_paths.iter().any(|pat| glob_matches(pat, &canonical)) {
                     return false;
                 }
             } else {

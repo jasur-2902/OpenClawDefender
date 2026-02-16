@@ -1,21 +1,38 @@
 //! MCP proxy binary entry point.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::Parser;
 
-/// ClawAI MCP Proxy — intercepts JSON-RPC between MCP clients and servers.
+/// ClawAI MCP Proxy -- intercepts JSON-RPC between MCP clients and servers.
 #[derive(Parser, Debug)]
 #[command(name = "claw-mcp-proxy", version, about)]
 struct Cli {
     /// MCP server command to spawn (e.g. `node /path/to/server.js`).
     /// Use `--` to separate proxy args from server command.
-    #[arg(trailing_var_arg = true, required = true)]
+    #[arg(trailing_var_arg = true)]
     server_cmd: Vec<String>,
 
     /// Path to the ClawAI policy TOML file.
     #[arg(long = "policy", default_value = "~/.config/clawai/policy.toml")]
     policy_path: String,
+
+    /// Run in HTTP proxy mode instead of stdio.
+    #[arg(long = "http")]
+    http_mode: bool,
+
+    /// Remote MCP server URL for HTTP mode.
+    #[arg(long = "remote")]
+    remote_url: Option<String>,
+
+    /// Listen address for HTTP mode.
+    #[arg(long = "listen", default_value = "127.0.0.1:3100")]
+    listen_addr: String,
+
+    /// Skip TLS certificate verification (HTTP mode only).
+    #[arg(long = "insecure")]
+    insecure: bool,
 }
 
 #[tokio::main]
@@ -28,19 +45,44 @@ async fn main() -> anyhow::Result<()> {
 
     let policy_path = expand_tilde(&cli.policy_path);
 
-    let (cmd, args) = cli
-        .server_cmd
-        .split_first()
-        .expect("server command is required");
+    if cli.http_mode {
+        let remote_url = cli
+            .remote_url
+            .ok_or_else(|| anyhow::anyhow!("--remote is required in HTTP mode"))?;
 
-    tracing::info!(
-        cmd = %cmd,
-        args = ?args,
-        policy = %policy_path.display(),
-        "starting claw-mcp-proxy"
-    );
+        let addr: SocketAddr = cli
+            .listen_addr
+            .parse()
+            .map_err(|e| anyhow::anyhow!("invalid listen address '{}': {e}", cli.listen_addr))?;
 
-    claw_mcp_proxy::run_stdio_proxy(cmd.clone(), args.to_vec(), &policy_path).await
+        tracing::info!(
+            remote = %remote_url,
+            listen = %addr,
+            policy = %policy_path.display(),
+            insecure = %cli.insecure,
+            "starting claw-mcp-proxy in HTTP mode"
+        );
+
+        claw_mcp_proxy::run_http_proxy(remote_url, &policy_path, addr).await
+    } else {
+        if cli.server_cmd.is_empty() {
+            anyhow::bail!("server command is required in stdio mode. Use: claw-mcp-proxy [OPTIONS] -- <server-command> [args...]");
+        }
+
+        let (cmd, args) = cli
+            .server_cmd
+            .split_first()
+            .expect("server command is required");
+
+        tracing::info!(
+            cmd = %cmd,
+            args = ?args,
+            policy = %policy_path.display(),
+            "starting claw-mcp-proxy in stdio mode"
+        );
+
+        claw_mcp_proxy::run_stdio_proxy(cmd.clone(), args.to_vec(), &policy_path).await
+    }
 }
 
 /// Expand a leading `~` to the user's home directory.

@@ -5,7 +5,7 @@
 
 use super::Matcher;
 use crate::event::Event;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 
 /// Matches event fields using glob patterns (e.g. `"fs_*"`, `"/tmp/**"`).
 pub struct GlobMatcher {
@@ -55,10 +55,14 @@ pub struct RegexMatcher {
 }
 
 impl RegexMatcher {
-    /// Create a new case-insensitive regex matcher.
+    /// Maximum compiled regex size (256 KB) to prevent ReDoS via pathological patterns.
+    const MAX_REGEX_SIZE: usize = 256 * 1024;
+
+    /// Create a new case-insensitive regex matcher with size limits to prevent ReDoS.
     pub fn new(pattern: &str) -> Result<Self> {
         let compiled = regex::RegexBuilder::new(pattern)
             .case_insensitive(true)
+            .size_limit(Self::MAX_REGEX_SIZE)
             .build()
             .with_context(|| format!("invalid regex pattern: {pattern}"))?;
         Ok(Self {
@@ -111,6 +115,63 @@ impl Matcher for ExactMatcher {
     fn description(&self) -> &str {
         &self.value
     }
+}
+
+/// Canonicalize a path for safe policy matching.
+///
+/// This function:
+/// 1. Rejects paths containing null bytes
+/// 2. Expands `~` to `$HOME`
+/// 3. Resolves `.` and `..` segments (without requiring the file to exist)
+/// 4. Normalizes path separators (collapses repeated `/`)
+/// 5. Strips trailing slashes (except for root `/`)
+pub fn canonicalize_path(path: &str) -> Result<String> {
+    // 1. Reject null bytes
+    if path.contains('\0') {
+        return Err(anyhow!("Path contains null byte"));
+    }
+
+    // 2. Expand ~ to $HOME
+    let expanded = expand_tilde(path);
+
+    // 3. Resolve . and .. segments using a stack-based algorithm
+    // (does not require the file to exist, unlike std::fs::canonicalize)
+    let mut segments: Vec<&str> = Vec::new();
+    let is_absolute = expanded.starts_with('/');
+
+    for segment in expanded.split('/') {
+        match segment {
+            "" | "." => {
+                // Skip empty segments (from repeated /) and current-dir markers
+            }
+            ".." => {
+                if is_absolute {
+                    // For absolute paths, never go above root
+                    segments.pop();
+                } else if segments.last().is_none_or(|s| *s == "..") {
+                    segments.push("..");
+                } else {
+                    segments.pop();
+                }
+            }
+            other => {
+                segments.push(other);
+            }
+        }
+    }
+
+    // 4. Reconstruct the normalized path
+    let normalized = if is_absolute {
+        format!("/{}", segments.join("/"))
+    } else if segments.is_empty() {
+        ".".to_string()
+    } else {
+        segments.join("/")
+    };
+
+    // 5. Trailing slash is already stripped by the reconstruction above
+    // (root "/" is preserved by the format! above)
+    Ok(normalized)
 }
 
 /// Expand `~` at the start of a path to the user's home directory.
@@ -184,5 +245,70 @@ mod tests {
         assert!(m.is_match("tools/call"));
         assert!(!m.is_match("tools/list"));
         assert!(!m.is_match("Tools/Call"));
+    }
+
+    // --- canonicalize_path tests ---
+
+    #[test]
+    fn canonicalize_rejects_null_byte() {
+        let result = canonicalize_path("/tmp/foo\0bar");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("null byte"));
+    }
+
+    #[test]
+    fn canonicalize_resolves_dot_segments() {
+        assert_eq!(canonicalize_path("/a/b/../c").unwrap(), "/a/c");
+        assert_eq!(canonicalize_path("/a/./b/./c").unwrap(), "/a/b/c");
+        assert_eq!(canonicalize_path("/a/b/../../c").unwrap(), "/c");
+    }
+
+    #[test]
+    fn canonicalize_traversal_cannot_escape_root() {
+        assert_eq!(canonicalize_path("/a/../../../../etc/passwd").unwrap(), "/etc/passwd");
+        assert_eq!(canonicalize_path("/../../../etc/passwd").unwrap(), "/etc/passwd");
+    }
+
+    #[test]
+    fn canonicalize_collapses_repeated_slashes() {
+        assert_eq!(canonicalize_path("/a///b//c").unwrap(), "/a/b/c");
+    }
+
+    #[test]
+    fn canonicalize_strips_trailing_slash() {
+        assert_eq!(canonicalize_path("/a/b/c/").unwrap(), "/a/b/c");
+    }
+
+    #[test]
+    fn canonicalize_preserves_root() {
+        assert_eq!(canonicalize_path("/").unwrap(), "/");
+    }
+
+    #[test]
+    fn canonicalize_expands_tilde() {
+        std::env::set_var("HOME", "/Users/testuser");
+        assert_eq!(
+            canonicalize_path("~/.ssh/id_rsa").unwrap(),
+            "/Users/testuser/.ssh/id_rsa"
+        );
+    }
+
+    #[test]
+    fn canonicalize_relative_path() {
+        assert_eq!(canonicalize_path("a/b/../c").unwrap(), "a/c");
+    }
+
+    #[test]
+    fn canonicalize_empty_home_env() {
+        // If HOME is unset, tilde stays as-is
+        let old = std::env::var("HOME").ok();
+        std::env::remove_var("HOME");
+        let result = canonicalize_path("~/test");
+        // Restore
+        if let Some(h) = old {
+            std::env::set_var("HOME", h);
+        }
+        // Should not error, just keep ~ literal
+        assert!(result.is_ok());
     }
 }

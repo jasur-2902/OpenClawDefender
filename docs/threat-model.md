@@ -38,13 +38,35 @@ If an MCP server itself is backdoored, ClawAI can restrict what it does but cann
 3. **The user reviews interactive prompts.** When ClawAI asks "allow this tool call?", the user reads and makes an informed decision.
 4. **Policy files are protected by filesystem permissions.** If an attacker can modify `policy.toml`, they can allow anything.
 
+## V1 security mitigations
+
+### Symlink and path traversal attacks
+An attacker-controlled MCP server could request resources using path traversal sequences (e.g., `/project/data/../../../etc/passwd`) to bypass policy rules that only allow access to `/project/**`. ClawAI canonicalizes all resource paths before policy evaluation using a stack-based algorithm that resolves `.` and `..` segments without requiring the target file to exist. Null bytes in paths are rejected outright. This ensures that a policy rule for `/project/**` cannot be bypassed via traversal.
+
+### Prompt fatigue attacks
+A malicious MCP server could flood the user with prompt-triggering tool calls, hoping the user starts blindly clicking "Allow" out of frustration. ClawAI implements per-server prompt rate limiting: if a server triggers more than 10 prompts within a 60-second window, all further prompts from that server are auto-blocked for the remainder of the session. The user is notified and can explicitly unblock the server if desired.
+
+### Parser safety
+ClawAI enforces multiple layers of protection on the JSON-RPC parser:
+
+- **Maximum message size (10 MB):** Single messages exceeding this limit are rejected before parsing.
+- **Maximum JSON nesting depth (128 levels):** A pre-parse bracket-counting check prevents stack overflow from deeply nested payloads.
+- **Buffer overflow protection (20 MB):** If the streaming parser accumulates more than 20 MB without encountering a newline delimiter, the buffer is cleared to prevent memory exhaustion.
+- **Malformed message recovery:** Invalid JSON lines are logged and skipped; the parser continues processing subsequent messages.
+
+### ReDoS protection
+Policy rules support regex patterns for matching tool names and paths. The regex engine uses `regex::RegexBuilder` with a compiled size limit (256 KB) to prevent Regular Expression Denial of Service (ReDoS) attacks via pathological patterns. The Rust `regex` crate uses a finite automaton engine that guarantees linear-time matching, providing an additional layer of protection.
+
+### Plaintext traffic visibility
+ClawAI sees all MCP traffic in plaintext. The stdio proxy sits between the MCP client and server with full visibility into every JSON-RPC message, including tool call arguments and response data. This is by design -- it is required for policy evaluation and audit logging. Users should be aware that ClawAI's audit logs may contain sensitive data passed through MCP tool calls.
+
 ## Attack surface of ClawAI itself
 
 ### JSON-RPC parser
-ClawAI parses untrusted JSON-RPC messages from both the MCP client and server. Bugs here could cause crashes, incorrect routing, or policy bypasses. Mitigation: strict parsing with `serde_json`, extensive fuzz testing.
+ClawAI parses untrusted JSON-RPC messages from both the MCP client and server. Bugs here could cause crashes, incorrect routing, or policy bypasses. Mitigation: strict parsing with `serde_json`, message size limits, JSON depth limits, buffer overflow protection, and extensive fuzz testing.
 
 ### Policy engine
-The policy evaluation logic must be correct — a bug here is a security bypass. Mitigation: simple rule format (TOML, not a Turing-complete language), comprehensive test suite, property-based testing.
+The policy evaluation logic must be correct -- a bug here is a security bypass. Mitigation: simple rule format (TOML, not a Turing-complete language), path canonicalization before matching, regex size limits, comprehensive test suite including security-focused integration tests.
 
 ### eslogger JSON parser
 `eslogger` outputs JSON events. Malformed or adversarial output (unlikely from a system tool, but possible if the system is partially compromised) could cause parsing failures. Mitigation: lenient parsing that skips malformed events rather than crashing.

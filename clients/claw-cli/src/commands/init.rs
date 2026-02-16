@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use claw_core::config::ClawConfig;
 
+use super::known_clients;
+
 /// Default policy TOML written during init.
 const DEFAULT_POLICY: &str = r#"# ClawAI Policy Rules
 # Rules are evaluated top-to-bottom; first match wins.
@@ -92,11 +94,29 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     println!("ClawAI initialized successfully!");
     println!("  Config:  {}", config_path.display());
     println!("  Policy:  {}", policy_path.display());
+    println!("  Data:    {}", data_dir.display());
     println!("  Audit:   {}", config.audit_log_path.display());
+
+    // Detect installed MCP clients.
+    println!();
+    println!("Detected MCP clients:");
+    let clients = known_clients();
+    let mut found = false;
+    for client in &clients {
+        if client.config_path.exists() {
+            println!("  - {} ({})", client.display_name, client.config_path.display());
+            found = true;
+        }
+    }
+    if !found {
+        println!("  (none detected)");
+    }
+
     println!();
     println!("Next steps:");
-    println!("  1. Edit policy rules:  clawai policy list");
-    println!("  2. Wrap an MCP server: clawai wrap -- node /path/to/server.js");
+    println!("  1. Edit policy rules:     clawai policy list");
+    println!("  2. Wrap an MCP server:    clawai wrap <server-name>");
+    println!("  3. Check installation:    clawai doctor");
 
     Ok(())
 }
@@ -120,4 +140,39 @@ fn config_dir() -> Result<PathBuf> {
 fn data_dir() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").context("HOME environment variable not set")?;
     Ok(PathBuf::from(home).join(".local/share/clawai"))
+}
+
+#[cfg(test)]
+mod tests {
+    /// Verify the default policy is valid TOML that parses correctly.
+    #[test]
+    fn test_default_policy_parses() {
+        let rules = claw_core::policy::rule::parse_policy_toml(super::DEFAULT_POLICY).unwrap();
+        assert!(rules.len() >= 3);
+    }
+
+    /// Verify the default config is valid TOML.
+    #[test]
+    fn test_default_config_parses() {
+        let _config: toml::Value = toml::from_str(super::DEFAULT_CONFIG).unwrap();
+    }
+
+    /// Init in a temp dir should create files.
+    #[test]
+    fn test_init_creates_files_in_temp_dir() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config_path = dir.path().join("config.toml");
+        let policy_path = dir.path().join("policy.toml");
+
+        super::write_if_not_exists(&config_path, super::DEFAULT_CONFIG).unwrap();
+        super::write_if_not_exists(&policy_path, super::DEFAULT_POLICY).unwrap();
+
+        assert!(config_path.exists());
+        assert!(policy_path.exists());
+
+        // Calling again should skip (not overwrite).
+        std::fs::write(&config_path, "custom content").unwrap();
+        super::write_if_not_exists(&config_path, super::DEFAULT_CONFIG).unwrap();
+        assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "custom content");
+    }
 }

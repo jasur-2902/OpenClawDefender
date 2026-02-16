@@ -1,197 +1,138 @@
-//! Interactive user prompt for policy decisions.
+//! Prompt types and channel helpers for the TUI prompt system.
 //!
-//! The [`PromptResolver`] bridges the daemon (which needs a decision) and the
-//! TUI (which renders the modal and captures keystrokes). It uses the shared
-//! [`AppState`] to communicate: the daemon submits a prompt, the TUI renders it,
-//! and the user's keystroke resolves it.
+//! [`PendingPrompt`] carries a oneshot sender so the proxy/daemon can `await`
+//! the user's decision without polling shared state.
 
 use std::time::Duration;
 
-use anyhow::Result;
-
 use claw_core::ipc::protocol::UserDecision;
 
-use crate::{PromptRequest, SharedState};
-
-/// Handles submitting prompts to the TUI and waiting for user responses.
-pub struct PromptResolver {
-    state: SharedState,
+/// A prompt awaiting user approval in the TUI.
+pub struct PendingPrompt {
+    /// Unique identifier for this prompt.
+    pub id: String,
+    /// Name of the MCP server that originated the request.
+    pub server_name: String,
+    /// MCP method (e.g. `tools/call`, `resources/read`).
+    pub method: String,
+    /// Tool name, if the method is `tools/call`.
+    pub tool_name: Option<String>,
+    /// Full arguments of the request.
+    pub arguments: serde_json::Value,
+    /// Name of the policy rule that triggered the prompt.
+    pub policy_rule: String,
+    /// Human-readable message from the policy rule.
+    pub policy_message: String,
+    /// When the prompt was received.
+    pub received_at: std::time::Instant,
+    /// How long before auto-deny.
+    pub timeout: Duration,
+    /// Channel to send the user's decision back to the caller.
+    pub response_tx: Option<tokio::sync::oneshot::Sender<UserDecision>>,
 }
 
-impl PromptResolver {
-    /// Create a new resolver backed by the given shared state.
-    pub fn new(state: SharedState) -> Self {
-        Self { state }
+impl PendingPrompt {
+    /// Seconds remaining before this prompt times out.
+    pub fn seconds_remaining(&self) -> u64 {
+        self.timeout
+            .checked_sub(self.received_at.elapsed())
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
     }
 
-    /// Submit a prompt for the user to decide on.
-    ///
-    /// Returns an error if a prompt is already pending.
-    pub fn submit_prompt(&self, request: PromptRequest) -> Result<()> {
-        let mut s = self
-            .state
-            .write()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+    /// Whether this prompt has exceeded its timeout.
+    pub fn is_expired(&self) -> bool {
+        self.received_at.elapsed() >= self.timeout
+    }
 
-        if s.pending_prompt.is_some() {
-            anyhow::bail!("a prompt is already pending");
+    /// Resolve this prompt by sending the decision through the oneshot channel.
+    /// Returns `true` if the decision was sent successfully.
+    pub fn resolve(&mut self, decision: UserDecision) -> bool {
+        if let Some(tx) = self.response_tx.take() {
+            tx.send(decision).is_ok()
+        } else {
+            false
         }
-
-        s.prompt_decision = None;
-        s.pending_prompt = Some(request);
-        Ok(())
-    }
-
-    /// Poll for a user decision, blocking up to `timeout`.
-    ///
-    /// Returns `None` if the timeout expires without a decision.
-    pub fn wait_for_response(&self, timeout: Duration) -> Result<Option<UserDecision>> {
-        let start = std::time::Instant::now();
-        let poll_interval = Duration::from_millis(50);
-
-        while start.elapsed() < timeout {
-            {
-                let s = self
-                    .state
-                    .read()
-                    .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
-
-                if let Some(decision) = s.prompt_decision {
-                    return Ok(Some(decision));
-                }
-
-                // If the TUI shut down, bail out.
-                if !s.running {
-                    anyhow::bail!("TUI is no longer running");
-                }
-            }
-            std::thread::sleep(poll_interval);
-        }
-
-        Ok(None)
-    }
-
-    /// Consume and return the pending decision, if any.
-    pub fn take_decision(&self) -> Result<Option<UserDecision>> {
-        let mut s = self
-            .state
-            .write()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
-        Ok(s.prompt_decision.take())
-    }
-
-    /// Check whether a prompt is currently pending.
-    pub fn is_pending(&self) -> bool {
-        self.state
-            .read()
-            .map(|s| s.pending_prompt.is_some())
-            .unwrap_or(false)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, RwLock};
 
-    use crate::AppState;
-
-    fn make_state() -> SharedState {
-        Arc::new(RwLock::new(AppState::default()))
-    }
-
-    #[test]
-    fn test_submit_prompt() {
-        let state = make_state();
-        let resolver = PromptResolver::new(state.clone());
-
-        let req = PromptRequest {
-            id: "p1".to_string(),
-            message: "Allow shell exec?".to_string(),
-            event_summary: "bash -c 'curl ...'".to_string(),
-            rule_name: "prompt_shell".to_string(),
-            options: vec!["Allow Once".to_string(), "Deny Once".to_string()],
-        };
-
-        resolver.submit_prompt(req).unwrap();
-        assert!(resolver.is_pending());
-    }
-
-    #[test]
-    fn test_submit_while_pending_fails() {
-        let state = make_state();
-        let resolver = PromptResolver::new(state.clone());
-
-        let req1 = PromptRequest {
-            id: "p1".to_string(),
-            message: "first".to_string(),
-            event_summary: "e1".to_string(),
-            rule_name: "r1".to_string(),
-            options: vec![],
-        };
-        let req2 = PromptRequest {
-            id: "p2".to_string(),
-            message: "second".to_string(),
-            event_summary: "e2".to_string(),
-            rule_name: "r2".to_string(),
-            options: vec![],
-        };
-
-        resolver.submit_prompt(req1).unwrap();
-        assert!(resolver.submit_prompt(req2).is_err());
-    }
-
-    #[test]
-    fn test_take_decision() {
-        let state = make_state();
-        let resolver = PromptResolver::new(state.clone());
-
-        // No decision yet.
-        assert_eq!(resolver.take_decision().unwrap(), None);
-
-        // Simulate the TUI resolving a prompt.
-        {
-            let mut s = state.write().unwrap();
-            s.prompt_decision = Some(UserDecision::AllowOnce);
+    fn make_prompt(timeout: Duration) -> PendingPrompt {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        PendingPrompt {
+            id: "test-1".to_string(),
+            server_name: "fs-server".to_string(),
+            method: "tools/call".to_string(),
+            tool_name: Some("run_command".to_string()),
+            arguments: serde_json::json!({"command": "ls"}),
+            policy_rule: "prompt_shell".to_string(),
+            policy_message: "Shell execution requires approval".to_string(),
+            received_at: std::time::Instant::now(),
+            timeout,
+            response_tx: Some(tx),
         }
-
-        assert_eq!(
-            resolver.take_decision().unwrap(),
-            Some(UserDecision::AllowOnce)
-        );
-
-        // Decision is consumed.
-        assert_eq!(resolver.take_decision().unwrap(), None);
     }
 
     #[test]
-    fn test_wait_timeout() {
-        let state = make_state();
-        let resolver = PromptResolver::new(state);
-
-        let result = resolver
-            .wait_for_response(Duration::from_millis(100))
-            .unwrap();
-        assert_eq!(result, None);
+    fn test_seconds_remaining() {
+        let prompt = make_prompt(Duration::from_secs(30));
+        assert!(prompt.seconds_remaining() <= 30);
+        assert!(prompt.seconds_remaining() >= 28); // allow some slack
     }
 
     #[test]
-    fn test_wait_resolves() {
-        let state = make_state();
-        let resolver = PromptResolver::new(state.clone());
+    fn test_is_expired_false() {
+        let prompt = make_prompt(Duration::from_secs(30));
+        assert!(!prompt.is_expired());
+    }
 
-        // Spawn a thread that resolves the prompt after a short delay.
-        let s = state.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(50));
-            let mut st = s.write().unwrap();
-            st.pending_prompt = None;
-            st.prompt_decision = Some(UserDecision::DenySession);
-        });
+    #[test]
+    fn test_is_expired_true() {
+        let prompt = make_prompt(Duration::from_millis(0));
+        assert!(prompt.is_expired());
+    }
 
-        let result = resolver
-            .wait_for_response(Duration::from_secs(2))
-            .unwrap();
-        assert_eq!(result, Some(UserDecision::DenySession));
+    #[test]
+    fn test_resolve_sends_decision() {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let mut prompt = PendingPrompt {
+            id: "t".to_string(),
+            server_name: "s".to_string(),
+            method: "m".to_string(),
+            tool_name: None,
+            arguments: serde_json::Value::Null,
+            policy_rule: "r".to_string(),
+            policy_message: "msg".to_string(),
+            received_at: std::time::Instant::now(),
+            timeout: Duration::from_secs(30),
+            response_tx: Some(tx),
+        };
+
+        assert!(prompt.resolve(UserDecision::AllowOnce));
+        assert_eq!(rx.blocking_recv().unwrap(), UserDecision::AllowOnce);
+    }
+
+    #[test]
+    fn test_resolve_twice_returns_false() {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut prompt = PendingPrompt {
+            id: "t".to_string(),
+            server_name: "s".to_string(),
+            method: "m".to_string(),
+            tool_name: None,
+            arguments: serde_json::Value::Null,
+            policy_rule: "r".to_string(),
+            policy_message: "msg".to_string(),
+            received_at: std::time::Instant::now(),
+            timeout: Duration::from_secs(30),
+            response_tx: Some(tx),
+        };
+
+        assert!(prompt.resolve(UserDecision::DenyOnce));
+        // Second resolve should fail — tx already consumed
+        assert!(!prompt.resolve(UserDecision::DenyOnce));
     }
 }

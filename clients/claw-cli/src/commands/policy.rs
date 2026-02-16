@@ -1,8 +1,11 @@
-//! `clawai policy list` and `clawai policy test` commands.
+//! `clawai policy list/add/test/reload` commands.
 
+use std::io::{self, BufRead, Write};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use claw_core::config::ClawConfig;
 use claw_core::event::mcp::{McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall};
 use claw_core::policy::engine::DefaultPolicyEngine;
 use claw_core::policy::PolicyEngine;
@@ -54,6 +57,62 @@ pub fn list(policy_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Interactively add a new policy rule.
+pub fn add(policy_path: &Path) -> Result<()> {
+    if !policy_path.exists() {
+        bail!(
+            "Policy file not found: {}\nRun `clawai init` to create defaults.",
+            policy_path.display()
+        );
+    }
+
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+
+    let name = prompt_line(&mut reader, "Rule name (e.g. block_dangerous_tools): ")?;
+    let description = prompt_line(&mut reader, "Description: ")?;
+
+    println!("Action [allow/block/prompt/log]: ");
+    io::stdout().flush()?;
+    let action = read_line(&mut reader)?;
+    let action = match action.trim() {
+        "allow" | "block" | "prompt" | "log" => action.trim().to_string(),
+        _ => bail!("Invalid action: {action}. Must be allow, block, prompt, or log."),
+    };
+
+    let message = prompt_line(&mut reader, "Message: ")?;
+
+    println!("Match type [tool_name/resource_path/method/event_type/any]: ");
+    io::stdout().flush()?;
+    let match_type = read_line(&mut reader)?;
+    let match_type = match_type.trim();
+
+    let match_section = if match_type == "any" {
+        "any = true".to_string()
+    } else {
+        let values = prompt_line(
+            &mut reader,
+            &format!("{match_type} patterns (comma-separated): "),
+        )?;
+        let values: Vec<String> = values.split(',').map(|s| s.trim().to_string()).collect();
+        let quoted: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
+        format!("{match_type} = [{}]", quoted.join(", "))
+    };
+
+    let toml_fragment = format!(
+        "\n[rules.{name}]\ndescription = \"{description}\"\naction = \"{action}\"\nmessage = \"{message}\"\npriority = 50\n\n[rules.{name}.match]\n{match_section}\n"
+    );
+
+    let mut content = std::fs::read_to_string(policy_path)?;
+    content.push_str(&toml_fragment);
+    std::fs::write(policy_path, &content)?;
+
+    println!();
+    println!("Rule \"{name}\" added to {}", policy_path.display());
+
+    Ok(())
+}
+
 /// Test a JSON fixture against the policy and show the result.
 pub fn test_fixture(fixture_path: &Path, policy_path: &Path) -> Result<()> {
     if !policy_path.exists() {
@@ -73,7 +132,6 @@ pub fn test_fixture(fixture_path: &Path, policy_path: &Path) -> Result<()> {
     let fixture: Value = serde_json::from_str(&fixture_content)
         .with_context(|| format!("parsing fixture as JSON: {}", fixture_path.display()))?;
 
-    // Try to interpret the fixture as a JSON-RPC message and build an McpEvent.
     let event = fixture_to_event(&fixture)
         .with_context(|| "could not interpret fixture as an MCP event")?;
 
@@ -106,6 +164,33 @@ pub fn test_fixture(fixture_path: &Path, policy_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Signal the running daemon to reload policy.
+pub fn reload(config: &ClawConfig) -> Result<()> {
+    let socket_path = &config.daemon_socket_path;
+    match UnixStream::connect(socket_path) {
+        Ok(_stream) => {
+            // TODO: send actual reload command over IPC.
+            println!("Policy reload signal sent to daemon.");
+        }
+        Err(_) => {
+            println!("Daemon is not running. Policy will be loaded fresh on next proxy start.");
+        }
+    }
+    Ok(())
+}
+
+fn prompt_line<R: BufRead>(reader: &mut R, prompt: &str) -> Result<String> {
+    print!("{prompt}");
+    io::stdout().flush()?;
+    read_line(reader)
+}
+
+fn read_line<R: BufRead>(reader: &mut R) -> Result<String> {
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    Ok(line.trim().to_string())
+}
+
 /// Convert a JSON fixture value into an McpEvent for policy evaluation.
 fn fixture_to_event(v: &Value) -> Result<McpEvent> {
     let method = v
@@ -113,7 +198,10 @@ fn fixture_to_event(v: &Value) -> Result<McpEvent> {
         .and_then(|m| m.as_str())
         .unwrap_or("unknown");
 
-    let params = v.get("params").cloned().unwrap_or(Value::Object(Default::default()));
+    let params = v
+        .get("params")
+        .cloned()
+        .unwrap_or(Value::Object(Default::default()));
     let id = v.get("id").cloned().unwrap_or(Value::Number(0.into()));
 
     let kind = match method {

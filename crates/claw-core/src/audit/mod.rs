@@ -4,6 +4,7 @@
 //! a JSON-lines file for post-hoc analysis and compliance.
 
 pub mod logger;
+pub mod query;
 
 use std::collections::HashMap;
 
@@ -28,6 +29,44 @@ pub struct AuditRecord {
     pub action_taken: String,
     /// Time from event receipt to policy decision, in milliseconds.
     pub response_time_ms: Option<u64>,
+
+    // --- Enhanced fields for production use ---
+    /// Session UUID, generated once at proxy start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Direction: "client_to_server" or "server_to_client".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<String>,
+    /// Name of the MCP server involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_name: Option<String>,
+    /// Name of the MCP client involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    /// JSON-RPC method name (e.g. "tools/call").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jsonrpc_method: Option<String>,
+    /// Tool name if this is a tool call event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    /// Tool call arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<serde_json::Value>,
+    /// Classification: "pass", "log", "review", "block".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<String>,
+    /// Policy rule that matched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_rule: Option<String>,
+    /// Policy action: "allowed", "blocked", "prompted", "logged".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_action: Option<String>,
+    /// User decision when prompted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_decision: Option<String>,
+    /// Proxy latency in microseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_latency_us: Option<u64>,
 }
 
 /// Filter for querying the audit log.
@@ -56,8 +95,18 @@ pub struct AuditStats {
     pub allowed: u64,
     /// Events that required a user prompt.
     pub prompted: u64,
+    /// Events that were logged only.
+    pub logged: u64,
     /// Event counts broken down by source subsystem.
     pub by_source: HashMap<String, u64>,
+    /// Unique server names seen.
+    pub unique_servers: Vec<String>,
+    /// Unique tool names seen.
+    pub unique_tools: Vec<String>,
+    /// Top 10 blocked tools by count.
+    pub top_blocked_tools: Vec<(String, u64)>,
+    /// Top 10 blocked paths by count.
+    pub top_blocked_paths: Vec<(String, u64)>,
 }
 
 /// Trait for audit log backends.

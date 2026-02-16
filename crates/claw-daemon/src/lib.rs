@@ -1,48 +1,45 @@
 //! ClawAI daemon orchestration logic.
 //!
-//! The [`Daemon`] struct ties together the sensor manager, policy engine,
-//! audit logger, correlation engine, and TUI into a single async event loop.
+//! The [`Daemon`] struct ties together the MCP proxy, policy engine,
+//! audit logger, TUI, and signal handling into a single async process.
 
 pub mod ipc;
 
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::io::IsTerminal;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use chrono::Utc;
-use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tokio::sync::{mpsc, RwLock};
+use tracing::{error, info, warn};
 
 use claw_core::audit::logger::FileAuditLogger;
-use claw_core::audit::AuditLogger;
+use claw_core::audit::{AuditLogger, AuditRecord};
 use claw_core::config::settings::ClawConfig;
-use claw_core::correlation::CorrelationEngine;
-use claw_core::event::os::OsEvent;
-use claw_core::event::Event;
 use claw_core::policy::engine::DefaultPolicyEngine;
-use claw_core::policy::{PolicyAction, PolicyEngine};
-use claw_sensor::SensorManager;
-use claw_tui::{AppState, DashboardStats, EventRecord, SharedState};
+use claw_core::policy::PolicyEngine;
+use claw_mcp_proxy::{ProxyConfig, StdioProxy, UiBridge};
+use claw_tui::{EventRecord, PendingPrompt};
 
 /// The main daemon that orchestrates all ClawAI subsystems.
 pub struct Daemon {
     config: ClawConfig,
-    policy_engine: DefaultPolicyEngine,
-    audit_logger: FileAuditLogger,
-    correlation_engine: CorrelationEngine,
-    tui_state: SharedState,
+    policy_engine: Arc<RwLock<DefaultPolicyEngine>>,
+    audit_logger: Arc<FileAuditLogger>,
     enable_tui: bool,
 }
 
 impl Daemon {
     /// Create a new daemon from the given configuration.
-    pub fn new(config: ClawConfig) -> Result<Self> {
+    pub fn new(config: ClawConfig, enable_tui: bool) -> Result<Self> {
         // Load policy engine -- use empty engine if policy file doesn't exist yet.
         let policy_engine = if config.policy_path.exists() {
-            DefaultPolicyEngine::load(&config.policy_path)
-                .context("loading policy engine")?
+            DefaultPolicyEngine::load(&config.policy_path).context("loading policy engine")?
         } else {
-            info!(path = %config.policy_path.display(), "policy file not found, using empty policy");
+            info!(
+                path = %config.policy_path.display(),
+                "policy file not found, using empty policy"
+            );
             DefaultPolicyEngine::empty()
         };
 
@@ -53,270 +50,273 @@ impl Daemon {
         )
         .context("creating audit logger")?;
 
-        // Create correlation engine with a 5-second window.
-        let correlation_engine = CorrelationEngine::new(Duration::from_secs(5));
-
-        // Create shared TUI state.
-        let tui_state = Arc::new(RwLock::new(AppState::default()));
-
         Ok(Self {
             config,
-            policy_engine,
-            audit_logger,
-            correlation_engine,
-            tui_state,
-            enable_tui: false,
+            policy_engine: Arc::new(RwLock::new(policy_engine)),
+            audit_logger: Arc::new(audit_logger),
+            enable_tui,
         })
     }
 
-    /// Enable or disable the TUI.
-    pub fn set_tui_enabled(&mut self, enabled: bool) {
-        self.enable_tui = enabled;
-    }
+    /// Main entry point for `clawai proxy -- <command> [args...]`.
+    ///
+    /// Spawns the MCP proxy, audit writer, TUI (or headless), and signal
+    /// handlers, then runs until the proxy finishes or a signal is received.
+    pub async fn run_proxy(self, command: String, args: Vec<String>) -> Result<()> {
+        // Write PID file.
+        let pid_path = pid_file_path();
+        write_pid_file(&pid_path)?;
 
-    /// Get a reference to the shared TUI state.
-    pub fn tui_state(&self) -> &SharedState {
-        &self.tui_state
-    }
+        // --- Channels ---
+        let (_prompt_tx, prompt_rx) = mpsc::channel::<PendingPrompt>(64);
+        let (_event_tx, event_rx) = mpsc::channel::<EventRecord>(256);
+        let (audit_tx, mut audit_rx) = mpsc::channel::<AuditRecord>(1024);
 
-    /// Run the daemon event loop until shutdown is requested.
-    pub async fn run(&mut self) -> Result<()> {
-        info!("claw-daemon starting up");
-        let start_time = std::time::Instant::now();
+        // --- UiBridge (connects proxy prompts to TUI) ---
+        // The UiBridge uses (UiRequest, oneshot::Sender<UiResponse>) internally.
+        // We create a channel that the TUI will convert from.
+        let (ui_req_tx, _ui_req_rx) =
+            mpsc::channel::<(
+                claw_core::ipc::protocol::UiRequest,
+                tokio::sync::oneshot::Sender<claw_core::ipc::protocol::UiResponse>,
+            )>(64);
+        let ui_bridge = Arc::new(UiBridge::new(ui_req_tx));
 
-        // Start sensor if on macOS and eslogger is enabled.
-        let sensor_rx = if cfg!(target_os = "macos") && self.config.eslogger.enabled {
-            match self.start_sensor() {
-                Ok(rx) => Some(rx),
-                Err(e) => {
-                    warn!(error = %e, "failed to start sensor, continuing without it");
-                    None
+        // --- Audit writer task ---
+        let audit_logger = Arc::clone(&self.audit_logger);
+        let audit_writer_handle = tokio::spawn(async move {
+            while let Some(record) = audit_rx.recv().await {
+                if let Err(e) = audit_logger.log(&record) {
+                    error!(error = %e, "failed to write audit record");
                 }
             }
-        } else {
-            debug!("sensor disabled or not on macOS");
-            None
-        };
+            info!("audit writer task finished");
+        });
 
-        // Start IPC server.
-        let mut ipc_rx = self.start_ipc_server().await?;
-
-        // Start TUI in a background task if enabled.
-        let tui_handle = if self.enable_tui {
-            let state = self.tui_state.clone();
+        // --- TUI or headless ---
+        let tui_handle = if self.enable_tui && std::io::stdout().is_terminal() {
+            info!("starting TUI");
             Some(tokio::task::spawn_blocking(move || {
-                if let Err(e) = claw_tui::run(state) {
+                let rt = tokio::runtime::Handle::current();
+                if let Err(e) = rt.block_on(claw_tui::run(prompt_rx, event_rx)) {
                     error!(error = %e, "TUI exited with error");
                 }
             }))
         } else {
+            info!("no TTY or TUI disabled, running headless");
+            Some(tokio::spawn(async move {
+                if let Err(e) = claw_tui::run_headless(prompt_rx).await {
+                    error!(error = %e, "headless prompt handler exited with error");
+                }
+                // Drain events so the channel doesn't back-pressure.
+                drop(event_rx);
+            }))
+        };
+
+        // --- Proxy config ---
+        let proxy_config = ProxyConfig {
+            server_command: Some(command.clone()),
+            server_args: args.clone(),
+            ..Default::default()
+        };
+
+        // Get a snapshot of the policy engine for the proxy.
+        let policy_snapshot = {
+            // We need to pass a DefaultPolicyEngine by value. Since the proxy
+            // takes ownership, we load a fresh copy.
+            if self.config.policy_path.exists() {
+                DefaultPolicyEngine::load(&self.config.policy_path)
+                    .unwrap_or_else(|_| DefaultPolicyEngine::empty())
+            } else {
+                DefaultPolicyEngine::empty()
+            }
+        };
+
+        // --- Create StdioProxy ---
+        let proxy = StdioProxy::with_full_config(
+            proxy_config,
+            policy_snapshot,
+            audit_tx.clone(),
+            Some(ui_bridge),
+        );
+
+        let metrics = Arc::clone(proxy.metrics());
+
+        // --- Policy hot-reload via notify ---
+        let policy_path = self.config.policy_path.clone();
+        let policy_engine_for_reload = Arc::clone(&self.policy_engine);
+        let _reload_handle = if policy_path.exists() {
+            Some(spawn_policy_watcher(policy_path, policy_engine_for_reload))
+        } else {
             None
         };
 
-        // Main event loop.
-        let mut sensor_rx = sensor_rx;
-        let mut tick_interval = tokio::time::interval(Duration::from_secs(1));
-        tick_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-        info!("daemon event loop started");
-
-        loop {
-            // Check if shutdown was requested.
+        // --- IPC server ---
+        let socket_path = self.config.daemon_socket_path.clone();
+        let metrics_for_ipc = Arc::clone(&metrics);
+        let policy_for_ipc = Arc::clone(&self.policy_engine);
+        let ipc_handle = tokio::spawn(async move {
+            if let Err(e) =
+                ipc::run_ipc_server(socket_path, metrics_for_ipc, policy_for_ipc).await
             {
-                let state = self.tui_state.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-                if !state.running {
-                    info!("shutdown requested via TUI state");
-                    break;
-                }
+                warn!(error = %e, "IPC server exited");
             }
+        });
 
+        // --- Signal handlers ---
+        #[cfg(unix)]
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        #[cfg(unix)]
+        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+
+        // --- Run proxy with graceful shutdown ---
+        info!(cmd = %command, args = ?args, "starting MCP proxy");
+
+        #[cfg(unix)]
+        {
             tokio::select! {
-                // Sensor events.
-                Some(os_event) = async {
-                    match sensor_rx.as_mut() {
-                        Some(rx) => rx.recv().await,
-                        None => std::future::pending::<Option<OsEvent>>().await,
+                result = proxy.run() => {
+                    match &result {
+                        Ok(()) => info!("proxy finished normally"),
+                        Err(e) => error!(error = %e, "proxy exited with error"),
                     }
-                } => {
-                    self.handle_os_event(os_event);
+                    result?;
                 }
-                // Tick for correlation engine.
-                _ = tick_interval.tick() => {
-                    self.handle_tick(start_time);
+                _ = sigterm.recv() => {
+                    info!("SIGTERM received, shutting down");
                 }
-                // IPC messages.
-                Some(msg) = ipc_rx.recv() => {
-                    self.handle_ipc_message(msg);
-                }
-                // Ctrl+C / SIGTERM.
-                _ = tokio::signal::ctrl_c() => {
-                    info!("received shutdown signal");
-                    break;
+                _ = sigint.recv() => {
+                    info!("SIGINT received, shutting down");
                 }
             }
         }
 
-        // Graceful shutdown.
-        self.shutdown().await;
+        #[cfg(not(unix))]
+        {
+            tokio::select! {
+                result = proxy.run() => {
+                    match &result {
+                        Ok(()) => info!("proxy finished normally"),
+                        Err(e) => error!(error = %e, "proxy exited with error"),
+                    }
+                    result?;
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Ctrl-C received, shutting down");
+                }
+            }
+        }
 
-        // Wait for TUI to finish if it was running.
+        // --- Cleanup ---
+        // Drop audit sender to signal the writer to finish.
+        drop(audit_tx);
+        let _ = audit_writer_handle.await;
+
+        // Shut down audit logger (flushes + session-end record).
+        self.audit_logger.shutdown();
+
+        // Abort IPC server.
+        ipc_handle.abort();
+
+        // Wait for TUI.
         if let Some(handle) = tui_handle {
             let _ = handle.await;
         }
 
-        info!("claw-daemon shut down");
+        // Remove PID file.
+        remove_pid_file(&pid_path);
+
+        info!("daemon shut down");
         Ok(())
     }
+}
 
-    fn start_sensor(&mut self) -> Result<mpsc::Receiver<OsEvent>> {
-        let mut sensor = SensorManager::new(&self.config.eslogger)
-            .context("creating sensor manager")?;
-        let rx = sensor.start(&[]).context("starting sensor")?;
-        info!("sensor started");
-        Ok(rx)
-    }
+/// Spawn a file watcher for policy hot-reload.
+fn spawn_policy_watcher(
+    policy_path: PathBuf,
+    policy_engine: Arc<RwLock<DefaultPolicyEngine>>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use notify::{Event, EventKind, RecursiveMode, Watcher};
 
-    async fn start_ipc_server(&self) -> Result<mpsc::Receiver<IpcMessage>> {
-        let (tx, rx) = mpsc::channel(64);
-        let socket_path = self.config.daemon_socket_path.clone();
-        let state = self.tui_state.clone();
+        let (tx, mut rx) = mpsc::channel::<()>(4);
 
-        tokio::spawn(async move {
-            if let Err(e) = ipc::run_ipc_server(socket_path, tx, state).await {
-                error!(error = %e, "IPC server exited with error");
+        let watch_path = policy_path.clone();
+        let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+            if let Ok(event) = res {
+                if matches!(
+                    event.kind,
+                    EventKind::Modify(_) | EventKind::Create(_)
+                ) {
+                    let _ = tx.try_send(());
+                }
             }
-        });
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                warn!(error = %e, "failed to create file watcher for policy reload");
+                return;
+            }
+        };
 
-        Ok(rx)
-    }
-
-    fn handle_os_event(&mut self, event: OsEvent) {
-        debug!(pid = event.pid, kind = ?event.kind, "received OS event");
-
-        // Submit to correlation engine.
-        self.correlation_engine.submit_os_event(event.clone());
-
-        // Create audit record and log it.
-        let mut record = event.to_audit_record();
-        let action = self.policy_engine.evaluate(&event);
-        record.action_taken = format_action(&action);
-
-        if let Err(e) = self.audit_logger.log(&record) {
-            error!(error = %e, "failed to log audit record");
+        // Watch the parent directory (file-level watching can miss renames).
+        let watch_dir = watch_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        if let Err(e) = watcher.watch(watch_dir, RecursiveMode::NonRecursive) {
+            warn!(error = %e, "failed to watch policy directory");
+            return;
         }
 
-        // Update TUI state.
-        self.push_event_to_tui(&event, &record.action_taken);
-        self.update_stats(&record.action_taken);
-    }
+        info!(path = %policy_path.display(), "watching policy file for changes");
 
-    fn handle_tick(&mut self, start_time: std::time::Instant) {
-        // Process completed correlations.
-        let completed = self.correlation_engine.tick();
-        for corr in &completed {
-            let mut record = corr.to_audit_record();
-            let action = self.policy_engine.evaluate(corr);
-            record.action_taken = format_action(&action);
+        while rx.recv().await.is_some() {
+            // Debounce: drain any extra notifications.
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            while rx.try_recv().is_ok() {}
 
-            if let Err(e) = self.audit_logger.log(&record) {
-                error!(error = %e, "failed to log correlation audit record");
-            }
-
-            // Update TUI state with correlation result.
-            if let Ok(mut state) = self.tui_state.write() {
-                state.push_event(EventRecord {
-                    timestamp: Utc::now(),
-                    source: "correlation".to_string(),
-                    summary: record.event_summary.clone(),
-                    action: record.action_taken.clone(),
-                    severity: corr.severity(),
-                    details: None,
-                });
+            let mut engine = policy_engine.write().await;
+            match engine.reload() {
+                Ok(()) => {
+                    info!("policy reloaded successfully");
+                }
+                Err(e) => {
+                    warn!(error = %e, "failed to reload policy");
+                }
             }
         }
+    })
+}
 
-        // Update uptime.
-        if let Ok(mut state) = self.tui_state.write() {
-            state.stats.uptime_secs = start_time.elapsed().as_secs();
-        }
-    }
-
-    fn handle_ipc_message(&self, msg: IpcMessage) {
-        match msg {
-            IpcMessage::StatusRequest { reply } => {
-                let stats = self.tui_state.read().ok().map(|s| s.stats.clone());
-                let _ = reply.send(stats);
-            }
-        }
-    }
-
-    fn push_event_to_tui(&self, event: &OsEvent, action: &str) {
-        if let Ok(mut state) = self.tui_state.write() {
-            state.push_event(EventRecord {
-                timestamp: event.timestamp,
-                source: event.source().to_string(),
-                summary: event.to_audit_record().event_summary,
-                action: action.to_string(),
-                severity: event.severity(),
-                details: None,
-            });
-        }
-    }
-
-    fn update_stats(&self, action: &str) {
-        if let Ok(mut state) = self.tui_state.write() {
-            state.stats.total_events += 1;
-            match action {
-                "block" => state.stats.blocked += 1,
-                "allow" => state.stats.allowed += 1,
-                "prompt" => state.stats.prompted += 1,
-                _ => {}
-            }
-        }
-    }
-
-    async fn shutdown(&mut self) {
-        info!("initiating graceful shutdown");
-
-        // Signal TUI to stop.
-        if let Ok(mut state) = self.tui_state.write() {
-            state.running = false;
-        }
-
-        // Flush correlation engine.
-        let remaining = self.correlation_engine.flush();
-        for corr in &remaining {
-            let mut record = corr.to_audit_record();
-            record.action_taken = "log".to_string();
-            if let Err(e) = self.audit_logger.log(&record) {
-                error!(error = %e, "failed to log remaining correlation on shutdown");
-            }
-        }
-
-        // Clean up IPC socket.
-        if self.config.daemon_socket_path.exists() {
-            if let Err(e) = std::fs::remove_file(&self.config.daemon_socket_path) {
-                warn!(error = %e, "failed to remove IPC socket");
-            }
-        }
-
-        info!("shutdown complete");
+/// Path for the daemon PID file.
+fn pid_file_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".local/share/clawai/clawai.pid")
+    } else {
+        PathBuf::from("/tmp/clawai.pid")
     }
 }
 
-/// Internal IPC message types for the daemon event loop.
-pub enum IpcMessage {
-    StatusRequest {
-        reply: tokio::sync::oneshot::Sender<Option<DashboardStats>>,
-    },
+/// Write the current PID to the PID file.
+fn write_pid_file(path: &PathBuf) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    let pid = std::process::id();
+    std::fs::write(path, pid.to_string())
+        .with_context(|| format!("writing PID file: {}", path.display()))?;
+    info!(pid = pid, path = %path.display(), "wrote PID file");
+    Ok(())
 }
 
-fn format_action(action: &PolicyAction) -> String {
-    match action {
-        PolicyAction::Allow => "allow".to_string(),
-        PolicyAction::Block => "block".to_string(),
-        PolicyAction::Prompt(_) => "prompt".to_string(),
-        PolicyAction::Log => "log".to_string(),
+/// Remove the PID file on clean shutdown.
+fn remove_pid_file(path: &PathBuf) {
+    if path.exists() {
+        if let Err(e) = std::fs::remove_file(path) {
+            warn!(error = %e, "failed to remove PID file");
+        } else {
+            info!(path = %path.display(), "removed PID file");
+        }
     }
 }
 
@@ -337,83 +337,74 @@ mod tests {
     fn daemon_new_with_default_config() {
         let dir = TempDir::new().unwrap();
         let config = test_config(&dir);
-        let daemon = Daemon::new(config).unwrap();
+        let daemon = Daemon::new(config, false).unwrap();
         assert!(!daemon.enable_tui);
     }
 
     #[test]
-    fn daemon_tui_state_is_shared() {
+    fn pid_file_creation_and_cleanup() {
         let dir = TempDir::new().unwrap();
-        let config = test_config(&dir);
-        let daemon = Daemon::new(config).unwrap();
-        let state = daemon.tui_state().clone();
-        let s = state.read().unwrap();
-        assert!(s.running);
-        assert!(s.events.is_empty());
-    }
-
-    #[test]
-    fn daemon_handles_os_event() {
-        let dir = TempDir::new().unwrap();
-        let config = test_config(&dir);
-        let mut daemon = Daemon::new(config).unwrap();
-
-        let event = OsEvent {
-            timestamp: Utc::now(),
-            pid: 1234,
-            ppid: 1,
-            process_path: "/usr/bin/cat".to_string(),
-            kind: claw_core::event::os::OsEventKind::Open {
-                path: "/tmp/test".to_string(),
-                flags: 0,
-            },
-            signing_id: None,
-            team_id: None,
-        };
-
-        daemon.handle_os_event(event);
-
-        let state = daemon.tui_state.read().unwrap();
-        assert_eq!(state.events.len(), 1);
-        assert_eq!(state.stats.total_events, 1);
-    }
-
-    #[test]
-    fn daemon_correlation_tick() {
-        let dir = TempDir::new().unwrap();
-        let config = test_config(&dir);
-        let mut daemon = Daemon::new(config).unwrap();
-        // Tick with no pending correlations should not panic.
-        let start = std::time::Instant::now();
-        daemon.handle_tick(start);
+        let pid_path = dir.path().join("test.pid");
+        write_pid_file(&pid_path).unwrap();
+        assert!(pid_path.exists());
+        let contents = std::fs::read_to_string(&pid_path).unwrap();
+        assert_eq!(contents, std::process::id().to_string());
+        remove_pid_file(&pid_path);
+        assert!(!pid_path.exists());
     }
 
     #[tokio::test]
-    async fn daemon_graceful_shutdown() {
+    async fn audit_channel_writer_processes_records() {
         let dir = TempDir::new().unwrap();
-        let config = test_config(&dir);
-        let mut daemon = Daemon::new(config).unwrap();
+        let logger = Arc::new(
+            FileAuditLogger::new(
+                dir.path().join("audit.jsonl"),
+                claw_core::config::settings::LogRotation::default(),
+            )
+            .unwrap(),
+        );
 
-        // Verify running is true.
-        {
-            let state = daemon.tui_state.read().unwrap();
-            assert!(state.running);
-        }
+        let (audit_tx, mut audit_rx) = mpsc::channel::<AuditRecord>(16);
+        let logger_clone = Arc::clone(&logger);
+        let writer = tokio::spawn(async move {
+            while let Some(record) = audit_rx.recv().await {
+                logger_clone.log(&record).unwrap();
+            }
+        });
 
-        daemon.shutdown().await;
+        // Send a test record.
+        let record = AuditRecord {
+            timestamp: chrono::Utc::now(),
+            source: "test".to_string(),
+            event_summary: "test event".to_string(),
+            event_details: serde_json::json!({}),
+            rule_matched: None,
+            action_taken: "allow".to_string(),
+            response_time_ms: None,
+            session_id: None,
+            direction: None,
+            server_name: None,
+            client_name: None,
+            jsonrpc_method: None,
+            tool_name: None,
+            arguments: None,
+            classification: None,
+            policy_rule: None,
+            policy_action: None,
+            user_decision: None,
+            proxy_latency_us: None,
+        };
+        audit_tx.send(record).await.unwrap();
+        drop(audit_tx);
+        writer.await.unwrap();
 
-        // Verify running is now false.
-        {
-            let state = daemon.tui_state.read().unwrap();
-            assert!(!state.running);
-        }
-    }
-
-    #[test]
-    fn format_action_strings() {
-        assert_eq!(format_action(&PolicyAction::Allow), "allow");
-        assert_eq!(format_action(&PolicyAction::Block), "block");
-        assert_eq!(format_action(&PolicyAction::Prompt("msg".into())), "prompt");
-        assert_eq!(format_action(&PolicyAction::Log), "log");
+        // Verify the record was written.
+        let filter = claw_core::audit::AuditFilter {
+            action: Some("allow".to_string()),
+            limit: 100,
+            ..Default::default()
+        };
+        let results = logger.query(&filter).unwrap();
+        assert!(!results.is_empty());
     }
 }

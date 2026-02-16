@@ -20,11 +20,22 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-release-
+
       - name: Build aarch64
-        run: cargo build --release --target aarch64-apple-darwin
+        run: cargo build --release --target aarch64-apple-darwin --package claw-cli
 
       - name: Build x86_64
-        run: cargo build --release --target x86_64-apple-darwin
+        run: cargo build --release --target x86_64-apple-darwin --package claw-cli
 
       - name: Create universal binary
         run: |
@@ -34,31 +45,51 @@ jobs:
             target/x86_64-apple-darwin/release/clawai \
             -output target/universal-apple-darwin/release/clawai
 
-      - name: Generate checksum
+      - name: Ad-hoc code sign
+        run: codesign --sign - --force target/universal-apple-darwin/release/clawai
+
+      - name: Create tarball and checksum
         run: |
           cd target/universal-apple-darwin/release
-          shasum -a 256 clawai > clawai.sha256
-
-      # TODO: Code signing
-      # - name: Code sign binary
-      #   run: |
-      #     codesign --sign "${{ secrets.DEVELOPER_ID }}" \
-      #       --options runtime \
-      #       target/universal-apple-darwin/release/clawai
-
-      # TODO: Notarization
-      # - name: Notarize binary
-      #   run: |
-      #     xcrun notarytool submit target/universal-apple-darwin/release/clawai \
-      #       --apple-id "${{ secrets.APPLE_ID }}" \
-      #       --password "${{ secrets.APPLE_APP_PASSWORD }}" \
-      #       --team-id "${{ secrets.APPLE_TEAM_ID }}" \
-      #       --wait
+          tar czf clawai-macos-universal.tar.gz clawai
+          shasum -a 256 clawai-macos-universal.tar.gz > clawai-macos-universal.tar.gz.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/universal-apple-darwin/release/clawai
-            target/universal-apple-darwin/release/clawai.sha256
+            target/universal-apple-darwin/release/clawai-macos-universal.tar.gz
+            target/universal-apple-darwin/release/clawai-macos-universal.tar.gz.sha256
           generate_release_notes: true
+
+      # ------------------------------------------------------------------
+      # Apple Developer ID signing (uncomment when certs are configured)
+      # ------------------------------------------------------------------
+      # - name: Import signing certificate
+      #   env:
+      #     CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      #     CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      #   run: |
+      #     echo "$CERTIFICATE_P12" | base64 --decode > certificate.p12
+      #     security create-keychain -p "" build.keychain
+      #     security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+      #     security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+      #     security default-keychain -s build.keychain
+
+      # - name: Code sign with Developer ID
+      #   run: |
+      #     codesign --sign "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }}" \
+      #       --options runtime \
+      #       --timestamp \
+      #       target/universal-apple-darwin/release/clawai
+
+      # - name: Notarize binary
+      #   run: |
+      #     cd target/universal-apple-darwin/release
+      #     zip clawai.zip clawai
+      #     xcrun notarytool submit clawai.zip \
+      #       --apple-id "${{ secrets.APPLE_ID }}" \
+      #       --password "${{ secrets.APPLE_APP_PASSWORD }}" \
+      #       --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+      #       --wait
+      #     xcrun stapler staple clawai

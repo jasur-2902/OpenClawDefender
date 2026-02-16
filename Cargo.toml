@@ -9,6 +9,7 @@ members = [
     "crates/claw-tui",
     "crates/claw-daemon",
     "clients/claw-cli",
+    "tests/mock-mcp-server",
 ]
 
 [workspace.package]

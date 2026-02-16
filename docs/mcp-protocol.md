@@ -34,6 +34,16 @@ ClawAI spawns the real server as a child process, connects to its stdin/stdout, 
 
 For remote (HTTP/SSE) MCP servers, ClawAI acts as a reverse proxy, forwarding requests after policy evaluation.
 
+### Internals of `clawai wrap`
+
+1. **Config detection:** ClawAI auto-detects the MCP client by searching known config paths (Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, Cursor: `~/.cursor/mcp.json`).
+2. **Server lookup:** Finds the named server entry in `mcpServers`.
+3. **Command rewriting:** Replaces the `command` with `clawai` and prepends `proxy --` before the original command and args.
+4. **Backup:** Creates a `.bak` backup of the original config before modifying.
+5. **Validation:** Parses the rewritten config to ensure it is valid JSON before writing.
+
+`clawai unwrap <server-name>` reverses this process, restoring the original command.
+
 ## Intercepted JSON-RPC methods
 
 ClawAI intercepts and evaluates the following MCP methods:
@@ -138,3 +148,92 @@ A fixture is a JSON file representing an MCP `tools/call` request:
 ```
 
 The `expected` field is optional. When present, `clawai policy test` exits with a non-zero status if the actual decision does not match. This integrates with CI to prevent policy regressions.
+
+## JSON-RPC error codes
+
+When ClawAI blocks a request, it returns a JSON-RPC error response with the following code:
+
+| Code | Meaning |
+|---|---|
+| `-32001` | Policy block. The request was denied by a ClawAI policy rule. The error `data` field may contain `rule` (name of the matching rule) and `action` (`"blocked"` or `"denied"`). |
+
+Standard JSON-RPC error codes (`-32700` parse error, `-32600` invalid request, etc.) are also used where applicable.
+
+Example block response:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "Blocked by ClawAI policy",
+    "data": {
+      "rule": "block_ssh",
+      "action": "blocked"
+    }
+  }
+}
+```
+
+## Custom policy examples
+
+### Block all network access
+
+```toml
+[rules.block_network]
+description = "Block all network connections"
+action = "block"
+message = "Network access is not allowed"
+priority = 0
+
+[rules.block_network.match]
+event_type = ["connect"]
+```
+
+### Allow only project directory
+
+```toml
+[rules.allow_project]
+description = "Allow reads from project directory"
+action = "allow"
+message = "Project access allowed"
+priority = 0
+
+[rules.allow_project.match]
+resource_path = ["/home/user/myproject/**"]
+
+[rules.block_all_other_reads]
+description = "Block all other file access"
+action = "block"
+message = "File access outside project is blocked"
+priority = 1
+
+[rules.block_all_other_reads.match]
+method = ["resources/read"]
+```
+
+### Prompt on all shell execution
+
+```toml
+[rules.prompt_shell]
+description = "Ask before any shell command"
+action = "prompt"
+message = "An AI agent wants to run a shell command. Allow?"
+priority = 0
+
+[rules.prompt_shell.match]
+tool_name = ["shell_*", "exec*", "run_*"]
+```
+
+### Audit-only mode (log everything, block nothing)
+
+```toml
+[rules.log_everything]
+description = "Log all events without blocking"
+action = "log"
+message = "Logged for audit"
+priority = 0
+
+[rules.log_everything.match]
+any = true
+```
