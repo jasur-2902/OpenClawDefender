@@ -1,10 +1,10 @@
-# ClawAI Default Security Policy
-# This policy defines the default security posture for the ClawAI agent firewall.
+# ClawDefender Default Security Policy
+# This policy defines the default security posture for the ClawDefender agent firewall.
 
 [metadata]
 name = "default"
 version = "0.1.0"
-description = "Default security policy for ClawAI -- blocks access to sensitive credentials, prompts on shell execution and network tools, allows project directory reads."
+description = "Default security policy for ClawDefender -- blocks access to sensitive credentials, prompts on shell execution and network tools, allows project directory reads."
 
 # ===========================================================================
 # BLOCK rules -- deny access to sensitive credentials and secrets

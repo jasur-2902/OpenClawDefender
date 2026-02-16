@@ -4,7 +4,7 @@
 
 ## Context
 
-ClawAI needs a format for users to define security policies (allow, deny, prompt rules for MCP tool calls). The format must be human-readable, machine-parseable, and appropriate for version control.
+ClawDefender needs a format for users to define security policies (allow, deny, prompt rules for MCP tool calls). The format must be human-readable, machine-parseable, and appropriate for version control.
 
 ## Decision
 
@@ -34,7 +34,7 @@ tool = "shell_execute"
 
 **JSON.** No comments. Policy files need comments explaining *why* a rule exists. JSON also requires trailing commas and quoting that makes manual editing tedious.
 
-**Rego (OPA).** Powerful but complex. Rego is a purpose-built policy language with its own evaluation model. For ClawAI's use case (pattern matching on tool names and arguments), Rego is overkill. It raises the barrier for users who just want to block a tool. We may offer Rego as an advanced option in the future.
+**Rego (OPA).** Powerful but complex. Rego is a purpose-built policy language with its own evaluation model. For ClawDefender's use case (pattern matching on tool names and arguments), Rego is overkill. It raises the barrier for users who just want to block a tool. We may offer Rego as an advanced option in the future.
 
 **Custom DSL.** Maximum flexibility but requires building and maintaining a parser, language documentation, editor support, and debugging tools. Not justified for the current scope.
 

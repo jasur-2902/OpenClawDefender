@@ -4,25 +4,25 @@
 
 ## Context
 
-Many security and AI tools operate as cloud services: they proxy traffic through their servers, require accounts, and charge subscription fees. We needed to decide whether ClawAI should follow this model or operate entirely locally.
+Many security and AI tools operate as cloud services: they proxy traffic through their servers, require accounts, and charge subscription fees. We needed to decide whether ClawDefender should follow this model or operate entirely locally.
 
 ## Decision
 
-ClawAI is **local-first** and **BYOK (Bring Your Own Key)**.
+ClawDefender is **local-first** and **BYOK (Bring Your Own Key)**.
 
-- ClawAI runs entirely on the user's machine. No data leaves the machine through ClawAI.
-- ClawAI does not require an account, API key, or internet connection.
-- If AI features are added in the future (e.g., intelligent policy suggestions), users supply their own API key and data goes directly to their chosen provider. ClawAI never acts as an intermediary for AI API calls.
+- ClawDefender runs entirely on the user's machine. No data leaves the machine through ClawDefender.
+- ClawDefender does not require an account, API key, or internet connection.
+- If AI features are added in the future (e.g., intelligent policy suggestions), users supply their own API key and data goes directly to their chosen provider. ClawDefender never acts as an intermediary for AI API calls.
 
 ### Rationale
 
-**Eliminates privacy concerns.** ClawAI sits in the middle of every MCP tool call. These calls may contain source code, credentials, personal data, and proprietary information. Sending this data to a third-party service — even for "analysis" — is a non-starter for security-conscious users.
+**Eliminates privacy concerns.** ClawDefender sits in the middle of every MCP tool call. These calls may contain source code, credentials, personal data, and proprietary information. Sending this data to a third-party service — even for "analysis" — is a non-starter for security-conscious users.
 
-**No cloud costs.** ClawAI can be maintained without infrastructure costs. No servers to run, no databases to manage, no SLAs to maintain. This makes the project sustainable as an open-source effort.
+**No cloud costs.** ClawDefender can be maintained without infrastructure costs. No servers to run, no databases to manage, no SLAs to maintain. This makes the project sustainable as an open-source effort.
 
 **No single point of failure.** A cloud service going down would disable security for all users. A local tool works even if the maintainers disappear.
 
-**BYOK preserves user choice.** If we add AI-powered features, users choose their provider (OpenAI, Anthropic, local models) and pay them directly. ClawAI doesn't lock users into a provider or take a margin on API calls.
+**BYOK preserves user choice.** If we add AI-powered features, users choose their provider (OpenAI, Anthropic, local models) and pay them directly. ClawDefender doesn't lock users into a provider or take a margin on API calls.
 
 **Trust model is simpler.** Users only need to trust the open-source code they can audit, not a service they can't inspect.
 

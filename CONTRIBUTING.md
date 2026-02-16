@@ -1,11 +1,11 @@
-# Contributing to ClawAI
+# Contributing to ClawDefender
 
 ## Build from source
 
 ```bash
 # Clone the repository
-git clone https://github.com/clawai/clawai.git
-cd clawai
+git clone https://github.com/clawdefender/clawdefender.git
+cd clawdefender
 
 # Install Rust (if you don't have it)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -40,7 +40,7 @@ Requires Rust 1.75+ and macOS 13+ for OS monitoring features (the proxy and poli
 
 ## Good first issues
 
-Issues labeled [`good first issue`](https://github.com/clawai/clawai/labels/good%20first%20issue) are scoped, well-described tasks suitable for new contributors. They typically involve:
+Issues labeled [`good first issue`](https://github.com/clawdefender/clawdefender/labels/good%20first%20issue) are scoped, well-described tasks suitable for new contributors. They typically involve:
 
 - Adding a new policy rule type
 - Improving error messages
@@ -51,27 +51,27 @@ If you want to work on one, comment on the issue so others know it's taken.
 
 ## Architecture overview for contributors
 
-ClawAI is a Cargo workspace. The dependency graph flows downward:
+ClawDefender is a Cargo workspace. The dependency graph flows downward:
 
 ```
-clawai-cli
-  ├── clawai-proxy
-  │     └── clawai-common
-  ├── clawai-policy
-  │     └── clawai-common
-  ├── clawai-audit
-  │     └── clawai-common
-  ├── clawai-monitor
-  │     └── clawai-common
-  └── clawai-correlate
-        ├── clawai-audit
-        └── clawai-monitor
+clawdefender-cli
+  ├── clawdefender-proxy
+  │     └── clawdefender-common
+  ├── clawdefender-policy
+  │     └── clawdefender-common
+  ├── clawdefender-audit
+  │     └── clawdefender-common
+  ├── clawdefender-monitor
+  │     └── clawdefender-common
+  └── clawdefender-correlate
+        ├── clawdefender-audit
+        └── clawdefender-monitor
 ```
 
-- **clawai-common** defines MCP protocol types, shared error types, and configuration structures. If you're adding a new MCP method, start here.
-- **clawai-policy** is where rule evaluation lives. Policies are TOML files parsed into typed Rust structs.
-- **clawai-proxy** handles the actual interception — spawning the real MCP server, sitting in the middle of stdio, and forwarding/blocking based on policy decisions.
-- **clawai-monitor** wraps `eslogger` and parses its JSON output into typed events.
-- **clawai-correlate** joins MCP-layer events with OS-layer events by timestamp and process tree.
+- **clawdefender-common** defines MCP protocol types, shared error types, and configuration structures. If you're adding a new MCP method, start here.
+- **clawdefender-policy** is where rule evaluation lives. Policies are TOML files parsed into typed Rust structs.
+- **clawdefender-proxy** handles the actual interception — spawning the real MCP server, sitting in the middle of stdio, and forwarding/blocking based on policy decisions.
+- **clawdefender-monitor** wraps `eslogger` and parses its JSON output into typed events.
+- **clawdefender-correlate** joins MCP-layer events with OS-layer events by timestamp and process tree.
 
 See the [ADRs](docs/adr/) for rationale behind key design decisions.

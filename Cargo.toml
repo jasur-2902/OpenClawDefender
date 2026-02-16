@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/claw-core",
-    "crates/claw-mcp-proxy",
-    "crates/claw-sensor",
-    "crates/claw-slm",
-    "crates/claw-swarm",
-    "crates/claw-tui",
-    "crates/claw-daemon",
-    "clients/claw-cli",
+    "crates/clawdefender-core",
+    "crates/clawdefender-mcp-proxy",
+    "crates/clawdefender-sensor",
+    "crates/clawdefender-slm",
+    "crates/clawdefender-swarm",
+    "crates/clawdefender-tui",
+    "crates/clawdefender-daemon",
+    "clients/clawdefender-cli",
     "tests/mock-mcp-server",
 ]
 
@@ -16,7 +16,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/clawai/clawai"
+repository = "https://github.com/clawdefender/clawdefender"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug to help us improve ClawAI
+about: Report a bug to help us improve ClawDefender
 title: "[BUG] "
 labels: bug
 assignees: ""
@@ -27,6 +27,6 @@ What actually happened. Include any error messages or logs.
 ## Environment
 
 - **macOS version**:
-- **ClawAI version**:
+- **ClawDefender version**:
 - **Rust version**:
 - **Installation method** (source / binary):

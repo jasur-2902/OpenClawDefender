@@ -1,0 +1,17 @@
+[package]
+name = "clawdefender-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Terminal UI for ClawDefender interactive prompts and dashboards"
+
+[dependencies]
+clawdefender-core = { path = "../clawdefender-core" }
+clawdefender-swarm = { path = "../clawdefender-swarm" }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }

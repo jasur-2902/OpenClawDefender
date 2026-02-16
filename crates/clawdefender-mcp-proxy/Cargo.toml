@@ -1,0 +1,36 @@
+[package]
+name = "clawdefender-mcp-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP protocol proxy with JSON-RPC interception for ClawDefender"
+
+[lib]
+name = "clawdefender_mcp_proxy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "clawdefender-mcp-proxy"
+path = "src/main.rs"
+
+[dependencies]
+clawdefender-core = { path = "../clawdefender-core" }
+clawdefender-slm = { path = "../clawdefender-slm" }
+clawdefender-swarm = { path = "../clawdefender-swarm" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+uuid = { workspace = true }
+axum = "0.8"
+reqwest = { version = "0.12", features = ["stream"] }
+hyper = "1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true }
+serde_json = { workspace = true }

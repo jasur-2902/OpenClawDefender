@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="clawai/clawai"
+REPO="clawdefender/clawdefender"
 INSTALL_DIR="/usr/local/bin"
-BINARY_NAME="clawai"
+BINARY_NAME="clawdefender"
 GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
 GITHUB_DL="https://github.com/${REPO}/releases/download"
 
@@ -15,7 +15,7 @@ error() { echo "ERROR: $*" >&2; exit 1; }
 # --- Pre-flight checks ---
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-    error "ClawAI currently supports macOS only. See https://github.com/${REPO} for other platforms."
+    error "ClawDefender currently supports macOS only. See https://github.com/${REPO} for other platforms."
 fi
 
 ARCH="$(uname -m)"
@@ -46,7 +46,7 @@ info "Latest release: $LATEST_TAG"
 
 # --- Download ---
 
-TARBALL="clawai-macos-universal.tar.gz"
+TARBALL="clawdefender-macos-universal.tar.gz"
 DOWNLOAD_URL="${GITHUB_DL}/${LATEST_TAG}/${TARBALL}"
 CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
 
@@ -88,18 +88,18 @@ fi
 
 # --- Initialize ---
 
-info "Running 'clawai init'..."
+info "Running 'clawdefender init'..."
 "$INSTALL_DIR/$BINARY_NAME" init || true
 
 # --- Done ---
 
 echo ""
-echo "ClawAI $LATEST_TAG installed successfully!"
+echo "ClawDefender $LATEST_TAG installed successfully!"
 echo ""
 echo "Next steps:"
-echo "  clawai wrap <server-name>   Protect an MCP server"
-echo "  clawai status               Check proxy status"
-echo "  clawai --help               Full usage information"
+echo "  clawdefender wrap <server-name>   Protect an MCP server"
+echo "  clawdefender status               Check proxy status"
+echo "  clawdefender --help               Full usage information"
 echo ""
-echo "Configuration: ~/.config/clawai/"
-echo "Audit logs:    ~/.local/share/clawai/"
+echo "Configuration: ~/.config/clawdefender/"
+echo "Audit logs:    ~/.local/share/clawdefender/"

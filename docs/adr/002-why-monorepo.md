@@ -4,7 +4,7 @@
 
 ## Context
 
-ClawAI consists of multiple components: a CLI, a proxy, a policy engine, an audit logger, an OS monitor, and a correlation engine. We needed to decide whether to organize these as separate repositories or as a single monorepo.
+ClawDefender consists of multiple components: a CLI, a proxy, a policy engine, an audit logger, an OS monitor, and a correlation engine. We needed to decide whether to organize these as separate repositories or as a single monorepo.
 
 ## Decision
 
@@ -12,7 +12,7 @@ We use a single repository with a Cargo workspace containing multiple crates.
 
 ### Rationale
 
-**Shared types across crates.** The MCP protocol types, error types, and configuration structures are used by nearly every component. A monorepo with a `clawai-common` crate makes sharing trivial — no version coordination, no publishing to a registry, no diamond dependency problems.
+**Shared types across crates.** The MCP protocol types, error types, and configuration structures are used by nearly every component. A monorepo with a `clawdefender-common` crate makes sharing trivial — no version coordination, no publishing to a registry, no diamond dependency problems.
 
 **Atomic versioning.** A security tool needs consistent versions. When the policy engine changes how it evaluates rules, the proxy, CLI, and tests must all update together. A monorepo guarantees that `main` is always internally consistent.
 

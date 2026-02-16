@@ -1,4 +1,4 @@
-# ClawAI development commands
+# ClawDefender development commands
 
 # Build all crates in debug mode
 dev:
@@ -27,26 +27,26 @@ build-release: release
 
 # Build release and install to /usr/local/bin
 install: release
-    cp target/release/clawai /usr/local/bin/
+    cp target/release/clawdefender /usr/local/bin/
 
 # Build release, copy to /usr/local/bin, and run init
 install-local: release
-    cp target/release/clawai /usr/local/bin/
-    clawai init
+    cp target/release/clawdefender /usr/local/bin/
+    clawdefender init
 
 # Build release tarball and checksum (for local packaging)
 package: release
     mkdir -p dist
-    cp target/release/clawai dist/clawai
-    cd dist && tar czf clawai-macos-$(uname -m).tar.gz clawai
-    cd dist && shasum -a 256 clawai-macos-$(uname -m).tar.gz > clawai-macos-$(uname -m).tar.gz.sha256
+    cp target/release/clawdefender dist/clawdefender
+    cd dist && tar czf clawdefender-macos-$(uname -m).tar.gz clawdefender
+    cd dist && shasum -a 256 clawdefender-macos-$(uname -m).tar.gz > clawdefender-macos-$(uname -m).tar.gz.sha256
     @echo "Package created in dist/"
 
 # Run integration tests (builds workspace first, then runs e2e + policy fixture tests)
 integration-test:
     cargo build --workspace
-    cargo test -p claw-mcp-proxy --test e2e_proxy_test -- --ignored
-    cargo test -p claw-core --test mcp_proxy_test
+    cargo test -p clawdefender-mcp-proxy --test e2e_proxy_test -- --ignored
+    cargo test -p clawdefender-core --test mcp_proxy_test
 
 # Clean build artifacts
 clean:

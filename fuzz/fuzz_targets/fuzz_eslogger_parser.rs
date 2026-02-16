@@ -11,6 +11,6 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(text) = std::str::from_utf8(data) {
         // Try to deserialize arbitrary JSON as an OsEvent.
         // The deserializer should return Err, never panic.
-        let _ = serde_json::from_str::<claw_core::event::os::OsEvent>(text);
+        let _ = serde_json::from_str::<clawdefender_core::event::os::OsEvent>(text);
     }
 });

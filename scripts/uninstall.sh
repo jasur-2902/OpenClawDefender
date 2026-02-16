@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BINARY_NAME="clawai"
+BINARY_NAME="clawdefender"
 INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="${HOME}/.config/clawai"
-DATA_DIR="${HOME}/.local/share/clawai"
-PLIST_PATH="${HOME}/Library/LaunchAgents/com.clawai.daemon.plist"
+CONFIG_DIR="${HOME}/.config/clawdefender"
+DATA_DIR="${HOME}/.local/share/clawdefender"
+PLIST_PATH="${HOME}/Library/LaunchAgents/com.clawdefender.daemon.plist"
 
 info()  { echo "==> $*"; }
 warn()  { echo "WARNING: $*" >&2; }
 
-echo "ClawAI Uninstaller"
+echo "ClawDefender Uninstaller"
 echo "==================="
 echo ""
 
@@ -27,7 +27,7 @@ fi
 # --- Stop and remove LaunchAgent ---
 
 if [[ -f "$PLIST_PATH" ]]; then
-    info "Stopping ClawAI daemon..."
+    info "Stopping ClawDefender daemon..."
     launchctl unload "$PLIST_PATH" 2>/dev/null || true
     rm -f "$PLIST_PATH"
     info "Removed LaunchAgent."
@@ -72,4 +72,4 @@ if [[ -d "$DATA_DIR" ]]; then
 fi
 
 echo ""
-echo "ClawAI has been uninstalled."
+echo "ClawDefender has been uninstalled."

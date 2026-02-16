@@ -1,0 +1,367 @@
+//! Application settings and TOML configuration parsing.
+
+use std::path::{Path, PathBuf};
+
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+/// Top-level ClawDefender configuration, loaded from a TOML file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClawConfig {
+    /// Path to the Unix domain socket for daemon-UI IPC.
+    #[serde(default = "default_socket_path")]
+    pub daemon_socket_path: PathBuf,
+
+    /// Path to the JSON-lines audit log file.
+    #[serde(default = "default_audit_log_path")]
+    pub audit_log_path: PathBuf,
+
+    /// Log rotation settings.
+    #[serde(default)]
+    pub log_rotation: LogRotation,
+
+    /// eslogger / Endpoint Security configuration.
+    #[serde(default)]
+    pub eslogger: EsloggerConfig,
+
+    /// Small language model configuration for local inference.
+    #[serde(default)]
+    pub slm: SlmConfig,
+
+    /// API key configuration for cloud providers.
+    #[serde(default)]
+    pub api_keys: ApiKeyConfig,
+
+    /// Cloud swarm analysis settings.
+    #[serde(default)]
+    pub swarm: SwarmSettings,
+
+    /// UI appearance and behavior settings.
+    #[serde(default)]
+    pub ui: UiConfig,
+
+    /// Whether the user has opted in to anonymous telemetry.
+    #[serde(default)]
+    pub telemetry_opt_in: bool,
+
+    /// Path to the policy rules file.
+    #[serde(default = "default_policy_path")]
+    pub policy_path: PathBuf,
+}
+
+/// Log rotation settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogRotation {
+    /// Maximum size of a single log file in megabytes before rotation.
+    #[serde(default = "default_max_size_mb")]
+    pub max_size_mb: u64,
+    /// Maximum number of rotated log files to keep.
+    #[serde(default = "default_max_files")]
+    pub max_files: u32,
+}
+
+/// Configuration for the eslogger / Endpoint Security subsystem.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EsloggerConfig {
+    /// ES event types to subscribe to (e.g. `["exec", "open", "connect"]`).
+    #[serde(default = "default_es_events")]
+    pub events: Vec<String>,
+    /// Internal ring-buffer size for event batching.
+    #[serde(default = "default_buffer_size")]
+    pub buffer_size: usize,
+    /// Whether the eslogger sensor is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+/// Configuration for the local small language model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlmConfig {
+    /// Whether the SLM subsystem is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Path to the GGUF model file, if using a local model.
+    pub model_path: Option<PathBuf>,
+    /// Context window size in tokens.
+    #[serde(default = "default_slm_context_size")]
+    pub context_size: u32,
+    /// Maximum number of tokens to generate per inference.
+    #[serde(default = "default_slm_max_output_tokens")]
+    pub max_output_tokens: u32,
+    /// Sampling temperature (lower = more deterministic).
+    #[serde(default = "default_slm_temperature")]
+    pub temperature: f32,
+    /// Whether to use GPU acceleration (Metal on macOS).
+    #[serde(default = "default_true")]
+    pub use_gpu: bool,
+    /// Number of CPU threads for inference (None = auto-detect).
+    pub threads: Option<u32>,
+}
+
+fn default_slm_context_size() -> u32 {
+    2048
+}
+
+fn default_slm_max_output_tokens() -> u32 {
+    256
+}
+
+fn default_slm_temperature() -> f32 {
+    0.1
+}
+
+impl Default for SlmConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model_path: None,
+            context_size: default_slm_context_size(),
+            max_output_tokens: default_slm_max_output_tokens(),
+            temperature: default_slm_temperature(),
+            use_gpu: true,
+            threads: None,
+        }
+    }
+}
+
+/// Configuration for the cloud swarm multi-agent analysis.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwarmSettings {
+    /// Whether swarm analysis is enabled (default: true if API key exists).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Preferred LLM provider name (e.g. "anthropic", "openai").
+    pub preferred_provider: Option<String>,
+    /// Maximum daily spend in USD.
+    #[serde(default = "default_daily_budget")]
+    pub daily_budget_usd: f64,
+    /// Maximum monthly spend in USD.
+    #[serde(default = "default_monthly_budget")]
+    pub monthly_budget_usd: f64,
+    /// Timeout in seconds for swarm analysis.
+    #[serde(default = "default_swarm_timeout")]
+    pub timeout_secs: u64,
+    /// Minimum SLM risk level that triggers swarm escalation (default: "HIGH").
+    #[serde(default = "default_escalation_threshold")]
+    pub escalation_threshold: String,
+    /// Port for the chat web server.
+    #[serde(default = "default_chat_port")]
+    pub chat_port: u16,
+}
+
+fn default_daily_budget() -> f64 {
+    1.00
+}
+
+fn default_monthly_budget() -> f64 {
+    20.00
+}
+
+fn default_swarm_timeout() -> u64 {
+    10
+}
+
+fn default_escalation_threshold() -> String {
+    "HIGH".to_string()
+}
+
+fn default_chat_port() -> u16 {
+    3200
+}
+
+impl Default for SwarmSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            preferred_provider: None,
+            daily_budget_usd: default_daily_budget(),
+            monthly_budget_usd: default_monthly_budget(),
+            timeout_secs: default_swarm_timeout(),
+            escalation_threshold: default_escalation_threshold(),
+            chat_port: default_chat_port(),
+        }
+    }
+}
+
+/// API key configuration for cloud AI providers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ApiKeyConfig {
+    /// Provider name (e.g. `"openai"`, `"anthropic"`).
+    pub provider: Option<String>,
+    /// Name of the environment variable holding the API key.
+    pub key_env_var: Option<String>,
+}
+
+/// UI appearance and behavior settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UiConfig {
+    /// Color theme name (e.g. `"dark"`, `"light"`).
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    /// Whether to show macOS notifications for blocked events.
+    #[serde(default = "default_true")]
+    pub notifications: bool,
+}
+
+// --- Default value functions ---
+
+fn default_socket_path() -> PathBuf {
+    dirs_next_fallback(".local/share/clawdefender/clawdefender.sock")
+}
+
+fn default_audit_log_path() -> PathBuf {
+    dirs_next_fallback(".local/share/clawdefender/audit.jsonl")
+}
+
+fn default_policy_path() -> PathBuf {
+    dirs_next_fallback(".config/clawdefender/policy.toml")
+}
+
+fn default_max_size_mb() -> u64 {
+    50
+}
+
+fn default_max_files() -> u32 {
+    10
+}
+
+fn default_es_events() -> Vec<String> {
+    vec![
+        "exec".into(),
+        "open".into(),
+        "close".into(),
+        "rename".into(),
+        "unlink".into(),
+        "connect".into(),
+        "fork".into(),
+        "exit".into(),
+    ]
+}
+
+fn default_buffer_size() -> usize {
+    4096
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_theme() -> String {
+    "dark".to_string()
+}
+
+/// Resolve a path relative to the user's home directory.
+fn dirs_next_fallback(relative: &str) -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(relative)
+    } else {
+        PathBuf::from("/tmp").join(relative)
+    }
+}
+
+// --- Trait impls ---
+
+impl Default for ClawConfig {
+    fn default() -> Self {
+        Self {
+            daemon_socket_path: default_socket_path(),
+            audit_log_path: default_audit_log_path(),
+            log_rotation: LogRotation::default(),
+            eslogger: EsloggerConfig::default(),
+            slm: SlmConfig::default(),
+            api_keys: ApiKeyConfig::default(),
+            swarm: SwarmSettings::default(),
+            ui: UiConfig::default(),
+            telemetry_opt_in: false,
+            policy_path: default_policy_path(),
+        }
+    }
+}
+
+impl Default for LogRotation {
+    fn default() -> Self {
+        Self {
+            max_size_mb: default_max_size_mb(),
+            max_files: default_max_files(),
+        }
+    }
+}
+
+impl Default for EsloggerConfig {
+    fn default() -> Self {
+        Self {
+            events: default_es_events(),
+            buffer_size: default_buffer_size(),
+            enabled: true,
+        }
+    }
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            theme: default_theme(),
+            notifications: true,
+        }
+    }
+}
+
+impl ClawConfig {
+    /// Load configuration from a TOML file at the given path.
+    ///
+    /// If the file does not exist, returns the default configuration.
+    pub fn load(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let contents = std::fs::read_to_string(path)?;
+        let config: ClawConfig = toml::from_str(&contents)?;
+        Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_defaults_have_swarm_section() {
+        let config = ClawConfig::default();
+        assert!(config.swarm.enabled);
+        assert_eq!(config.swarm.escalation_threshold, "HIGH");
+        assert!((config.swarm.daily_budget_usd - 1.0).abs() < f64::EPSILON);
+        assert!((config.swarm.monthly_budget_usd - 20.0).abs() < f64::EPSILON);
+        assert_eq!(config.swarm.timeout_secs, 10);
+        assert_eq!(config.swarm.chat_port, 3200);
+        assert!(config.swarm.preferred_provider.is_none());
+    }
+
+    #[test]
+    fn test_config_parses_swarm_section_from_toml() {
+        let toml_str = r#"
+[swarm]
+enabled = false
+preferred_provider = "anthropic"
+daily_budget_usd = 5.0
+monthly_budget_usd = 100.0
+timeout_secs = 30
+escalation_threshold = "MEDIUM"
+chat_port = 4000
+"#;
+        let config: ClawConfig = toml::from_str(toml_str).unwrap();
+        assert!(!config.swarm.enabled);
+        assert_eq!(config.swarm.preferred_provider.as_deref(), Some("anthropic"));
+        assert!((config.swarm.daily_budget_usd - 5.0).abs() < f64::EPSILON);
+        assert!((config.swarm.monthly_budget_usd - 100.0).abs() < f64::EPSILON);
+        assert_eq!(config.swarm.timeout_secs, 30);
+        assert_eq!(config.swarm.escalation_threshold, "MEDIUM");
+        assert_eq!(config.swarm.chat_port, 4000);
+    }
+
+    #[test]
+    fn test_config_parses_empty_toml_uses_defaults() {
+        let config: ClawConfig = toml::from_str("").unwrap();
+        assert!(config.swarm.enabled);
+        assert_eq!(config.swarm.escalation_threshold, "HIGH");
+    }
+}

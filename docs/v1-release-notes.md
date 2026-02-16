@@ -1,10 +1,10 @@
-# ClawAI V1 Release Notes
+# ClawDefender V1 Release Notes
 
-## What is ClawAI?
+## What is ClawDefender?
 
-ClawAI is a firewall for AI agents. It intercepts, inspects, and controls what AI tools can do on your machine by sitting between MCP (Model Context Protocol) clients and servers.
+ClawDefender is a firewall for AI agents. It intercepts, inspects, and controls what AI tools can do on your machine by sitting between MCP (Model Context Protocol) clients and servers.
 
-When an AI agent asks to read a file, execute a command, or access a resource via MCP, ClawAI evaluates the request against your policy rules before it reaches the server. Blocked requests never execute. Prompted requests wait for your explicit approval.
+When an AI agent asks to read a file, execute a command, or access a resource via MCP, ClawDefender evaluates the request against your policy rules before it reaches the server. Blocked requests never execute. Prompted requests wait for your explicit approval.
 
 ## V1 Features
 
@@ -32,18 +32,18 @@ When an AI agent asks to read a file, execute a command, or access a resource vi
 ### Audit System
 
 - **Structured JSONL logging:** Every intercepted message, policy decision, and user response is logged.
-- **Query interface:** `clawai log` supports filtering by action, server, time range, and tool name.
-- **Aggregate statistics:** `clawai log --stats` shows summary counts of allowed, blocked, and prompted events.
+- **Query interface:** `clawdefender log` supports filtering by action, server, time range, and tool name.
+- **Aggregate statistics:** `clawdefender log --stats` shows summary counts of allowed, blocked, and prompted events.
 - **Log rotation:** Automatic rotation by file size with configurable retention.
 
 ### CLI
 
-- `clawai init` -- Generate a default policy file.
-- `clawai wrap <server>` -- Rewrite MCP client config to route through ClawAI.
-- `clawai unwrap <server>` -- Restore original MCP client config.
-- `clawai tui` -- Launch the interactive terminal UI.
-- `clawai log` -- Query the audit log.
-- `clawai policy test` -- Test policy rules against fixture files.
+- `clawdefender init` -- Generate a default policy file.
+- `clawdefender wrap <server>` -- Rewrite MCP client config to route through ClawDefender.
+- `clawdefender unwrap <server>` -- Restore original MCP client config.
+- `clawdefender tui` -- Launch the interactive terminal UI.
+- `clawdefender log` -- Query the audit log.
+- `clawdefender policy test` -- Test policy rules against fixture files.
 
 ### Security Hardening
 
@@ -56,7 +56,7 @@ When an AI agent asks to read a file, execute a command, or access a resource vi
 
 - **OS-level monitoring (eslogger):** The `eslogger` sensor crate exists but is not integrated into the V1 proxy flow. It will be connected in Phase 2.
 - **On-device SLM analysis:** Small language model analysis of tool call intent is planned for Phase 2.
-- **Multi-agent swarm coordination:** The `claw-swarm` crate is a placeholder for Phase 2+ work.
+- **Multi-agent swarm coordination:** The `clawdefender-swarm` crate is a placeholder for Phase 2+ work.
 - **Windows/Linux OS monitoring:** OS-level monitoring is macOS-only. The proxy and policy engine are cross-platform.
 
 ## Known Limitations
@@ -70,27 +70,27 @@ When an AI agent asks to read a file, execute a command, or access a resource vi
 
 ```bash
 # Install script
-curl -sSL https://clawai.dev/install.sh | sh
+curl -sSL https://clawdefender.dev/install.sh | sh
 
 # Homebrew
-brew install clawai
+brew install clawdefender
 
 # From source
-git clone https://github.com/clawai/clawai.git
-cd clawai && cargo build --release
+git clone https://github.com/clawdefender/clawdefender.git
+cd clawdefender && cargo build --release
 ```
 
 ## How to Get Started
 
 ```bash
-clawai init
-clawai wrap filesystem-server
+clawdefender init
+clawdefender wrap filesystem-server
 # Restart your MCP client (Claude Desktop, Cursor)
-clawai tui
+clawdefender tui
 ```
 
 ## Reporting Issues
 
-File issues at: https://github.com/clawai/clawai/issues
+File issues at: https://github.com/clawdefender/clawdefender/issues
 
-Include the output of `clawai --version` and relevant sections of `clawai log` when reporting bugs.
+Include the output of `clawdefender --version` and relevant sections of `clawdefender log` when reporting bugs.

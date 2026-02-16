@@ -1,5 +1,5 @@
 [package]
-name = "clawai-fuzz"
+name = "clawdefender-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -9,9 +9,9 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-claw-mcp-proxy = { path = "../crates/claw-mcp-proxy" }
-claw-core = { path = "../crates/claw-core" }
-claw-sensor = { path = "../crates/claw-sensor" }
+clawdefender-mcp-proxy = { path = "../crates/clawdefender-mcp-proxy" }
+clawdefender-core = { path = "../crates/clawdefender-core" }
+clawdefender-sensor = { path = "../crates/clawdefender-sensor" }
 
 [[bin]]
 name = "fuzz_jsonrpc_parser"

@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest a new feature for ClawAI
+about: Suggest a new feature for ClawDefender
 title: "[FEATURE] "
 labels: enhancement
 assignees: ""

@@ -9,8 +9,8 @@
 
 use std::path::PathBuf;
 
-use claw_core::policy::rule::{parse_policy_toml, EventContext};
-use claw_core::policy::{PolicyAction, PolicyRule};
+use clawdefender_core::policy::rule::{parse_policy_toml, EventContext};
+use clawdefender_core::policy::{PolicyAction, PolicyRule};
 
 /// Root of the workspace (two levels up from tests/integration/).
 fn workspace_root() -> PathBuf {

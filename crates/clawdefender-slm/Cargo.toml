@@ -1,0 +1,26 @@
+[package]
+name = "clawdefender-slm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Small language model integration for policy decisions"
+
+[dependencies]
+clawdefender-core = { path = "../clawdefender-core" }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+regex = { workspace = true }
+reqwest = { version = "0.12", features = ["stream"], default-features = false, optional = true }
+sha2 = { version = "0.10", optional = true }
+num_cpus = "1"
+
+[features]
+default = []
+download = ["reqwest", "sha2"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

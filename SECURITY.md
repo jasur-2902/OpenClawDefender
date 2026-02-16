@@ -2,11 +2,11 @@
 
 ## Reporting a vulnerability
 
-If you discover a security vulnerability in ClawAI, please report it responsibly.
+If you discover a security vulnerability in ClawDefender, please report it responsibly.
 
-**Preferred:** [GitHub private vulnerability report](https://github.com/clawai/clawai/security/advisories/new)
+**Preferred:** [GitHub private vulnerability report](https://github.com/clawdefender/clawdefender/security/advisories/new)
 
-**Alternative:** Email [security@clawai.dev](mailto:security@clawai.dev)
+**Alternative:** Email [security@clawdefender.dev](mailto:security@clawdefender.dev)
 
 Do not open a public issue for security vulnerabilities.
 
@@ -16,15 +16,15 @@ The following are in scope for security reports:
 
 - **Policy bypasses** — tool calls that should be blocked by a policy rule but are allowed through.
 - **JSON-RPC parser bugs** — malformed input that causes crashes, hangs, or incorrect routing.
-- **Privilege escalation** — any way ClawAI itself can be used to gain elevated access.
+- **Privilege escalation** — any way ClawDefender itself can be used to gain elevated access.
 - **Audit log tampering** — circumventing or falsifying audit records.
-- **Configuration injection** — manipulating policy files or ClawAI configuration through crafted MCP messages.
+- **Configuration injection** — manipulating policy files or ClawDefender configuration through crafted MCP messages.
 
 ## Out of scope
 
 - Vulnerabilities in MCP servers themselves (report those to the server maintainers).
 - Vulnerabilities in MCP clients (report those to the client maintainers).
-- Issues that require a pre-compromised system (ClawAI assumes the OS is not already compromised).
+- Issues that require a pre-compromised system (ClawDefender assumes the OS is not already compromised).
 - Denial of service via resource exhaustion (we'll fix these, but they're low severity for a local tool).
 
 ## Response timeline
@@ -39,10 +39,10 @@ The following are in scope for security reports:
 
 ## Security design
 
-ClawAI is designed with a defense-in-depth approach:
+ClawDefender is designed with a defense-in-depth approach:
 
 - Written in Rust to eliminate memory safety vulnerabilities.
 - No network access required — runs entirely locally.
 - Minimal dependencies, audited with `cargo-audit`.
 - Policy engine is deliberately simple to reduce attack surface.
-- eslogger integration is read-only observation; ClawAI never injects into other processes.
+- eslogger integration is read-only observation; ClawDefender never injects into other processes.
