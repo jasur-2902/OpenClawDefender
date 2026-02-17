@@ -62,16 +62,6 @@ priority = 4
 [rules.block_history.match]
 resource_path = ["~/.bash_history", "~/.zsh_history", "~/.history"]
 
-# Block writes outside the project directory
-[rules.block_writes_outside_project]
-description = "Block file writes outside the project directory"
-action = "block"
-message = "File writes outside the project directory are blocked"
-priority = 5
-[rules.block_writes_outside_project.match]
-tool_name = ["write_file", "create_file", "edit_file"]
-# Note: This blocks all writes; the allow rule below re-enables project writes
-
 # Block sampling/createMessage
 [rules.block_sampling]
 description = "Block sampling requests"
@@ -99,6 +89,7 @@ resource_path = ["~/Projects/my-project/**"]
 [rules.allow_list_operations]
 description = "Allow MCP list operations"
 action = "allow"
+message = "List operation allowed"
 priority = 11
 [rules.allow_list_operations.match]
 method = ["tools/list", "resources/list", "prompts/list"]
@@ -107,15 +98,14 @@ method = ["tools/list", "resources/list", "prompts/list"]
 # PROMPT rules -- everything else requires explicit approval
 # ===========================================================================
 
-# Prompt on file writes within the project directory
-[rules.prompt_project_writes]
-description = "Prompt before writing files in the project"
+# Prompt on file writes (tool calls lack resource_path so we prompt all writes)
+[rules.prompt_file_writes]
+description = "Prompt before writing any file"
 action = "prompt"
-message = "An AI agent wants to write a file in the project. Allow?"
+message = "An AI agent wants to write a file. Allow?"
 priority = 20
-[rules.prompt_project_writes.match]
+[rules.prompt_file_writes.match]
 tool_name = ["write_file", "create_file", "edit_file"]
-resource_path = ["~/Projects/my-project/**"]
 
 # Prompt on everything else not already handled
 [rules.prompt_all_other]

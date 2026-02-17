@@ -30,7 +30,7 @@ use clawdefender_core::policy::{MatchCriteria, PolicyAction, PolicyEngine, Polic
 use crate::classifier::rules::{
     classify, extract_resource_uri, extract_tool_call, Classification,
 };
-use crate::jsonrpc::parser::{serialize_message, StreamParser};
+use crate::jsonrpc::parser::{serialize_message, RawJsonRpcMessage, StreamParser};
 use crate::jsonrpc::types::{
     JsonRpcError, JsonRpcId, JsonRpcMessage, JsonRpcResponse, POLICY_BLOCK_ERROR_CODE,
 };
@@ -259,13 +259,13 @@ impl StdioProxy {
                         client_parser.feed(client_buf.as_bytes());
                         client_buf.clear();
 
-                        while let Some(parse_result) = client_parser.next_message() {
+                        while let Some(parse_result) = client_parser.next_raw_message() {
                             match parse_result {
-                                Ok(msg) => {
+                                Ok(raw_msg) => {
                                     metrics.inc_total();
 
                                     if let Err(e) = handle_client_message(
-                                        msg,
+                                        raw_msg,
                                         &policy_engine,
                                         &audit_tx,
                                         &ui_bridge,
@@ -318,16 +318,17 @@ impl StdioProxy {
                         server_parser.feed(server_buf.as_bytes());
                         server_buf.clear();
 
-                        while let Some(parse_result) = server_parser.next_message() {
+                        while let Some(parse_result) = server_parser.next_raw_message() {
                             match parse_result {
-                                Ok(msg) => {
+                                Ok(raw_msg) => {
                                     // Log server responses for audit
-                                    let event = build_mcp_event(&msg);
+                                    let event = build_mcp_event(&raw_msg.parsed);
                                     let record = build_audit_record(&event, "forward", None);
                                     let _ = server_audit_tx.try_send(record);
                                     server_metrics.inc_total();
 
-                                    let bytes = serialize_message(&msg);
+                                    // Forward original bytes for transparency
+                                    let bytes = raw_msg.raw_bytes_with_newline();
                                     if client_tx_server.send(bytes).await.is_err() {
                                         error!("client writer channel closed");
                                         break;
@@ -598,9 +599,13 @@ impl StdioProxy {
 }
 
 /// Handle a client message using channels (for the async relay loop).
+///
+/// Accepts a `RawJsonRpcMessage` so we can forward the original bytes
+/// transparently (preserving JSON key ordering, whitespace, etc.)
+/// while still parsing for classification and policy evaluation.
 #[allow(clippy::too_many_arguments)]
 async fn handle_client_message(
-    msg: JsonRpcMessage,
+    raw_msg: RawJsonRpcMessage,
     policy_engine: &Arc<RwLock<DefaultPolicyEngine>>,
     audit_tx: &mpsc::Sender<AuditRecord>,
     ui_bridge: &Option<Arc<UiBridge>>,
@@ -614,25 +619,23 @@ async fn handle_client_message(
     pending_count: &mut usize,
     _session_id: &str,
 ) -> Result<()> {
-    let classification = classify(&msg);
+    let classification = classify(&raw_msg.parsed);
 
     match classification {
         Classification::Pass => {
             metrics.inc_allowed();
-            let bytes = serialize_message(&msg);
-            child_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+            child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
         }
         Classification::Log => {
-            let event = build_mcp_event(&msg);
+            let event = build_mcp_event(&raw_msg.parsed);
             debug!(event_summary = %event_summary(&event), "logging message");
             metrics.inc_logged();
             let record = build_audit_record(&event, "log", None);
             let _ = audit_tx.try_send(record);
-            let bytes = serialize_message(&msg);
-            child_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+            child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
         }
         Classification::Review => {
-            let event = build_mcp_event(&msg);
+            let event = build_mcp_event(&raw_msg.parsed);
             let action = {
                 let engine = policy_engine.read().await;
                 engine.evaluate(&event)
@@ -655,17 +658,19 @@ async fn handle_client_message(
                 );
             }
 
+            // Capture raw bytes for transparent forwarding within this branch.
+            let forward_bytes = raw_msg.raw_bytes_with_newline();
+
             match action {
                 PolicyAction::Allow => {
                     metrics.inc_allowed();
                     let record = build_audit_record(&event, "allow", None);
                     let _ = audit_tx.try_send(record);
-                    let bytes = serialize_message(&msg);
-                    child_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+                    child_tx.send(forward_bytes.clone()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
                 }
                 PolicyAction::Block => {
                     metrics.inc_blocked();
-                    if let Some(id) = request_id(&msg) {
+                    if let Some(id) = request_id(&raw_msg.parsed) {
                         let block_resp = make_block_response(&id, "Blocked by ClawDefender policy", None);
                         let bytes = serialize_message(&block_resp);
                         client_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("client channel closed"))?;
@@ -680,7 +685,7 @@ async fn handle_client_message(
                     if let Some(ref bridge) = ui_bridge {
                         if *pending_count >= max_pending {
                             warn!("max pending prompts reached, auto-denying");
-                            if let Some(id) = request_id(&msg) {
+                            if let Some(id) = request_id(&raw_msg.parsed) {
                                 let block_resp = make_block_response(
                                     &id,
                                     "ClawDefender: too many pending prompts",
@@ -694,7 +699,8 @@ async fn handle_client_message(
 
                         *pending_count += 1;
 
-                        // Spawn the prompt handling as a separate task so other messages continue flowing
+                        // Spawn the prompt handling as a separate task so other messages continue flowing.
+                        // Move owned data into the spawned task.
                         let bridge = Arc::clone(bridge);
                         let policy_engine = Arc::clone(policy_engine);
                         let audit_tx = audit_tx.clone();
@@ -703,9 +709,11 @@ async fn handle_client_message(
                         let metrics = Arc::clone(metrics);
                         let slm_ctx_for_spawn = slm_context.clone();
                         let swarm_ctx_for_spawn = swarm_context.clone();
+                        let forward_bytes = raw_msg.raw_bytes_with_newline();
+                        let msg_for_spawn = raw_msg.parsed;
 
                         tokio::spawn(async move {
-                            let id = request_id(&msg);
+                            let id = request_id(&msg_for_spawn);
 
                             // SAFETY: SLM output is advisory only. It enriches the UI display
                             // but does not influence the policy decision.
@@ -762,8 +770,7 @@ async fn handle_client_message(
                                     action: UserDecision::AllowOnce,
                                     ..
                                 }) => {
-                                    let bytes = serialize_message(&msg);
-                                    let _ = child_tx.send(bytes).await;
+                                    let _ = child_tx.send(forward_bytes.clone()).await;
                                     let record = build_audit_record(&event, "allow_once", None);
                                     let _ = audit_tx.try_send(record);
                                     metrics.inc_allowed();
@@ -772,8 +779,7 @@ async fn handle_client_message(
                                     action: UserDecision::AllowSession,
                                     ..
                                 }) => {
-                                    let bytes = serialize_message(&msg);
-                                    let _ = child_tx.send(bytes).await;
+                                    let _ = child_tx.send(forward_bytes.clone()).await;
                                     let session_rule = build_session_allow_rule(&event);
                                     let mut engine = policy_engine.write().await;
                                     engine.add_session_rule(session_rule);
@@ -786,8 +792,7 @@ async fn handle_client_message(
                                     action: UserDecision::AddPolicyRule,
                                     ..
                                 }) => {
-                                    let bytes = serialize_message(&msg);
-                                    let _ = child_tx.send(bytes).await;
+                                    let _ = child_tx.send(forward_bytes.clone()).await;
                                     let perm_rule = build_session_allow_rule(&event);
                                     let mut engine = policy_engine.write().await;
                                     let _ = engine.add_permanent_rule(perm_rule);
@@ -911,8 +916,7 @@ async fn handle_client_message(
                             "prompt action not wired to IPC, allowing"
                         );
                         metrics.inc_allowed();
-                        let bytes = serialize_message(&msg);
-                        child_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+                        child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
                     }
                 }
                 PolicyAction::Log => {
@@ -920,14 +924,13 @@ async fn handle_client_message(
                     debug!(event_summary = %event_summary(&event), "policy: log and forward");
                     let record = build_audit_record(&event, "log", None);
                     let _ = audit_tx.try_send(record);
-                    let bytes = serialize_message(&msg);
-                    child_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+                    child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
                 }
             }
         }
         Classification::Block => {
             metrics.inc_blocked();
-            if let Some(id) = request_id(&msg) {
+            if let Some(id) = request_id(&raw_msg.parsed) {
                 let block_resp = make_block_response(&id, "Blocked by classifier", None);
                 let bytes = serialize_message(&block_resp);
                 client_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("client channel closed"))?;
@@ -1895,5 +1898,35 @@ any = true
         assert!(!should_escalate("HIGH"), "HIGH risk should NOT trigger with CRITICAL threshold");
         assert!(!should_escalate("MEDIUM"), "MEDIUM risk should NOT trigger with CRITICAL threshold");
         assert!(!should_escalate("LOW"), "LOW risk should NOT trigger with CRITICAL threshold");
+    }
+
+    #[tokio::test]
+    async fn bench_proxy_pass_through() {
+        let proxy = StdioProxy::with_engine("echo".into(), vec![], DefaultPolicyEngine::empty());
+        let n = 1_000u32;
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            let m = make_initialize_request();
+            let mut c: Vec<u8> = Vec::new();
+            let mut p: Vec<u8> = Vec::new();
+            proxy.handle_client_message(m, &mut c, &mut p).await.unwrap();
+        }
+        let us = t.elapsed().as_micros() / n as u128;
+        assert!(us < 1000, "pass-through {us}us > 1ms");
+    }
+
+    #[tokio::test]
+    async fn bench_proxy_review() {
+        let proxy = StdioProxy::with_engine("echo".into(), vec![], DefaultPolicyEngine::empty());
+        let n = 1_000u32;
+        let t = std::time::Instant::now();
+        for i in 0..n {
+            let m = make_tools_call_request(&format!("t{}", i % 100));
+            let mut c: Vec<u8> = Vec::new();
+            let mut p: Vec<u8> = Vec::new();
+            proxy.handle_client_message(m, &mut c, &mut p).await.unwrap();
+        }
+        let us = t.elapsed().as_micros() / n as u128;
+        assert!(us < 1000, "review {us}us > 1ms");
     }
 }

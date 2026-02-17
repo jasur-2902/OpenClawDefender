@@ -34,6 +34,9 @@ struct PendingCorrelation {
     associated_pids: Vec<u32>,
 }
 
+/// Maximum number of pending correlations before the oldest are force-completed.
+const MAX_PENDING_CORRELATIONS: usize = 10_000;
+
 /// The correlation engine links MCP events to the OS events they produce.
 ///
 /// Usage:
@@ -71,7 +74,26 @@ impl CorrelationEngine {
     /// Submit an MCP event and begin a correlation window for it.
     ///
     /// Returns the correlation ID assigned to this event.
+    /// If the pending queue exceeds [`MAX_PENDING_CORRELATIONS`], the oldest
+    /// entries are force-completed to prevent unbounded memory growth.
     pub fn submit_mcp_event(&mut self, event: McpEvent, originator_pid: Option<u32>) -> String {
+        // Evict oldest pending correlations if at capacity.
+        while self.pending.len() >= MAX_PENDING_CORRELATIONS {
+            if let Some(p) = self.pending.first() {
+                let status = if p.os_events.is_empty() {
+                    self.total_uncorrelated += 1;
+                    CorrelationStatus::Uncorrelated
+                } else {
+                    self.total_correlated += 1;
+                    CorrelationStatus::Matched
+                };
+                self.total_os_events += p.os_events.len() as u64;
+                self.total_completed += 1;
+                let _ = status; // evicted silently
+            }
+            self.pending.remove(0);
+        }
+
         let id = format!("corr-{}", self.next_id);
         self.next_id += 1;
 

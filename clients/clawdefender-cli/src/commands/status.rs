@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::Result;
 use clawdefender_core::config::ClawConfig;
 
-use super::{is_wrapped, known_clients, read_config};
+use super::{detect_servers_key, is_wrapped, known_clients, read_config};
 
 pub fn run(config: &ClawConfig) -> Result<()> {
     let socket_path = &config.daemon_socket_path;
@@ -20,20 +20,33 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         Ok(_stream) => {
             println!("  Daemon: running");
         }
-        Err(e) => match e.kind() {
-            std::io::ErrorKind::NotFound => {
-                println!("  Daemon: not running (socket not found)");
+        Err(e) => {
+            match e.kind() {
+                std::io::ErrorKind::NotFound => {
+                    println!("  Daemon: not running (socket not found)");
+                }
+                std::io::ErrorKind::ConnectionRefused => {
+                    println!("  Daemon: not running (connection refused)");
+                }
+                _ => {
+                    println!("  Daemon: unknown ({e})");
+                }
             }
-            std::io::ErrorKind::ConnectionRefused => {
-                println!("  Daemon: not running (connection refused)");
-            }
-            _ => {
-                println!("  Daemon: unknown ({e})");
-            }
-        },
+            println!("  -> Start it with: clawdefender daemon start");
+        }
     }
 
-    println!("  Policy: {}", config.policy_path.display());
+    // Policy rule count.
+    let rule_count = if config.policy_path.exists() {
+        std::fs::read_to_string(&config.policy_path)
+            .ok()
+            .and_then(|c| clawdefender_core::policy::rule::parse_policy_toml(&c).ok())
+            .map(|rules| rules.len())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    println!("  Policy: {} ({} rule(s))", config.policy_path.display(), rule_count);
     println!("  Audit:  {}", config.audit_log_path.display());
 
     // MCP server status.
@@ -62,7 +75,8 @@ pub fn run(config: &ClawConfig) -> Result<()> {
             continue;
         }
         if let Ok(config_json) = read_config(&client.config_path) {
-            if let Some(servers) = config_json.get("mcpServers").and_then(|s| s.as_object()) {
+            let key = detect_servers_key(&config_json);
+            if let Some(servers) = config_json.get(key).and_then(|s| s.as_object()) {
                 for (name, server) in servers {
                     if is_wrapped(server) {
                         println!("  - {} ({})", name, client.display_name);

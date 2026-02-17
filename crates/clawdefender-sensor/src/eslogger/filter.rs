@@ -42,11 +42,20 @@ impl EventPreFilter {
             "mds",
             "mds_stores",
             "mdworker",
+            "mdworker_shared",
+            "distnoted",
             "backupd",
             "cloudd",
             "nsurlsessiond",
             "trustd",
             "securityd",
+            "coreduetd",
+            "bird",
+            "secinitd",
+            "cfprefsd",
+            "containermanagerd",
+            "lsd",
+            "symptomsd",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -58,6 +67,7 @@ impl EventPreFilter {
 
         let mut ignore_path_prefixes = vec![
             "/System/".to_string(),
+            "/usr/lib/".to_string(),
             "/usr/libexec/".to_string(),
             "/usr/sbin/".to_string(),
         ];
@@ -71,6 +81,8 @@ impl EventPreFilter {
             "/usr/bin/env",
             "/usr/bin/git",
             "/usr/bin/ssh",
+            "/usr/bin/ruby",
+            "/usr/bin/perl",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -103,9 +115,9 @@ impl EventPreFilter {
             return false;
         }
 
-        // Drop events from Apple signing IDs
-        if let Some(ref team_id) = event.team_id {
-            if team_id.starts_with("com.apple") {
+        // Drop events from Apple-signed processes
+        if let Some(ref signing_id) = event.signing_id {
+            if signing_id.starts_with("com.apple.") {
                 return false;
             }
         }
@@ -127,9 +139,11 @@ impl EventPreFilter {
             }
         }
 
-        // Drop open events with read-only flags (flags == 0 means O_RDONLY)
-        if let OsEventKind::Open { flags, .. } = event.kind {
-            if flags == 0 {
+        // Drop read-only open events ONLY for non-sensitive paths.
+        // We must still track read-only opens on sensitive paths (e.g. ~/.ssh/id_rsa)
+        // since unauthorized credential reads are a key threat vector.
+        if let OsEventKind::Open { ref path, flags } = event.kind {
+            if flags == 0 && !is_sensitive_path(path) {
                 return false;
             }
         }
@@ -177,6 +191,54 @@ impl EventPreFilter {
         self.debounce_map
             .retain(|_, last| now.duration_since(*last) < Duration::from_secs(5));
     }
+}
+
+/// Sensitive path prefixes where even read-only access should be monitored.
+const SENSITIVE_PATH_PREFIXES: &[&str] = &[
+    "/.ssh/",
+    "/.ssh",
+    "/.gnupg/",
+    "/.gnupg",
+    "/.aws/",
+    "/.aws",
+    "/.kube/",
+    "/.kube",
+    "/.azure/",
+    "/.azure",
+    "/.config/gcloud/",
+    "/.config/gcloud",
+    "/.docker/config.json",
+    "/.npmrc",
+    "/.pypirc",
+    "/.netrc",
+    "/.gitconfig",
+    "/Library/Keychains/",
+    "/Library/Keychains",
+];
+
+/// Sensitive absolute paths.
+const SENSITIVE_ABSOLUTE_PATHS: &[&str] = &[
+    "/etc/passwd",
+    "/etc/shadow",
+    "/etc/sudoers",
+    "/private/etc/",
+];
+
+/// Check if a path is sensitive enough that even read-only opens should be monitored.
+fn is_sensitive_path(path: &str) -> bool {
+    // Check absolute sensitive paths
+    for prefix in SENSITIVE_ABSOLUTE_PATHS {
+        if path.starts_with(prefix) {
+            return true;
+        }
+    }
+    // Check home-relative sensitive paths (match anywhere with the suffix pattern)
+    for suffix in SENSITIVE_PATH_PREFIXES {
+        if path.contains(suffix) {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -261,10 +323,10 @@ mod tests {
     }
 
     #[test]
-    fn drops_apple_team_id() {
+    fn drops_apple_signing_id() {
         let mut filter = EventPreFilter::new(&[], &[]);
         let mut ev = make_event(500, "/usr/local/bin/something", exec_kind("/bin/ls"));
-        ev.team_id = Some("com.apple.security".to_string());
+        ev.signing_id = Some("com.apple.security".to_string());
         assert!(!filter.should_pass(&ev));
     }
 
@@ -293,10 +355,26 @@ mod tests {
     }
 
     #[test]
-    fn drops_readonly_open_events() {
+    fn drops_readonly_open_on_nonsensitive_path() {
         let mut filter = EventPreFilter::new(&[], &[]);
-        let ev = make_event(500, "/usr/local/bin/node", open_kind("/etc/passwd", 0));
+        let ev = make_event(500, "/usr/local/bin/node", open_kind("/tmp/readme.txt", 0));
         assert!(!filter.should_pass(&ev));
+    }
+
+    #[test]
+    fn passes_readonly_open_on_sensitive_path() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        // Read-only open on /etc/passwd must NOT be dropped
+        let ev = make_event(500, "/usr/local/bin/node", open_kind("/etc/passwd", 0));
+        assert!(filter.should_pass(&ev));
+
+        // Read-only open on ~/.ssh/id_rsa must NOT be dropped
+        let ev2 = make_event(500, "/usr/local/bin/node", open_kind("/Users/dev/.ssh/id_rsa", 0));
+        assert!(filter.should_pass(&ev2));
+
+        // Read-only open on ~/.aws/credentials must NOT be dropped
+        let ev3 = make_event(500, "/usr/local/bin/node", open_kind("/Users/dev/.aws/credentials", 0));
+        assert!(filter.should_pass(&ev3));
     }
 
     #[test]

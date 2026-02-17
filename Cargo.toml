@@ -37,3 +37,10 @@ regex = "1"
 uuid = { version = "1", features = ["v4"] }
 ratatui = "0.29"
 crossterm = { version = "0.28", features = ["event-stream"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+opt-level = "z"
+panic = "abort"

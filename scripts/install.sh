@@ -18,12 +18,18 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     error "ClawDefender currently supports macOS only. See https://github.com/${REPO} for other platforms."
 fi
 
+MACOS_VER="$(sw_vers -productVersion 2>/dev/null || echo "0")"
+MACOS_MAJOR="$(echo "$MACOS_VER" | cut -d. -f1)"
+if [[ "$MACOS_MAJOR" -lt 13 ]]; then
+    error "ClawDefender requires macOS 13 (Ventura) or later. You have macOS $MACOS_VER."
+fi
+
 ARCH="$(uname -m)"
 case "$ARCH" in
     arm64|aarch64|x86_64) ;;
     *) error "Unsupported architecture: $ARCH" ;;
 esac
-info "Detected macOS on $ARCH"
+info "Detected macOS $MACOS_VER on $ARCH"
 
 if command -v "$BINARY_NAME" &>/dev/null; then
     EXISTING="$(command -v "$BINARY_NAME")"
@@ -78,12 +84,19 @@ info "Checksum verified."
 info "Extracting..."
 tar xzf "$TMPDIR/$TARBALL" -C "$TMPDIR"
 chmod +x "$TMPDIR/$BINARY_NAME"
+chmod +x "$TMPDIR/clawdefender-daemon" 2>/dev/null || true
 
 info "Installing to $INSTALL_DIR (may require sudo)..."
 if [[ -w "$INSTALL_DIR" ]]; then
     mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+    if [[ -f "$TMPDIR/clawdefender-daemon" ]]; then
+        mv "$TMPDIR/clawdefender-daemon" "$INSTALL_DIR/clawdefender-daemon"
+    fi
 else
     sudo mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+    if [[ -f "$TMPDIR/clawdefender-daemon" ]]; then
+        sudo mv "$TMPDIR/clawdefender-daemon" "$INSTALL_DIR/clawdefender-daemon"
+    fi
 fi
 
 # --- Initialize ---

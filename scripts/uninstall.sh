@@ -35,17 +35,19 @@ fi
 
 # --- Remove binary ---
 
-if [[ -f "${INSTALL_DIR}/${BINARY_NAME}" ]]; then
-    info "Removing ${INSTALL_DIR}/${BINARY_NAME}..."
-    if [[ -w "$INSTALL_DIR" ]]; then
-        rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+for bin in "$BINARY_NAME" "clawdefender-daemon"; do
+    if [[ -f "${INSTALL_DIR}/${bin}" ]]; then
+        info "Removing ${INSTALL_DIR}/${bin}..."
+        if [[ -w "$INSTALL_DIR" ]]; then
+            rm -f "${INSTALL_DIR}/${bin}"
+        else
+            sudo rm -f "${INSTALL_DIR}/${bin}"
+        fi
+        info "${bin} removed."
     else
-        sudo rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+        warn "${bin} not found at ${INSTALL_DIR}/${bin}"
     fi
-    info "Binary removed."
-else
-    warn "Binary not found at ${INSTALL_DIR}/${BINARY_NAME}"
-fi
+done
 
 # --- Optionally remove config ---
 

@@ -7,11 +7,16 @@ use serde_json::Value;
 pub const POLICY_BLOCK_ERROR_CODE: i32 = -32001;
 
 /// A JSON-RPC 2.0 request/response/notification identifier.
+///
+/// Per the JSON-RPC 2.0 spec, the `id` field can be a string, a number,
+/// or `null`. Null IDs are used in error responses when the request ID
+/// could not be determined.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum JsonRpcId {
     Number(i64),
     String(String),
+    Null,
 }
 
 /// A JSON-RPC 2.0 error object.
@@ -212,5 +217,73 @@ mod tests {
         let result: Result<JsonRpcMessage, _> =
             serde_json::from_str(r#"{"jsonrpc":"2.0"}"#);
         assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression: null ID support (JSON-RPC 2.0 spec)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn deserialize_response_with_null_id() {
+        let json = r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#;
+        let msg: JsonRpcMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            JsonRpcMessage::Response(r) => {
+                assert_eq!(r.id, JsonRpcId::Null);
+                assert!(r.error.is_some());
+            }
+            _ => panic!("expected Response with null id"),
+        }
+    }
+
+    #[test]
+    fn serialize_null_id_roundtrip() {
+        let original = JsonRpcMessage::Response(JsonRpcResponse {
+            jsonrpc: "2.0".into(),
+            id: JsonRpcId::Null,
+            result: None,
+            error: Some(JsonRpcError {
+                code: -32700,
+                message: "Parse error".into(),
+                data: None,
+            }),
+        });
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(json.contains("\"id\":null"), "null id should serialize as null");
+        let parsed: JsonRpcMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            JsonRpcMessage::Response(r) => {
+                assert_eq!(r.id, JsonRpcId::Null);
+            }
+            _ => panic!("expected Response"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression: Unicode in method names
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn classify_unicode_method_name() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"method":"日本語/ツール","params":{}}"#;
+        let msg: JsonRpcMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            JsonRpcMessage::Request(r) => {
+                assert_eq!(r.method, "日本語/ツール");
+            }
+            _ => panic!("expected Request"),
+        }
+    }
+
+    #[test]
+    fn classify_dotted_method_name() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"method":"vendor.custom/method.v2"}"#;
+        let msg: JsonRpcMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            JsonRpcMessage::Request(r) => {
+                assert_eq!(r.method, "vendor.custom/method.v2");
+            }
+            _ => panic!("expected Request"),
+        }
     }
 }

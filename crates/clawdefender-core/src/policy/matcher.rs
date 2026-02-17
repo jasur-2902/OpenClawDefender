@@ -28,9 +28,17 @@ impl GlobMatcher {
     }
 
     /// Returns true if the given value matches this glob pattern.
+    ///
+    /// Uses `require_literal_separator` so that `*` only matches within a
+    /// single directory, while `**` matches across directory boundaries.
+    /// This prevents policy rules from being accidentally too broad.
     pub fn is_match(&self, value: &str) -> bool {
         let expanded_value = expand_tilde(value);
-        self.compiled.matches(&expanded_value)
+        let opts = glob::MatchOptions {
+            require_literal_separator: true,
+            ..Default::default()
+        };
+        self.compiled.matches_with(&expanded_value, opts)
     }
 }
 
@@ -122,9 +130,10 @@ impl Matcher for ExactMatcher {
 /// This function:
 /// 1. Rejects paths containing null bytes
 /// 2. Expands `~` to `$HOME`
-/// 3. Resolves `.` and `..` segments (without requiring the file to exist)
-/// 4. Normalizes path separators (collapses repeated `/`)
-/// 5. Strips trailing slashes (except for root `/`)
+/// 3. Attempts symlink resolution via `std::fs::canonicalize` (if the path exists)
+/// 4. Resolves `.` and `..` segments (without requiring the file to exist)
+/// 5. Normalizes path separators (collapses repeated `/`)
+/// 6. Strips trailing slashes (except for root `/`)
 pub fn canonicalize_path(path: &str) -> Result<String> {
     // 1. Reject null bytes
     if path.contains('\0') {
@@ -134,8 +143,19 @@ pub fn canonicalize_path(path: &str) -> Result<String> {
     // 2. Expand ~ to $HOME
     let expanded = expand_tilde(path);
 
-    // 3. Resolve . and .. segments using a stack-based algorithm
-    // (does not require the file to exist, unlike std::fs::canonicalize)
+    // 3. Try real filesystem canonicalization first (resolves symlinks).
+    // If the path exists on disk, std::fs::canonicalize will resolve symlinks,
+    // `.`, `..`, and produce an absolute path. This is critical for security:
+    // a symlink at ~/Projects/innocent -> ~/.ssh/id_rsa must resolve to the
+    // real target so policy rules can match it correctly.
+    if let Ok(real_path) = std::fs::canonicalize(&expanded) {
+        if let Some(s) = real_path.to_str() {
+            return Ok(s.to_string());
+        }
+    }
+
+    // 4. Fallback: resolve . and .. segments using a stack-based algorithm
+    // (when the file does not exist, e.g. during policy pattern validation)
     let mut segments: Vec<&str> = Vec::new();
     let is_absolute = expanded.starts_with('/');
 
@@ -160,7 +180,7 @@ pub fn canonicalize_path(path: &str) -> Result<String> {
         }
     }
 
-    // 4. Reconstruct the normalized path
+    // 5. Reconstruct the normalized path
     let normalized = if is_absolute {
         format!("/{}", segments.join("/"))
     } else if segments.is_empty() {
@@ -169,7 +189,7 @@ pub fn canonicalize_path(path: &str) -> Result<String> {
         segments.join("/")
     };
 
-    // 5. Trailing slash is already stripped by the reconstruction above
+    // 6. Trailing slash is already stripped by the reconstruction above
     // (root "/" is preserved by the format! above)
     Ok(normalized)
 }
@@ -265,8 +285,20 @@ mod tests {
 
     #[test]
     fn canonicalize_traversal_cannot_escape_root() {
-        assert_eq!(canonicalize_path("/a/../../../../etc/passwd").unwrap(), "/etc/passwd");
-        assert_eq!(canonicalize_path("/../../../etc/passwd").unwrap(), "/etc/passwd");
+        // On macOS, /etc is a symlink to /private/etc, so canonicalize_path
+        // resolves to /private/etc/passwd when the path exists on disk.
+        // When the path doesn't exist, the fallback logic resolves to /etc/passwd.
+        let result = canonicalize_path("/a/../../../../etc/passwd").unwrap();
+        assert!(
+            result == "/etc/passwd" || result == "/private/etc/passwd",
+            "expected /etc/passwd or /private/etc/passwd, got {result}"
+        );
+
+        let result = canonicalize_path("/../../../etc/passwd").unwrap();
+        assert!(
+            result == "/etc/passwd" || result == "/private/etc/passwd",
+            "expected /etc/passwd or /private/etc/passwd, got {result}"
+        );
     }
 
     #[test]

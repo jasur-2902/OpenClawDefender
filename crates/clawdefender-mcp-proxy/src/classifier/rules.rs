@@ -268,4 +268,44 @@ mod tests {
         let msg = make_request("resources/read", None);
         assert!(extract_resource_uri(&msg).is_none());
     }
+
+    // -----------------------------------------------------------------------
+    // Regression: vendor/custom methods pass through as Log
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn classify_vendor_method_logs() {
+        assert_eq!(
+            classify(&make_request("vendor.acme/custom_action", None)),
+            Classification::Log,
+            "unknown vendor methods should be logged, not blocked"
+        );
+    }
+
+    #[test]
+    fn classify_unicode_method_logs() {
+        assert_eq!(
+            classify(&make_request("日本語/メソッド", None)),
+            Classification::Log,
+            "Unicode method names should be logged"
+        );
+    }
+
+    #[test]
+    fn classify_method_with_dots_and_slashes() {
+        assert_eq!(
+            classify(&make_request("x.y.z/a.b.c", None)),
+            Classification::Log,
+            "methods with dots and slashes should be logged"
+        );
+    }
+
+    #[test]
+    fn classify_empty_method_logs() {
+        assert_eq!(
+            classify(&make_request("", None)),
+            Classification::Log,
+            "empty method string should be logged"
+        );
+    }
 }

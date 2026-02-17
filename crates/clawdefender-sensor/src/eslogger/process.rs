@@ -146,10 +146,11 @@ mod platform {
     fn spawn_eslogger(events: &[String]) -> Result<Child> {
         let mut cmd = Command::new("sudo");
         cmd.arg("eslogger");
+        // eslogger outputs NDJSON by default; no --format flag needed.
+        // Pass event types as positional arguments.
         for event in events {
             cmd.arg(event);
         }
-        cmd.arg("--format").arg("json");
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::null());
         cmd.kill_on_drop(true);

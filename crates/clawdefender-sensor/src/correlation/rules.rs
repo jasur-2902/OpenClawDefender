@@ -151,6 +151,7 @@ pub fn try_match(
             if NETWORK_TOOLS.iter().any(|t| tool_lower.contains(t)) {
                 if let OsEventKind::Connect { address, .. } = &os.kind {
                     let args_str = tc.arguments.to_string();
+                    // Exact IP match in arguments
                     if args_str.contains(address.as_str()) {
                         return Some(MatchResult {
                             rule: MatchRule::NetworkToolToConnect,
@@ -158,10 +159,14 @@ pub fn try_match(
                             confidence: 1.0,
                         });
                     }
-                    // Check if hostname in args resolves or is mentioned
-                    if args_str.to_lowercase().contains("example.com")
-                        && !address.starts_with("127.")
-                        && !address.starts_with("::1")
+                    // Fuzzy match: if the args contain a URL/hostname and
+                    // the OS event connects to an external IP, it's likely related.
+                    // Extract hostnames from URLs in args and check if any non-loopback
+                    // connect happened.
+                    if !address.starts_with("127.")
+                        && address != "::1"
+                        && address != "0.0.0.0"
+                        && args_contains_url_or_hostname(&args_str)
                     {
                         return Some(MatchResult {
                             rule: MatchRule::NetworkToolToConnect,
@@ -201,6 +206,26 @@ pub fn try_match(
         }
         _ => None,
     }
+}
+
+/// Check if an argument string contains a URL or hostname pattern.
+fn args_contains_url_or_hostname(args: &str) -> bool {
+    let lower = args.to_lowercase();
+    // Check for URL schemes
+    if lower.contains("http://") || lower.contains("https://") || lower.contains("ftp://") {
+        return true;
+    }
+    // Check for common hostname-like patterns (word.word with known TLDs)
+    // This is a simple heuristic, not exhaustive
+    for word in lower.split(|c: char| !c.is_alphanumeric() && c != '.' && c != '-') {
+        if word.contains('.') && word.len() > 3 {
+            let parts: Vec<&str> = word.split('.').collect();
+            if parts.len() >= 2 && parts.last().map_or(false, |tld| tld.len() >= 2) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Check if `pid` is a descendant of `ancestor_pid` by walking the process tree.

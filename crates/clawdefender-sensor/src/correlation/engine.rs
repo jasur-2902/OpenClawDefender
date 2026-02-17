@@ -192,10 +192,16 @@ impl CorrelationEngine {
 
         for (key, pending) in &self.pending_mcp {
             let delta = event.timestamp - pending.event.timestamp;
-            if delta < chrono::Duration::zero()
-                || delta
-                    > chrono::Duration::from_std(self.config.match_window)
-                        .unwrap_or(chrono::Duration::seconds(5))
+            let abs_delta = if delta < chrono::Duration::zero() {
+                -delta
+            } else {
+                delta
+            };
+            // Use absolute delta: OS events may arrive slightly before or after
+            // the MCP event due to clock skew and processing delays.
+            if abs_delta
+                > chrono::Duration::from_std(self.config.match_window)
+                    .unwrap_or(chrono::Duration::seconds(5))
             {
                 continue;
             }

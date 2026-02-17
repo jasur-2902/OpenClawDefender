@@ -1,0 +1,61 @@
+{
+  "": {
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/master.swiftdeps"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AlertWindow.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow.dia"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AppDelegate.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate.dia"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/DaemonConnection.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection.dia"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/NotificationManager.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager.dia"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/PromptWindow.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow.dia"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/Protocol.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol.dia"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/StatusBarController.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController.dia"
+  },
+  "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/main.swift": {
+    "dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main.d",
+    "object": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main.swift.o",
+    "swiftmodule": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main.swiftdeps",
+    "diagnostics": "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main.dia"
+  }
+}

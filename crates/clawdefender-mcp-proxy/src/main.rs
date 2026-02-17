@@ -37,7 +37,10 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // CRITICAL: All logging MUST go to stderr. Any output to stdout that isn't
+    // JSON-RPC will poison the MCP stream and break Claude Desktop.
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 

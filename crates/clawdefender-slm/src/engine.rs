@@ -44,7 +44,7 @@ pub struct SlmConfig {
 }
 
 fn default_context_size() -> u32 {
-    2048
+    1024
 }
 fn default_max_output_tokens() -> u32 {
     256
@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn default_config_values() {
         let cfg = SlmConfig::default();
-        assert_eq!(cfg.context_size, 2048);
+        assert_eq!(cfg.context_size, 1024);
         assert_eq!(cfg.max_output_tokens, 256);
         assert!((cfg.temperature - 0.1).abs() < 0.01);
         assert!(cfg.use_gpu);

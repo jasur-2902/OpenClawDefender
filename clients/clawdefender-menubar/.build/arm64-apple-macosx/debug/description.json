@@ -1,0 +1,372 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.ClawDefenderMenuBar-arm64-apple-macosx26.0-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/sources",
+      "importPath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AlertWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/DaemonConnection.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/NotificationManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/PromptWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/Protocol.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/StatusBarController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "ClawDefenderMenuBar",
+      "moduleOutputPath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/Modules/ClawDefenderMenuBar.swiftmodule",
+      "objects" : [
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow.swift.o",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate.swift.o",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection.swift.o",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager.swift.o",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow.swift.o",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol.swift.o",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController.swift.o",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "ClawDefenderMenuBar_main",
+        "-swift-version",
+        "5",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "clawdefender_menubar"
+      ],
+      "outputFileMapPath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/Modules/ClawDefenderMenuBar.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AlertWindow.swift",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AppDelegate.swift",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/DaemonConnection.swift",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/NotificationManager.swift",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/PromptWindow.swift",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/Protocol.swift",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/StatusBarController.swift",
+        "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/main.swift"
+      ],
+      "tempsPath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "ClawDefenderMenuBar" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "ClawDefenderMenuBar",
+      "-package-name",
+      "clawdefender_menubar",
+      "-c",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AlertWindow.swift",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AppDelegate.swift",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/DaemonConnection.swift",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/NotificationManager.swift",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/PromptWindow.swift",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/Protocol.swift",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/StatusBarController.swift",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/main.swift",
+      "-I",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "ClawDefenderMenuBar_main",
+      "-swift-version",
+      "5",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "clawdefender_menubar",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "ClawDefenderMenuBar" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar-entitlement.plist"
+    },
+    "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AlertWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/DaemonConnection.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/NotificationManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/PromptWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/Protocol.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/StatusBarController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/Sources/ClawDefenderMenuBar/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/sources"
+    },
+    "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AlertWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/DaemonConnection.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/NotificationManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/PromptWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/Protocol.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/StatusBarController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/ClawDefenderMenuBar.product/Objects.LinkFileList"
+    },
+    "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/jasur/workspace/clawai/clients/clawdefender-menubar/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+    }
+  }
+}

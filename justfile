@@ -25,20 +25,23 @@ release:
 # Alias for release
 build-release: release
 
-# Build release and install to /usr/local/bin
+# Build release and install both binaries to /usr/local/bin
 install: release
     cp target/release/clawdefender /usr/local/bin/
+    cp target/release/clawdefender-daemon /usr/local/bin/
 
-# Build release, copy to /usr/local/bin, and run init
+# Build release, install to /usr/local/bin, and run init
 install-local: release
     cp target/release/clawdefender /usr/local/bin/
+    cp target/release/clawdefender-daemon /usr/local/bin/
     clawdefender init
 
 # Build release tarball and checksum (for local packaging)
 package: release
     mkdir -p dist
     cp target/release/clawdefender dist/clawdefender
-    cd dist && tar czf clawdefender-macos-$(uname -m).tar.gz clawdefender
+    cp target/release/clawdefender-daemon dist/clawdefender-daemon
+    cd dist && tar czf clawdefender-macos-$(uname -m).tar.gz clawdefender clawdefender-daemon
     cd dist && shasum -a 256 clawdefender-macos-$(uname -m).tar.gz > clawdefender-macos-$(uname -m).tar.gz.sha256
     @echo "Package created in dist/"
 
@@ -68,3 +71,13 @@ fuzz-jsonrpc:
 # Run policy engine fuzzer (requires nightly)
 fuzz-policy:
     cargo +nightly fuzz run fuzz_policy_engine
+
+# Bump version across all Cargo.toml files
+bump-version VERSION:
+    sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' Cargo.toml
+    @echo "Version bumped to {{VERSION}} in workspace Cargo.toml"
+    @echo "Remember to update Formula/clawdefender.rb version too."
+
+# Check that everything compiles, passes lints, and tests
+preflight: lint test
+    @echo "All checks passed."

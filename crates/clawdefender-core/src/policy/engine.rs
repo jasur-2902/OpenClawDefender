@@ -547,4 +547,87 @@ any = true
         // so it falls through to the catch_all log rule.
         assert_eq!(engine.evaluate(&event), PolicyAction::Log);
     }
+
+    // -----------------------------------------------------------------------
+    // Performance benchmarks
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn bench_policy_evaluation_4_rules_first_match() {
+        let f = write_temp_policy(policy_toml());
+        let engine = DefaultPolicyEngine::load(f.path()).unwrap();
+        let event = make_resource_read_event("/home/user/.ssh/id_rsa");
+
+        let iterations = 10_000u32;
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            let _ = engine.evaluate(&event);
+        }
+        let elapsed = start.elapsed();
+        let per_eval_us = elapsed.as_micros() / iterations as u128;
+        // Release target is < 100us. Debug builds are ~50-100x slower due to
+        // unoptimized canonicalize_path + glob matching, so we use a relaxed
+        // threshold here. Run `cargo test --release` to verify the real target.
+        let threshold = if cfg!(debug_assertions) { 20_000 } else { 100 };
+        assert!(
+            per_eval_us < threshold,
+            "policy evaluation (first match) {per_eval_us}us exceeds {threshold}us target"
+        );
+    }
+
+    #[test]
+    fn bench_policy_evaluation_4_rules_catch_all() {
+        let f = write_temp_policy(policy_toml());
+        let engine = DefaultPolicyEngine::load(f.path()).unwrap();
+        // Worst case: falls through to catch-all
+        let event = make_tool_call_event("random_tool");
+
+        let iterations = 10_000u32;
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            let _ = engine.evaluate(&event);
+        }
+        let elapsed = start.elapsed();
+        let per_eval_us = elapsed.as_micros() / iterations as u128;
+        assert!(
+            per_eval_us < 100,
+            "policy evaluation (catch-all) {per_eval_us}us exceeds 100us target"
+        );
+    }
+
+    #[test]
+    fn bench_policy_evaluation_50_rules_worst_case() {
+        // Build a policy with 50 rules (49 specific + 1 catch-all)
+        let mut toml = String::new();
+        for i in 0..49 {
+            toml.push_str(&format!(
+                "[rules.rule_{i}]\ndescription = \"Rule {i}\"\naction = \"allow\"\n\
+                 message = \"ok\"\npriority = {i}\n\n\
+                 [rules.rule_{i}.match]\ntool_name = [\"specific_tool_{i}\"]\n\n"
+            ));
+        }
+        toml.push_str(
+            "[rules.catch_all]\ndescription = \"Catch all\"\naction = \"log\"\n\
+             message = \"logged\"\npriority = 100\n\n[rules.catch_all.match]\nany = true\n",
+        );
+
+        let f = write_temp_policy(&toml);
+        let engine = DefaultPolicyEngine::load(f.path()).unwrap();
+        assert_eq!(engine.file_rules.len(), 50);
+
+        // Worst case: tool name doesn't match any specific rule
+        let event = make_tool_call_event("unknown_tool");
+
+        let iterations = 10_000u32;
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            let _ = engine.evaluate(&event);
+        }
+        let elapsed = start.elapsed();
+        let per_eval_us = elapsed.as_micros() / iterations as u128;
+        assert!(
+            per_eval_us < 100,
+            "50-rule policy evaluation (worst case) {per_eval_us}us exceeds 100us target"
+        );
+    }
 }

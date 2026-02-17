@@ -88,10 +88,19 @@ pub fn run(config: &ClawConfig) -> Result<()> {
 
     // Ensure the audit log directory exists.
     if let Some(parent) = config.audit_log_path.parent() {
-        fs::create_dir_all(parent).ok();
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!(
+                "  [warn] Could not create audit log directory {}: {}",
+                parent.display(),
+                e
+            );
+            eprintln!("  Audit logging may not work. Check permissions and try again.");
+        }
     }
 
+    println!();
     println!("ClawDefender initialized successfully!");
+    println!();
     println!("  Config:  {}", config_path.display());
     println!("  Policy:  {}", policy_path.display());
     println!("  Data:    {}", data_dir.display());
@@ -104,21 +113,27 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     let mut found = false;
     for client in &clients {
         if client.config_path.exists() {
-            println!("  - {} ({})", client.display_name, client.config_path.display());
+            println!("  Found {} \u{2713}", client.display_name);
             found = true;
         }
     }
     if !found {
         println!("  (none detected)");
+        println!("  Install Claude Desktop, Cursor, or VS Code to get started.");
     }
 
     println!();
     println!("Next steps:");
-    println!("  1. Edit policy rules:     clawdefender policy list");
-    println!("  2. Wrap an MCP server:    clawdefender wrap <server-name>");
-    println!("  3. Check installation:    clawdefender doctor");
-    println!("  4. Start MCP server:      clawdefender serve");
-    println!("  5. Apply a template:      clawdefender policy template-list");
+    if found {
+        println!("  1. Wrap an MCP server:    clawdefender wrap <server-name>");
+        println!("  2. Check installation:    clawdefender doctor");
+        println!("  3. Edit policy rules:     clawdefender policy list");
+        println!("  4. Apply a template:      clawdefender policy template-list");
+    } else {
+        println!("  1. Install an MCP client (Claude Desktop, Cursor, or VS Code)");
+        println!("  2. Wrap an MCP server:    clawdefender wrap <server-name>");
+        println!("  3. Check installation:    clawdefender doctor");
+    }
 
     Ok(())
 }

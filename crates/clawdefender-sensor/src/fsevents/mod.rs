@@ -199,7 +199,9 @@ impl From<FsEvent> for OsEvent {
         let kind = match ev.kind {
             FsEventKind::Created | FsEventKind::Modified => OsEventKind::Open {
                 path: ev.path.to_string_lossy().into_owned(),
-                flags: 0,
+                // Use O_WRONLY (1) for Created/Modified so the pre-filter doesn't
+                // discard these as read-only opens.
+                flags: 1,
             },
             FsEventKind::Removed => OsEventKind::Unlink {
                 path: ev.path.to_string_lossy().into_owned(),
@@ -543,6 +545,11 @@ mod tests {
         };
         let os_event: OsEvent = ev.into();
         assert_eq!(os_event.pid, 0);
+        // Created/Modified events should have flags=1 so they aren't filtered as read-only
+        match &os_event.kind {
+            OsEventKind::Open { flags, .. } => assert_eq!(*flags, 1),
+            other => panic!("expected Open, got {other:?}"),
+        }
     }
 
     #[test]

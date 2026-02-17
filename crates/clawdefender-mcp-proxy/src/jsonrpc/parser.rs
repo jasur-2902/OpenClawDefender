@@ -82,6 +82,26 @@ pub fn serialize_message(msg: &JsonRpcMessage) -> Vec<u8> {
     buf
 }
 
+/// A parsed JSON-RPC message together with the original raw bytes (without trailing newline).
+/// This supports transparent proxying: we parse for classification but forward original bytes.
+#[derive(Debug, Clone)]
+pub struct RawJsonRpcMessage {
+    /// The parsed message, for classification and policy evaluation.
+    pub parsed: JsonRpcMessage,
+    /// The original raw bytes as received (without trailing newline).
+    /// When forwarding, use these bytes to preserve exact formatting.
+    pub raw_bytes: Vec<u8>,
+}
+
+impl RawJsonRpcMessage {
+    /// Get the raw bytes with a trailing newline appended, ready to forward.
+    pub fn raw_bytes_with_newline(&self) -> Vec<u8> {
+        let mut buf = self.raw_bytes.clone();
+        buf.push(b'\n');
+        buf
+    }
+}
+
 /// A streaming parser that extracts newline-delimited JSON-RPC messages from
 /// an arbitrary byte stream.
 pub struct StreamParser {
@@ -117,6 +137,14 @@ impl StreamParser {
     /// malformed JSON or exceeded size limits — the line is consumed and
     /// parsing continues on the next call.
     pub fn next_message(&mut self) -> Option<Result<JsonRpcMessage>> {
+        self.next_raw_message().map(|r| r.map(|raw| raw.parsed))
+    }
+
+    /// Try to extract the next complete newline-delimited message along with
+    /// its original raw bytes (for transparent forwarding).
+    ///
+    /// Returns `None` if no complete message is available yet.
+    pub fn next_raw_message(&mut self) -> Option<Result<RawJsonRpcMessage>> {
         loop {
             let newline_pos = self.buf.iter().position(|&b| b == b'\n')?;
 
@@ -140,7 +168,12 @@ impl StreamParser {
             }
 
             match parse_message(trimmed) {
-                Ok(msg) => return Some(Ok(msg)),
+                Ok(msg) => {
+                    return Some(Ok(RawJsonRpcMessage {
+                        parsed: msg,
+                        raw_bytes: trimmed.to_vec(),
+                    }));
+                }
                 Err(e) => {
                     warn!("skipping malformed JSON-RPC line: {e}");
                     return Some(Err(e));
@@ -431,5 +464,119 @@ mod tests {
         parser.feed(data.as_bytes());
         let msg = parser.next_message().unwrap().unwrap();
         assert!(matches!(msg, JsonRpcMessage::Request(_)));
+    }
+
+    // -----------------------------------------------------------------------
+    // Proxy transparency regression tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn raw_message_preserves_exact_bytes() {
+        let mut parser = StreamParser::new();
+        // Use specific formatting: extra spaces, specific key order
+        let original = r#"{"jsonrpc" : "2.0",  "id":1, "method":"tools/call","params":{"name":"exec"}}"#;
+        let data = format!("{}\n", original);
+        parser.feed(data.as_bytes());
+
+        let raw_msg = parser.next_raw_message().unwrap().unwrap();
+
+        // The raw bytes must exactly match the original input
+        assert_eq!(
+            std::str::from_utf8(&raw_msg.raw_bytes).unwrap(),
+            original,
+            "raw bytes must preserve exact formatting"
+        );
+
+        // The parsed message should still be correct
+        match &raw_msg.parsed {
+            JsonRpcMessage::Request(r) => {
+                assert_eq!(r.method, "tools/call");
+            }
+            _ => panic!("expected request"),
+        }
+    }
+
+    #[test]
+    fn raw_message_preserves_unicode_escapes() {
+        let mut parser = StreamParser::new();
+        // Send a message with Unicode escape sequences
+        let original = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"\u65e5\u672c\u8a9e"}}"#;
+        let data = format!("{}\n", original);
+        parser.feed(data.as_bytes());
+
+        let raw_msg = parser.next_raw_message().unwrap().unwrap();
+
+        // Raw bytes must preserve the escape sequences exactly
+        assert_eq!(
+            std::str::from_utf8(&raw_msg.raw_bytes).unwrap(),
+            original,
+            "raw bytes must preserve Unicode escape sequences"
+        );
+    }
+
+    #[test]
+    fn raw_message_preserves_key_ordering() {
+        let mut parser = StreamParser::new();
+        // Non-standard key ordering: params before method
+        let original = r#"{"params":{"name":"read"},"jsonrpc":"2.0","id":42,"method":"tools/call"}"#;
+        let data = format!("{}\n", original);
+        parser.feed(data.as_bytes());
+
+        let raw_msg = parser.next_raw_message().unwrap().unwrap();
+
+        assert_eq!(
+            std::str::from_utf8(&raw_msg.raw_bytes).unwrap(),
+            original,
+            "raw bytes must preserve key ordering"
+        );
+    }
+
+    #[test]
+    fn raw_bytes_with_newline_appends_newline() {
+        let mut parser = StreamParser::new();
+        let original = sample_request_json();
+        let data = format!("{}\n", original);
+        parser.feed(data.as_bytes());
+
+        let raw_msg = parser.next_raw_message().unwrap().unwrap();
+        let with_nl = raw_msg.raw_bytes_with_newline();
+
+        assert!(with_nl.ends_with(b"\n"));
+        assert_eq!(&with_nl[..with_nl.len() - 1], original.as_bytes());
+    }
+
+    #[test]
+    fn raw_message_notification_no_id() {
+        let mut parser = StreamParser::new();
+        let original = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
+        let data = format!("{}\n", original);
+        parser.feed(data.as_bytes());
+
+        let raw_msg = parser.next_raw_message().unwrap().unwrap();
+        assert!(matches!(raw_msg.parsed, JsonRpcMessage::Notification(_)));
+        assert_eq!(
+            std::str::from_utf8(&raw_msg.raw_bytes).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn raw_message_null_id_response() {
+        let mut parser = StreamParser::new();
+        let original = r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#;
+        let data = format!("{}\n", original);
+        parser.feed(data.as_bytes());
+
+        let raw_msg = parser.next_raw_message().unwrap().unwrap();
+        match &raw_msg.parsed {
+            JsonRpcMessage::Response(r) => {
+                assert_eq!(r.id, crate::jsonrpc::types::JsonRpcId::Null);
+            }
+            _ => panic!("expected response with null id"),
+        }
+        assert_eq!(
+            std::str::from_utf8(&raw_msg.raw_bytes).unwrap(),
+            original
+        );
     }
 }

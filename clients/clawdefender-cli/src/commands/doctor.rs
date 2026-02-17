@@ -8,24 +8,38 @@ use anyhow::Result;
 use clawdefender_core::config::ClawConfig;
 use clawdefender_slm::model_manager::ModelManager;
 
-use super::{is_wrapped, known_clients, read_config};
+use super::{detect_servers_key, is_wrapped, known_clients, read_config};
 
 pub fn run(config: &ClawConfig) -> Result<()> {
     println!("ClawDefender Doctor");
+    println!("===================");
     println!();
 
+    let mut issues: u32 = 0;
+    let mut warnings: u32 = 0;
+
+    // 0. Check macOS version.
+    println!("System:");
+    let macos_ok = check_macos_version();
+    if !macos_ok {
+        warnings += 1;
+    }
+
     // 1. Check binary on PATH.
-    check("clawdefender binary on PATH", which_clawdefender());
+    if !check_pass("clawdefender binary on PATH", which_clawdefender()) {
+        issues += 1;
+        hint("Add clawdefender to your PATH, or run with the full path.");
+    }
 
     // 2. Check config dir exists.
     let config_dir = config
         .policy_path
         .parent()
         .unwrap_or(Path::new("~/.config/clawdefender"));
-    check(
-        "Config directory exists",
-        config_dir.exists(),
-    );
+    if !check_pass("Config directory exists", config_dir.exists()) {
+        issues += 1;
+        hint("Run `clawdefender init` to create the config directory.");
+    }
 
     // 3. Check policy file parses.
     let policy_ok = if config.policy_path.exists() {
@@ -37,10 +51,20 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     } else {
         false
     };
-    check(
+    if !check_pass(
         &format!("Policy file parses ({})", config.policy_path.display()),
         policy_ok,
-    );
+    ) {
+        issues += 1;
+        if !config.policy_path.exists() {
+            hint("Run `clawdefender init` to create a default policy file.");
+        } else {
+            hint(&format!(
+                "Your policy file has syntax errors. Check {} with a TOML validator.",
+                config.policy_path.display()
+            ));
+        }
+    }
 
     // 4. Check audit log dir writable.
     let audit_dir = config
@@ -56,31 +80,56 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     } else {
         false
     };
-    check(
+    if !check_pass(
         &format!("Audit log directory writable ({})", audit_dir.display()),
         audit_writable,
-    );
+    ) {
+        issues += 1;
+        if !audit_dir.exists() {
+            hint("Run `clawdefender init` to create the audit log directory.");
+        } else {
+            hint(&format!(
+                "Check permissions on {}. Run: chmod u+w {}",
+                audit_dir.display(),
+                audit_dir.display()
+            ));
+        }
+    }
 
-    // 5. Check for MCP client installations.
+    // 5. Check Full Disk Access (FDA) for eslogger.
+    check_fda(&mut warnings);
+
+    // 6. Check for MCP client installations.
     println!();
     println!("MCP Clients:");
     let clients = known_clients();
+    let mut any_client_found = false;
     for client in &clients {
         let exists = client.config_path.exists();
-        check(
-            &format!("{} config ({})", client.display_name, client.config_path.display()),
+        if exists {
+            any_client_found = true;
+        }
+        check_pass(
+            &format!("{} ({})", client.display_name, client.config_path.display()),
             exists,
         );
     }
+    if !any_client_found {
+        warnings += 1;
+        hint("Install Claude Desktop, Cursor, or VS Code to use ClawDefender with MCP servers.");
+    }
 
-    // 6. SLM checks.
+    // 7. SLM checks.
     println!();
     println!("SLM (Small Language Model):");
 
-    check(
-        "SLM enabled in config",
-        config.slm.enabled,
-    );
+    if !config.slm.enabled {
+        warn("SLM disabled in config");
+        warnings += 1;
+        hint("Enable SLM for local AI-powered policy analysis: set slm.enabled = true in config.toml");
+    } else {
+        check_pass("SLM enabled in config", true);
+    }
 
     let model_installed = if let Some(ref model_path) = config.slm.model_path {
         model_path.exists()
@@ -92,40 +141,43 @@ pub fn run(config: &ClawConfig) -> Result<()> {
             .map(|list| !list.is_empty())
             .unwrap_or(false)
     };
-    check("SLM model installed", model_installed);
-
-    if !model_installed {
-        println!("    Hint: Run `clawdefender model download` to install a model,");
-        println!("    or `clawdefender model list` to see available models.");
+    if !check_pass("SLM model installed", model_installed) {
+        warnings += 1;
+        hint("Run `clawdefender model download` to install a model.");
+        hint("Or `clawdefender model list` to see available models.");
     }
 
     // Check for Apple Silicon (Metal GPU support).
     let is_arm = std::env::consts::ARCH == "aarch64";
-    check(
-        &format!("Metal GPU available (arch: {})", std::env::consts::ARCH),
-        is_arm,
-    );
     if !is_arm {
-        println!("    Hint: Metal acceleration requires Apple Silicon (arm64).");
-        println!("    CPU-only inference will be slower.");
+        warn(&format!(
+            "No Metal GPU (arch: {}). CPU-only inference will be slower.",
+            std::env::consts::ARCH
+        ));
+        warnings += 1;
+    } else {
+        check_pass("Metal GPU available (Apple Silicon)", true);
     }
 
-    check(
-        "SLM config valid (context_size > 0)",
-        config.slm.context_size > 0,
-    );
+    if config.slm.context_size == 0 {
+        issues += 1;
+        check_pass("SLM config valid (context_size > 0)", false);
+        hint("Set slm.context_size to a positive value (default: 2048) in config.toml.");
+    } else {
+        check_pass("SLM config valid (context_size > 0)", true);
+    }
 
-    // 7. MCP server checks.
+    // 8. MCP server checks.
     println!();
     println!("MCP Server (Cooperative Security):");
 
-    check(
+    check_pass(
         "MCP server enabled in config",
         config.mcp_server.enabled,
     );
 
     if config.mcp_server.enabled {
-        check(
+        check_pass(
             &format!("MCP server HTTP port configured ({})", config.mcp_server.http_port),
             config.mcp_server.http_port > 0,
         );
@@ -133,19 +185,21 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         // Check if MCP server HTTP endpoint is reachable.
         let http_url = format!("http://127.0.0.1:{}", config.mcp_server.http_port);
         let http_reachable = TcpStream::connect_timeout(
-            &format!("127.0.0.1:{}", config.mcp_server.http_port).parse().unwrap(),
+            &format!("127.0.0.1:{}", config.mcp_server.http_port)
+                .parse()
+                .unwrap(),
             Duration::from_secs(1),
-        ).is_ok();
-        check(
+        )
+        .is_ok();
+        if !check_pass(
             &format!("MCP server HTTP endpoint reachable ({})", http_url),
             http_reachable,
-        );
-        if !http_reachable {
-            println!("    Hint: Start the daemon or run `clawdefender serve` to enable the MCP server.");
+        ) {
+            hint("Run `clawdefender serve` or `clawdefender daemon start` to start the MCP server.");
         }
     }
 
-    // 8. Check for wrapped servers.
+    // 9. Check for wrapped servers.
     println!();
     println!("Wrapped Servers:");
     let mut found_any = false;
@@ -154,10 +208,11 @@ pub fn run(config: &ClawConfig) -> Result<()> {
             continue;
         }
         if let Ok(config_json) = read_config(&client.config_path) {
-            if let Some(servers) = config_json.get("mcpServers").and_then(|s| s.as_object()) {
+            let key = detect_servers_key(&config_json);
+            if let Some(servers) = config_json.get(key).and_then(|s| s.as_object()) {
                 for (name, server) in servers {
                     if is_wrapped(server) {
-                        println!("  [wrapped] {} in {}", name, client.display_name);
+                        println!("  \u{2713}  {} in {}", name, client.display_name);
                         found_any = true;
                     }
                 }
@@ -166,17 +221,47 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     }
     if !found_any {
         println!("  (none)");
+        hint("Wrap an MCP server: clawdefender wrap <server-name>");
+    }
+
+    // Summary.
+    println!();
+    if issues == 0 && warnings == 0 {
+        println!("All checks passed. ClawDefender is ready.");
+    } else {
+        if issues > 0 {
+            println!(
+                "{} issue(s) found. Fix them to get ClawDefender working correctly.",
+                issues
+            );
+        }
+        if warnings > 0 {
+            println!(
+                "{} warning(s). These are optional but recommended.",
+                warnings
+            );
+        }
     }
 
     Ok(())
 }
 
-fn check(label: &str, ok: bool) {
+/// Print a check result with a visual indicator. Returns the `ok` value.
+fn check_pass(label: &str, ok: bool) -> bool {
     if ok {
-        println!("  ok  {label}");
+        println!("  \u{2713}  {label}");
     } else {
-        println!("  FAIL  {label}");
+        println!("  \u{2717}  {label}");
     }
+    ok
+}
+
+fn warn(label: &str) {
+    println!("  \u{26a0}  {label}");
+}
+
+fn hint(msg: &str) {
+    println!("     -> {msg}");
 }
 
 fn which_clawdefender() -> bool {
@@ -185,4 +270,55 @@ fn which_clawdefender() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// Check macOS version and print result.
+fn check_macos_version() -> bool {
+    let output = std::process::Command::new("sw_vers")
+        .arg("-productVersion")
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let version = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            let major: u32 = version
+                .split('.')
+                .next()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            if major >= 13 {
+                check_pass(&format!("macOS version ({version})"), true);
+                true
+            } else {
+                check_pass(&format!("macOS version ({version}) — requires 13+"), false);
+                hint("ClawDefender requires macOS 13 (Ventura) or later for Endpoint Security support.");
+                false
+            }
+        }
+        _ => {
+            warn("Could not detect macOS version (not macOS?)");
+            hint("ClawDefender is designed for macOS. Some features may not work on other platforms.");
+            false
+        }
+    }
+}
+
+/// Check if Full Disk Access is likely available (heuristic).
+fn check_fda(warnings: &mut u32) {
+    // A reliable heuristic: try to list ~/Library/Mail (FDA-protected).
+    let fda_probe = std::env::var_os("HOME")
+        .map(|h| {
+            let probe_path = std::path::PathBuf::from(h).join("Library/Mail");
+            probe_path.exists() && std::fs::read_dir(&probe_path).is_ok()
+        })
+        .unwrap_or(false);
+
+    if fda_probe {
+        check_pass("Full Disk Access (FDA) available", true);
+    } else {
+        warn("Full Disk Access (FDA) may not be granted");
+        *warnings += 1;
+        hint("Open System Settings > Privacy & Security > Full Disk Access");
+        hint("Add your terminal app (Terminal.app, iTerm2, etc.) for eslogger to work.");
+    }
 }

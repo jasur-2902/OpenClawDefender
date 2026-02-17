@@ -32,26 +32,36 @@ jobs:
             ${{ runner.os }}-release-
 
       - name: Build aarch64
-        run: cargo build --release --target aarch64-apple-darwin --package clawdefender-cli
+        run: |
+          cargo build --release --target aarch64-apple-darwin --package clawdefender-cli
+          cargo build --release --target aarch64-apple-darwin --package clawdefender-daemon
 
       - name: Build x86_64
-        run: cargo build --release --target x86_64-apple-darwin --package clawdefender-cli
+        run: |
+          cargo build --release --target x86_64-apple-darwin --package clawdefender-cli
+          cargo build --release --target x86_64-apple-darwin --package clawdefender-daemon
 
-      - name: Create universal binary
+      - name: Create universal binaries
         run: |
           mkdir -p target/universal-apple-darwin/release
           lipo -create \
             target/aarch64-apple-darwin/release/clawdefender \
             target/x86_64-apple-darwin/release/clawdefender \
             -output target/universal-apple-darwin/release/clawdefender
+          lipo -create \
+            target/aarch64-apple-darwin/release/clawdefender-daemon \
+            target/x86_64-apple-darwin/release/clawdefender-daemon \
+            -output target/universal-apple-darwin/release/clawdefender-daemon
 
       - name: Ad-hoc code sign
-        run: codesign --sign - --force target/universal-apple-darwin/release/clawdefender
+        run: |
+          codesign --sign - --force target/universal-apple-darwin/release/clawdefender
+          codesign --sign - --force target/universal-apple-darwin/release/clawdefender-daemon
 
       - name: Create tarball and checksum
         run: |
           cd target/universal-apple-darwin/release
-          tar czf clawdefender-macos-universal.tar.gz clawdefender
+          tar czf clawdefender-macos-universal.tar.gz clawdefender clawdefender-daemon
           shasum -a 256 clawdefender-macos-universal.tar.gz > clawdefender-macos-universal.tar.gz.sha256
 
       - name: Create GitHub Release
@@ -82,14 +92,19 @@ jobs:
       #       --options runtime \
       #       --timestamp \
       #       target/universal-apple-darwin/release/clawdefender
+      #     codesign --sign "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }}" \
+      #       --options runtime \
+      #       --timestamp \
+      #       target/universal-apple-darwin/release/clawdefender-daemon
 
-      # - name: Notarize binary
+      # - name: Notarize binaries
       #   run: |
       #     cd target/universal-apple-darwin/release
-      #     zip clawdefender.zip clawdefender
+      #     zip clawdefender.zip clawdefender clawdefender-daemon
       #     xcrun notarytool submit clawdefender.zip \
       #       --apple-id "${{ secrets.APPLE_ID }}" \
       #       --password "${{ secrets.APPLE_APP_PASSWORD }}" \
       #       --team-id "${{ secrets.APPLE_TEAM_ID }}" \
       #       --wait
       #     xcrun stapler staple clawdefender
+      #     xcrun stapler staple clawdefender-daemon

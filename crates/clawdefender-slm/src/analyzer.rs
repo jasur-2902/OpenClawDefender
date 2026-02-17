@@ -265,16 +265,21 @@ fn parse_confidence(raw: &str) -> Option<f64> {
 
 /// Sanitize an explanation string: max 200 chars, strip URLs, code blocks, and XML tags.
 pub fn sanitize_explanation(raw: &str) -> String {
+    use std::sync::LazyLock;
+
+    static URL_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"https?://\S+|ftp://\S+").expect("valid regex"));
+    static CODE_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"`[^`]*`").expect("valid regex"));
+
     // Strip XML tags.
     let no_xml = strip_xml_tags(raw);
 
     // Strip URLs (http://, https://, ftp://).
-    let url_re = regex::Regex::new(r"https?://\S+|ftp://\S+").expect("valid regex");
-    let no_urls = url_re.replace_all(&no_xml, "[URL removed]");
+    let no_urls = URL_RE.replace_all(&no_xml, "[URL removed]");
 
     // Strip inline code (backtick-wrapped).
-    let code_re = regex::Regex::new(r"`[^`]*`").expect("valid regex");
-    let no_code = code_re.replace_all(&no_urls, "[code removed]");
+    let no_code = CODE_RE.replace_all(&no_urls, "[code removed]");
 
     // Truncate to 200 characters.
     let result = no_code.trim().to_string();

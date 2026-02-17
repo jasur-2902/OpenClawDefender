@@ -94,12 +94,36 @@ impl PolicyRule {
     }
 }
 
+/// Thread-local cache for compiled glob patterns to avoid recompilation on every evaluation.
+mod glob_cache {
+    use super::GlobMatcher;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CACHE: RefCell<HashMap<String, Option<GlobMatcher>>> = RefCell::new(HashMap::new());
+    }
+
+    /// Check if `value` matches the glob `pattern`, using a thread-local cache for
+    /// compiled patterns.
+    pub fn glob_matches_cached(pattern: &str, value: &str) -> bool {
+        CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let entry = cache.entry(pattern.to_string()).or_insert_with(|| {
+                GlobMatcher::new(pattern).ok()
+            });
+            match entry {
+                Some(matcher) => matcher.is_match(value),
+                None => false,
+            }
+        })
+    }
+}
+
 /// Simple pattern match: either glob or exact.
 fn pattern_matches(pattern: &str, value: &str) -> bool {
     if pattern.contains('*') || pattern.contains('?') || pattern.contains('[') {
-        GlobMatcher::new(pattern)
-            .map(|m| m.is_match(value))
-            .unwrap_or(false)
+        glob_cache::glob_matches_cached(pattern, value)
     } else {
         pattern == value
     }
@@ -107,9 +131,7 @@ fn pattern_matches(pattern: &str, value: &str) -> bool {
 
 /// Glob match with tilde expansion for paths.
 fn glob_matches(pattern: &str, value: &str) -> bool {
-    GlobMatcher::new(pattern)
-        .map(|m| m.is_match(value))
-        .unwrap_or(false)
+    glob_cache::glob_matches_cached(pattern, value)
 }
 
 // --- TOML deserialization support ---
