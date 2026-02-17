@@ -492,6 +492,8 @@ fn build_audit_record(event: &McpEvent, action: &str, rule_name: Option<&str>) -
         proxy_latency_us: None,
         slm_analysis: None,
         swarm_analysis: None,
+        behavioral: None,
+        injection_scan: None,
     }
 }
 

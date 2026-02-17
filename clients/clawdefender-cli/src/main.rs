@@ -120,6 +120,18 @@ enum Commands {
         action: DaemonAction,
     },
 
+    /// Manage the behavioral baseline engine.
+    Behavioral {
+        #[command(subcommand)]
+        action: BehavioralAction,
+    },
+
+    /// Manage behavioral profiles for MCP servers.
+    Profile {
+        #[command(subcommand)]
+        action: ProfileAction,
+    },
+
     /// Certify an MCP server for Claw Compliant compliance.
     Certify {
         /// Server command and arguments (everything after --).
@@ -206,6 +218,39 @@ enum DaemonAction {
     Status,
     /// Restart the daemon (stop then start).
     Restart,
+}
+
+#[derive(Subcommand, Debug)]
+enum BehavioralAction {
+    /// Show behavioral engine status and configuration.
+    Status,
+    /// Run calibration analysis against historical audit data.
+    Calibrate,
+    /// Show auto-block statistics from the audit log.
+    Stats,
+}
+
+#[derive(Subcommand, Debug)]
+enum ProfileAction {
+    /// List all behavioral profiles.
+    List,
+    /// Show full details of a server profile.
+    Show {
+        /// Server name to show profile for.
+        server: String,
+    },
+    /// Reset a server profile back to learning mode.
+    Reset {
+        /// Server name to reset.
+        server: String,
+    },
+    /// Export a server profile as JSON.
+    Export {
+        /// Server name to export.
+        server: String,
+        /// Output file path.
+        file: std::path::PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -332,6 +377,21 @@ async fn main() -> anyhow::Result<()> {
             DaemonAction::Stop => commands::daemon::stop(&config)?,
             DaemonAction::Status => commands::daemon::status(&config)?,
             DaemonAction::Restart => commands::daemon::restart(&config)?,
+        },
+
+        Commands::Behavioral { action } => match action {
+            BehavioralAction::Status => commands::behavioral::status(&config)?,
+            BehavioralAction::Calibrate => commands::behavioral::calibrate(&config)?,
+            BehavioralAction::Stats => commands::behavioral::stats(&config)?,
+        },
+
+        Commands::Profile { action } => match action {
+            ProfileAction::List => commands::profile_cmd::list(&config)?,
+            ProfileAction::Show { server } => commands::profile_cmd::show(&server)?,
+            ProfileAction::Reset { server } => commands::profile_cmd::reset(&server)?,
+            ProfileAction::Export { server, file } => {
+                commands::profile_cmd::export(&server, &file)?
+            }
         },
 
         Commands::Certify {

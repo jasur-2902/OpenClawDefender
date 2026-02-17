@@ -230,6 +230,8 @@ impl FileAuditLogger {
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         };
         // Use the channel to write session-start.
         let _ = logger.sender.send(WriterCommand::Write(Box::new(start_record)));
@@ -274,6 +276,8 @@ impl FileAuditLogger {
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         };
         let _ = self.sender.send(WriterCommand::Write(Box::new(end_record)));
         let _ = self.sender.send(WriterCommand::Shutdown);
@@ -383,6 +387,8 @@ impl Drop for FileAuditLogger {
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         };
         let _ = self.sender.send(WriterCommand::Write(Box::new(end_record)));
         let _ = self.sender.send(WriterCommand::Shutdown);
@@ -620,6 +626,8 @@ mod tests {
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         }
     }
 
@@ -646,6 +654,8 @@ mod tests {
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         }
     }
 

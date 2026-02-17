@@ -42,6 +42,10 @@ use clawdefender_swarm::cost::{BudgetConfig, CostTracker, PricingTable};
 use clawdefender_swarm::keychain::{self, KeyStore, Provider};
 use clawdefender_swarm::llm_client::{HttpLlmClient, LlmClient};
 use clawdefender_tui::{EventRecord, PendingPrompt};
+use clawdefender_core::behavioral::{
+    AnomalyScorer, DecisionEngine, InjectionDetector, InjectionDetectorConfig,
+    KillChainDetector, LearningEngine, ProfileStore,
+};
 
 use event_router::{EventRouter, EventRouterConfig};
 
@@ -52,6 +56,18 @@ pub struct Daemon {
     policy_engine: Arc<RwLock<DefaultPolicyEngine>>,
     audit_logger: Arc<FileAuditLogger>,
     enable_tui: bool,
+    /// Behavioral learning engine (profiles + learning phase).
+    behavioral_engine: Option<Arc<RwLock<LearningEngine>>>,
+    /// Anomaly scorer for behavioral analysis.
+    anomaly_scorer: Option<Arc<AnomalyScorer>>,
+    /// Kill chain detector.
+    killchain_detector: Option<Arc<RwLock<KillChainDetector>>>,
+    /// Decision engine for behavioral blocking decisions.
+    decision_engine: Option<Arc<RwLock<DecisionEngine>>>,
+    /// Injection detector.
+    injection_detector: Option<Arc<RwLock<InjectionDetector>>>,
+    /// Profile store (SQLite persistence).
+    profile_store: Option<Arc<ProfileStore>>,
 }
 
 impl Daemon {
@@ -87,12 +103,80 @@ impl Daemon {
             "Audit logger: writing to path"
         );
 
+        // --- Behavioral engine initialization ---
+        let (behavioral_engine, anomaly_scorer, killchain_detector, decision_engine, injection_detector, profile_store) =
+            if config.behavioral.enabled {
+                // Open profile store
+                let store = match ProfileStore::open(&ProfileStore::default_path()) {
+                    Ok(s) => {
+                        info!("Behavioral: profile store opened");
+                        s
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Behavioral: failed to open profile store, using in-memory");
+                        ProfileStore::open_in_memory().expect("in-memory profile store")
+                    }
+                };
+                let store = Arc::new(store);
+
+                // Load existing profiles into learning engine
+                let mut learning = LearningEngine::new(config.behavioral.clone());
+                match store.load_all_profiles() {
+                    Ok(profiles) => {
+                        let count = profiles.len();
+                        learning.load_profiles(profiles);
+                        info!(count, "Behavioral: loaded {} profiles", count);
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Behavioral: failed to load profiles");
+                    }
+                }
+
+                let scorer = AnomalyScorer::new();
+                let kc_detector = KillChainDetector::new();
+                let dec_engine = DecisionEngine::from_config(
+                    config.behavioral.anomaly_threshold,
+                    config.behavioral.auto_block_threshold,
+                    config.behavioral.auto_block_enabled,
+                );
+
+                // Initialize injection detector
+                let inj_config = InjectionDetectorConfig {
+                    enabled: config.injection_detector.enabled,
+                    threshold: config.injection_detector.threshold,
+                    patterns_path: config.injection_detector.patterns_path.clone(),
+                    auto_block: config.injection_detector.auto_block,
+                };
+                let inj_detector = InjectionDetector::new(inj_config);
+
+                info!("Behavioral engine: enabled (auto_block={})", config.behavioral.auto_block_enabled);
+                info!("Injection detector: enabled (threshold={:.2})", config.injection_detector.threshold);
+
+                (
+                    Some(Arc::new(RwLock::new(learning))),
+                    Some(Arc::new(scorer)),
+                    Some(Arc::new(RwLock::new(kc_detector))),
+                    Some(Arc::new(RwLock::new(dec_engine))),
+                    Some(Arc::new(RwLock::new(inj_detector))),
+                    Some(store),
+                )
+            } else {
+                info!("Behavioral engine: disabled in config");
+                (None, None, None, None, None, None)
+            };
+
         Ok(Self {
             config,
             sensor_config,
             policy_engine: Arc::new(RwLock::new(policy_engine)),
             audit_logger: Arc::new(audit_logger),
             enable_tui,
+            behavioral_engine,
+            anomaly_scorer,
+            killchain_detector,
+            decision_engine,
+            injection_detector,
+            profile_store,
         })
     }
 
@@ -881,6 +965,8 @@ window_ms = 1000
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         };
         audit_tx.send(record).await.unwrap();
         drop(audit_tx);
@@ -1001,6 +1087,8 @@ threads = 8
                 model: "mock-model-q4".to_string(),
             }),
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         };
 
         logger.log(&record).unwrap();
@@ -1268,5 +1356,211 @@ sensor_config_path = "/custom/path/sensor.toml"
             .expect("timeout")
             .expect("channel closed");
         assert_eq!(record.source, "correlation");
+    }
+
+    // --- Behavioral engine integration tests ---
+
+    #[test]
+    fn behavioral_engine_initializes_when_enabled() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.behavioral.enabled = true;
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.behavioral_engine.is_some());
+        assert!(daemon.anomaly_scorer.is_some());
+        assert!(daemon.killchain_detector.is_some());
+        assert!(daemon.decision_engine.is_some());
+        assert!(daemon.injection_detector.is_some());
+        assert!(daemon.profile_store.is_some());
+    }
+
+    #[test]
+    fn behavioral_engine_disabled_when_config_says_disabled() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.behavioral.enabled = false;
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.behavioral_engine.is_none());
+        assert!(daemon.anomaly_scorer.is_none());
+        assert!(daemon.killchain_detector.is_none());
+        assert!(daemon.decision_engine.is_none());
+        assert!(daemon.injection_detector.is_none());
+        assert!(daemon.profile_store.is_none());
+    }
+
+    #[test]
+    fn behavioral_engine_default_config_is_enabled() {
+        let dir = TempDir::new().unwrap();
+        let config = test_config(&dir);
+        // Default BehavioralConfig has enabled=true
+        assert!(config.behavioral.enabled);
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.behavioral_engine.is_some());
+    }
+
+    #[test]
+    fn behavioral_engine_respects_auto_block_config() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.behavioral.enabled = true;
+        config.behavioral.auto_block_enabled = true;
+        config.behavioral.auto_block_threshold = 0.85;
+        config.behavioral.anomaly_threshold = 0.65;
+        let daemon = Daemon::new(config, false).unwrap();
+        // Verify decision engine has the right thresholds
+        let de = daemon.decision_engine.as_ref().unwrap();
+        let de_guard = de.try_read().unwrap();
+        assert!(de_guard.auto_block_enabled);
+        assert!((de_guard.auto_block_threshold - 0.85).abs() < f64::EPSILON);
+        assert!((de_guard.anomaly_threshold - 0.65).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn behavioral_engine_preserves_phase0_behavior_disabled() {
+        // When behavioral is disabled, daemon should still start normally
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.behavioral.enabled = false;
+        let daemon = Daemon::new(config, false);
+        assert!(daemon.is_ok());
+    }
+
+    #[test]
+    fn audit_record_includes_behavioral_fields() {
+        let record = AuditRecord {
+            timestamp: chrono::Utc::now(),
+            source: "test".to_string(),
+            event_summary: "behavioral test".to_string(),
+            event_details: serde_json::json!({}),
+            rule_matched: None,
+            action_taken: "allow".to_string(),
+            response_time_ms: None,
+            session_id: None,
+            direction: None,
+            server_name: None,
+            client_name: None,
+            jsonrpc_method: None,
+            tool_name: None,
+            arguments: None,
+            classification: None,
+            policy_rule: None,
+            policy_action: None,
+            user_decision: None,
+            proxy_latency_us: None,
+            slm_analysis: None,
+            swarm_analysis: None,
+            behavioral: Some(clawdefender_core::behavioral::BehavioralAuditData {
+                anomaly_score: 0.75,
+                anomaly_components: vec![],
+                kill_chain: None,
+                auto_blocked: false,
+                profile_status: "active".to_string(),
+                observation_count: 500,
+            }),
+            injection_scan: Some(clawdefender_core::audit::InjectionScanData {
+                score: 0.3,
+                patterns_found: vec!["test_pattern".to_string()],
+            }),
+        };
+
+        let json = serde_json::to_string(&record).unwrap();
+        assert!(json.contains("behavioral"));
+        assert!(json.contains("0.75"));
+        assert!(json.contains("injection_scan"));
+        assert!(json.contains("test_pattern"));
+
+        // Round-trip
+        let deserialized: AuditRecord = serde_json::from_str(&json).unwrap();
+        let b = deserialized.behavioral.unwrap();
+        assert!((b.anomaly_score - 0.75).abs() < f64::EPSILON);
+        assert_eq!(b.profile_status, "active");
+        let inj = deserialized.injection_scan.unwrap();
+        assert!((inj.score - 0.3).abs() < f64::EPSILON);
+        assert_eq!(inj.patterns_found, vec!["test_pattern"]);
+    }
+
+    #[test]
+    fn audit_record_omits_behavioral_when_none() {
+        let record = AuditRecord {
+            timestamp: chrono::Utc::now(),
+            source: "test".to_string(),
+            event_summary: "plain event".to_string(),
+            event_details: serde_json::json!({}),
+            rule_matched: None,
+            action_taken: "allow".to_string(),
+            response_time_ms: None,
+            session_id: None,
+            direction: None,
+            server_name: None,
+            client_name: None,
+            jsonrpc_method: None,
+            tool_name: None,
+            arguments: None,
+            classification: None,
+            policy_rule: None,
+            policy_action: None,
+            user_decision: None,
+            proxy_latency_us: None,
+            slm_analysis: None,
+            swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
+        };
+
+        let json = serde_json::to_string(&record).unwrap();
+        assert!(!json.contains("behavioral"));
+        assert!(!json.contains("injection_scan"));
+    }
+
+    #[test]
+    fn config_parsing_with_behavioral_section() {
+        let toml_str = r#"
+[behavioral]
+enabled = true
+learning_event_threshold = 200
+learning_time_minutes = 60
+anomaly_threshold = 0.8
+auto_block_threshold = 0.95
+auto_block_enabled = true
+
+[injection_detector]
+enabled = true
+threshold = 0.5
+auto_block = false
+"#;
+        let config: ClawConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.behavioral.enabled);
+        assert_eq!(config.behavioral.learning_event_threshold, 200);
+        assert_eq!(config.behavioral.learning_time_minutes, 60);
+        assert!((config.behavioral.anomaly_threshold - 0.8).abs() < f64::EPSILON);
+        assert!((config.behavioral.auto_block_threshold - 0.95).abs() < f64::EPSILON);
+        assert!(config.behavioral.auto_block_enabled);
+        assert!(config.injection_detector.enabled);
+        assert!((config.injection_detector.threshold - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn config_parsing_behavioral_defaults() {
+        let toml_str = "";
+        let config: ClawConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.behavioral.enabled);
+        assert_eq!(config.behavioral.learning_event_threshold, 100);
+        assert_eq!(config.behavioral.learning_time_minutes, 30);
+        assert!((config.behavioral.anomaly_threshold - 0.7).abs() < f64::EPSILON);
+        assert!((config.behavioral.auto_block_threshold - 0.9).abs() < f64::EPSILON);
+        assert!(!config.behavioral.auto_block_enabled);
+        assert!(config.injection_detector.enabled);
+        assert!((config.injection_detector.threshold - 0.6).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn injection_detector_initialization() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.behavioral.enabled = true;
+        config.injection_detector.enabled = true;
+        config.injection_detector.threshold = 0.5;
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.injection_detector.is_some());
     }
 }

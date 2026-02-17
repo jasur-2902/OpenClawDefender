@@ -1071,6 +1071,8 @@ fn build_audit_record(
         proxy_latency_us: None,
         slm_analysis: None,
         swarm_analysis: None,
+        behavioral: None,
+        injection_scan: None,
     }
 }
 
@@ -1227,6 +1229,8 @@ fn build_audit_record_from_swarm_event(
         proxy_latency_us: None,
         slm_analysis: None,
         swarm_analysis: None,
+        behavioral: None,
+        injection_scan: None,
     }
 }
 

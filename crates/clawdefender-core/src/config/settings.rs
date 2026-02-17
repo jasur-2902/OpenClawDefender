@@ -55,6 +55,98 @@ pub struct ClawConfig {
     /// MCP server configuration.
     #[serde(default)]
     pub mcp_server: McpServerConfig,
+
+    /// Behavioral baseline engine configuration.
+    #[serde(default)]
+    pub behavioral: BehavioralConfig,
+
+    /// Prompt injection detection configuration.
+    #[serde(default)]
+    pub injection_detector: InjectionDetectorSettings,
+}
+
+/// Behavioral baseline engine configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehavioralConfig {
+    /// Whether the behavioral baseline engine is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Number of events required before learning completes.
+    #[serde(default = "default_learning_event_threshold")]
+    pub learning_event_threshold: u64,
+    /// Minutes that must elapse before learning completes.
+    #[serde(default = "default_learning_time_minutes")]
+    pub learning_time_minutes: u64,
+    /// Anomaly score threshold for alerting.
+    #[serde(default = "default_anomaly_threshold")]
+    pub anomaly_threshold: f64,
+    /// Anomaly score threshold for automatic blocking.
+    #[serde(default = "default_auto_block_threshold")]
+    pub auto_block_threshold: f64,
+    /// Whether automatic blocking is enabled.
+    #[serde(default)]
+    pub auto_block_enabled: bool,
+}
+
+fn default_learning_event_threshold() -> u64 {
+    100
+}
+
+fn default_learning_time_minutes() -> u64 {
+    30
+}
+
+fn default_anomaly_threshold() -> f64 {
+    0.7
+}
+
+fn default_auto_block_threshold() -> f64 {
+    0.9
+}
+
+impl Default for BehavioralConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            learning_event_threshold: default_learning_event_threshold(),
+            learning_time_minutes: default_learning_time_minutes(),
+            anomaly_threshold: default_anomaly_threshold(),
+            auto_block_threshold: default_auto_block_threshold(),
+            auto_block_enabled: false,
+        }
+    }
+}
+
+/// Prompt injection detection settings (stored in ClawConfig).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectionDetectorSettings {
+    /// Whether injection detection is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Score threshold above which a message is flagged (0.0 - 1.0).
+    #[serde(default = "default_injection_threshold")]
+    pub threshold: f64,
+    /// Optional path to a custom patterns TOML file.
+    #[serde(default)]
+    pub patterns_path: Option<PathBuf>,
+    /// Whether to automatically block flagged messages.
+    #[serde(default)]
+    pub auto_block: bool,
+}
+
+fn default_injection_threshold() -> f64 {
+    0.6
+}
+
+impl Default for InjectionDetectorSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            threshold: default_injection_threshold(),
+            patterns_path: None,
+            auto_block: false,
+        }
+    }
 }
 
 /// Configuration for the ClawDefender MCP server.
@@ -451,6 +543,8 @@ impl Default for ClawConfig {
             policy_path: default_policy_path(),
             sensor_config_path: default_sensor_config_path(),
             mcp_server: McpServerConfig::default(),
+            behavioral: BehavioralConfig::default(),
+            injection_detector: InjectionDetectorSettings::default(),
         }
     }
 }

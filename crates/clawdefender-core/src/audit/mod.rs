@@ -76,6 +76,21 @@ pub struct AuditRecord {
     /// SAFETY: Swarm verdict is advisory only. Never modifies policy decisions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swarm_analysis: Option<SwarmAnalysisRecord>,
+
+    /// Optional behavioral analysis result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub behavioral: Option<crate::behavioral::BehavioralAuditData>,
+
+    /// Optional injection scan result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub injection_scan: Option<InjectionScanData>,
+}
+
+/// Data from an injection scan, stored alongside audit records.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectionScanData {
+    pub score: f64,
+    pub patterns_found: Vec<String>,
 }
 
 /// Record of an SLM risk analysis, stored alongside audit records.
@@ -209,6 +224,8 @@ mod tests {
                 estimated_cost_usd: 0.003,
                 latency_ms: 2500,
             }),
+            behavioral: None,
+            injection_scan: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -248,6 +265,8 @@ mod tests {
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();

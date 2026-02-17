@@ -1,3 +1,4 @@
+pub mod behavioral;
 pub mod chat;
 pub mod config;
 pub mod daemon;
@@ -7,6 +8,7 @@ pub mod init;
 pub mod log;
 pub mod model;
 pub mod policy;
+pub mod profile_cmd;
 pub mod proxy;
 pub mod serve;
 pub mod status;

@@ -7,6 +7,7 @@
 //! the audit subsystem, and the macOS menu-bar UI.
 
 pub mod audit;
+pub mod behavioral;
 pub mod config;
 pub mod correlation;
 pub mod event;

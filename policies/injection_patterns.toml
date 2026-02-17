@@ -1,0 +1,137 @@
+# ClawDefender Prompt Injection Patterns
+# Custom patterns loaded at runtime. Modify this file to add or adjust patterns.
+# Each pattern has: name, regex (Rust regex syntax), and severity (0.0 - 1.0).
+
+# --- Instruction Overrides ---
+
+[[patterns]]
+name = "instruction_override_ignore"
+regex = "(?i)(ignore|disregard|forget|override)\\s.{0,30}(previous|above|prior|earlier|original)\\s.{0,20}(instructions|prompt|rules|guidelines|directives)"
+severity = 0.7
+
+[[patterns]]
+name = "instruction_override_actual"
+regex = "(?i)your\\s+actual\\s+instructions\\s+are"
+severity = 0.8
+
+[[patterns]]
+name = "instruction_override_important"
+regex = "(?i)IMPORTANT:\\s*from\\s+now\\s+on"
+severity = 0.7
+
+[[patterns]]
+name = "instruction_override_new"
+regex = "(?i)new\\s+instructions?\\s*[:=]"
+severity = 0.7
+
+[[patterns]]
+name = "instruction_override_do_not_follow"
+regex = "(?i)do\\s+not\\s+follow\\s+(your|the)\\s+(previous|original|system)"
+severity = 0.7
+
+[[patterns]]
+name = "instruction_override_stop_being"
+regex = "(?i)stop\\s+being\\s+(an?\\s+)?(ai|assistant|helpful)"
+severity = 0.6
+
+# --- Role Reassignment ---
+
+[[patterns]]
+name = "role_reassign_you_are_now"
+regex = "(?i)(you\\s+are\\s+now|from\\s+now\\s+on\\s+you\\s+are)"
+severity = 0.6
+
+[[patterns]]
+name = "role_reassign_act_as"
+regex = "(?i)(act\\s+as|pretend\\s+to\\s+be|roleplay\\s+as|simulate\\s+being)"
+severity = 0.6
+
+[[patterns]]
+name = "role_reassign_new_role"
+regex = "(?i)your\\s+(new\\s+)?role\\s+is"
+severity = 0.6
+
+[[patterns]]
+name = "role_reassign_name_change"
+regex = "(?i)your\\s+name\\s+is\\s+now"
+severity = 0.6
+
+# --- Data Exfiltration ---
+
+[[patterns]]
+name = "exfil_send_data"
+regex = "(?i)(send|transmit|forward|exfiltrate)\\s+(it|this|the\\s+data|everything|all)\\s+to"
+severity = 0.7
+
+[[patterns]]
+name = "exfil_upload"
+regex = "(?i)(upload|post|PUT)\\s+to\\s+https?://"
+severity = 0.7
+
+[[patterns]]
+name = "exfil_curl_fetch"
+regex = "(?i)(curl|wget|fetch)\\s+.{0,10}https?://"
+severity = 0.7
+
+[[patterns]]
+name = "exfil_email"
+regex = "(?i)(email|mail)\\s+(it|this|the\\s+data)\\s+to"
+severity = 0.7
+
+[[patterns]]
+name = "exfil_write_tmp"
+regex = "(?i)(save|write|dump|output)\\s+to\\s+/tmp"
+severity = 0.7
+
+[[patterns]]
+name = "exfil_base64_include"
+regex = "(?i)base64\\s+encode\\s+and\\s+(include|embed|insert)"
+severity = 0.7
+
+# --- Encoded Payloads ---
+
+[[patterns]]
+name = "encoded_base64_long"
+regex = "[A-Za-z0-9+/]{50,}={0,2}"
+severity = 0.5
+
+[[patterns]]
+name = "encoded_hex_long"
+regex = "(?i)(?:0x)?[0-9a-f]{40,}"
+severity = 0.5
+
+[[patterns]]
+name = "encoded_url_sequences"
+regex = "(?:%[0-9A-Fa-f]{2}){10,}"
+severity = 0.5
+
+# --- Tool Invocation ---
+
+[[patterns]]
+name = "tool_invoke_natural"
+regex = "(?i)(call|invoke|use|run|execute)\\s+the\\s+tool\\s+[\"']?\\w+[\"']?"
+severity = 0.4
+
+[[patterns]]
+name = "tool_invoke_json"
+regex = "(?i)\\{\"?\\s*tool_?name\"?\\s*:\\s*\""
+severity = 0.4
+
+# --- System Prompt Leakage ---
+
+[[patterns]]
+name = "system_prompt_leak_reveal"
+regex = "(?i)(print|output|reveal|show|display|repeat)\\s+(your\\s+)?(system\\s+prompt|system\\s+message|initial\\s+instructions|hidden\\s+instructions)"
+severity = 0.6
+
+[[patterns]]
+name = "system_prompt_leak_what_are"
+regex = "(?i)what\\s+(are|were)\\s+your\\s+(system|original|initial|hidden)\\s+(instructions|prompt|rules)"
+severity = 0.6
+
+# --- Delimiter Injection ---
+
+[[patterns]]
+name = "delimiter_injection"
+regex = "(?i)(```|</?system>|<\\|im_start\\|>|<\\|im_end\\|>|\\[INST\\]|\\[/INST\\]|<\\|endoftext\\|>)"
+severity = 0.5

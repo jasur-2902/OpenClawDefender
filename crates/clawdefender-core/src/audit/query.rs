@@ -270,6 +270,8 @@ mod tests {
             proxy_latency_us: None,
             slm_analysis: None,
             swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
         }
     }
 

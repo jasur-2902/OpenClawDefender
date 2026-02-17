@@ -197,6 +197,8 @@ pub async fn report_action(
         proxy_latency_us: None,
         slm_analysis: None,
         swarm_analysis: None,
+        behavioral: None,
+        injection_scan: None,
     };
 
     let recorded = server.audit_logger.log(&record).is_ok();

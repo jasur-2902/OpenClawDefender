@@ -342,10 +342,12 @@ dependencies = [
 name = "clawdefender-core"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "chrono",
  "glob",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

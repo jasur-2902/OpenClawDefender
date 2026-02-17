@@ -277,6 +277,10 @@ See [v0.5.0 Release Notes](docs/v5-release-notes.md) for details.
 - **Cloud-powered deep analysis** -- escalates ambiguous events to a multi-agent swarm (Hawk, Forensics, Internal Affairs) for deeper analysis using your own API key. Budget controls prevent runaway costs.
 - **Chat UI** -- web-based chat interface for investigating flagged events with follow-up questions and full conversation history.
 - **BYOK API key management** -- securely stores API keys in the macOS Keychain with auto-detection of provider from key prefix.
+- **Autonomous behavioral defense** -- learns per-server behavioral baselines during a configurable learning phase, then detects anomalies across 9 dimensions (unknown tools, paths, network, rate, sequence, arguments, sensitive targets, first network access, privilege escalation) with weighted scoring and a floor rule ensuring critical anomalies are never hidden.
+- **Kill chain recognition** -- detects 6 multi-step attack patterns (credential theft + exfiltration, reconnaissance, persistence installation, data staging, shell escape, prompt injection followthrough) using sliding window analysis with configurable time windows.
+- **Auto-block (opt-in)** -- automatically blocks events exceeding configurable thresholds. Off by default with a feedback loop that tracks override rate and recommends threshold adjustments.
+- **Prompt injection detection** -- scans MCP sampling messages with 24 regex patterns across 5 categories (instruction overrides, role reassignment, data exfiltration, encoded payloads, system prompt leakage) using Aho-Corasick multi-pattern matching. Response messages weighted 2x.
 - **Prompt rate limiting** -- auto-blocks MCP servers that flood the user with prompt-triggering calls.
 - **Parser hardening** -- enforces message size limits, JSON depth limits, and buffer overflow protection.
 - **OS-level monitoring** -- macOS `eslogger` integration observes file access, process execution, and network activity at the kernel event level.
@@ -349,6 +353,9 @@ ClawDefender is structured as a Cargo workspace with the following crates:
 - [SLM Guide](docs/slm-guide.md)
 - [MCP Protocol Reference](docs/mcp-protocol.md)
 - [Swarm Guide](docs/swarm-guide.md)
+- [Behavioral Defense Guide](docs/behavioral-guide.md)
+- [Behavioral Security](docs/behavioral-security.md)
+- [V7 Release Notes](docs/v7-release-notes.md)
 - [V5 Release Notes](docs/v5-release-notes.md)
 - [V4 Release Notes](docs/v4-release-notes.md)
 - [V3 Release Notes](docs/v3-release-notes.md)

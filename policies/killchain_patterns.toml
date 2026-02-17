@@ -1,0 +1,106 @@
+# Kill Chain Detection Patterns
+#
+# These are the 6 built-in patterns shipped with ClawDefender.
+# Copy this file to ~/.config/clawdefender/patterns.toml to customize.
+#
+# Pattern format:
+#   [[pattern]]
+#   name = "pattern_name"
+#   severity = "critical" | "high" | "medium" | "low"
+#   window_seconds = 60
+#   explanation = "Human-readable explanation"
+#
+#   [[pattern.steps]]
+#   event_type = "file_read" | "file_write" | "file_list" | "network_connect" | "shell_exec" | "sampling_response" | "any_tool_call"
+#   path_pattern = "glob,patterns,comma-separated"       # optional
+#   destination_pattern = "glob,patterns,comma-separated" # optional
+#   min_count = 1                                          # optional, default 1
+
+# Pattern 1 — Credential Theft + Exfiltration
+[[pattern]]
+name = "credential_theft_exfiltration"
+severity = "critical"
+window_seconds = 60
+explanation = "Credential file was read followed by an external network connection — possible credential exfiltration."
+
+[[pattern.steps]]
+event_type = "file_read"
+path_pattern = "~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*"
+
+[[pattern.steps]]
+event_type = "network_connect"
+destination_pattern = "!localhost,!127.0.0.1,!::1"
+
+# Pattern 2 — Reconnaissance + Credential Access
+[[pattern]]
+name = "recon_credential_access"
+severity = "high"
+window_seconds = 120
+explanation = "Broad directory listing followed by credential file access — possible reconnaissance leading to credential theft."
+
+[[pattern.steps]]
+event_type = "file_list"
+path_pattern = "~/,/Users/,/"
+
+[[pattern.steps]]
+event_type = "file_read"
+path_pattern = "~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*"
+
+# Pattern 3 — Persistence Installation
+[[pattern]]
+name = "persistence_installation"
+severity = "critical"
+window_seconds = 30
+explanation = "File written to a startup/persistence location followed by shell execution — possible persistence mechanism being installed."
+
+[[pattern.steps]]
+event_type = "file_write"
+path_pattern = "~/Library/LaunchAgents/*,~/.bashrc,~/.zshrc,~/Library/Application Scripts/*"
+
+[[pattern.steps]]
+event_type = "shell_exec"
+
+# Pattern 4 — Data Staging + Exfiltration
+[[pattern]]
+name = "data_staging_exfiltration"
+severity = "critical"
+window_seconds = 120
+explanation = "Multiple sensitive file reads followed by a write to /tmp and network or shell activity — possible data staging and exfiltration."
+
+[[pattern.steps]]
+event_type = "file_read"
+path_pattern = "~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*"
+min_count = 3
+
+[[pattern.steps]]
+event_type = "file_write"
+path_pattern = "/tmp/*"
+
+[[pattern.steps]]
+event_type = "network_connect"
+
+# Pattern 5 — Shell Escape
+[[pattern]]
+name = "shell_escape"
+severity = "high"
+window_seconds = 10
+explanation = "An MCP tool call was immediately followed by an uncorrelated shell execution — possible container/sandbox escape."
+
+[[pattern.steps]]
+event_type = "any_tool_call"
+
+[[pattern.steps]]
+event_type = "shell_exec"
+
+# Pattern 6 — Prompt Injection Followthrough
+[[pattern]]
+name = "prompt_injection_followthrough"
+severity = "high"
+window_seconds = 30
+explanation = "A sampling/createMessage response was followed by an anomalous action — possible prompt injection follow-through."
+
+[[pattern.steps]]
+event_type = "sampling_response"
+
+[[pattern.steps]]
+event_type = "shell_exec"
