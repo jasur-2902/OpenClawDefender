@@ -46,6 +46,7 @@ use clawdefender_core::behavioral::{
     AnomalyScorer, DecisionEngine, InjectionDetector, InjectionDetectorConfig,
     KillChainDetector, LearningEngine, ProfileStore,
 };
+use clawdefender_guard::registry::GuardRegistry;
 
 use event_router::{EventRouter, EventRouterConfig};
 
@@ -68,6 +69,8 @@ pub struct Daemon {
     injection_detector: Option<Arc<RwLock<InjectionDetector>>>,
     /// Profile store (SQLite persistence).
     profile_store: Option<Arc<ProfileStore>>,
+    /// Guard registry for agent guard management.
+    guard_registry: Arc<GuardRegistry>,
 }
 
 impl Daemon {
@@ -177,6 +180,7 @@ impl Daemon {
             decision_engine,
             injection_detector,
             profile_store,
+            guard_registry: Arc::new(GuardRegistry::new()),
         })
     }
 
@@ -514,6 +518,42 @@ impl Daemon {
             None
         };
 
+        // --- Guard PID cleanup task ---
+        let guard_registry_cleanup = Arc::clone(&self.guard_registry);
+        let guard_cleanup_handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                guard_registry_cleanup.cleanup_dead_pids().await;
+            }
+        });
+
+        // --- Guard REST API server ---
+        let guard_api_handle = if self.config.guard_api.enabled {
+            let registry_for_api = (*self.guard_registry).clone();
+            let api_config = clawdefender_guard::api::ApiConfig {
+                bind_addr: format!("127.0.0.1:{}", self.config.guard_api.port)
+                    .parse()
+                    .unwrap(),
+                token: String::new(),
+            };
+            let handle = tokio::spawn(async move {
+                if let Err(e) =
+                    clawdefender_guard::api::run_api_server(api_config, registry_for_api).await
+                {
+                    warn!(error = %e, "Guard API server exited");
+                }
+            });
+            info!(
+                port = self.config.guard_api.port,
+                "Guard API server: listening on port {}", self.config.guard_api.port
+            );
+            Some(handle)
+        } else {
+            info!("Guard API server: disabled in config");
+            None
+        };
+
         // --- Audit writer task ---
         let audit_logger = Arc::clone(&self.audit_logger);
         let audit_writer_handle = tokio::spawn(async move {
@@ -613,9 +653,10 @@ impl Daemon {
         info!(path = %socket_path.display(), "IPC: listening on {}", socket_path.display());
         let metrics_for_ipc = Arc::clone(&metrics);
         let policy_for_ipc = Arc::clone(&self.policy_engine);
+        let guard_registry_for_ipc = Arc::clone(&self.guard_registry);
         let ipc_handle = tokio::spawn(async move {
             if let Err(e) =
-                ipc::run_ipc_server(socket_path, metrics_for_ipc, policy_for_ipc).await
+                ipc::run_ipc_server(socket_path, metrics_for_ipc, policy_for_ipc, guard_registry_for_ipc).await
             {
                 warn!(error = %e, "IPC server exited");
             }
@@ -676,6 +717,13 @@ impl Daemon {
         // Abort sensor tasks.
         for handle in sensor_handles {
             handle.abort();
+        }
+
+        // Abort guard tasks.
+        guard_cleanup_handle.abort();
+        if let Some(handle) = guard_api_handle {
+            handle.abort();
+            info!("guard API server stopped");
         }
 
         // Abort IPC server.

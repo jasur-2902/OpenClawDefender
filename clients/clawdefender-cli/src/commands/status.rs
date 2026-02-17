@@ -65,6 +65,22 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         println!("  MCP Server: disabled");
     }
 
+    // Guard API status.
+    if config.guard_api.enabled {
+        let guard_addr = format!("127.0.0.1:{}", config.guard_api.port);
+        let guard_reachable = TcpStream::connect_timeout(
+            &guard_addr.parse().unwrap(),
+            Duration::from_secs(1),
+        ).is_ok();
+        if guard_reachable {
+            println!("  Guard API: running (http://{})", guard_addr);
+        } else {
+            println!("  Guard API: not reachable (http://{})", guard_addr);
+        }
+    } else {
+        println!("  Guard API: disabled");
+    }
+
     // Scan for wrapped servers.
     println!();
     println!("Wrapped Servers:");

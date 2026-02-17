@@ -1,0 +1,371 @@
+openapi: "3.1.0"
+info:
+  title: ClawDefender Guard API
+  description: REST API for managing agent self-protection guards
+  version: "0.1.0"
+  license:
+    name: "Apache-2.0 OR MIT"
+
+servers:
+  - url: http://127.0.0.1:3202
+    description: Local guard server
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token read from ~/.local/share/clawdefender/server-token
+
+  schemas:
+    PermissionSet:
+      type: object
+      properties:
+        file_read:
+          type: array
+          items:
+            type: string
+        file_write:
+          type: array
+          items:
+            type: string
+        file_delete:
+          type: array
+          items:
+            type: string
+        shell_policy:
+          type: string
+          enum: [deny, allow, prompt]
+        network_allowlist:
+          type: array
+          items:
+            type: string
+        tools:
+          type: array
+          items:
+            type: string
+        max_file_size:
+          type: integer
+          nullable: true
+        max_files_per_minute:
+          type: integer
+          nullable: true
+        max_network_requests_per_minute:
+          type: integer
+          nullable: true
+
+    CreateGuardRequest:
+      type: object
+      required: [name, pid, permissions, mode]
+      properties:
+        name:
+          type: string
+        pid:
+          type: integer
+        permissions:
+          $ref: "#/components/schemas/PermissionSet"
+        mode:
+          type: string
+          enum: [enforce, monitor, permissive]
+
+    CreateGuardResponse:
+      type: object
+      properties:
+        guard_id:
+          type: string
+        status:
+          type: string
+        policy_rules_created:
+          type: integer
+        self_test:
+          type: string
+
+    GuardStatus:
+      type: object
+      properties:
+        guard_id:
+          type: string
+        agent_name:
+          type: string
+        pid:
+          type: integer
+        mode:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        checks_total:
+          type: integer
+        checks_allowed:
+          type: integer
+        checks_blocked:
+          type: integer
+
+    GuardStats:
+      type: object
+      properties:
+        guard_id:
+          type: string
+        checks_total:
+          type: integer
+        checks_allowed:
+          type: integer
+        checks_blocked:
+          type: integer
+        blocked_operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockedOperation"
+        policy_rules:
+          type: array
+          items:
+            type: string
+
+    BlockedOperation:
+      type: object
+      properties:
+        action:
+          type: string
+        target:
+          type: string
+        reason:
+          type: string
+        rule:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    CheckRequest:
+      type: object
+      required: [action, target]
+      properties:
+        action:
+          type: string
+        target:
+          type: string
+
+    CheckResponse:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          type: string
+        rule:
+          type: string
+
+    WebhookRequest:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          description: Must be a localhost URL
+        events:
+          type: array
+          items:
+            type: string
+            enum: [blocked, anomaly]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+
+paths:
+  /api/v1/guard:
+    post:
+      summary: Create and activate a guard
+      operationId: createGuard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGuardRequest"
+      responses:
+        "201":
+          description: Guard created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateGuardResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/guard/{guard_id}:
+    get:
+      summary: Get guard status
+      operationId: getGuard
+      parameters:
+        - name: guard_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guard status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardStatus"
+        "404":
+          description: Guard not found
+    delete:
+      summary: Deactivate a guard
+      operationId: deleteGuard
+      parameters:
+        - name: guard_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guard deactivated
+        "404":
+          description: Guard not found
+
+  /api/v1/guard/{guard_id}/stats:
+    get:
+      summary: Get detailed guard stats
+      operationId: getGuardStats
+      parameters:
+        - name: guard_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardStats"
+        "404":
+          description: Guard not found
+
+  /api/v1/guard/{guard_id}/check:
+    post:
+      summary: Check if an action would be allowed
+      operationId: checkAction
+      parameters:
+        - name: guard_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckRequest"
+      responses:
+        "200":
+          description: Check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckResponse"
+        "404":
+          description: Guard not found
+
+  /api/v1/guard/{guard_id}/suggest:
+    post:
+      summary: Get permission suggestions
+      operationId: suggestPermissions
+      parameters:
+        - name: guard_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Permission suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        action:
+                          type: string
+                        suggested_pattern:
+                          type: string
+                        reason:
+                          type: string
+        "404":
+          description: Guard not found
+
+  /api/v1/guards:
+    get:
+      summary: List all active guards
+      operationId: listGuards
+      responses:
+        "200":
+          description: List of guards
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guards:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GuardStatus"
+
+  /api/v1/guard/{guard_id}/webhooks:
+    post:
+      summary: Register webhook callback
+      operationId: registerWebhook
+      parameters:
+        - name: guard_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookRequest"
+      responses:
+        "201":
+          description: Webhook registered
+        "400":
+          description: Invalid webhook URL
+        "404":
+          description: Guard not found
+
+  /api/v1/openapi.yaml:
+    get:
+      summary: Get OpenAPI specification
+      operationId: getOpenApiSpec
+      security: []
+      responses:
+        "200":
+          description: OpenAPI YAML spec
+          content:
+            text/yaml:
+              schema:
+                type: string

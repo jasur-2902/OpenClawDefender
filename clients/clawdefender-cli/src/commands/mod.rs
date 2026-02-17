@@ -3,6 +3,7 @@ pub mod chat;
 pub mod config;
 pub mod daemon;
 pub mod doctor;
+pub mod guard;
 pub mod usage;
 pub mod init;
 pub mod log;

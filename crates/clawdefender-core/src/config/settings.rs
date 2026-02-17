@@ -63,6 +63,10 @@ pub struct ClawConfig {
     /// Prompt injection detection configuration.
     #[serde(default)]
     pub injection_detector: InjectionDetectorSettings,
+
+    /// Guard API configuration.
+    #[serde(default)]
+    pub guard_api: GuardApiConfig,
 }
 
 /// Behavioral baseline engine configuration.
@@ -145,6 +149,30 @@ impl Default for InjectionDetectorSettings {
             threshold: default_injection_threshold(),
             patterns_path: None,
             auto_block: false,
+        }
+    }
+}
+
+/// Guard API configuration (REST API for agent guard management).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardApiConfig {
+    /// Whether the guard API is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Port for the guard API server.
+    #[serde(default = "default_guard_api_port")]
+    pub port: u16,
+}
+
+fn default_guard_api_port() -> u16 {
+    3202
+}
+
+impl Default for GuardApiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            port: default_guard_api_port(),
         }
     }
 }
@@ -545,6 +573,7 @@ impl Default for ClawConfig {
             mcp_server: McpServerConfig::default(),
             behavioral: BehavioralConfig::default(),
             injection_detector: InjectionDetectorSettings::default(),
+            guard_api: GuardApiConfig::default(),
         }
     }
 }

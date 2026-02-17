@@ -69,6 +69,14 @@ enum Commands {
         #[arg(long)]
         server: Option<String>,
 
+        /// Filter by source (e.g. "agent-guard").
+        #[arg(long)]
+        source: Option<String>,
+
+        /// Filter by agent name.
+        #[arg(long)]
+        agent: Option<String>,
+
         /// Show aggregate statistics.
         #[arg(long)]
         stats: bool,
@@ -156,6 +164,12 @@ enum Commands {
         /// HTTP port to listen on (0 to disable HTTP).
         #[arg(long, default_value = "3201")]
         http_port: u16,
+    },
+
+    /// Manage agent guards.
+    Guard {
+        #[command(subcommand)]
+        action: GuardAction,
     },
 
     /// Run a security scan against an MCP server.
@@ -293,6 +307,27 @@ enum ProfileAction {
 }
 
 #[derive(Subcommand, Debug)]
+enum GuardAction {
+    /// List active agent guards.
+    List,
+    /// Show full details of a specific guard.
+    Show {
+        /// Guard ID to show.
+        guard_id: String,
+    },
+    /// Forcefully remove a guard.
+    Kill {
+        /// Guard ID to remove.
+        guard_id: String,
+    },
+    /// Test a permissions config file and show generated policy.
+    Test {
+        /// Path to a permissions config file (TOML or JSON).
+        file: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum PolicyAction {
     /// List loaded policy rules.
     List,
@@ -383,10 +418,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Log {
             blocked,
             server,
+            source,
+            agent: _agent,
             stats,
             n,
         } => {
-            commands::log::run(&config, blocked, server, stats, n)?;
+            commands::log::run(&config, blocked, server.or(source), stats, n)?;
         }
 
         Commands::Doctor => {
@@ -450,6 +487,13 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve { stdio, http_port } => {
             commands::serve::run(&config, stdio, http_port).await?;
         }
+
+        Commands::Guard { action } => match action {
+            GuardAction::List => commands::guard::list(&config)?,
+            GuardAction::Show { guard_id } => commands::guard::show(&config, &guard_id)?,
+            GuardAction::Kill { guard_id } => commands::guard::kill(&config, &guard_id)?,
+            GuardAction::Test { file } => commands::guard::test(&config, &file)?,
+        },
 
         Commands::Scan {
             server_command,

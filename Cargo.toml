@@ -14,6 +14,7 @@ members = [
     "crates/clawdefender-mcp-server",
     "crates/clawdefender-certify",
     "crates/clawdefender-scanner",
+    "crates/clawdefender-guard",
 ]
 
 [workspace.package]

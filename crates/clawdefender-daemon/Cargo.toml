@@ -21,6 +21,7 @@ clawdefender-slm = { path = "../clawdefender-slm" }
 clawdefender-swarm = { path = "../clawdefender-swarm" }
 clawdefender-tui = { path = "../clawdefender-tui" }
 clawdefender-mcp-server = { path = "../clawdefender-mcp-server" }
+clawdefender-guard = { path = "../clawdefender-guard" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

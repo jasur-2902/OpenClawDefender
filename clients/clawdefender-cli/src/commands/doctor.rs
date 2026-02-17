@@ -199,7 +199,43 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         }
     }
 
-    // 9. Check for wrapped servers.
+    // 9. Guard API checks.
+    println!();
+    println!("Agent Guard:");
+
+    check_pass("Guard API enabled in config", config.guard_api.enabled);
+
+    if config.guard_api.enabled {
+        check_pass(
+            &format!("Guard API port configured ({})", config.guard_api.port),
+            config.guard_api.port > 0,
+        );
+
+        let guard_reachable = TcpStream::connect_timeout(
+            &format!("127.0.0.1:{}", config.guard_api.port)
+                .parse()
+                .unwrap(),
+            Duration::from_secs(1),
+        )
+        .is_ok();
+        if !check_pass(
+            &format!(
+                "Guard API reachable (http://127.0.0.1:{})",
+                config.guard_api.port
+            ),
+            guard_reachable,
+        ) {
+            hint("Run `clawdefender daemon start` to start the daemon with the guard API.");
+        }
+
+        // Check daemon accepting guard registrations via IPC.
+        let daemon_accepting = std::os::unix::net::UnixStream::connect(&config.daemon_socket_path).is_ok();
+        if !check_pass("Daemon accepting guard registrations", daemon_accepting) {
+            hint("The daemon must be running for guards to register.");
+        }
+    }
+
+    // 10. Check for wrapped servers.
     println!();
     println!("Wrapped Servers:");
     let mut found_any = false;
