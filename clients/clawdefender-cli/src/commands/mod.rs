@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod config;
+pub mod daemon;
 pub mod doctor;
 pub mod usage;
 pub mod init;
@@ -7,6 +8,7 @@ pub mod log;
 pub mod model;
 pub mod policy;
 pub mod proxy;
+pub mod serve;
 pub mod status;
 pub mod unwrap;
 pub mod wrap;

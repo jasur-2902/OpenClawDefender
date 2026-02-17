@@ -2,8 +2,13 @@
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use tracing::warn;
+use unicode_normalization::UnicodeNormalization;
 
 use clawdefender_core::event::os::{OsEvent, OsEventKind};
+
+/// Maximum allowed length for any string field from eslogger output.
+const MAX_FIELD_LENGTH: usize = 4096;
 
 /// Top-level event emitted by eslogger in JSON format.
 #[derive(Debug, Clone, Deserialize)]
@@ -105,6 +110,84 @@ pub struct SetModeEventData {
     pub mode: u32,
 }
 
+/// Truncate a string field to [`MAX_FIELD_LENGTH`] bytes on a char boundary.
+fn truncate_field(s: &str) -> String {
+    if s.len() <= MAX_FIELD_LENGTH {
+        s.to_string()
+    } else {
+        warn!(
+            len = s.len(),
+            max = MAX_FIELD_LENGTH,
+            "truncating oversized eslogger field"
+        );
+        let mut end = MAX_FIELD_LENGTH;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s[..end].to_string()
+    }
+}
+
+/// Strip null bytes from a string, truncating at the first null.
+/// Logs a warning if null bytes are found.
+fn strip_null_bytes(s: &str) -> String {
+    if let Some(pos) = s.find('\0') {
+        warn!(path = %&s[..pos], "null byte found in eslogger field, truncating");
+        s[..pos].to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Sanitize a filesystem path from eslogger output.
+///
+/// 1. Remove null bytes (truncate at first null)
+/// 2. Normalize to Unicode NFC
+/// 3. Resolve `..` and `.` components (logical canonicalization without touching the filesystem)
+/// 4. Enforce max field length
+pub fn sanitize_path(path: &str) -> String {
+    // Step 1: strip null bytes
+    let clean = strip_null_bytes(path);
+
+    // Step 2: Unicode NFC normalization
+    let normalized: String = clean.nfc().collect();
+
+    // Step 3: resolve .. and . components logically
+    let canonicalized = logical_canonicalize(&normalized);
+
+    // Step 4: enforce max length
+    truncate_field(&canonicalized)
+}
+
+/// Logically resolve `.` and `..` path components without filesystem access.
+/// Preserves leading `/` for absolute paths.
+fn logical_canonicalize(path: &str) -> String {
+    let is_absolute = path.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
+
+    for component in path.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                // Don't pop past root
+                if !parts.is_empty() && *parts.last().unwrap() != ".." {
+                    parts.pop();
+                }
+            }
+            other => parts.push(other),
+        }
+    }
+
+    let joined = parts.join("/");
+    if is_absolute {
+        format!("/{joined}")
+    } else if joined.is_empty() {
+        ".".to_string()
+    } else {
+        joined
+    }
+}
+
 impl From<EsloggerEvent> for OsEvent {
     fn from(ev: EsloggerEvent) -> Self {
         let timestamp: DateTime<Utc> = ev
@@ -120,8 +203,8 @@ impl From<EsloggerEvent> for OsEvent {
                         args: Vec::new(),
                     });
                 OsEventKind::Exec {
-                    target_path: data.target_path,
-                    args: data.args,
+                    target_path: sanitize_path(&data.target_path),
+                    args: data.args.into_iter().map(|a| truncate_field(&a)).collect(),
                 }
             }
             "open" => {
@@ -131,7 +214,7 @@ impl From<EsloggerEvent> for OsEvent {
                         flags: 0,
                     });
                 OsEventKind::Open {
-                    path: data.path,
+                    path: sanitize_path(&data.path),
                     flags: data.flags,
                 }
             }
@@ -140,7 +223,9 @@ impl From<EsloggerEvent> for OsEvent {
                     serde_json::from_value(ev.event.clone()).unwrap_or(CloseEventData {
                         path: String::new(),
                     });
-                OsEventKind::Close { path: data.path }
+                OsEventKind::Close {
+                    path: sanitize_path(&data.path),
+                }
             }
             "rename" => {
                 let data: RenameEventData =
@@ -149,8 +234,8 @@ impl From<EsloggerEvent> for OsEvent {
                         dest: String::new(),
                     });
                 OsEventKind::Rename {
-                    source: data.source,
-                    dest: data.dest,
+                    source: sanitize_path(&data.source),
+                    dest: sanitize_path(&data.dest),
                 }
             }
             "unlink" => {
@@ -158,7 +243,9 @@ impl From<EsloggerEvent> for OsEvent {
                     serde_json::from_value(ev.event.clone()).unwrap_or(UnlinkEventData {
                         path: String::new(),
                     });
-                OsEventKind::Unlink { path: data.path }
+                OsEventKind::Unlink {
+                    path: sanitize_path(&data.path),
+                }
             }
             "connect" => {
                 let data: ConnectEventData =
@@ -168,9 +255,9 @@ impl From<EsloggerEvent> for OsEvent {
                         socket_type: "tcp".to_string(),
                     });
                 OsEventKind::Connect {
-                    address: data.address,
+                    address: truncate_field(&data.address),
                     port: data.port,
-                    protocol: data.socket_type,
+                    protocol: truncate_field(&data.socket_type),
                 }
             }
             "fork" => {
@@ -194,7 +281,9 @@ impl From<EsloggerEvent> for OsEvent {
                     serde_json::from_value(ev.event.clone()).unwrap_or(PtyGrantEventData {
                         path: String::new(),
                     });
-                OsEventKind::PtyGrant { path: data.path }
+                OsEventKind::PtyGrant {
+                    path: sanitize_path(&data.path),
+                }
             }
             "setmode" => {
                 let data: SetModeEventData =
@@ -203,7 +292,7 @@ impl From<EsloggerEvent> for OsEvent {
                         mode: 0,
                     });
                 OsEventKind::SetMode {
-                    path: data.path,
+                    path: sanitize_path(&data.path),
                     mode: data.mode,
                 }
             }
@@ -219,10 +308,10 @@ impl From<EsloggerEvent> for OsEvent {
             timestamp,
             pid: ev.process.pid,
             ppid: ev.process.ppid,
-            process_path: ev.process.executable_path,
+            process_path: sanitize_path(&ev.process.executable_path),
             kind,
-            signing_id: ev.process.signing_id,
-            team_id: ev.process.team_id,
+            signing_id: ev.process.signing_id.map(|s| truncate_field(&s)),
+            team_id: ev.process.team_id.map(|s| truncate_field(&s)),
         }
     }
 }

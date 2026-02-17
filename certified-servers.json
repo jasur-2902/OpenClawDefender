@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "last_updated": "2026-02-17",
+  "servers": [
+    {
+      "name": "ClawDefender MCP Server",
+      "version": "0.5.0",
+      "compliance_level": 3,
+      "certified_date": "2026-02",
+      "repository": "https://github.com/clawdefender/clawdefender",
+      "description": "Official ClawDefender MCP server for policy management",
+      "notes": "Bundled with ClawDefender"
+    },
+    {
+      "name": "Example Python Server",
+      "version": "0.1.0",
+      "compliance_level": 3,
+      "certified_date": "2026-02",
+      "repository": "https://github.com/clawdefender/clawdefender/tree/main/examples/python-mcp-server",
+      "description": "Reference implementation of a Level 3 Claw Compliant Python MCP server",
+      "notes": "Example project"
+    },
+    {
+      "name": "Example TypeScript Server",
+      "version": "0.1.0",
+      "compliance_level": 3,
+      "certified_date": "2026-02",
+      "repository": "https://github.com/clawdefender/clawdefender/tree/main/examples/typescript-mcp-server",
+      "description": "Reference implementation of a Level 3 Claw Compliant TypeScript MCP server",
+      "notes": "Example project"
+    }
+  ]
+}

@@ -14,6 +14,8 @@ clawdefender-core = { path = "../../crates/clawdefender-core" }
 clawdefender-mcp-proxy = { path = "../../crates/clawdefender-mcp-proxy" }
 clawdefender-slm = { path = "../../crates/clawdefender-slm" }
 clawdefender-swarm = { path = "../../crates/clawdefender-swarm" }
+clawdefender-mcp-server = { path = "../../crates/clawdefender-mcp-server" }
+clawdefender-certify = { path = "../../crates/clawdefender-certify" }
 clap = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
@@ -22,6 +24,7 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 open = "5"
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -10,10 +10,23 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
     "exec", "open", "close", "rename", "unlink", "connect", "fork", "exit", "pty_grant", "setmode",
 ];
 
+/// Maximum JSON line length we will attempt to parse (1 MB).
+/// Lines exceeding this are rejected to prevent memory abuse.
+const MAX_JSON_LINE_LENGTH: usize = 1_048_576;
+
 /// Parse a single JSON line from eslogger output into an [`EsloggerEvent`].
 ///
-/// Returns an error for malformed JSON or unknown event types (after logging a warning).
+/// Returns an error for malformed JSON, unknown event types, or oversized lines.
 pub fn parse_event(json_line: &str) -> Result<EsloggerEvent> {
+    if json_line.len() > MAX_JSON_LINE_LENGTH {
+        warn!(
+            len = json_line.len(),
+            max = MAX_JSON_LINE_LENGTH,
+            "rejecting oversized eslogger JSON line"
+        );
+        anyhow::bail!("eslogger JSON line exceeds maximum length ({} > {})", json_line.len(), MAX_JSON_LINE_LENGTH);
+    }
+
     let event: EsloggerEvent =
         serde_json::from_str(json_line).context("failed to parse eslogger JSON line")?;
 

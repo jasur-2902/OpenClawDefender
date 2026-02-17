@@ -1,10 +1,13 @@
-//! `clawdefender policy list/add/test/reload` commands.
+//! `clawdefender policy list/add/test/reload/template-list/template-apply/suggest` commands.
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use clawdefender_core::audit::logger::FileAuditLogger;
+use clawdefender_core::audit::{AuditFilter, AuditLogger};
 use clawdefender_core::config::ClawConfig;
 use clawdefender_core::event::mcp::{McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall};
 use clawdefender_core::policy::engine::DefaultPolicyEngine;
@@ -189,6 +192,158 @@ fn read_line<R: BufRead>(reader: &mut R) -> Result<String> {
     let mut line = String::new();
     reader.read_line(&mut line)?;
     Ok(line.trim().to_string())
+}
+
+/// Embedded policy templates (compiled into the binary).
+const TEMPLATES: &[(&str, &str, &str)] = &[
+    ("audit-only", "Log everything, block nothing", include_str!("../../../../policies/templates/audit-only.toml")),
+    ("data-science", "Policy for data science workflows", include_str!("../../../../policies/templates/data-science.toml")),
+    ("development", "Balanced policy for development", include_str!("../../../../policies/templates/development.toml")),
+    ("strict", "Maximum security, blocks shell and network", include_str!("../../../../policies/templates/strict.toml")),
+];
+
+/// List available policy templates.
+pub fn template_list() -> Result<()> {
+    println!("Available policy templates:");
+    println!();
+    println!("  {:<16} DESCRIPTION", "NAME");
+    println!("  {}", "-".repeat(60));
+    for (name, description, _) in TEMPLATES {
+        println!("  {:<16} {}", name, description);
+    }
+    println!();
+    println!("Apply a template: clawdefender policy template-apply <name>");
+    Ok(())
+}
+
+/// Apply a policy template by copying it to the policy path.
+pub fn template_apply(name: &str, policy_path: &Path) -> Result<()> {
+    let template = TEMPLATES
+        .iter()
+        .find(|(n, _, _)| *n == name)
+        .ok_or_else(|| anyhow::anyhow!(
+            "Unknown template: {name}\nRun `clawdefender policy template-list` to see available templates."
+        ))?;
+
+    // Backup existing policy if it exists.
+    if policy_path.exists() {
+        let backup = policy_path.with_extension("toml.bak");
+        std::fs::copy(policy_path, &backup)
+            .with_context(|| format!("backing up {}", policy_path.display()))?;
+        println!("  Backed up existing policy to {}", backup.display());
+    }
+
+    // Ensure parent directory exists.
+    if let Some(parent) = policy_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    std::fs::write(policy_path, template.2)
+        .with_context(|| format!("writing template to {}", policy_path.display()))?;
+
+    println!("Applied '{}' template to {}", name, policy_path.display());
+    println!();
+    println!("Review your policy: clawdefender policy list");
+
+    Ok(())
+}
+
+/// Analyze audit log patterns and suggest policy rules.
+pub fn suggest(config: &ClawConfig) -> Result<()> {
+    let logger = FileAuditLogger::new(
+        config.audit_log_path.clone(),
+        config.log_rotation.clone(),
+    )?;
+
+    // Query recent mcp-server source events.
+    let mcp_filter = AuditFilter {
+        source: Some("mcp-server".to_string()),
+        limit: 0,
+        ..Default::default()
+    };
+    let mcp_records = logger.query(&mcp_filter)?;
+
+    // Also query mcp-proxy events to get a broader picture.
+    let proxy_filter = AuditFilter {
+        source: Some("mcp-proxy".to_string()),
+        limit: 0,
+        ..Default::default()
+    };
+    let proxy_records = logger.query(&proxy_filter)?;
+
+    let all_records: Vec<_> = mcp_records.into_iter().chain(proxy_records).collect();
+
+    if all_records.is_empty() {
+        println!("No audit records found. Run some MCP operations first, then try again.");
+        return Ok(());
+    }
+
+    // Analyze patterns: group by (action_taken, tool_name/event_summary).
+    let mut allow_patterns: HashMap<String, u64> = HashMap::new();
+    let mut block_patterns: HashMap<String, u64> = HashMap::new();
+
+    for record in &all_records {
+        let key = if let Some(ref tool) = record.tool_name {
+            tool.clone()
+        } else {
+            record.event_summary.clone()
+        };
+
+        match record.action_taken.as_str() {
+            "allow" | "log" => {
+                *allow_patterns.entry(key).or_insert(0) += 1;
+            }
+            "block" => {
+                *block_patterns.entry(key).or_insert(0) += 1;
+            }
+            _ => {}
+        }
+    }
+
+    println!("Policy Suggestions");
+    println!("Based on {} audit records", all_records.len());
+    println!();
+
+    let mut suggestions = Vec::new();
+
+    // Suggest auto-allow for frequently allowed patterns (>= 5 occurrences).
+    let mut allowed: Vec<_> = allow_patterns.into_iter().collect();
+    allowed.sort_by(|a, b| b.1.cmp(&a.1));
+    for (pattern, count) in &allowed {
+        if *count >= 5 {
+            suggestions.push(format!(
+                "  Auto-allow '{}' (observed {} times as allowed)",
+                pattern, count
+            ));
+        }
+    }
+
+    // Suggest keeping blocks for frequently blocked patterns.
+    let mut blocked: Vec<_> = block_patterns.into_iter().collect();
+    blocked.sort_by(|a, b| b.1.cmp(&a.1));
+    for (pattern, count) in &blocked {
+        if *count >= 2 {
+            suggestions.push(format!(
+                "  Keep blocking '{}' (blocked {} times)",
+                pattern, count
+            ));
+        }
+    }
+
+    if suggestions.is_empty() {
+        println!("  No strong patterns detected yet. Collect more audit data.");
+    } else {
+        println!("Suggested rules:");
+        println!();
+        for s in &suggestions {
+            println!("{}", s);
+        }
+        println!();
+        println!("To apply these suggestions, add rules to your policy file:");
+        println!("  {}", config.policy_path.display());
+    }
+
+    Ok(())
 }
 
 /// Convert a JSON fixture value into an McpEvent for policy evaluation.

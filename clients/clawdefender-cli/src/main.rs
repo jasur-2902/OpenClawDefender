@@ -113,6 +113,38 @@ enum Commands {
         #[arg(long)]
         list: bool,
     },
+
+    /// Manage the ClawDefender daemon lifecycle.
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonAction,
+    },
+
+    /// Certify an MCP server for Claw Compliant compliance.
+    Certify {
+        /// Server command and arguments (everything after --).
+        #[arg(last = true)]
+        server_command: Vec<String>,
+
+        /// Output JSON format.
+        #[arg(long)]
+        json: bool,
+
+        /// Output file path.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Start the ClawDefender MCP server (cooperative security endpoint).
+    Serve {
+        /// Use stdio transport (default).
+        #[arg(long, default_value = "true")]
+        stdio: bool,
+
+        /// HTTP port to listen on (0 to disable HTTP).
+        #[arg(long, default_value = "3201")]
+        http_port: u16,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -165,6 +197,18 @@ enum ConfigAction {
 }
 
 #[derive(Subcommand, Debug)]
+enum DaemonAction {
+    /// Start the daemon as a background process.
+    Start,
+    /// Stop the running daemon.
+    Stop,
+    /// Show daemon status and subsystem information.
+    Status,
+    /// Restart the daemon (stop then start).
+    Restart,
+}
+
+#[derive(Subcommand, Debug)]
 enum PolicyAction {
     /// List loaded policy rules.
     List,
@@ -180,6 +224,18 @@ enum PolicyAction {
 
     /// Reload policy rules (signal running daemon).
     Reload,
+
+    /// List available policy templates.
+    TemplateList,
+
+    /// Apply a policy template (copies it to the config policy path).
+    TemplateApply {
+        /// Template name (e.g. "development", "strict", "audit-only", "data-science").
+        name: String,
+    },
+
+    /// Suggest policy rules based on audit log patterns.
+    Suggest,
 }
 
 #[tokio::main]
@@ -225,6 +281,15 @@ async fn main() -> anyhow::Result<()> {
             PolicyAction::Reload => {
                 commands::policy::reload(&config)?;
             }
+            PolicyAction::TemplateList => {
+                commands::policy::template_list()?;
+            }
+            PolicyAction::TemplateApply { name } => {
+                commands::policy::template_apply(&name, &config.policy_path)?;
+            }
+            PolicyAction::Suggest => {
+                commands::policy::suggest(&config)?;
+            }
         },
 
         Commands::Log {
@@ -256,6 +321,31 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 anyhow::bail!("Provide an event ID or use --list to see sessions.\nUsage: clawdefender chat <event_id>");
             }
+        }
+
+        Commands::Daemon { action } => match action {
+            DaemonAction::Start => commands::daemon::start(&config)?,
+            DaemonAction::Stop => commands::daemon::stop(&config)?,
+            DaemonAction::Status => commands::daemon::status(&config)?,
+            DaemonAction::Restart => commands::daemon::restart(&config)?,
+        },
+
+        Commands::Certify {
+            server_command,
+            json,
+            output,
+        } => {
+            let certify_config = clawdefender_certify::CertifyConfig {
+                server_command,
+                json,
+                output,
+                server_dir: None,
+            };
+            clawdefender_certify::run_certification(certify_config).await?;
+        }
+
+        Commands::Serve { stdio, http_port } => {
+            commands::serve::run(&config, stdio, http_port).await?;
         }
 
         Commands::Config { action } => {

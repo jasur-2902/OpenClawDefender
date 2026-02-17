@@ -1,0 +1,25 @@
+# ClawDefender manifest for the SDK test server.
+# Used by the certification harness to verify compliance.
+
+[server]
+name = "clawdefender-test-server"
+version = "0.5.0"
+description = "Test MCP server exercising all ClawDefender SDK checkpoints"
+
+[compliance]
+level = 3
+risk_level = "medium"
+
+[[permissions]]
+resource = "file_read"
+justification = "Reads files as requested by the user"
+
+[[permissions]]
+resource = "shell_execute"
+justification = "Executes commands as requested by the user"
+
+[checkpoints]
+check_intent = true
+request_permission = true
+report_action = true
+get_policy = true

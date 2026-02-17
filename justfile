@@ -57,6 +57,10 @@ clean:
 docs:
     cargo doc --workspace --no-deps --open
 
+# Build macOS menu bar app
+build-menubar:
+    cd clients/clawdefender-menubar && swift build
+
 # Run JSON-RPC fuzzer (requires nightly)
 fuzz-jsonrpc:
     cargo +nightly fuzz run fuzz_jsonrpc_parser

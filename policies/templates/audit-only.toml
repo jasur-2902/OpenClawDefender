@@ -1,0 +1,32 @@
+# ClawDefender Policy Template: Audit Only
+#
+# Logs every event without blocking or prompting. Use this policy when you
+# want full visibility into what an AI agent is doing without any interference.
+#
+# Ideal for:
+#   - Evaluating a new agent before writing restrictive policies
+#   - Compliance and auditing in low-risk environments
+#   - Debugging agent behavior
+#
+# Usage:
+#   cp policies/templates/audit-only.toml ~/.config/clawdefender/policy.toml
+
+[metadata]
+name = "audit-only"
+version = "0.1.0"
+description = "Log everything, block nothing -- for visibility without interference"
+
+# ===========================================================================
+# Single rule: log everything
+# ===========================================================================
+
+# This catch-all rule matches every event and logs it. No actions are blocked
+# or prompted. The audit log records all tool calls, resource accesses, and
+# other MCP events for later review.
+[rules.log_everything]
+description = "Log all events for auditing without blocking any actions"
+action = "log"
+message = "Logged for audit"
+priority = 1000
+[rules.log_everything.match]
+any = true

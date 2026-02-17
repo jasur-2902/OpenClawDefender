@@ -1,0 +1,137 @@
+# ClawDefender Policy Template: Development
+#
+# A balanced policy for everyday development work. Allows file reads in
+# common project directories, prompts on writes and shell execution, and
+# blocks access to credentials and sensitive system files.
+#
+# Usage:
+#   cp policies/templates/development.toml ~/.config/clawdefender/policy.toml
+
+[metadata]
+name = "development"
+version = "0.1.0"
+description = "Balanced policy for development -- allows project reads, prompts on writes and shell, blocks credentials"
+
+# ===========================================================================
+# BLOCK rules -- deny access to sensitive credentials and secrets
+# ===========================================================================
+
+# Block SSH private keys to prevent exfiltration
+[rules.block_ssh_keys]
+description = "Block access to SSH private keys"
+action = "block"
+message = "Access to SSH private keys is blocked"
+priority = 5
+[rules.block_ssh_keys.match]
+resource_path = ["~/.ssh/id_*", "~/.ssh/*.pem"]
+
+# Block cloud provider credentials
+[rules.block_cloud_credentials]
+description = "Block access to cloud provider credentials"
+action = "block"
+message = "Access to cloud credentials is blocked"
+priority = 6
+[rules.block_cloud_credentials.match]
+resource_path = ["~/.aws/*", "~/.config/gcloud/*", "~/.azure/*"]
+
+# Block Kubernetes configuration (contains cluster credentials)
+[rules.block_kube_config]
+description = "Block access to Kubernetes config"
+action = "block"
+message = "Access to kubeconfig is blocked"
+priority = 7
+[rules.block_kube_config.match]
+resource_path = ["~/.kube/config"]
+
+# Block environment files that may contain secrets
+[rules.block_env_files]
+description = "Block access to .env files outside project directories"
+action = "block"
+message = "Access to .env files outside project is blocked"
+priority = 8
+[rules.block_env_files.match]
+resource_path = ["~/.env", "~/.env.*"]
+
+# ===========================================================================
+# ALLOW rules -- explicitly permitted safe operations
+# ===========================================================================
+
+# Allow reading files in common project directories
+[rules.allow_project_reads]
+description = "Allow file reads in project directories"
+action = "allow"
+message = "Project file read allowed"
+priority = 10
+[rules.allow_project_reads.match]
+resource_path = ["~/Projects/**", "~/workspace/**", "~/repos/**", "~/src/**", "~/code/**"]
+
+# Allow read-only MCP listing operations
+[rules.allow_list_operations]
+description = "Allow MCP list operations (tools, resources, prompts)"
+action = "allow"
+message = "List operation allowed"
+priority = 11
+[rules.allow_list_operations.match]
+method = ["tools/list", "resources/list", "prompts/list"]
+
+# Allow common build tools and package managers
+[rules.allow_build_tools]
+description = "Allow common build and package manager commands"
+action = "allow"
+message = "Build tool execution allowed"
+priority = 12
+[rules.allow_build_tools.match]
+tool_name = ["npm_install", "pip_install", "cargo_build", "make"]
+
+# ===========================================================================
+# PROMPT rules -- require user approval for sensitive operations
+# ===========================================================================
+
+# Prompt before writing any file
+[rules.prompt_file_writes]
+description = "Prompt before writing files"
+action = "prompt"
+message = "An AI agent wants to write a file. Allow?"
+priority = 30
+[rules.prompt_file_writes.match]
+tool_name = ["write_file", "create_file", "edit_file"]
+
+# Prompt before shell command execution
+[rules.prompt_shell_execution]
+description = "Prompt before shell command execution"
+action = "prompt"
+message = "An AI agent wants to execute a shell command. Allow?"
+priority = 31
+[rules.prompt_shell_execution.match]
+tool_name = ["run_command", "execute", "exec", "bash", "shell", "terminal"]
+
+# Prompt before network operations
+[rules.prompt_network]
+description = "Prompt before network operations"
+action = "prompt"
+message = "An AI agent wants to make a network request. Allow?"
+priority = 32
+[rules.prompt_network.match]
+tool_name = ["fetch", "http_request", "curl", "wget", "download", "upload"]
+
+# Prompt before git push (commits are safer, pushes affect remotes)
+[rules.prompt_git_push]
+description = "Prompt before pushing to remote"
+action = "prompt"
+message = "An AI agent wants to push to a remote repository. Allow?"
+priority = 33
+[rules.prompt_git_push.match]
+tool_name = ["git_push"]
+
+# ===========================================================================
+# DEFAULT -- catch-all logging rule
+# ===========================================================================
+
+# Log everything that does not match a more specific rule
+[rules.default_log]
+description = "Log all unmatched events for auditing"
+action = "log"
+message = "Event logged (no specific rule matched)"
+priority = 1000
+[rules.default_log.match]
+any = true

@@ -1,0 +1,140 @@
+# ClawDefender Policy Template: Data Science
+#
+# Tailored for data science and ML workflows. Allows Jupyter-style operations,
+# data file reads, and pip/conda installs. Prompts on network access and
+# file writes outside the workspace. Blocks credential access.
+#
+# Usage:
+#   cp policies/templates/data-science.toml ~/.config/clawdefender/policy.toml
+
+[metadata]
+name = "data-science"
+version = "0.1.0"
+description = "Policy for data science workflows -- allows Jupyter, data reads, pip; prompts on network and writes outside workspace"
+
+# ===========================================================================
+# BLOCK rules -- protect credentials
+# ===========================================================================
+
+# Block access to SSH keys and cloud credentials
+[rules.block_credentials]
+description = "Block access to credentials and secrets"
+action = "block"
+message = "Credential access is blocked"
+priority = 5
+[rules.block_credentials.match]
+resource_path = [
+    "~/.ssh/**",
+    "~/.aws/**",
+    "~/.config/gcloud/**",
+    "~/.azure/**",
+    "~/.kube/**",
+    "~/.gnupg/**",
+]
+
+# Block access to shell history
+[rules.block_history]
+description = "Block shell history access"
+action = "block"
+message = "Shell history access is blocked"
+priority = 6
+[rules.block_history.match]
+resource_path = ["~/.bash_history", "~/.zsh_history", "~/.history"]
+
+# ===========================================================================
+# ALLOW rules -- common data science operations
+# ===========================================================================
+
+# Allow reading data files in workspace and common data directories
+[rules.allow_data_reads]
+description = "Allow reading data files in workspace and data directories"
+action = "allow"
+message = "Data file read allowed"
+priority = 10
+[rules.allow_data_reads.match]
+resource_path = [
+    "~/workspace/**",
+    "~/Projects/**",
+    "~/notebooks/**",
+    "~/data/**",
+    "/tmp/**",
+]
+
+# Allow writing to workspace and output directories
+[rules.allow_workspace_writes]
+description = "Allow writing files in workspace"
+action = "allow"
+message = "Workspace write allowed"
+priority = 11
+[rules.allow_workspace_writes.match]
+resource_path = ["~/workspace/**", "~/Projects/**", "~/notebooks/**", "/tmp/**"]
+tool_name = ["write_file", "create_file", "edit_file"]
+
+# Allow pip and conda package installs
+[rules.allow_package_install]
+description = "Allow pip and conda installs"
+action = "allow"
+message = "Package install allowed"
+priority = 12
+[rules.allow_package_install.match]
+tool_name = ["pip_install", "conda_install"]
+
+# Allow Jupyter kernel operations
+[rules.allow_jupyter]
+description = "Allow Jupyter notebook operations"
+action = "allow"
+message = "Jupyter operation allowed"
+priority = 13
+[rules.allow_jupyter.match]
+tool_name = ["execute_cell", "run_cell", "kernel_execute", "jupyter_execute"]
+
+# Allow MCP listing operations
+[rules.allow_list_operations]
+description = "Allow MCP list operations"
+action = "allow"
+priority = 14
+[rules.allow_list_operations.match]
+method = ["tools/list", "resources/list", "prompts/list"]
+
+# ===========================================================================
+# PROMPT rules -- require approval for sensitive operations
+# ===========================================================================
+
+# Prompt before network access (downloading datasets, API calls)
+[rules.prompt_network]
+description = "Prompt before network operations"
+action = "prompt"
+message = "An AI agent wants to make a network request. Allow?"
+priority = 30
+[rules.prompt_network.match]
+tool_name = ["fetch", "http_request", "curl", "wget", "download", "upload"]
+
+# Prompt before file writes outside workspace
+[rules.prompt_writes_outside_workspace]
+description = "Prompt before writing files outside workspace"
+action = "prompt"
+message = "An AI agent wants to write a file outside the workspace. Allow?"
+priority = 31
+[rules.prompt_writes_outside_workspace.match]
+tool_name = ["write_file", "create_file", "edit_file"]
+
+# Prompt before shell execution (for running scripts, training jobs)
+[rules.prompt_shell]
+description = "Prompt before shell command execution"
+action = "prompt"
+message = "An AI agent wants to execute a shell command. Allow?"
+priority = 32
+[rules.prompt_shell.match]
+tool_name = ["run_command", "execute", "exec", "bash", "shell"]
+
+# ===========================================================================
+# DEFAULT -- catch-all logging
+# ===========================================================================
+
+[rules.default_log]
+description = "Log all unmatched events for auditing"
+action = "log"
+message = "Event logged (no specific rule matched)"
+priority = 1000
+[rules.default_log.match]
+any = true

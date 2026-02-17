@@ -1,0 +1,127 @@
+# ClawDefender Policy Template: Strict
+#
+# Maximum security. Blocks all shell execution and network access. Allows
+# file reads only within a single project directory. Prompts on everything
+# else. Suitable for untrusted or experimental agents.
+#
+# Usage:
+#   cp policies/templates/strict.toml ~/.config/clawdefender/policy.toml
+#   # Edit the project_dir path below to match your project
+
+[metadata]
+name = "strict"
+version = "0.1.0"
+description = "Maximum security -- blocks shell and network, allows reads in one project dir, prompts on everything else"
+
+# ===========================================================================
+# BLOCK rules -- hard deny dangerous operations
+# ===========================================================================
+
+# Block all shell command execution -- no exceptions
+[rules.block_shell]
+description = "Block all shell command execution"
+action = "block"
+message = "Shell execution is blocked by strict policy"
+priority = 1
+[rules.block_shell.match]
+tool_name = ["run_command", "execute", "exec", "bash", "shell", "terminal", "subprocess", "system"]
+
+# Block all network access
+[rules.block_network]
+description = "Block all network operations"
+action = "block"
+message = "Network access is blocked by strict policy"
+priority = 2
+[rules.block_network.match]
+tool_name = ["fetch", "http_request", "curl", "wget", "download", "upload", "browse"]
+
+# Block all credential paths
+[rules.block_credentials]
+description = "Block access to all credential files"
+action = "block"
+message = "Credential access is blocked"
+priority = 3
+[rules.block_credentials.match]
+resource_path = [
+    "~/.ssh/**",
+    "~/.gnupg/**",
+    "~/.aws/**",
+    "~/.config/gcloud/**",
+    "~/.azure/**",
+    "~/.kube/**",
+    "~/Library/Keychains/**",
+    "/Library/Keychains/**",
+]
+
+# Block access to shell history
+[rules.block_history]
+description = "Block access to shell history"
+action = "block"
+message = "Shell history access is blocked"
+priority = 4
+[rules.block_history.match]
+resource_path = ["~/.bash_history", "~/.zsh_history", "~/.history"]
+
+# Block writes outside the project directory
+[rules.block_writes_outside_project]
+description = "Block file writes outside the project directory"
+action = "block"
+message = "File writes outside the project directory are blocked"
+priority = 5
+[rules.block_writes_outside_project.match]
+tool_name = ["write_file", "create_file", "edit_file"]
+# Note: This blocks all writes; the allow rule below re-enables project writes
+
+# Block sampling/createMessage
+[rules.block_sampling]
+description = "Block sampling requests"
+action = "block"
+message = "Sampling requests are blocked by strict policy"
+priority = 6
+[rules.block_sampling.match]
+method = ["sampling/createMessage"]
+
+# ===========================================================================
+# ALLOW rules -- minimal safe operations
+# ===========================================================================
+
+# Allow reading files in the project directory only
+# IMPORTANT: Change this path to your actual project directory
+[rules.allow_project_reads]
+description = "Allow file reads in the project directory"
+action = "allow"
+message = "Project file read allowed"
+priority = 10
+[rules.allow_project_reads.match]
+resource_path = ["~/Projects/my-project/**"]
+
+# Allow MCP listing operations (read-only metadata)
+[rules.allow_list_operations]
+description = "Allow MCP list operations"
+action = "allow"
+priority = 11
+[rules.allow_list_operations.match]
+method = ["tools/list", "resources/list", "prompts/list"]
+
+# ===========================================================================
+# PROMPT rules -- everything else requires explicit approval
+# ===========================================================================
+
+# Prompt on file writes within the project directory
+[rules.prompt_project_writes]
+description = "Prompt before writing files in the project"
+action = "prompt"
+message = "An AI agent wants to write a file in the project. Allow?"
+priority = 20
+[rules.prompt_project_writes.match]
+tool_name = ["write_file", "create_file", "edit_file"]
+resource_path = ["~/Projects/my-project/**"]
+
+# Prompt on everything else not already handled
+[rules.prompt_all_other]
+description = "Prompt on all unmatched operations"
+action = "prompt"
+message = "An AI agent wants to perform an action. Allow?"
+priority = 500
+[rules.prompt_all_other.match]
+any = true

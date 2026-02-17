@@ -237,3 +237,224 @@ priority = 0
 [rules.log_everything.match]
 any = true
 ```
+
+## ClawDefender MCP Server
+
+In addition to the proxy, ClawDefender provides its own MCP server that other MCP servers can call to declare intent, request permission, and report actions. This enables cooperative security participation.
+
+### Starting the MCP Server
+
+```bash
+# stdio transport (for direct integration)
+clawdefender serve
+
+# HTTP transport on port 3201
+clawdefender serve --http --port 3201
+```
+
+### Tool Definitions
+
+The MCP server exposes four tools via the standard `tools/list` response:
+
+#### checkIntent
+
+Pre-flight check: will this action be allowed by policy?
+
+```json
+{
+  "name": "checkIntent",
+  "description": "Check whether a planned action is allowed by ClawDefender policy.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "description": { "type": "string", "description": "Human-readable description of what you intend to do" },
+      "action_type": { "type": "string", "enum": ["file_read", "file_write", "file_delete", "shell_execute", "network_request", "resource_access", "other"] },
+      "target": { "type": "string", "description": "Target resource: file path, URL, command, etc." },
+      "reason": { "type": "string", "description": "Optional justification" }
+    },
+    "required": ["description", "action_type", "target"]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "allowed": true,
+  "risk_level": "Low",
+  "explanation": "Action allowed: FileRead on '/project/src/main.rs' is permitted by current policy.",
+  "policy_rule": "allow"
+}
+```
+
+When blocked:
+```json
+{
+  "allowed": false,
+  "risk_level": "High",
+  "explanation": "Action blocked: FileRead on '/home/user/.ssh/id_rsa' is not permitted by current policy.",
+  "policy_rule": "block",
+  "suggestions": [
+    "Use environment variables or a secrets manager instead of reading SSH keys directly"
+  ]
+}
+```
+
+#### requestPermission
+
+Request explicit approval for a resource operation.
+
+```json
+{
+  "name": "requestPermission",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "resource": { "type": "string", "description": "Resource to access (exact path, no wildcards)" },
+      "operation": { "type": "string", "enum": ["read", "write", "execute", "delete", "connect"] },
+      "justification": { "type": "string", "description": "Why you need this access" },
+      "timeout_seconds": { "type": "integer", "default": 30 }
+    },
+    "required": ["resource", "operation", "justification"]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "granted": true,
+  "scope": "session",
+  "expires_at": null
+}
+```
+
+#### reportAction
+
+Report an action that has already been performed, for audit logging.
+
+```json
+{
+  "name": "reportAction",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "description": { "type": "string", "description": "What happened" },
+      "action_type": { "type": "string", "enum": ["file_read", "file_write", "file_delete", "shell_execute", "network_request", "resource_access", "other"] },
+      "target": { "type": "string", "description": "Target resource" },
+      "result": { "type": "string", "enum": ["success", "failure", "partial"] },
+      "details": { "type": "object", "description": "Additional details" }
+    },
+    "required": ["description", "action_type", "target", "result"]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "recorded": true,
+  "event_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+#### getPolicy
+
+Query the current security policy rules.
+
+```json
+{
+  "name": "getPolicy",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "resource": { "type": "string", "description": "Filter by resource path" },
+      "action_type": { "type": "string", "enum": ["file_read", "file_write", "file_delete", "shell_execute", "network_request", "resource_access", "other"] },
+      "tool_name": { "type": "string", "description": "Filter by tool name" }
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "rules": [
+    {
+      "name": "matched_block",
+      "description": "Policy evaluation result for query",
+      "action": "block",
+      "message": "SSH key access is not allowed",
+      "priority": 0
+    }
+  ],
+  "default_action": "log"
+}
+```
+
+### Interaction Protocol
+
+SDK clients communicate with the ClawDefender MCP server using standard JSON-RPC 2.0 over the MCP protocol.
+
+**Typical flow:**
+
+1. Client sends `initialize` request, receives server capabilities
+2. Client sends `tools/list` to discover available tools
+3. Client calls `getPolicy` to understand current rules
+4. Before each action, client calls `checkIntent` via `tools/call`
+5. If intent requires approval, client calls `requestPermission`
+6. After action completes, client calls `reportAction`
+
+**Example checkIntent call:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "checkIntent",
+    "arguments": {
+      "description": "Read configuration file",
+      "action_type": "file_read",
+      "target": "/project/config.toml",
+      "reason": "Need to load project settings"
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "{\"allowed\":true,\"risk_level\":\"Low\",\"explanation\":\"Action allowed...\"}"
+    }]
+  }
+}
+```
+
+### Rate Limits
+
+| Tool | Limit | Error Code |
+|------|-------|------------|
+| `checkIntent` | 100 calls/minute per caller | -32000 |
+| `requestPermission` | 10 calls/minute per caller | -32000 |
+| `reportAction` | 1000 calls/minute per caller | -32000 |
+| `getPolicy` | No limit | -- |
+
+### HTTP Authentication
+
+When using HTTP transport, the MCP server supports Bearer token authentication:
+
+```bash
+# Start with auto-generated token
+clawdefender serve --http --port 3201
+
+# Token is printed to stderr on startup
+# Clients must include: Authorization: Bearer <token>
+```

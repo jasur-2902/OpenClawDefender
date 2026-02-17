@@ -47,6 +47,42 @@ pub struct ClawConfig {
     /// Path to the policy rules file.
     #[serde(default = "default_policy_path")]
     pub policy_path: PathBuf,
+
+    /// Path to the sensor configuration file.
+    #[serde(default = "default_sensor_config_path")]
+    pub sensor_config_path: PathBuf,
+
+    /// MCP server configuration.
+    #[serde(default)]
+    pub mcp_server: McpServerConfig,
+}
+
+/// Configuration for the ClawDefender MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerConfig {
+    /// Whether the MCP server is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Whether to use stdio transport.
+    #[serde(default = "default_true")]
+    pub stdio: bool,
+    /// HTTP port for the MCP server.
+    #[serde(default = "default_mcp_server_port")]
+    pub http_port: u16,
+}
+
+fn default_mcp_server_port() -> u16 {
+    3201
+}
+
+impl Default for McpServerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            stdio: true,
+            http_port: default_mcp_server_port(),
+        }
+    }
 }
 
 /// Log rotation settings.
@@ -72,6 +108,141 @@ pub struct EsloggerConfig {
     /// Whether the eslogger sensor is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Extra process names to ignore in the pre-filter.
+    #[serde(default)]
+    pub ignore_processes: Vec<String>,
+    /// Extra path prefixes to ignore in the pre-filter.
+    #[serde(default)]
+    pub ignore_paths: Vec<String>,
+}
+
+/// Unified sensor configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SensorConfig {
+    /// Eslogger sensor settings.
+    #[serde(default)]
+    pub eslogger: EsloggerSensorConfig,
+    /// FSEvents sensor settings.
+    #[serde(default)]
+    pub fsevents: FsEventsSensorConfig,
+    /// Correlation engine settings.
+    #[serde(default)]
+    pub correlation: CorrelationConfig,
+    /// Process tree settings.
+    #[serde(default)]
+    pub process_tree: ProcessTreeConfig,
+}
+
+/// Eslogger-specific sensor config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EsloggerSensorConfig {
+    /// Whether the eslogger sensor is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// ES event types to subscribe to.
+    #[serde(default = "default_es_events")]
+    pub events: Vec<String>,
+    /// Channel buffer capacity.
+    #[serde(default = "default_channel_capacity")]
+    pub channel_capacity: usize,
+    /// Extra process names to ignore.
+    #[serde(default)]
+    pub ignore_processes: Vec<String>,
+    /// Extra path prefixes to ignore.
+    #[serde(default)]
+    pub ignore_paths: Vec<String>,
+}
+
+/// FSEvents sensor config.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FsEventsSensorConfig {
+    /// Whether FSEvents monitoring is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Paths to watch.
+    #[serde(default)]
+    pub watch_paths: Vec<PathBuf>,
+}
+
+/// Correlation engine config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationConfig {
+    /// Window in milliseconds for correlating MCP events to OS events.
+    #[serde(default = "default_correlation_window_ms")]
+    pub window_ms: u64,
+}
+
+/// Process tree config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessTreeConfig {
+    /// How often to refresh the process tree (seconds).
+    #[serde(default = "default_refresh_interval_secs")]
+    pub refresh_interval_secs: u64,
+}
+
+fn default_channel_capacity() -> usize {
+    10_000
+}
+
+fn default_correlation_window_ms() -> u64 {
+    500
+}
+
+fn default_refresh_interval_secs() -> u64 {
+    5
+}
+
+impl SensorConfig {
+    /// Load sensor configuration from a TOML file.
+    ///
+    /// Returns default configuration if the file does not exist.
+    pub fn load(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let contents = std::fs::read_to_string(path)?;
+        let config: SensorConfig = toml::from_str(&contents)?;
+        Ok(config)
+    }
+}
+
+impl Default for SensorConfig {
+    fn default() -> Self {
+        Self {
+            eslogger: EsloggerSensorConfig::default(),
+            fsevents: FsEventsSensorConfig::default(),
+            correlation: CorrelationConfig::default(),
+            process_tree: ProcessTreeConfig::default(),
+        }
+    }
+}
+
+impl Default for EsloggerSensorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            events: default_es_events(),
+            channel_capacity: default_channel_capacity(),
+            ignore_processes: Vec::new(),
+            ignore_paths: Vec::new(),
+        }
+    }
+}
+
+impl Default for CorrelationConfig {
+    fn default() -> Self {
+        Self {
+            window_ms: default_correlation_window_ms(),
+        }
+    }
+}
+
+impl Default for ProcessTreeConfig {
+    fn default() -> Self {
+        Self {
+            refresh_interval_secs: default_refresh_interval_secs(),
+        }
+    }
 }
 
 /// Configuration for the local small language model.
@@ -217,6 +388,10 @@ fn default_policy_path() -> PathBuf {
     dirs_next_fallback(".config/clawdefender/policy.toml")
 }
 
+fn default_sensor_config_path() -> PathBuf {
+    dirs_next_fallback(".config/clawdefender/sensor.toml")
+}
+
 fn default_max_size_mb() -> u64 {
     50
 }
@@ -274,6 +449,8 @@ impl Default for ClawConfig {
             ui: UiConfig::default(),
             telemetry_opt_in: false,
             policy_path: default_policy_path(),
+            sensor_config_path: default_sensor_config_path(),
+            mcp_server: McpServerConfig::default(),
         }
     }
 }
@@ -293,6 +470,8 @@ impl Default for EsloggerConfig {
             events: default_es_events(),
             buffer_size: default_buffer_size(),
             enabled: true,
+            ignore_processes: Vec::new(),
+            ignore_paths: Vec::new(),
         }
     }
 }

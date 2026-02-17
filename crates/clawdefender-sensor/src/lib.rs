@@ -3,12 +3,18 @@
 //! This crate provides macOS-specific integrations for observing process and
 //! filesystem activity via Endpoint Security (eslogger) and FSEvents.
 
+pub mod correlation;
 pub mod eslogger;
 pub mod fsevents;
+pub mod limits;
 pub mod proctree;
 
-pub use eslogger::{parse_event, EsloggerEvent, EsloggerManager, EsloggerProcess};
-pub use fsevents::{FsEvent, FsEventKind, FsWatcher};
+pub use eslogger::{parse_event, sanitize_path, EsloggerEvent, EsloggerManager, EsloggerProcess, EventPreFilter};
+pub use fsevents::{
+    classify_path, default_watch_paths, EnhancedFsWatcher, EsloggerCorrelator, FsEvent,
+    FsEventKind, FsWatcher, SensitivityTier,
+};
+pub use limits::{ResourceLimits, ResourceMonitor};
 pub use proctree::{AgentInfo, Confidence, ProcessInfo, ProcessTree};
 
 use std::path::PathBuf;

@@ -198,6 +198,62 @@ The chat UI lets you ask follow-up questions about flagged events, with full con
 clawdefender chat usage
 ```
 
+## Agentic Trust Layer (v0.5.0)
+
+ClawDefender v0.5.0 adds cooperative security participation. MCP servers can voluntarily integrate the ClawDefender SDK to declare intent, request permission, and report actions -- shifting from purely adversarial monitoring to a trust-but-verify model.
+
+### SDK Availability
+
+| SDK | Package | Install |
+|-----|---------|---------|
+| Python | `clawdefender-sdk` | `pip install clawdefender-sdk` |
+| TypeScript | `@clawdefender/sdk` | `npm install @clawdefender/sdk` |
+
+### For MCP Server Authors
+
+Integrate ClawDefender in three steps:
+
+```python
+from clawdefender import ClawDefender
+
+claw = ClawDefender()  # auto-detects connection, fail-open if unavailable
+
+# 1. Check intent before acting
+intent = claw.check_intent(
+    description="Read project config",
+    action_type="file_read",
+    target="/project/config.toml",
+)
+if not intent.allowed:
+    print(f"Blocked: {intent.explanation}")
+
+# 2. Perform the action
+data = open("/project/config.toml").read()
+
+# 3. Report what happened
+claw.report_action(
+    description="Read project config",
+    action_type="file_read",
+    target="/project/config.toml",
+    result="success",
+)
+```
+
+### Certification Program
+
+Certify your MCP server's ClawDefender compliance:
+
+```bash
+clawdefender certify /path/to/your/server
+```
+
+Three compliance levels:
+- **Level 1**: Server has a `clawdefender.toml` manifest
+- **Level 2**: Server calls `checkIntent` and `reportAction`
+- **Level 3**: Server calls all four tools and respects policy decisions
+
+See [v0.5.0 Release Notes](docs/v5-release-notes.md) for details.
+
 ## Supported MCP Clients
 
 | Client | Status | Notes |
@@ -227,6 +283,38 @@ clawdefender chat usage
 - **Process tree agent identification** -- traces which agent spawned which process to correlate MCP calls with actual system activity.
 - **Event correlation** -- links MCP tool calls to the OS-level events they produce, detecting discrepancies between declared and actual behavior.
 
+## OS-Level Sensor
+
+ClawDefender includes a live system event monitor powered by the macOS Endpoint Security framework (`eslogger`). The sensor provides:
+
+- **Process execution tracking** -- observes every `exec`, `fork`, and `exit` from AI agent process trees
+- **File access monitoring** -- watches `open`, `close`, `rename`, `unlink`, and `chmod` operations on sensitive paths
+- **Network connection logging** -- captures outbound `connect` calls with address, port, and protocol
+- **4-layer agent identification** -- identifies AI agent processes via tagged registration, known client signatures, heuristic detection, and process tree ancestry
+- **Correlation engine** -- automatically links MCP tool calls to the OS-level events they produce, detecting uncorrelated (suspicious) activity in real time
+- **FSEvents integration** -- file system event watching with sensitivity classification, debouncing, and rate limiting
+
+The sensor degrades gracefully: if Full Disk Access is not granted or `eslogger` is unavailable, the MCP proxy continues to function normally.
+
+## Menu Bar App
+
+ClawDefender includes a native macOS menu bar application (SwiftUI) that provides:
+
+- **Status indicator** -- menu bar icon with color-coded status (green = normal, yellow = warning, red = alert)
+- **Prompt approvals** -- respond to policy prompts directly from the menu bar (Allow/Deny)
+- **Alert notifications** -- real-time alerts for blocked events and uncorrelated activity
+- **Subsystem status** -- view the health of all ClawDefender subsystems (proxy, sensor, SLM, swarm)
+- **Keyboard shortcuts** -- D = Deny, A = Allow Once for quick prompt handling
+
+## System Requirements
+
+- **macOS Ventura (13.0)** or later
+- **Full Disk Access** -- required for eslogger (grant in System Settings > Privacy & Security > Full Disk Access)
+- **sudo access** -- required for running `eslogger` (Endpoint Security)
+- **Rust toolchain** -- for building from source
+
+The MCP proxy and policy engine work on any platform; OS-level monitoring and the menu bar app are macOS-specific.
+
 ## Non-features (honest limitations)
 
 - **eslogger is NOTIFY-only.** ClawDefender blocks at the MCP proxy layer. At the OS layer, `eslogger` can only *observe*, not prevent. If an agent bypasses MCP entirely (e.g., a shell command spawns a subprocess that phones home), ClawDefender will detect it in the audit log but cannot block it retroactively.
@@ -242,6 +330,8 @@ ClawDefender is structured as a Cargo workspace with the following crates:
 |---|---|
 | `clawdefender-cli` | Command-line interface (`clawdefender init`, `clawdefender wrap`, etc.) |
 | `clawdefender-mcp-proxy` | MCP proxy -- stdio and HTTP modes |
+| `clawdefender-mcp-server` | MCP server for SDK integration (checkIntent, requestPermission, reportAction, getPolicy) |
+| `clawdefender-certify` | Certification harness with Level 1-3 compliance testing |
 | `clawdefender-core` | Core types, policy engine, audit, event correlation |
 | `clawdefender-sensor` | OS-level monitoring via `eslogger` |
 | `clawdefender-tui` | Terminal UI for real-time monitoring and prompts |
@@ -252,10 +342,15 @@ ClawDefender is structured as a Cargo workspace with the following crates:
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Sensor Guide](docs/sensor-guide.md)
+- [Menu Bar Guide](docs/menubar-guide.md)
+- [Sensor Security](docs/sensor-security.md)
 - [Threat Model](docs/threat-model.md)
 - [SLM Guide](docs/slm-guide.md)
 - [MCP Protocol Reference](docs/mcp-protocol.md)
 - [Swarm Guide](docs/swarm-guide.md)
+- [V5 Release Notes](docs/v5-release-notes.md)
+- [V4 Release Notes](docs/v4-release-notes.md)
 - [V3 Release Notes](docs/v3-release-notes.md)
 - [V2 Release Notes](docs/v2-release-notes.md)
 - [V1 Release Notes](docs/v1-release-notes.md)

@@ -123,6 +123,80 @@ When ClawDefender escalates events to cloud LLM providers (Anthropic, OpenAI), e
 - The LLM provider receives and processes the (minimized) event data according to their own data policies
 - A compromised LLM provider could return manipulated verdicts, but the advisory-only design limits impact
 
+## SDK Trust Model
+
+### Threat: Malicious or compromised SDK reporters
+
+MCP servers that integrate the ClawDefender SDK voluntarily report their actions. A malicious server could:
+
+1. **Lie about intent**: Call `checkIntent` with one target, then act on a different one
+2. **Skip reporting**: Perform actions without calling `reportAction`
+3. **Forge reports**: Call `reportAction` with false data to pollute the audit log
+4. **Report benign, act malicious**: Declare reading `/project/readme.md` but actually read `/etc/shadow`
+
+### Mitigation: Three-way event correlation
+
+SDK reports are **not trusted in isolation**. The correlation engine cross-references three independent event sources:
+
+1. **SDK reports** (voluntary, from the agent) -- what the agent *says* it did
+2. **Proxy interception** (mandatory, from the proxy) -- what MCP traffic *shows*
+3. **OS sensor** (independent, from eslogger) -- what the system *actually observed*
+
+When an OS event has no corresponding SDK report or proxy record, it is flagged as **uncorrelated** with a severity rating. When an SDK report has no corresponding OS event, the discrepancy is logged.
+
+This means a compliant SDK provides value (pre-flight checks, better audit context), but a non-compliant or lying SDK does not degrade security -- the proxy and OS sensor continue to enforce and observe independently.
+
+### Residual risk
+
+- The correlation engine uses time windows and PID matching for event linking. Sophisticated timing attacks could potentially evade correlation
+- SDK reports enrich the audit log but a flooded or falsified audit log could make forensic analysis harder (mitigated by rate limiting and payload size limits)
+
+## MCP Server Abuse Vectors
+
+### Abuse: Audit log pollution via reportAction
+
+A malicious MCP server could flood `reportAction` with large or numerous entries to fill disk space or make the audit log unusable.
+
+**Mitigations:**
+- Rate limit: 1000 reportAction calls per minute per caller
+- Payload size limit: 10 KB maximum per reportAction payload
+- String field length limit: 4096 characters per field
+- Audit log rotation: 50 MB max file size, 10 rotated files
+
+### Abuse: Prompt flooding via requestPermission
+
+A malicious server could call `requestPermission` rapidly to fatigue the user into approving dangerous requests.
+
+**Mitigations:**
+- Rate limit: 10 requestPermission calls per minute per caller (same limit as proxy-layer prompt rate limiting)
+- Auto-block after rate limit exceeded for the remainder of the window
+
+### Abuse: Scope escalation via wildcard paths
+
+A server could request permission for a broad wildcard pattern (e.g., `/**`) to gain access to everything.
+
+**Mitigations:**
+- Wildcard characters (`*`, `?`, `[`) are rejected in `requestPermission` resource paths
+- Session rules created by `requestPermission` use exact paths only
+
+### Abuse: Input injection via Unicode and control characters
+
+String fields could contain Unicode bidirectional overrides, null bytes, or other control characters to mislead audit log readers or bypass policy matching.
+
+**Mitigations:**
+- Null byte rejection in all string fields
+- Unicode bidirectional control character detection and rejection (U+202A--U+202E, U+2066--U+2069, U+200E, U+200F)
+- String length limits prevent oversized payloads
+
+### Certification Sandbox Model
+
+The certification tool (`clawdefender certify`) runs MCP servers in a sandboxed environment:
+
+- Temporary policy files that do not affect the user's real policy
+- In-memory audit logging (no writes to the user's audit log)
+- Timeout-bounded test execution (10 seconds per test by default)
+- Isolated from the running daemon -- certification tests do not require the daemon to be running
+
 ## Attack surface of ClawDefender itself
 
 ### JSON-RPC parser

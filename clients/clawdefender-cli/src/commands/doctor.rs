@@ -1,6 +1,8 @@
 //! `clawdefender doctor` — run diagnostic checks on the ClawDefender installation.
 
+use std::net::TcpStream;
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::Result;
 use clawdefender_core::config::ClawConfig;
@@ -113,7 +115,37 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         config.slm.context_size > 0,
     );
 
-    // 7. Check for wrapped servers.
+    // 7. MCP server checks.
+    println!();
+    println!("MCP Server (Cooperative Security):");
+
+    check(
+        "MCP server enabled in config",
+        config.mcp_server.enabled,
+    );
+
+    if config.mcp_server.enabled {
+        check(
+            &format!("MCP server HTTP port configured ({})", config.mcp_server.http_port),
+            config.mcp_server.http_port > 0,
+        );
+
+        // Check if MCP server HTTP endpoint is reachable.
+        let http_url = format!("http://127.0.0.1:{}", config.mcp_server.http_port);
+        let http_reachable = TcpStream::connect_timeout(
+            &format!("127.0.0.1:{}", config.mcp_server.http_port).parse().unwrap(),
+            Duration::from_secs(1),
+        ).is_ok();
+        check(
+            &format!("MCP server HTTP endpoint reachable ({})", http_url),
+            http_reachable,
+        );
+        if !http_reachable {
+            println!("    Hint: Start the daemon or run `clawdefender serve` to enable the MCP server.");
+        }
+    }
+
+    // 8. Check for wrapped servers.
     println!();
     println!("Wrapped Servers:");
     let mut found_any = false;

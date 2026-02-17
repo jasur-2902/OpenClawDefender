@@ -117,6 +117,8 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     println!("  1. Edit policy rules:     clawdefender policy list");
     println!("  2. Wrap an MCP server:    clawdefender wrap <server-name>");
     println!("  3. Check installation:    clawdefender doctor");
+    println!("  4. Start MCP server:      clawdefender serve");
+    println!("  5. Apply a template:      clawdefender policy template-list");
 
     Ok(())
 }

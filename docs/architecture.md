@@ -92,24 +92,47 @@ Wraps macOS `eslogger` (Endpoint Security framework) to observe OS-level
 operations. Runs as a privileged helper (requires Full Disk Access or SIP
 exception) and streams events to the daemon over a Unix domain socket.
 
+| Module           | Purpose                                                    |
+|------------------|------------------------------------------------------------|
+| `eslogger`       | EsloggerManager: spawn, crash recovery, FDA detection      |
+| `eslogger/filter`| EventPreFilter: noise reduction for high-volume events     |
+| `eslogger/parser`| NDJSON parser with size limits and validation              |
+| `eslogger/types` | Type definitions, path sanitization, OsEvent conversion   |
+| `proctree`       | ProcessTree with ancestry cache, PID recycling protection  |
+| `proctree/agent_id` | 4-layer agent identification (tagged, signature, heuristic, ancestry) |
+| `fsevents`       | EnhancedFsWatcher: sensitivity tiers, debouncing, rate limiting |
+| `correlation`    | CorrelationEngine: matches MCP events to OS events         |
+| `correlation/rules` | 4 matching rules (exec, open, file op, network)         |
+| `correlation/severity` | Uncorrelated event severity rating                   |
+| `limits`         | ResourceLimits, ResourceMonitor for CPU/memory bounds      |
+
 Observed event types:
 - `exec` -- process execution
 - `open` / `close` -- file access
 - `rename` / `unlink` -- file modification/deletion
 - `connect` -- network connections
 - `fork` / `exit` -- process lifecycle
+- `pty_grant` -- pseudoterminal grants
+- `setmode` -- file permission changes
 
 ### clawdefender-daemon
 
 The central orchestrator. Responsibilities:
-1. Spawn and manage the MCP proxy
-2. Receive OS events from the sensor
+1. Spawn and manage MCP proxies (multi-proxy architecture)
+2. Start and monitor the sensor subsystem (process tree, eslogger, FSEvents)
 3. Run the correlation engine (link MCP calls to OS events)
-4. Evaluate all events against the policy engine
+4. Route correlated events to audit, UI, and analysis subsystems
 5. Send prompts/alerts to the UI over IPC
 6. Write audit records
+7. Hot-reload policy and sensor configuration
 
-### clawdefender-ui (SwiftUI)
+| Module          | Purpose                                                    |
+|-----------------|------------------------------------------------------------|
+| `lib`           | Daemon struct, sensor subsystem startup, proxy lifecycle   |
+| `event_router`  | Routes CorrelatedEvents to audit, UI, and analysis sinks  |
+| `ipc`           | Unix domain socket server for daemon-UI communication      |
+
+### clawdefender-menubar (SwiftUI)
 
 A macOS menu-bar application that:
 - Shows real-time alerts for blocked/prompted events
@@ -224,6 +247,100 @@ The Commander uses rule-based synthesis:
 - If 2+ say HIGH, final verdict is HIGH
 - If 1 says HIGH (dissent), downgraded to MEDIUM
 - Otherwise, median risk level
+
+## Full System Data Flow (Three Event Sources)
+
+```
+MCP Client (Claude Code, Cursor, etc.)
+       |
+  JSON-RPC (stdio or HTTP)
+       |
+       v
++--------------------+         +--------------------+
+|   MCP Proxy        |  <--    |  ClawDefender      |  <-- SDK REPORTING
+|  (per-server)      |   |     |  MCP Server        |      Agents call
+|  BLOCKING layer    |   |     |  (clawdefender-    |      checkIntent,
++--------+-----------+   |     |   mcp-server)      |      reportAction, etc.
+         |               |     +--------+-----------+
+         |               |              |
+  Source 1: Proxy        |       Source 2: SDK
+  Interception           |       Self-Reporting
+         |               |              |
+         v               v              v
+       +------------------------------------+
+       |        Correlation Engine          |  <--- Source 3: OS Sensor
+       |  Merges proxy, SDK, and OS events  |       eslogger + FSEvents
+       +--------+---------------------------+
+                |
+                v
+          Event Router
+         /     |      \
+        v      v       v
+  Audit Log  TUI /    SLM / Swarm
+             Menu Bar  (analysis)
+```
+
+### Three Event Sources
+
+1. **Proxy Interception** (Source 1): The MCP proxy sits between client and server,
+   intercepting every JSON-RPC message. This is the blocking enforcement point.
+
+2. **SDK Self-Reporting** (Source 2): MCP servers that integrate the ClawDefender
+   SDK (Python or TypeScript) voluntarily declare intent, request permission,
+   and report actions via the ClawDefender MCP server.
+
+3. **OS Sensor** (Source 3): macOS eslogger and FSEvents observe actual system-level
+   activity (file access, process execution, network connections) independently.
+
+The correlation engine merges all three sources to detect discrepancies between
+declared behavior (SDK reports), observed MCP traffic (proxy), and actual system
+activity (OS sensor).
+
+### ClawDefender MCP Server
+
+The MCP server (`clawdefender-mcp-server`) exposes four tools via the MCP protocol:
+
+| Tool | Purpose |
+|------|---------|
+| `checkIntent` | Pre-flight check: will this action be allowed by policy? |
+| `requestPermission` | Request explicit approval for a resource operation |
+| `reportAction` | Post-action audit: log what was actually performed |
+| `getPolicy` | Query current policy rules for planning |
+
+SDK clients (Python, TypeScript) connect to this server over stdio or HTTP
+and use these tools to participate cooperatively in the security model.
+
+### Sensor Subsystem Detail
+
+```
++------------------+     +------------------+
+|   eslogger       |     |   FSEvents       |
+|  (exec, open,    |     |  (file changes   |
+|   connect, fork, |     |   with debounce  |
+|   exit, ...)     |     |   + rate limit)  |
++--------+---------+     +--------+---------+
+         |                         |
+         |  OsEvent                | FsEvent -> OsEvent
+         v                         v
+     EventPreFilter          Sensitivity
+     (ignore noise)          Classifier
+         |                         |
+         +----------+--------------+
+                    |
+                    v
+          Correlation Engine
+          (4 matching rules:
+           ToolCall->Exec,
+           ResourceRead->Open,
+           FileTool->FileOp,
+           NetworkTool->Connect)
+                    |
+          +---------+---------+
+          |                   |
+    Matched              Uncorrelated
+    (MCP + OS)           (OS only, rated
+                          by severity)
+```
 
 ## Two-Layer Security Model
 

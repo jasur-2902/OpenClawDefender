@@ -1,0 +1,33 @@
+# ClawDefender Manifest — declares this server's security profile.
+# Required for Level 2+ Claw Compliance certification.
+
+[manifest]
+schema_version = "1.0"
+server_name = "example-file-operations-ts"
+server_version = "0.1.0"
+compliance_level = 3
+description = "Example TypeScript MCP server demonstrating full ClawDefender Level 3 integration"
+
+[permissions]
+file_read = ["~/workspace/**", "/tmp/**"]
+file_write = ["/tmp/clawdefender-example/**"]
+shell_execute = false
+network = false
+
+[[tools]]
+name = "read_file"
+description = "Read file contents"
+risk_level = "Low"
+requires = ["file_read"]
+
+[[tools]]
+name = "write_file"
+description = "Write content to a file"
+risk_level = "Medium"
+requires = ["file_write"]
+
+[[tools]]
+name = "list_directory"
+description = "List files in a directory"
+risk_level = "Low"
+requires = ["file_read"]

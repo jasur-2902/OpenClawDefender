@@ -66,6 +66,122 @@ pub enum UiRequest {
     },
 }
 
+// ---------------------------------------------------------------------------
+// Daemon IPC protocol (multi-proxy and CLI control)
+// ---------------------------------------------------------------------------
+
+/// A request sent from a proxy or CLI client to the daemon.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DaemonRequest {
+    /// Register a new MCP proxy session with the daemon.
+    ProxyRegister {
+        server_name: String,
+        client_name: String,
+        pid: u32,
+    },
+    /// Unregister an MCP proxy session.
+    ProxyUnregister { server_name: String },
+    /// Forward an MCP event to the correlation engine.
+    McpEventForward {
+        event: crate::event::mcp::McpEvent,
+    },
+    /// Respond to a user prompt from the daemon.
+    PromptResponse {
+        event_id: String,
+        decision: UserDecision,
+    },
+    /// Query the daemon's subsystem status.
+    StatusQuery,
+    /// Request graceful daemon shutdown.
+    Shutdown,
+    /// Check whether an intended action is allowed by policy.
+    CheckIntentRequest {
+        description: String,
+        action_type: String,
+        target: String,
+        reason: Option<String>,
+    },
+    /// Request permission for a resource operation.
+    RequestPermissionRequest {
+        resource: String,
+        operation: String,
+        justification: String,
+        timeout_seconds: Option<u32>,
+    },
+    /// Report a completed action for audit logging.
+    ReportActionRequest {
+        description: String,
+        action_type: String,
+        target: String,
+        result: String,
+        details: Option<serde_json::Value>,
+    },
+    /// Query the active policy rules.
+    GetPolicyRequest {
+        resource: Option<String>,
+        action_type: Option<String>,
+        tool_name: Option<String>,
+    },
+}
+
+/// A response sent from the daemon to a proxy or CLI client.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DaemonResponse {
+    /// Proxy registration confirmed.
+    Registered { session_id: String },
+    /// Daemon is prompting the user for a decision.
+    PromptRequest {
+        event_id: String,
+        event_summary: String,
+        rule_name: String,
+        options: Vec<String>,
+    },
+    /// Status report of all subsystems.
+    StatusReport {
+        subsystems: Vec<SubsystemStatus>,
+    },
+    /// Generic success acknowledgement.
+    Ok,
+    /// Error response.
+    Error { message: String },
+    /// Response to a CheckIntentRequest.
+    CheckIntentResponse {
+        allowed: bool,
+        risk_level: String,
+        explanation: String,
+        policy_rule: String,
+        suggestions: Vec<String>,
+    },
+    /// Response to a RequestPermissionRequest.
+    RequestPermissionResponse {
+        granted: bool,
+        scope: String,
+        expires_at: Option<String>,
+    },
+    /// Response to a ReportActionRequest.
+    ReportActionResponse {
+        recorded: bool,
+        event_id: String,
+    },
+    /// Response to a GetPolicyRequest.
+    GetPolicyResponse {
+        rules: Vec<serde_json::Value>,
+        default_action: String,
+    },
+}
+
+/// Status of a single daemon subsystem.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubsystemStatus {
+    pub name: String,
+    pub active: bool,
+    pub detail: String,
+}
+
+// ---------------------------------------------------------------------------
+// UI protocol (daemon <-> TUI / menu bar)
+// ---------------------------------------------------------------------------
+
 /// A response sent from the UI back to the daemon.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum UiResponse {

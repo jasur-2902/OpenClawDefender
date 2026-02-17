@@ -10,6 +10,9 @@ members = [
     "crates/clawdefender-daemon",
     "clients/clawdefender-cli",
     "tests/mock-mcp-server",
+    "tests/mock-eslogger",
+    "crates/clawdefender-mcp-server",
+    "crates/clawdefender-certify",
 ]
 
 [workspace.package]
