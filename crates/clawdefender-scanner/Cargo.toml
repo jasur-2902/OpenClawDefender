@@ -1,0 +1,24 @@
+[package]
+name = "clawdefender-scanner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Security scanner framework with sandbox and attack modules for MCP servers"
+
+[dependencies]
+clawdefender-core = { path = "../clawdefender-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+regex = { workspace = true }
+tracing = { workspace = true }
+tempfile = "3"
+async-trait = "0.1"
+libc = "0.2"
+rand = "0.8"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

@@ -13,6 +13,7 @@ members = [
     "tests/mock-eslogger",
     "crates/clawdefender-mcp-server",
     "crates/clawdefender-certify",
+    "crates/clawdefender-scanner",
 ]
 
 [workspace.package]

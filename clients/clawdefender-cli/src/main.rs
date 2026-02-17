@@ -157,6 +157,45 @@ enum Commands {
         #[arg(long, default_value = "3201")]
         http_port: u16,
     },
+
+    /// Run a security scan against an MCP server.
+    Scan {
+        /// Server command and arguments (everything after --).
+        #[arg(last = true)]
+        server_command: Vec<String>,
+
+        /// Total scan timeout in seconds.
+        #[arg(long, default_value = "1800")]
+        timeout: Option<u64>,
+
+        /// Comma-separated list of module names to run.
+        #[arg(long)]
+        modules: Option<String>,
+
+        /// Output results as JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Write an HTML report to this file.
+        #[arg(long)]
+        html: Option<PathBuf>,
+
+        /// Write the report to this file.
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+
+        /// Minimum severity threshold for exit codes: critical, high, medium, low, info.
+        #[arg(long)]
+        threshold: Option<String>,
+
+        /// Path to a baseline report JSON for delta comparison.
+        #[arg(long)]
+        baseline: Option<PathBuf>,
+
+        /// List available scan modules and exit.
+        #[arg(long)]
+        list_modules: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -410,6 +449,31 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Serve { stdio, http_port } => {
             commands::serve::run(&config, stdio, http_port).await?;
+        }
+
+        Commands::Scan {
+            server_command,
+            timeout,
+            modules,
+            json,
+            html,
+            output,
+            threshold,
+            baseline,
+            list_modules,
+        } => {
+            commands::scan::run(
+                server_command,
+                timeout,
+                modules,
+                json,
+                html,
+                output,
+                threshold,
+                baseline,
+                list_modules,
+            )
+            .await?;
         }
 
         Commands::Config { action } => {

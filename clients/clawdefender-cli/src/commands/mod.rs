@@ -10,6 +10,7 @@ pub mod model;
 pub mod policy;
 pub mod profile_cmd;
 pub mod proxy;
+pub mod scan;
 pub mod serve;
 pub mod status;
 pub mod unwrap;
