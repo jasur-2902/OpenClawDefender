@@ -84,6 +84,32 @@ pub struct AuditRecord {
     /// Optional injection scan result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub injection_scan: Option<InjectionScanData>,
+
+    /// Optional threat intelligence match data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threat_intel: Option<ThreatIntelAuditData>,
+}
+
+/// Data from threat intelligence matching, stored alongside audit records.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreatIntelAuditData {
+    /// IoC indicators that matched this event.
+    pub ioc_matches: Vec<IoCMatchRecord>,
+    /// Blocklist entry ID if the server matched a blocklist entry.
+    pub blocklist_match: Option<String>,
+    /// Community rule that matched this event, if any.
+    pub community_rule: Option<String>,
+}
+
+/// A single IoC match record for audit logging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IoCMatchRecord {
+    /// Threat ID of the matched indicator.
+    pub threat_id: String,
+    /// Type of indicator (e.g. "ip", "domain", "hash", "tool_sequence").
+    pub indicator_type: String,
+    /// Severity level of the match.
+    pub severity: String,
 }
 
 /// Data from an injection scan, stored alongside audit records.
@@ -226,6 +252,7 @@ mod tests {
             }),
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -267,6 +294,7 @@ mod tests {
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();

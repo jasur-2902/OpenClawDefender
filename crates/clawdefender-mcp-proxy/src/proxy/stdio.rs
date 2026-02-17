@@ -35,7 +35,10 @@ use crate::jsonrpc::types::{
     JsonRpcError, JsonRpcId, JsonRpcMessage, JsonRpcResponse, POLICY_BLOCK_ERROR_CODE,
 };
 
-use super::{ProxyConfig, ProxyMetrics, SlmContext, SwarmContext, UiBridge};
+use clawdefender_core::audit::{IoCMatchRecord, ThreatIntelAuditData};
+use clawdefender_threat_intel::ioc::types::EventData as IoCEventData;
+
+use super::{ProxyConfig, ProxyMetrics, SlmContext, SwarmContext, ThreatIntelContext, UiBridge};
 
 /// Stdio MCP proxy that wraps an MCP server child process.
 pub struct StdioProxy {
@@ -50,6 +53,8 @@ pub struct StdioProxy {
     /// Optional cloud swarm context for escalated analysis.
     /// SAFETY: Swarm verdict is advisory only. Never modifies policy decisions.
     swarm_context: Option<SwarmContext>,
+    /// Optional threat intelligence context for IoC matching.
+    threat_intel_context: Option<ThreatIntelContext>,
     session_id: String,
     metrics: Arc<ProxyMetrics>,
 }
@@ -87,6 +92,7 @@ impl StdioProxy {
             ui_bridge: None,
             slm_context: None,
             swarm_context: None,
+            threat_intel_context: None,
             session_id: uuid::Uuid::new_v4().to_string(),
             metrics: Arc::new(ProxyMetrics::new()),
         })
@@ -111,6 +117,7 @@ impl StdioProxy {
             ui_bridge: None,
             slm_context: None,
             swarm_context: None,
+            threat_intel_context: None,
             session_id: uuid::Uuid::new_v4().to_string(),
             metrics: Arc::new(ProxyMetrics::new()),
         }
@@ -130,6 +137,7 @@ impl StdioProxy {
             ui_bridge,
             slm_context: None,
             swarm_context: None,
+            threat_intel_context: None,
             session_id: uuid::Uuid::new_v4().to_string(),
             metrics: Arc::new(ProxyMetrics::new()),
         }
@@ -147,6 +155,12 @@ impl StdioProxy {
     /// SAFETY: Swarm verdict is advisory only. Never modifies policy decisions.
     pub fn with_swarm_context(mut self, swarm_context: SwarmContext) -> Self {
         self.swarm_context = Some(swarm_context);
+        self
+    }
+
+    /// Attach a threat intelligence context for IoC matching on reviewed events.
+    pub fn with_threat_intel_context(mut self, ctx: ThreatIntelContext) -> Self {
+        self.threat_intel_context = Some(ctx);
         self
     }
 
@@ -234,6 +248,7 @@ impl StdioProxy {
         let ui_bridge = self.ui_bridge.clone();
         let slm_context = self.slm_context.clone();
         let swarm_context = self.swarm_context.clone();
+        let threat_intel_context = self.threat_intel_context.clone();
         let metrics = Arc::clone(&self.metrics);
         let prompt_timeout = self.config.prompt_timeout;
         let max_pending = self.config.max_pending_prompts;
@@ -271,6 +286,7 @@ impl StdioProxy {
                                         &ui_bridge,
                                         &slm_context,
                                         &swarm_context,
+                                        &threat_intel_context,
                                         &child_tx_relay,
                                         &client_tx_relay,
                                         &metrics,
@@ -434,10 +450,38 @@ impl StdioProxy {
                     "policy decision"
                 );
 
+                // --- Threat Intelligence: IoC matching ---
+                let threat_intel_data = if let Some(ref ti_ctx) = self.threat_intel_context {
+                    let ioc_event = build_ioc_event_data(&event);
+                    let db = ti_ctx.ioc_database.read().await;
+                    let engine = db.engine();
+                    let ioc_matches = engine.check_event(&ioc_event);
+                    if !ioc_matches.is_empty() {
+                        let records: Vec<IoCMatchRecord> = ioc_matches
+                            .iter()
+                            .map(|m| IoCMatchRecord {
+                                threat_id: m.indicator.threat_id.clone(),
+                                indicator_type: format!("{:?}", m.indicator.indicator),
+                                severity: format!("{:?}", m.indicator.severity),
+                            })
+                            .collect();
+                        Some(ThreatIntelAuditData {
+                            ioc_matches: records,
+                            blocklist_match: None,
+                            community_rule: None,
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 match action {
                     PolicyAction::Allow => {
                         self.metrics.inc_allowed();
-                        let record = build_audit_record(&event, "allow", None);
+                        let mut record = build_audit_record(&event, "allow", None);
+                        record.threat_intel = threat_intel_data.clone();
                         let _ = self.audit_tx.try_send(record);
                         let bytes = serialize_message(&msg);
                         child_writer.write_all(&bytes).await?;
@@ -452,7 +496,8 @@ impl StdioProxy {
                             proxy_writer.write_all(&bytes).await?;
                             proxy_writer.flush().await?;
                         }
-                        let record = build_audit_record(&event, "block", None);
+                        let mut record = build_audit_record(&event, "block", None);
+                        record.threat_intel = threat_intel_data.clone();
                         let _ = self.audit_tx.try_send(record);
                         info!(event_summary = %event_summary(&event), "blocked by policy");
                     }
@@ -611,6 +656,7 @@ async fn handle_client_message(
     ui_bridge: &Option<Arc<UiBridge>>,
     slm_context: &Option<SlmContext>,
     swarm_context: &Option<SwarmContext>,
+    threat_intel_context: &Option<ThreatIntelContext>,
     child_tx: &mpsc::Sender<Vec<u8>>,
     client_tx: &mpsc::Sender<Vec<u8>>,
     metrics: &Arc<ProxyMetrics>,
@@ -658,13 +704,46 @@ async fn handle_client_message(
                 );
             }
 
+            // --- Threat Intelligence: IoC matching ---
+            let threat_intel_data = if let Some(ref ti_ctx) = threat_intel_context {
+                let ioc_event = build_ioc_event_data(&event);
+                let db = ti_ctx.ioc_database.read().await;
+                let engine = db.engine();
+                let ioc_matches = engine.check_event(&ioc_event);
+                if !ioc_matches.is_empty() {
+                    debug!(
+                        count = ioc_matches.len(),
+                        event_summary = %event_summary(&event),
+                        "IoC matches found"
+                    );
+                    let records: Vec<IoCMatchRecord> = ioc_matches
+                        .iter()
+                        .map(|m| IoCMatchRecord {
+                            threat_id: m.indicator.threat_id.clone(),
+                            indicator_type: format!("{:?}", m.indicator.indicator),
+                            severity: format!("{:?}", m.indicator.severity),
+                        })
+                        .collect();
+                    Some(ThreatIntelAuditData {
+                        ioc_matches: records,
+                        blocklist_match: None,
+                        community_rule: None,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             // Capture raw bytes for transparent forwarding within this branch.
             let forward_bytes = raw_msg.raw_bytes_with_newline();
 
             match action {
                 PolicyAction::Allow => {
                     metrics.inc_allowed();
-                    let record = build_audit_record(&event, "allow", None);
+                    let mut record = build_audit_record(&event, "allow", None);
+                    record.threat_intel = threat_intel_data.clone();
                     let _ = audit_tx.try_send(record);
                     child_tx.send(forward_bytes.clone()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
                 }
@@ -675,7 +754,8 @@ async fn handle_client_message(
                         let bytes = serialize_message(&block_resp);
                         client_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("client channel closed"))?;
                     }
-                    let record = build_audit_record(&event, "block", None);
+                    let mut record = build_audit_record(&event, "block", None);
+                    record.threat_intel = threat_intel_data.clone();
                     let _ = audit_tx.try_send(record);
                     info!(event_summary = %event_summary(&event), "blocked by policy");
                 }
@@ -1073,6 +1153,7 @@ fn build_audit_record(
         swarm_analysis: None,
         behavioral: None,
         injection_scan: None,
+        threat_intel: None,
     }
 }
 
@@ -1113,6 +1194,25 @@ fn build_session_allow_rule(event: &McpEvent) -> PolicyRule {
 }
 
 /// Extract the tool name from an MCP event for noise filter matching.
+/// Build an IoC EventData from an MCP event for threat intelligence matching.
+fn build_ioc_event_data(event: &McpEvent) -> IoCEventData {
+    let tool_name = match &event.kind {
+        McpEventKind::ToolCall(tc) => Some(tc.tool_name.clone()),
+        _ => None,
+    };
+    let tool_args = match &event.kind {
+        McpEventKind::ToolCall(tc) => Some(tc.arguments.to_string()),
+        McpEventKind::ResourceRead(rr) => Some(rr.uri.clone()),
+        _ => None,
+    };
+    IoCEventData {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        tool_name,
+        tool_args,
+        ..Default::default()
+    }
+}
+
 fn extract_tool_name_from_event(event: &McpEvent) -> String {
     match &event.kind {
         McpEventKind::ToolCall(tc) => tc.tool_name.clone(),
@@ -1231,6 +1331,7 @@ fn build_audit_record_from_swarm_event(
         swarm_analysis: None,
         behavioral: None,
         injection_scan: None,
+        threat_intel: None,
     }
 }
 

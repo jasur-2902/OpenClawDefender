@@ -125,6 +125,7 @@ impl Event for McpEvent {
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         }
     }
 

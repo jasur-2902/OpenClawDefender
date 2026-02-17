@@ -235,7 +235,48 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         }
     }
 
-    // 10. Check for wrapped servers.
+    // 10. Threat intelligence checks.
+    println!();
+    println!("Threat Intelligence:");
+
+    if !config.threat_intel.enabled {
+        warn("Threat intelligence disabled in config");
+        warnings += 1;
+        hint("Enable threat intelligence for community rules and IoC matching: set threat_intel.enabled = true");
+    } else {
+        check_pass("Threat intelligence enabled", true);
+
+        // Check feed cache.
+        let data_dir = std::env::var_os("HOME")
+            .map(|h| std::path::PathBuf::from(h).join(".local/share/clawdefender/threat-intel"))
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp/clawdefender/threat-intel"));
+
+        let cache_exists = data_dir.join("manifest.json").exists();
+        if !check_pass("Feed cache populated", cache_exists) {
+            warnings += 1;
+            hint("Run `clawdefender feed update` to fetch the latest threat intelligence feed.");
+        }
+
+        // Check IoC directory.
+        let ioc_dir = data_dir.join("ioc");
+        let ioc_exists = ioc_dir.exists()
+            && std::fs::read_dir(&ioc_dir)
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false);
+        if !check_pass("IoC database populated", ioc_exists) {
+            warnings += 1;
+            hint("IoC indicators will be loaded after the first feed update.");
+        }
+
+        // Check rules directory.
+        let rules_dir = data_dir.join("rules");
+        check_pass(
+            "Community rules directory exists",
+            rules_dir.exists(),
+        );
+    }
+
+    // 11. Check for wrapped servers.
     println!();
     println!("Wrapped Servers:");
     let mut found_any = false;

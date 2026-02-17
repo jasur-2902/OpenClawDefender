@@ -6,7 +6,7 @@ pub mod proxy;
 
 pub use proxy::http::HttpProxy;
 pub use proxy::stdio::StdioProxy;
-pub use proxy::{ProxyConfig, ProxyMetrics, SlmContext, SwarmContext, UiBridge};
+pub use proxy::{ProxyConfig, ProxyMetrics, SlmContext, SwarmContext, ThreatIntelContext, UiBridge};
 
 use std::net::SocketAddr;
 use std::path::Path;

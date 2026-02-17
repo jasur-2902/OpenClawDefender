@@ -1,0 +1,13 @@
+{
+  "server_package": "@modelcontextprotocol/server-sqlite",
+  "profile_version": "1.0.0",
+  "expected_tools": ["read_query", "write_query", "create_table", "list_tables", "describe_table", "append_insight"],
+  "expected_file_territory": [],
+  "expected_network": false,
+  "expected_shell": false,
+  "expected_rate": {
+    "mean_ms": 200.0,
+    "stddev_ms": 150.0
+  },
+  "notes": "The official SQLite server performs database operations on local .db/.sqlite files. It should NOT make network connections or execute shell commands. File access should be limited to the configured database files. Access to non-database files or system files is anomalous."
+}

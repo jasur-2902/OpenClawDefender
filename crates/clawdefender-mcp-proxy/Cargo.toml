@@ -17,6 +17,7 @@ path = "src/main.rs"
 clawdefender-core = { path = "../clawdefender-core" }
 clawdefender-slm = { path = "../clawdefender-slm" }
 clawdefender-swarm = { path = "../clawdefender-swarm" }
+clawdefender-threat-intel = { path = "../clawdefender-threat-intel" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

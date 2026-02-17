@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "files": [
+    {
+      "name": "Kill Chain Patterns",
+      "file": "killchains.json",
+      "description": "Multi-step attack pattern definitions for kill chain detection."
+    },
+    {
+      "name": "Injection Signatures",
+      "file": "injection-signatures.json",
+      "description": "Prompt injection and content manipulation signature patterns."
+    }
+  ]
+}

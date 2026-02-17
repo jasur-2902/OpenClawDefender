@@ -1,0 +1,13 @@
+{
+  "server_package": "@modelcontextprotocol/server-git",
+  "profile_version": "1.0.0",
+  "expected_tools": ["git_status", "git_diff_unstaged", "git_diff_staged", "git_commit", "git_add", "git_reset", "git_log", "git_create_branch", "git_checkout", "git_show", "git_init", "git_clone"],
+  "expected_file_territory": [],
+  "expected_network": true,
+  "expected_shell": true,
+  "expected_rate": {
+    "mean_ms": 1000.0,
+    "stddev_ms": 800.0
+  },
+  "notes": "The official git server runs git commands within repository directories. Network connections are expected for clone/fetch/push operations to configured remotes. Shell execution is expected as it invokes the git CLI. File access should be limited to within git repository boundaries. Access to files outside repository paths (especially credential files) is anomalous."
+}

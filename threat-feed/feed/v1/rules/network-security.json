@@ -1,0 +1,93 @@
+{
+  "id": "network-security",
+  "name": "Network Security",
+  "version": "1.0.0",
+  "author": "ClawDefender Team",
+  "description": "Monitors and controls outbound network connections, blocking known malicious destinations and prompting on unexpected outbound traffic.",
+  "category": "Security",
+  "tags": ["network", "outbound", "firewall", "connections"],
+  "compatibility": ">=0.3.0",
+  "download_count": 0,
+  "rules": [
+    {
+      "name": "block-known-malicious-ips",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["198.51.100.*", "203.0.113.*"],
+      "message": "Blocked: Connection to a known malicious IP address.",
+      "tags": ["network", "malicious", "critical"]
+    },
+    {
+      "name": "block-metadata-endpoint",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["169.254.169.254", "169.254.169.254/*", "metadata.google.internal/*"],
+      "message": "Blocked: Connection to cloud metadata endpoint. This is a common SSRF target.",
+      "tags": ["network", "ssrf", "cloud", "critical"]
+    },
+    {
+      "name": "block-private-network-ssrf",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["10.*", "172.16.*", "172.17.*", "172.18.*", "192.168.*"],
+      "message": "Blocked: Connection to private network range. Potential SSRF attack.",
+      "tags": ["network", "ssrf"]
+    },
+    {
+      "name": "prompt-outbound-http",
+      "action": "prompt",
+      "methods": ["tools/call"],
+      "paths": ["http://*", "https://*"],
+      "message": "A tool is attempting to make an outbound HTTP connection. Allow this?",
+      "tags": ["network", "outbound"]
+    },
+    {
+      "name": "block-raw-tcp-connections",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["tcp://*", "socket://*"],
+      "message": "Blocked: Raw TCP/socket connections are not permitted.",
+      "tags": ["network", "raw", "critical"]
+    },
+    {
+      "name": "block-dns-exfiltration",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["*.exfil.*", "*.tunnel.*", "*.dns-c2.*"],
+      "message": "Blocked: Suspected DNS tunneling/exfiltration domain pattern detected.",
+      "tags": ["network", "dns", "exfiltration"]
+    },
+    {
+      "name": "block-tor-connections",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["*.onion", "127.0.0.1:9050", "127.0.0.1:9150"],
+      "message": "Blocked: Tor network connections are not permitted in this configuration.",
+      "tags": ["network", "tor", "anonymization"]
+    },
+    {
+      "name": "prompt-ftp-connections",
+      "action": "prompt",
+      "methods": ["tools/call"],
+      "paths": ["ftp://*", "sftp://*"],
+      "message": "A tool is attempting an FTP/SFTP connection. Allow this?",
+      "tags": ["network", "ftp"]
+    },
+    {
+      "name": "block-irc-connections",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["irc://*", "*:6667", "*:6697"],
+      "message": "Blocked: IRC connections are commonly used for C2 communication.",
+      "tags": ["network", "irc", "c2"]
+    },
+    {
+      "name": "log-all-outbound",
+      "action": "log",
+      "methods": ["tools/call"],
+      "paths": ["*://*"],
+      "message": "Outbound network connection detected and logged for audit.",
+      "tags": ["network", "audit"]
+    }
+  ]
+}

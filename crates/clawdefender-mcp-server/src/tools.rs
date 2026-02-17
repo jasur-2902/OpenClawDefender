@@ -199,6 +199,7 @@ pub async fn report_action(
         swarm_analysis: None,
         behavioral: None,
         injection_scan: None,
+        threat_intel: None,
     };
 
     let recorded = server.audit_logger.log(&record).is_ok();

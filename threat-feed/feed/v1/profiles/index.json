@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "profiles": [
+    {
+      "id": "filesystem-server",
+      "name": "Filesystem Server",
+      "description": "Behavioral profile for @modelcontextprotocol/server-filesystem. Expects file read/write/list operations within configured directories.",
+      "file": "filesystem-server.json"
+    },
+    {
+      "id": "fetch-server",
+      "name": "Fetch Server",
+      "description": "Behavioral profile for @modelcontextprotocol/server-fetch. Expects outbound HTTP requests to allowed domains.",
+      "file": "fetch-server.json"
+    },
+    {
+      "id": "git-server",
+      "name": "Git Server",
+      "description": "Behavioral profile for @modelcontextprotocol/server-git. Expects git operations within repository directories.",
+      "file": "git-server.json"
+    },
+    {
+      "id": "sqlite-server",
+      "name": "SQLite Server",
+      "description": "Behavioral profile for @modelcontextprotocol/server-sqlite. Expects database read/write operations on .db/.sqlite files.",
+      "file": "sqlite-server.json"
+    },
+    {
+      "id": "brave-search-server",
+      "name": "Brave Search Server",
+      "description": "Behavioral profile for @anthropic/brave-search-server. Expects outbound HTTPS requests to Brave Search API.",
+      "file": "brave-search-server.json"
+    }
+  ]
+}

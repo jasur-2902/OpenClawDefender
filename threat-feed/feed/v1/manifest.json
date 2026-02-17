@@ -1,0 +1,87 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-02-17T00:00:00Z",
+  "feed_format_version": 1,
+  "files": {
+    "blocklist.json": {
+      "sha256": "e674b7e1635112afc45784ba37b0da12491ccdab25d3caf6d03f359dc8a842bc",
+      "size": 11832
+    },
+    "rules/index.json": {
+      "sha256": "afdf5db0e7a208ad22acc82247387f3a0fb1a2a68a1779ec1dd934dbc2a075f7",
+      "size": 1395
+    },
+    "rules/credential-protection.json": {
+      "sha256": "c4eea231e86b0f6bbbf926590ee06488eacb7c47e903a44803d6d5a834fc8dad",
+      "size": 4518
+    },
+    "rules/network-security.json": {
+      "sha256": "d81123d72e97bc6a760744e12579ae81a0ef4d00e840ee1cf54a3357c44571bf",
+      "size": 3350
+    },
+    "rules/persistence-prevention.json": {
+      "sha256": "2c5479253503b7d7363d39dd28c4a2925ac9f4541933a6f9109ef6a5dbbd4b33",
+      "size": 3765
+    },
+    "rules/privacy-protection.json": {
+      "sha256": "81b350cbbbf4e93fffbdfed9f111e4faeac4f9887ff1c92cc1eb7bf5211ee610",
+      "size": 4288
+    },
+    "rules/filesystem-server-hardened.json": {
+      "sha256": "6da6efce48296f4ea8cefa03b4ce6289bc1aff661644c78c9a9b5175e745ce68",
+      "size": 2982
+    },
+    "patterns/index.json": {
+      "sha256": "200174e0968d8a1b4966a6d598f0f10e55ae576c4b052afe53600838bff3d4d7",
+      "size": 391
+    },
+    "patterns/killchains.json": {
+      "sha256": "d286fe2ce2a94e7cc89ced31cd14edf683f58f473936767c9806b2276828a292",
+      "size": 2283
+    },
+    "patterns/injection-signatures.json": {
+      "sha256": "174de3fdce6fef10bab80e6893b732839474a9f1da708c696e675abbf0cab7f2",
+      "size": 6340
+    },
+    "iocs/index.json": {
+      "sha256": "659f2503bfcab6ffa2ff9bf3dfd2b5437fd0eb42580befff409dcb09b452fe44",
+      "size": 575
+    },
+    "iocs/malicious-hosts.json": {
+      "sha256": "2a5a4b722d316508661cd862b5662b40de4c4fa9547d687348d85a7be3efa62b",
+      "size": 6986
+    },
+    "iocs/malicious-hashes.json": {
+      "sha256": "5bc1ddbfcf930ac28a9b97e73f4e286943873b9266cee6887ad57c2e7a3dd07c",
+      "size": 5292
+    },
+    "iocs/suspicious-tools.json": {
+      "sha256": "c4550212adbb8be56552946803f5128fa517864ab33f5354a707b21bbc7c9541",
+      "size": 4649
+    },
+    "profiles/index.json": {
+      "sha256": "7bfee18701d85d903300547b43bcfb8f9e9d2f853839ff16878288aa9ee7bf56",
+      "size": 1308
+    },
+    "profiles/filesystem-server.json": {
+      "sha256": "80dd25b8506ad901cfd75ddcb95de363a0aae121440eae3161339f820aabb1ce",
+      "size": 800
+    },
+    "profiles/fetch-server.json": {
+      "sha256": "beb5b1c2805e622a518bf204cbbac5509e02c2a923b52abb35279096f7bcb2cd",
+      "size": 585
+    },
+    "profiles/git-server.json": {
+      "sha256": "c4e440102e8c08bb9dbb78f72be13efa3bcf30fea2d6060c8b557f2f02afe6bd",
+      "size": 829
+    },
+    "profiles/sqlite-server.json": {
+      "sha256": "1ce38875f87c0f59d4a7af2215180b65d014281ea9f368677e2bc6110b146214",
+      "size": 657
+    },
+    "profiles/brave-search-server.json": {
+      "sha256": "4471d5b3caee9a231c252662411ce779ea9345a4f1d7eb39b4c64785cca9c8db",
+      "size": 586
+    }
+  }
+}

@@ -1,5 +1,8 @@
 [workspace]
 resolver = "2"
+exclude = [
+    "clients/clawdefender-app/src-tauri",
+]
 members = [
     "crates/clawdefender-core",
     "crates/clawdefender-mcp-proxy",
@@ -15,6 +18,7 @@ members = [
     "crates/clawdefender-certify",
     "crates/clawdefender-scanner",
     "crates/clawdefender-guard",
+    "crates/clawdefender-threat-intel",
 ]
 
 [workspace.package]

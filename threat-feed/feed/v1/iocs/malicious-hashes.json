@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "hashes": [
+    { "hash": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2", "algorithm": "SHA-256", "description": "[SYNTHETIC] Trojanized popular-mcp-utils v4.2.1 (CLAW-2026-009)", "severity": "critical" },
+    { "hash": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3", "algorithm": "SHA-256", "description": "[SYNTHETIC] Compromised mcp-data-transformer v2.0.0 (CLAW-2026-010)", "severity": "critical" },
+    { "hash": "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4", "algorithm": "SHA-256", "description": "[SYNTHETIC] Compromised mcp-data-transformer v2.0.1 (CLAW-2026-010)", "severity": "critical" },
+    { "hash": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5", "algorithm": "SHA-256", "description": "[SYNTHETIC] Compromised mcp-markdown-renderer v3.1.0 (CLAW-2026-011)", "severity": "high" },
+    { "hash": "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6", "algorithm": "SHA-256", "description": "[SYNTHETIC] Known credential stealer payload.", "severity": "critical" },
+    { "hash": "f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7", "algorithm": "SHA-256", "description": "[SYNTHETIC] Known reverse shell binary.", "severity": "critical" },
+    { "hash": "1111111111111111111111111111111111111111111111111111111111111111", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - crypto miner payload.", "severity": "high" },
+    { "hash": "2222222222222222222222222222222222222222222222222222222222222222", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - keylogger binary.", "severity": "critical" },
+    { "hash": "3333333333333333333333333333333333333333333333333333333333333333", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - DNS tunneling tool.", "severity": "high" },
+    { "hash": "4444444444444444444444444444444444444444444444444444444444444444", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - data exfiltration script.", "severity": "high" },
+    { "hash": "5555555555555555555555555555555555555555555555555555555555555555", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - privilege escalation exploit.", "severity": "critical" },
+    { "hash": "6666666666666666666666666666666666666666666666666666666666666666", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - ransomware encryptor.", "severity": "critical" },
+    { "hash": "7777777777777777777777777777777777777777777777777777777777777777", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - backdoor installer.", "severity": "critical" },
+    { "hash": "8888888888888888888888888888888888888888888888888888888888888888", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - credential dumper.", "severity": "high" },
+    { "hash": "9999999999999999999999999999999999999999999999999999999999999999", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - rootkit module.", "severity": "critical" },
+    { "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - trojanized npm package.", "severity": "high" },
+    { "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - malicious browser extension.", "severity": "high" },
+    { "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - supply chain implant.", "severity": "critical" },
+    { "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - fileless malware dropper.", "severity": "critical" },
+    { "hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - network scanner/recon tool.", "severity": "medium" },
+    { "hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - obfuscated PowerShell payload.", "severity": "high" },
+    { "hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - malicious Python package.", "severity": "high" },
+    { "hash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - WebSocket C2 client.", "severity": "high" },
+    { "hash": "dead0000beef0000cafe0000face0000dead0000beef0000cafe0000face0000", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - memory-resident backdoor.", "severity": "critical" },
+    { "hash": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", "algorithm": "SHA-256", "description": "[SYNTHETIC] Test hash for validation - lateral movement tool.", "severity": "high" }
+  ]
+}

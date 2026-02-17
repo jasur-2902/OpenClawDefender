@@ -67,6 +67,78 @@ pub struct ClawConfig {
     /// Guard API configuration.
     #[serde(default)]
     pub guard_api: GuardApiConfig,
+
+    /// Threat intelligence feed configuration.
+    #[serde(default)]
+    pub threat_intel: ThreatIntelConfig,
+
+    /// Network policy engine configuration.
+    #[serde(default)]
+    pub network_policy: NetworkPolicyConfig,
+}
+
+/// Network policy engine configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkPolicyConfig {
+    /// Whether network policy enforcement is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Default action for agent network connections.
+    #[serde(default = "default_agent_action")]
+    pub default_agent_action: String,
+    /// Seconds to wait for user prompt response.
+    #[serde(default = "default_prompt_timeout")]
+    pub prompt_timeout_seconds: u32,
+    /// Action to take when prompt times out.
+    #[serde(default = "default_timeout_action")]
+    pub timeout_action: String,
+    /// Max connections per minute per PID before alerting.
+    #[serde(default = "default_rate_limit_conn")]
+    pub rate_limit_connections_per_min: u32,
+    /// Max unique destinations per 10s per PID before alerting.
+    #[serde(default = "default_rate_limit_dest")]
+    pub rate_limit_unique_dest_per_10s: u32,
+    /// Whether to block connections to private IP ranges.
+    #[serde(default)]
+    pub block_private_ranges: bool,
+    /// Whether to log all DNS queries.
+    #[serde(default = "default_true")]
+    pub log_all_dns: bool,
+}
+
+fn default_agent_action() -> String {
+    "prompt".to_string()
+}
+
+fn default_prompt_timeout() -> u32 {
+    15
+}
+
+fn default_timeout_action() -> String {
+    "block".to_string()
+}
+
+fn default_rate_limit_conn() -> u32 {
+    100
+}
+
+fn default_rate_limit_dest() -> u32 {
+    10
+}
+
+impl Default for NetworkPolicyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            default_agent_action: default_agent_action(),
+            prompt_timeout_seconds: default_prompt_timeout(),
+            timeout_action: default_timeout_action(),
+            rate_limit_connections_per_min: default_rate_limit_conn(),
+            rate_limit_unique_dest_per_10s: default_rate_limit_dest(),
+            block_private_ranges: false,
+            log_all_dns: true,
+        }
+    }
 }
 
 /// Behavioral baseline engine configuration.
@@ -149,6 +221,58 @@ impl Default for InjectionDetectorSettings {
             threshold: default_injection_threshold(),
             patterns_path: None,
             auto_block: false,
+        }
+    }
+}
+
+/// Threat intelligence feed configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreatIntelConfig {
+    /// Whether the threat intel subsystem is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Feed base URL.
+    #[serde(default = "default_feed_url")]
+    pub feed_url: String,
+    /// How often to check for updates, in hours.
+    #[serde(default = "default_update_interval_hours")]
+    pub update_interval_hours: u64,
+    /// Automatically apply downloaded rule packs.
+    #[serde(default = "default_true")]
+    pub auto_apply_rules: bool,
+    /// Automatically apply downloaded blocklist.
+    #[serde(default = "default_true")]
+    pub auto_apply_blocklist: bool,
+    /// Automatically apply downloaded patterns.
+    #[serde(default = "default_true")]
+    pub auto_apply_patterns: bool,
+    /// Automatically apply downloaded IoCs.
+    #[serde(default = "default_true")]
+    pub auto_apply_iocs: bool,
+    /// Send a notification when the feed is updated.
+    #[serde(default = "default_true")]
+    pub notify_on_update: bool,
+}
+
+fn default_feed_url() -> String {
+    "https://feed.clawdefender.io/v1/".to_string()
+}
+
+fn default_update_interval_hours() -> u64 {
+    6
+}
+
+impl Default for ThreatIntelConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            feed_url: default_feed_url(),
+            update_interval_hours: default_update_interval_hours(),
+            auto_apply_rules: true,
+            auto_apply_blocklist: true,
+            auto_apply_patterns: true,
+            auto_apply_iocs: true,
+            notify_on_update: true,
         }
     }
 }
@@ -574,6 +698,8 @@ impl Default for ClawConfig {
             behavioral: BehavioralConfig::default(),
             injection_detector: InjectionDetectorSettings::default(),
             guard_api: GuardApiConfig::default(),
+            threat_intel: ThreatIntelConfig::default(),
+            network_policy: NetworkPolicyConfig::default(),
         }
     }
 }

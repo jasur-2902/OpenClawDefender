@@ -7,6 +7,7 @@
 
 pub mod event_router;
 pub mod ipc;
+pub mod mock_network_extension;
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -47,6 +48,11 @@ use clawdefender_core::behavioral::{
     KillChainDetector, LearningEngine, ProfileStore,
 };
 use clawdefender_guard::registry::GuardRegistry;
+use clawdefender_threat_intel::blocklist::BlocklistMatcher;
+use clawdefender_threat_intel::ioc::IoCDatabase;
+use clawdefender_threat_intel::rules::manager::RulePackManager;
+use clawdefender_threat_intel::telemetry::TelemetryAggregator;
+use clawdefender_threat_intel::{FeedCache, FeedClient, FeedVerifier};
 
 use event_router::{EventRouter, EventRouterConfig};
 
@@ -71,6 +77,16 @@ pub struct Daemon {
     profile_store: Option<Arc<ProfileStore>>,
     /// Guard registry for agent guard management.
     guard_registry: Arc<GuardRegistry>,
+    /// IoC database for threat intelligence matching.
+    ioc_database: Option<Arc<RwLock<IoCDatabase>>>,
+    /// Blocklist matcher for known-malicious server detection.
+    blocklist_matcher: Option<Arc<BlocklistMatcher>>,
+    /// Rule pack manager for community rules.
+    rule_pack_manager: Option<Arc<RwLock<RulePackManager>>>,
+    /// Telemetry aggregator for anonymous usage data.
+    telemetry_aggregator: Option<Arc<std::sync::Mutex<TelemetryAggregator>>>,
+    /// Feed client for threat intel updates.
+    feed_client: Option<Arc<tokio::sync::Mutex<FeedClient>>>,
 }
 
 impl Daemon {
@@ -168,6 +184,107 @@ impl Daemon {
                 (None, None, None, None, None, None)
             };
 
+        // --- Threat intelligence initialization ---
+        let (ioc_database, blocklist_matcher, rule_pack_manager, telemetry_aggregator, feed_client) =
+            if config.threat_intel.enabled {
+                let data_dir = if let Some(home) = std::env::var_os("HOME") {
+                    PathBuf::from(home).join(".local/share/clawdefender/threat-intel")
+                } else {
+                    PathBuf::from("/tmp/clawdefender/threat-intel")
+                };
+
+                // Initialize feed cache and populate from baseline if empty.
+                let cache = FeedCache::new(data_dir.clone());
+                if !cache.is_populated() {
+                    if let Err(e) = clawdefender_threat_intel::baseline::populate_cache_from_baseline(&cache) {
+                        warn!(error = %e, "Threat intel: failed to populate baseline cache");
+                    }
+                }
+
+                // Load IoC database from cache.
+                let mut ioc_db = IoCDatabase::new();
+                let ioc_dir = data_dir.join("ioc");
+                let ioc_count = if ioc_dir.exists() {
+                    ioc_db.load_from_directory(&ioc_dir).unwrap_or_else(|e| {
+                        warn!(error = %e, "Threat intel: failed to load IoC database");
+                        0
+                    })
+                } else {
+                    0
+                };
+
+                // Load blocklist.
+                let empty_blocklist = clawdefender_threat_intel::blocklist::types::Blocklist {
+                    version: 0,
+                    updated_at: String::new(),
+                    entries: Vec::new(),
+                };
+                let blocklist = BlocklistMatcher::new(empty_blocklist);
+
+                // Load community rules.
+                let rules_dir = data_dir.join("rules");
+                std::fs::create_dir_all(&rules_dir).ok();
+                let catalog = clawdefender_threat_intel::rules::catalog::RuleCatalog::new(&rules_dir)
+                    .unwrap_or_else(|e| {
+                        warn!(error = %e, "Threat intel: failed to load rule catalog");
+                        clawdefender_threat_intel::rules::catalog::RuleCatalog::in_memory()
+                    });
+                let rule_manager = RulePackManager::new(catalog, FeedCache::new(data_dir.clone()));
+                let rules_count = rule_manager.catalog().list_installed().len();
+
+                // Initialize telemetry aggregator.
+                let telemetry = TelemetryAggregator::new();
+
+                // Initialize feed client with Ed25519 verifier.
+                let verifier = FeedVerifier::from_hex(
+                    "0000000000000000000000000000000000000000000000000000000000000000",
+                )
+                .unwrap_or_else(|_| {
+                    // Fallback: create a dummy verifier (will fail signature checks but won't crash)
+                    FeedVerifier::from_hex(
+                        "0000000000000000000000000000000000000000000000000000000000000000",
+                    )
+                    .expect("hex parse")
+                });
+
+                let ti_config = clawdefender_threat_intel::ThreatIntelConfig {
+                    enabled: config.threat_intel.enabled,
+                    feed_url: config.threat_intel.feed_url.clone(),
+                    update_interval_hours: config.threat_intel.update_interval_hours,
+                    auto_apply_rules: config.threat_intel.auto_apply_rules,
+                    auto_apply_blocklist: config.threat_intel.auto_apply_blocklist,
+                    auto_apply_patterns: config.threat_intel.auto_apply_patterns,
+                    auto_apply_iocs: config.threat_intel.auto_apply_iocs,
+                    notify_on_update: config.threat_intel.notify_on_update,
+                };
+
+                let feed_client_instance = FeedClient::new(
+                    ti_config,
+                    FeedCache::new(data_dir),
+                    verifier,
+                )
+                .ok();
+
+                info!(
+                    ioc_count,
+                    rules_count,
+                    "Threat intelligence: loaded ({} IoCs, {} community rules)",
+                    ioc_count,
+                    rules_count
+                );
+
+                (
+                    Some(Arc::new(RwLock::new(ioc_db))),
+                    Some(Arc::new(blocklist)),
+                    Some(Arc::new(RwLock::new(rule_manager))),
+                    Some(Arc::new(std::sync::Mutex::new(telemetry))),
+                    feed_client_instance.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
+                )
+            } else {
+                info!("Threat intelligence: disabled in config");
+                (None, None, None, None, None)
+            };
+
         Ok(Self {
             config,
             sensor_config,
@@ -181,6 +298,11 @@ impl Daemon {
             injection_detector,
             profile_store,
             guard_registry: Arc::new(GuardRegistry::new()),
+            ioc_database,
+            blocklist_matcher,
+            rule_pack_manager,
+            telemetry_aggregator,
+            feed_client,
         })
     }
 
@@ -637,6 +759,12 @@ impl Daemon {
             });
         }
 
+        if let Some(ref ioc_db) = self.ioc_database {
+            proxy = proxy.with_threat_intel_context(clawdefender_mcp_proxy::ThreatIntelContext {
+                ioc_database: Arc::clone(ioc_db),
+            });
+        }
+
         let metrics = Arc::clone(proxy.metrics());
 
         // --- Policy hot-reload via notify ---
@@ -1015,6 +1143,7 @@ window_ms = 1000
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
         audit_tx.send(record).await.unwrap();
         drop(audit_tx);
@@ -1137,6 +1266,7 @@ threads = 8
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
 
         logger.log(&record).unwrap();
@@ -1509,6 +1639,7 @@ sensor_config_path = "/custom/path/sensor.toml"
                 score: 0.3,
                 patterns_found: vec!["test_pattern".to_string()],
             }),
+            threat_intel: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -1553,6 +1684,7 @@ sensor_config_path = "/custom/path/sensor.toml"
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -1610,5 +1742,288 @@ auto_block = false
         config.injection_detector.threshold = 0.5;
         let daemon = Daemon::new(config, false).unwrap();
         assert!(daemon.injection_detector.is_some());
+    }
+
+    // --- Threat intelligence integration tests ---
+
+    #[test]
+    fn threat_intel_initializes_when_enabled() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.threat_intel.enabled = true;
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.ioc_database.is_some());
+        assert!(daemon.blocklist_matcher.is_some());
+        assert!(daemon.rule_pack_manager.is_some());
+        assert!(daemon.telemetry_aggregator.is_some());
+    }
+
+    #[test]
+    fn threat_intel_disabled_when_config_says_disabled() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.threat_intel.enabled = false;
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.ioc_database.is_none());
+        assert!(daemon.blocklist_matcher.is_none());
+        assert!(daemon.rule_pack_manager.is_none());
+        assert!(daemon.telemetry_aggregator.is_none());
+        assert!(daemon.feed_client.is_none());
+    }
+
+    #[test]
+    fn threat_intel_ioc_database_starts_empty() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.threat_intel.enabled = true;
+        let daemon = Daemon::new(config, false).unwrap();
+        let db = daemon.ioc_database.as_ref().unwrap();
+        let db_guard = db.try_read().unwrap();
+        let stats = db_guard.stats();
+        // Empty because no IoC files have been pre-populated.
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[test]
+    fn threat_intel_ioc_matching_pipeline() {
+        use clawdefender_threat_intel::ioc::types::{
+            EventData, Indicator, IndicatorEntry, Severity,
+        };
+        use clawdefender_threat_intel::ioc::IoCDatabase;
+
+        // Create a database with a known indicator.
+        let mut db = IoCDatabase::new();
+        let entry = IndicatorEntry {
+            indicator: Indicator::MaliciousDomain("evil.example.com".to_string()),
+            severity: Severity::Critical,
+            threat_id: "TI-001".to_string(),
+            description: "Known malicious domain".to_string(),
+            last_updated: chrono::Utc::now(),
+            confidence: 0.95,
+            false_positive_rate: 0.01,
+            permanent: false,
+            expires_at: None,
+        };
+        db.add_indicator_and_rebuild(entry);
+
+        // Check an event that matches the indicator.
+        let event = EventData {
+            event_id: "test-event-1".to_string(),
+            destination_domain: Some("evil.example.com".to_string()),
+            ..Default::default()
+        };
+        let engine = db.engine();
+        let matches = engine.check_event(&event);
+        assert!(!matches.is_empty(), "should match the malicious domain IoC");
+        assert_eq!(matches[0].indicator.threat_id, "TI-001");
+
+        // Check an event that does NOT match.
+        let safe_event = EventData {
+            event_id: "test-event-2".to_string(),
+            destination_domain: Some("safe.example.com".to_string()),
+            ..Default::default()
+        };
+        let safe_matches = engine.check_event(&safe_event);
+        assert!(safe_matches.is_empty(), "should not match a safe domain");
+    }
+
+    #[test]
+    fn threat_intel_audit_record_with_ioc_match() {
+        use clawdefender_core::audit::{IoCMatchRecord, ThreatIntelAuditData};
+
+        let record = AuditRecord {
+            timestamp: chrono::Utc::now(),
+            source: "test".to_string(),
+            event_summary: "threat intel match test".to_string(),
+            event_details: serde_json::json!({}),
+            rule_matched: None,
+            action_taken: "allow".to_string(),
+            response_time_ms: None,
+            session_id: None,
+            direction: None,
+            server_name: None,
+            client_name: None,
+            jsonrpc_method: None,
+            tool_name: None,
+            arguments: None,
+            classification: None,
+            policy_rule: None,
+            policy_action: None,
+            user_decision: None,
+            proxy_latency_us: None,
+            slm_analysis: None,
+            swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
+            threat_intel: Some(ThreatIntelAuditData {
+                ioc_matches: vec![IoCMatchRecord {
+                    threat_id: "TI-001".to_string(),
+                    indicator_type: "MaliciousDomain".to_string(),
+                    severity: "Critical".to_string(),
+                }],
+                blocklist_match: None,
+                community_rule: None,
+            }),
+        };
+
+        // Round-trip serialization.
+        let json = serde_json::to_string(&record).unwrap();
+        assert!(json.contains("threat_intel"));
+        assert!(json.contains("TI-001"));
+        assert!(json.contains("MaliciousDomain"));
+
+        let deserialized: AuditRecord = serde_json::from_str(&json).unwrap();
+        let ti = deserialized.threat_intel.unwrap();
+        assert_eq!(ti.ioc_matches.len(), 1);
+        assert_eq!(ti.ioc_matches[0].threat_id, "TI-001");
+        assert_eq!(ti.ioc_matches[0].indicator_type, "MaliciousDomain");
+        assert_eq!(ti.ioc_matches[0].severity, "Critical");
+    }
+
+    #[test]
+    fn threat_intel_full_pipeline_concept() {
+        // Test the full pipeline: add IoC -> check event -> build audit record with match.
+        use clawdefender_threat_intel::ioc::types::{
+            EventData, Indicator, IndicatorEntry, Severity,
+        };
+        use clawdefender_threat_intel::ioc::IoCDatabase;
+        use clawdefender_core::audit::{IoCMatchRecord, ThreatIntelAuditData};
+
+        // 1. Create IoC database and add an indicator.
+        let mut db = IoCDatabase::new();
+        db.add_indicator_and_rebuild(IndicatorEntry {
+            indicator: Indicator::SuspiciousProcessName("evil-agent".to_string()),
+            severity: Severity::High,
+            threat_id: "TI-PROC-001".to_string(),
+            description: "Known malicious process".to_string(),
+            last_updated: chrono::Utc::now(),
+            confidence: 0.9,
+            false_positive_rate: 0.05,
+            permanent: true,
+            expires_at: None,
+        });
+
+        // 2. Simulate an event that matches.
+        let event = EventData {
+            event_id: "evt-123".to_string(),
+            process_name: Some("evil-agent".to_string()),
+            ..Default::default()
+        };
+        let engine = db.engine();
+        let ioc_matches = engine.check_event(&event);
+        assert_eq!(ioc_matches.len(), 1);
+
+        // 3. Build the threat intel audit data from matches.
+        let ti_data = ThreatIntelAuditData {
+            ioc_matches: ioc_matches
+                .iter()
+                .map(|m| IoCMatchRecord {
+                    threat_id: m.indicator.threat_id.clone(),
+                    indicator_type: format!("{:?}", m.indicator.indicator),
+                    severity: format!("{:?}", m.indicator.severity),
+                })
+                .collect(),
+            blocklist_match: None,
+            community_rule: None,
+        };
+
+        // 4. Build an audit record with the threat intel data.
+        let record = AuditRecord {
+            timestamp: chrono::Utc::now(),
+            source: "proxy".to_string(),
+            event_summary: "tool call: suspicious_tool".to_string(),
+            event_details: serde_json::json!({"process": "evil-agent"}),
+            rule_matched: None,
+            action_taken: "allow".to_string(),
+            response_time_ms: None,
+            session_id: None,
+            direction: None,
+            server_name: Some("test-server".to_string()),
+            client_name: None,
+            jsonrpc_method: None,
+            tool_name: Some("suspicious_tool".to_string()),
+            arguments: None,
+            classification: None,
+            policy_rule: None,
+            policy_action: None,
+            user_decision: None,
+            proxy_latency_us: None,
+            slm_analysis: None,
+            swarm_analysis: None,
+            behavioral: None,
+            injection_scan: None,
+            threat_intel: Some(ti_data),
+        };
+
+        // 5. Verify the audit record round-trips correctly and contains IoC data.
+        let json = serde_json::to_string(&record).unwrap();
+        let parsed: AuditRecord = serde_json::from_str(&json).unwrap();
+        let ti = parsed.threat_intel.as_ref().unwrap();
+        assert_eq!(ti.ioc_matches.len(), 1);
+        assert_eq!(ti.ioc_matches[0].threat_id, "TI-PROC-001");
+        assert!(ti.ioc_matches[0].indicator_type.contains("SuspiciousProcessName"));
+        assert!(ti.ioc_matches[0].severity.contains("High"));
+
+        // 6. Verify it can be written to audit log and queried back.
+        let dir = TempDir::new().unwrap();
+        let logger = FileAuditLogger::new(
+            dir.path().join("audit.jsonl"),
+            clawdefender_core::config::settings::LogRotation::default(),
+        )
+        .unwrap();
+        logger.log(&record).unwrap();
+
+        let filter = clawdefender_core::audit::AuditFilter {
+            limit: 100,
+            ..Default::default()
+        };
+        let results = logger.query(&filter).unwrap();
+        assert!(!results.is_empty(), "audit log should have at least one record");
+        let matching = results
+            .iter()
+            .find(|r| r.threat_intel.is_some())
+            .expect("should have a record with threat_intel data");
+        let result_ti = matching.threat_intel.as_ref().unwrap();
+        assert_eq!(result_ti.ioc_matches.len(), 1);
+        assert_eq!(result_ti.ioc_matches[0].threat_id, "TI-PROC-001");
+    }
+
+    #[test]
+    fn threat_intel_config_parsing() {
+        let toml_str = r#"
+[threat_intel]
+enabled = true
+feed_url = "https://example.com/feed"
+update_interval_hours = 12
+auto_apply_rules = true
+auto_apply_blocklist = true
+auto_apply_patterns = false
+auto_apply_iocs = true
+notify_on_update = true
+"#;
+        let config: ClawConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.threat_intel.enabled);
+        assert_eq!(config.threat_intel.feed_url, "https://example.com/feed");
+        assert_eq!(config.threat_intel.update_interval_hours, 12);
+        assert!(config.threat_intel.auto_apply_rules);
+        assert!(config.threat_intel.auto_apply_blocklist);
+        assert!(!config.threat_intel.auto_apply_patterns);
+        assert!(config.threat_intel.auto_apply_iocs);
+        assert!(config.threat_intel.notify_on_update);
+    }
+
+    #[test]
+    fn threat_intel_blocklist_matcher_creation() {
+        use clawdefender_threat_intel::blocklist::BlocklistMatcher;
+        use clawdefender_threat_intel::blocklist::types::Blocklist;
+
+        let blocklist = Blocklist {
+            version: 1,
+            updated_at: "2026-01-01".to_string(),
+            entries: Vec::new(),
+        };
+        let matcher = BlocklistMatcher::new(blocklist);
+        let matches = matcher.check_server("some-server", None, None);
+        assert!(matches.is_empty(), "empty blocklist should not match anything");
     }
 }

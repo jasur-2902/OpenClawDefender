@@ -17,6 +17,8 @@ use clawdefender_slm::context::ContextTracker;
 use clawdefender_slm::noise_filter::NoiseFilter;
 use clawdefender_slm::SlmService;
 use clawdefender_swarm::commander::Commander;
+use clawdefender_threat_intel::ioc::IoCDatabase;
+use tokio::sync::RwLock;
 
 /// Configuration shared by all proxy modes.
 #[derive(Debug, Clone)]
@@ -137,4 +139,12 @@ pub struct SlmContext {
 pub struct SwarmContext {
     pub commander: Arc<Commander>,
     pub escalation_threshold: String,
+}
+
+/// Optional threat intelligence context passed to the proxy for IoC matching.
+/// When present, events are checked against the IoC database and matches are
+/// recorded in audit records.
+#[derive(Clone)]
+pub struct ThreatIntelContext {
+    pub ioc_database: Arc<RwLock<IoCDatabase>>,
 }

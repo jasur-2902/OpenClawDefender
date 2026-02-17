@@ -17,6 +17,7 @@ clawdefender-swarm = { path = "../../crates/clawdefender-swarm" }
 clawdefender-mcp-server = { path = "../../crates/clawdefender-mcp-server" }
 clawdefender-certify = { path = "../../crates/clawdefender-certify" }
 clawdefender-scanner = { path = "../../crates/clawdefender-scanner" }
+clawdefender-threat-intel = { path = "../../crates/clawdefender-threat-intel" }
 clap = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }

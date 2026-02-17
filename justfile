@@ -78,6 +78,16 @@ bump-version VERSION:
     @echo "Version bumped to {{VERSION}} in workspace Cargo.toml"
     @echo "Remember to update Formula/clawdefender.rb version too."
 
+# Build the Tauri GUI app (frontend + backend)
+build-app:
+    cd clients/clawdefender-app && npm install && npm run build
+    cd clients/clawdefender-app/src-tauri && cargo build --release
+
+# Run the Tauri GUI app in development mode
+dev-app:
+    cd clients/clawdefender-app && npm run dev &
+    cd clients/clawdefender-app/src-tauri && cargo tauri dev
+
 # Check that everything compiles, passes lints, and tests
 preflight: lint test
     @echo "All checks passed."

@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0",
+  "patterns": [
+    {
+      "id": "KC-FEED-001",
+      "name": "Supply Chain Injection",
+      "severity": "critical",
+      "window_seconds": 300,
+      "explanation": "Detects a supply chain attack pattern: a package install or dependency fetch is followed by reading credential files, then exfiltrating data over the network. This is the hallmark of a trojanized package.",
+      "steps": [
+        {
+          "event_type": "shell_exec",
+          "path_pattern": "(npm|yarn|pip|cargo)\\s+install"
+        },
+        {
+          "event_type": "file_read",
+          "path_pattern": "(~/.ssh/|~/.aws/|~/.npmrc|~/.config/gh/)"
+        },
+        {
+          "event_type": "network_connect",
+          "destination_pattern": ".*"
+        }
+      ],
+      "source": "feed",
+      "version": "1.0.0"
+    },
+    {
+      "id": "KC-FEED-002",
+      "name": "Data Staging and Exfiltration",
+      "severity": "high",
+      "window_seconds": 600,
+      "explanation": "Detects data staging: sensitive files are written to a temporary location, compressed or archived, then uploaded over the network. This pattern is common in data theft operations.",
+      "steps": [
+        {
+          "event_type": "file_write",
+          "path_pattern": "(/tmp/|/var/tmp/|~/\\.cache/)",
+          "min_count": 2
+        },
+        {
+          "event_type": "shell_exec",
+          "path_pattern": "(tar|zip|gzip|7z|bzip2)"
+        },
+        {
+          "event_type": "network_connect",
+          "destination_pattern": ".*"
+        }
+      ],
+      "source": "feed",
+      "version": "1.0.0"
+    },
+    {
+      "id": "KC-FEED-003",
+      "name": "Environment Variable Exfiltration",
+      "severity": "high",
+      "window_seconds": 120,
+      "explanation": "Detects exfiltration of environment variables: the attacker reads environment variables (which often contain API keys, tokens, and secrets) and then immediately makes a network connection to send them externally.",
+      "steps": [
+        {
+          "event_type": "shell_exec",
+          "path_pattern": "(env|printenv|set|export)"
+        },
+        {
+          "event_type": "network_connect",
+          "destination_pattern": ".*"
+        }
+      ],
+      "source": "feed",
+      "version": "1.0.0"
+    }
+  ]
+}

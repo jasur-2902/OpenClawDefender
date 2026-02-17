@@ -1,0 +1,93 @@
+{
+  "id": "persistence-prevention",
+  "name": "Persistence Prevention",
+  "version": "1.0.0",
+  "author": "ClawDefender Team",
+  "description": "Prevents modifications to startup items, shell configurations, scheduled tasks, and other persistence mechanisms.",
+  "category": "Security",
+  "tags": ["persistence", "startup", "shell", "cron", "launchagent"],
+  "compatibility": ">=0.3.0",
+  "download_count": 0,
+  "rules": [
+    {
+      "name": "block-launchagents-write",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["~/Library/LaunchAgents/*", "/Library/LaunchAgents/*", "/Library/LaunchDaemons/*"],
+      "message": "Blocked: Writing to LaunchAgents/LaunchDaemons directories is not permitted. This is a common persistence mechanism.",
+      "tags": ["persistence", "macos", "launchagent", "critical"]
+    },
+    {
+      "name": "block-bashrc-write",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["~/.bashrc", "~/.bash_profile", "~/.bash_login", "~/.profile"],
+      "message": "Blocked: Modification of bash startup files is not permitted.",
+      "tags": ["persistence", "shell", "bash"]
+    },
+    {
+      "name": "block-zshrc-write",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["~/.zshrc", "~/.zprofile", "~/.zshenv", "~/.zlogin"],
+      "message": "Blocked: Modification of zsh startup files is not permitted.",
+      "tags": ["persistence", "shell", "zsh"]
+    },
+    {
+      "name": "block-crontab-write",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["/var/spool/cron/*", "/etc/cron.d/*", "/etc/crontab"],
+      "message": "Blocked: Modification of cron configuration is not permitted.",
+      "tags": ["persistence", "cron", "scheduled"]
+    },
+    {
+      "name": "block-systemd-write",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["/etc/systemd/system/*", "~/.config/systemd/user/*", "/usr/lib/systemd/system/*"],
+      "message": "Blocked: Modification of systemd service files is not permitted.",
+      "tags": ["persistence", "linux", "systemd"]
+    },
+    {
+      "name": "block-xdg-autostart",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["~/.config/autostart/*", "/etc/xdg/autostart/*"],
+      "message": "Blocked: Modification of XDG autostart entries is not permitted.",
+      "tags": ["persistence", "linux", "xdg"]
+    },
+    {
+      "name": "block-sudoers-write",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["/etc/sudoers", "/etc/sudoers.d/*"],
+      "message": "Blocked: Modification of sudoers configuration is not permitted.",
+      "tags": ["persistence", "privilege-escalation", "critical"]
+    },
+    {
+      "name": "block-login-items-write",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["~/Library/Preferences/com.apple.loginitems.plist"],
+      "message": "Blocked: Modification of macOS login items is not permitted.",
+      "tags": ["persistence", "macos"]
+    },
+    {
+      "name": "block-windows-registry-startup",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\*", "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\*"],
+      "message": "Blocked: Modification of Windows startup registry keys is not permitted.",
+      "tags": ["persistence", "windows", "registry"]
+    },
+    {
+      "name": "prompt-fish-config-write",
+      "action": "prompt",
+      "methods": ["tools/call"],
+      "paths": ["~/.config/fish/config.fish", "~/.config/fish/conf.d/*"],
+      "message": "A tool is attempting to modify fish shell configuration. Allow this?",
+      "tags": ["persistence", "shell", "fish"]
+    }
+  ]
+}

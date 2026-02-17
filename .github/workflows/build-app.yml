@@ -1,0 +1,100 @@
+name: Build ClawDefender App
+
+on:
+  push:
+    branches: [clawdefender-v0.3]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies
+        working-directory: clients/clawdefender-app
+        run: npm install
+
+      - name: TypeScript check
+        working-directory: clients/clawdefender-app
+        run: npx tsc --noEmit
+
+  build:
+    needs: lint
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: clients/clawdefender-app/src-tauri
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Install frontend dependencies
+        working-directory: clients/clawdefender-app
+        run: npm install
+
+      - name: Build frontend
+        working-directory: clients/clawdefender-app
+        run: npm run build
+
+      - name: Build Tauri app
+        working-directory: clients/clawdefender-app/src-tauri
+        run: cargo tauri build
+
+      - name: Find DMG
+        id: find-dmg
+        run: |
+          DMG_PATH=$(find clients/clawdefender-app/src-tauri/target/release/bundle -name "*.dmg" | head -1)
+          DMG_NAME=$(basename "$DMG_PATH")
+          echo "path=$DMG_PATH" >> "$GITHUB_OUTPUT"
+          echo "name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClawDefender-dmg
+          path: ${{ steps.find-dmg.outputs.path }}
+
+      - name: Generate SHA-256 checksum
+        if: startsWith(github.ref, 'refs/tags/')
+        id: checksum
+        run: |
+          shasum -a 256 "${{ steps.find-dmg.outputs.path }}" > "${{ steps.find-dmg.outputs.path }}.sha256"
+          echo "sha256=$(shasum -a 256 "${{ steps.find-dmg.outputs.path }}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            ${{ steps.find-dmg.outputs.path }}
+            ${{ steps.find-dmg.outputs.path }}.sha256
+          body: |
+            ## ClawDefender ${{ github.ref_name }}
+
+            ### Checksums
+            **SHA-256:** `${{ steps.checksum.outputs.sha256 }}` — ${{ steps.find-dmg.outputs.name }}

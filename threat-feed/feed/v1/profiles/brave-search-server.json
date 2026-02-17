@@ -1,0 +1,13 @@
+{
+  "server_package": "@anthropic/brave-search-server",
+  "profile_version": "1.0.0",
+  "expected_tools": ["brave_web_search", "brave_local_search"],
+  "expected_file_territory": [],
+  "expected_network": true,
+  "expected_shell": false,
+  "expected_rate": {
+    "mean_ms": 3000.0,
+    "stddev_ms": 2000.0
+  },
+  "notes": "The Brave Search server makes outbound HTTPS requests exclusively to the Brave Search API (api.search.brave.com). It should NOT access local files or execute shell commands. Network connections to any destination other than the Brave Search API are anomalous."
+}

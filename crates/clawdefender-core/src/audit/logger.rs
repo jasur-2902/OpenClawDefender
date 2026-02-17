@@ -232,6 +232,7 @@ impl FileAuditLogger {
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
         // Use the channel to write session-start.
         let _ = logger.sender.send(WriterCommand::Write(Box::new(start_record)));
@@ -278,6 +279,7 @@ impl FileAuditLogger {
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
         let _ = self.sender.send(WriterCommand::Write(Box::new(end_record)));
         let _ = self.sender.send(WriterCommand::Shutdown);
@@ -389,6 +391,7 @@ impl Drop for FileAuditLogger {
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         };
         let _ = self.sender.send(WriterCommand::Write(Box::new(end_record)));
         let _ = self.sender.send(WriterCommand::Shutdown);
@@ -628,6 +631,7 @@ mod tests {
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         }
     }
 
@@ -656,6 +660,7 @@ mod tests {
             swarm_analysis: None,
             behavioral: None,
             injection_scan: None,
+            threat_intel: None,
         }
     }
 

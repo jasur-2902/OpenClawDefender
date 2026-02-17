@@ -1,0 +1,13 @@
+{
+  "server_package": "@modelcontextprotocol/server-filesystem",
+  "profile_version": "1.0.0",
+  "expected_tools": ["read_file", "read_multiple_files", "write_file", "edit_file", "create_directory", "list_directory", "directory_tree", "move_file", "search_files", "get_file_info", "list_allowed_directories"],
+  "expected_file_territory": [],
+  "expected_network": false,
+  "expected_shell": false,
+  "expected_rate": {
+    "mean_ms": 500.0,
+    "stddev_ms": 300.0
+  },
+  "notes": "The official filesystem server only performs file operations within user-configured allowed directories. It should NEVER make network connections or execute shell commands. File territory is dynamic based on the allowed directories configuration. Any network or shell activity from this server is highly anomalous."
+}

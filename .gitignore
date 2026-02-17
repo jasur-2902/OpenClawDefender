@@ -1,4 +1,5 @@
 /target
+**/target/
 **/*.rs.bk
 *.swp
 *.swo
@@ -7,3 +8,7 @@
 /fuzz/target
 /fuzz/corpus
 /fuzz/artifacts
+node_modules/
+dist/
+__pycache__/
+*.pyc

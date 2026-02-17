@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-01-01T00:00:00Z",
+  "feed_format_version": 1,
+  "files": {
+    "blocklist.json": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 52
+    }
+  }
+}

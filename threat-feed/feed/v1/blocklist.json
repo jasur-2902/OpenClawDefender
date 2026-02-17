@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "updated_at": "2026-02-17T00:00:00Z",
+  "entries": [
+    {
+      "id": "CLAW-2026-001",
+      "entry_type": "MaliciousServer",
+      "name": "evil-mcp-exfiltrator",
+      "severity": "Critical",
+      "description": "[SYNTHETIC/TEST] Malicious MCP server designed to exfiltrate credentials via hidden tool calls. Reads SSH keys and environment variables then transmits to external C2 endpoint.",
+      "discovery_date": "2026-01-10",
+      "indicators": {
+        "network": ["198.51.100.42", "evil-c2.example.com"],
+        "file_access": ["~/.ssh/*", "~/.aws/credentials"],
+        "behavior": "Reads credential files then immediately initiates outbound network connections to unknown hosts."
+      },
+      "remediation": "Immediately remove the server from your MCP configuration. Rotate all SSH keys and AWS credentials that may have been exposed.",
+      "references": ["https://example.com/advisories/CLAW-2026-001"],
+      "npm_package": "evil-mcp-exfiltrator"
+    },
+    {
+      "id": "CLAW-2026-002",
+      "entry_type": "MaliciousServer",
+      "name": "trojan-code-assistant",
+      "severity": "Critical",
+      "description": "[SYNTHETIC/TEST] Trojanized code assistant MCP server that injects backdoors into source code during code review operations. Modifies files to include obfuscated reverse shells.",
+      "discovery_date": "2026-01-15",
+      "indicators": {
+        "network": ["203.0.113.99"],
+        "file_access": ["**/*.js", "**/*.py", "**/*.ts"],
+        "behavior": "Silently modifies source files during read operations to inject obfuscated payloads."
+      },
+      "remediation": "Remove the server immediately. Audit all source files modified during sessions where this server was active. Check git history for unauthorized changes.",
+      "references": ["https://example.com/advisories/CLAW-2026-002"],
+      "npm_package": "trojan-code-assistant"
+    },
+    {
+      "id": "CLAW-2026-003",
+      "entry_type": "MaliciousServer",
+      "name": "stealth-keylogger-mcp",
+      "severity": "Critical",
+      "description": "[SYNTHETIC/TEST] MCP server that logs all tool call arguments and prompt contents, exfiltrating them to a remote collection server via DNS tunneling.",
+      "discovery_date": "2026-01-22",
+      "indicators": {
+        "network": ["*.exfil.example.com"],
+        "file_access": ["/tmp/.mcp_cache_*"],
+        "behavior": "Creates hidden temp files to buffer intercepted data, then exfiltrates via DNS TXT record queries."
+      },
+      "remediation": "Remove server and delete any /tmp/.mcp_cache_* files. Review DNS logs for suspicious query patterns. Consider all data from affected sessions compromised.",
+      "references": ["https://example.com/advisories/CLAW-2026-003"],
+      "npm_package": "stealth-keylogger-mcp"
+    },
+    {
+      "id": "CLAW-2026-004",
+      "entry_type": "MaliciousServer",
+      "name": "crypto-miner-mcp",
+      "severity": "High",
+      "description": "[SYNTHETIC/TEST] MCP server that spawns background cryptocurrency mining processes while appearing to provide legitimate file management functionality.",
+      "discovery_date": "2026-02-01",
+      "indicators": {
+        "network": ["198.51.100.200:3333", "pool.example.com"],
+        "file_access": ["/tmp/.xmr*"],
+        "behavior": "Spawns background processes with high CPU usage. Creates hidden files in /tmp for miner configuration."
+      },
+      "remediation": "Remove the server. Kill any suspicious background processes. Check for persistence mechanisms in LaunchAgents or cron.",
+      "references": ["https://example.com/advisories/CLAW-2026-004"],
+      "npm_package": "crypto-miner-mcp"
+    },
+    {
+      "id": "CLAW-2026-005",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-file-browser",
+      "versions_affected": "<2.1.0",
+      "versions_fixed": ["2.1.0"],
+      "severity": "High",
+      "description": "Path traversal vulnerability allowing access to files outside the configured root directory via ../ sequences in tool arguments.",
+      "discovery_date": "2026-01-05",
+      "indicators": {
+        "network": [],
+        "file_access": ["../../etc/passwd", "../../etc/shadow"],
+        "behavior": "Tool arguments contain path traversal sequences that bypass directory restrictions."
+      },
+      "remediation": "Upgrade to version 2.1.0 or later. Apply strict path validation on all file access tool calls.",
+      "references": ["https://example.com/advisories/CLAW-2026-005"],
+      "npm_package": "mcp-file-browser",
+      "cve": "CVE-2026-00001",
+      "versions_safe": ["2.1.0", "2.1.1", "2.2.0"]
+    },
+    {
+      "id": "CLAW-2026-006",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-sql-helper",
+      "versions_affected": "<1.4.0",
+      "versions_fixed": ["1.4.0"],
+      "severity": "Critical",
+      "description": "SQL injection vulnerability in the query tool. User-supplied input is directly interpolated into SQL queries without parameterization.",
+      "discovery_date": "2026-01-12",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Tool arguments containing SQL metacharacters (quotes, semicolons, UNION SELECT) are passed directly to database queries."
+      },
+      "remediation": "Upgrade to version 1.4.0 or later. Use parameterized queries for all database operations.",
+      "references": ["https://example.com/advisories/CLAW-2026-006"],
+      "npm_package": "mcp-sql-helper",
+      "cve": "CVE-2026-00002",
+      "versions_safe": ["1.4.0", "1.4.1"]
+    },
+    {
+      "id": "CLAW-2026-007",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-shell-executor",
+      "versions_affected": "<3.0.0",
+      "versions_fixed": ["3.0.0"],
+      "severity": "Critical",
+      "description": "Command injection vulnerability. Shell metacharacters in tool arguments are not sanitized, allowing arbitrary command execution.",
+      "discovery_date": "2026-01-18",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Tool arguments containing shell metacharacters (backticks, $(), pipes, semicolons) lead to unintended command execution."
+      },
+      "remediation": "Upgrade to version 3.0.0 or later. Never pass unsanitized user input to shell commands.",
+      "references": ["https://example.com/advisories/CLAW-2026-007"],
+      "npm_package": "mcp-shell-executor",
+      "cve": "CVE-2026-00003",
+      "versions_safe": ["3.0.0"]
+    },
+    {
+      "id": "CLAW-2026-008",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-api-gateway",
+      "versions_affected": "<1.2.3",
+      "versions_fixed": ["1.2.3"],
+      "severity": "High",
+      "description": "Server-side request forgery (SSRF) vulnerability. The fetch tool does not validate destination URLs, allowing access to internal network resources.",
+      "discovery_date": "2026-01-25",
+      "indicators": {
+        "network": ["169.254.169.254", "127.0.0.1", "10.0.0.0/8"],
+        "file_access": [],
+        "behavior": "Fetch requests targeting internal IP ranges, cloud metadata endpoints, or localhost services."
+      },
+      "remediation": "Upgrade to version 1.2.3 or later. Implement URL allow-listing and block requests to private IP ranges.",
+      "references": ["https://example.com/advisories/CLAW-2026-008"],
+      "npm_package": "mcp-api-gateway",
+      "cve": "CVE-2026-00004",
+      "versions_safe": ["1.2.3", "1.3.0"]
+    },
+    {
+      "id": "CLAW-2026-009",
+      "entry_type": "CompromisedVersion",
+      "name": "popular-mcp-utils",
+      "versions": ["4.2.1"],
+      "severity": "Critical",
+      "description": "[SYNTHETIC/TEST] Supply chain attack: version 4.2.1 was published by a compromised maintainer account. Contains a postinstall script that exfiltrates npm tokens and GitHub PATs.",
+      "discovery_date": "2026-02-03",
+      "indicators": {
+        "network": ["203.0.113.50"],
+        "file_access": ["~/.npmrc", "~/.config/gh/hosts.yml"],
+        "behavior": "Postinstall script reads authentication tokens from well-known config files and POSTs them to an external endpoint."
+      },
+      "remediation": "Remove version 4.2.1 immediately. Upgrade to 4.2.2 which was published by the restored legitimate maintainer. Rotate all npm and GitHub tokens.",
+      "references": ["https://example.com/advisories/CLAW-2026-009"],
+      "npm_package": "popular-mcp-utils",
+      "sha256_malicious": ["a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"],
+      "versions_safe": ["4.2.0", "4.2.2", "4.3.0"]
+    },
+    {
+      "id": "CLAW-2026-010",
+      "entry_type": "CompromisedVersion",
+      "name": "mcp-data-transformer",
+      "versions": ["2.0.0", "2.0.1"],
+      "severity": "Critical",
+      "description": "[SYNTHETIC/TEST] Supply chain attack: versions 2.0.0 and 2.0.1 contain obfuscated code that establishes a reverse shell during initialization, providing remote access to the host system.",
+      "discovery_date": "2026-02-10",
+      "indicators": {
+        "network": ["198.51.100.77:4444"],
+        "file_access": ["/tmp/.dt_session"],
+        "behavior": "On startup, establishes an encrypted reverse TCP connection to a remote host. Creates a hidden session file in /tmp."
+      },
+      "remediation": "Remove versions 2.0.0 and 2.0.1. Install version 2.0.2 which has been audited and verified. Investigate the host for signs of unauthorized access.",
+      "references": ["https://example.com/advisories/CLAW-2026-010"],
+      "npm_package": "mcp-data-transformer",
+      "sha256_malicious": [
+        "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
+        "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4"
+      ],
+      "versions_safe": ["1.9.0", "2.0.2"]
+    },
+    {
+      "id": "CLAW-2026-011",
+      "entry_type": "CompromisedVersion",
+      "name": "mcp-markdown-renderer",
+      "versions": ["3.1.0"],
+      "severity": "High",
+      "description": "[SYNTHETIC/TEST] Typosquatting attack combined with a compromised version. Version 3.1.0 includes a dependency on a typosquatted package that harvests browser cookies.",
+      "discovery_date": "2026-02-12",
+      "indicators": {
+        "network": ["203.0.113.123"],
+        "file_access": ["~/Library/Application Support/Google/Chrome/Default/Cookies", "~/.mozilla/firefox/*/cookies.sqlite"],
+        "behavior": "Accesses browser cookie databases during initialization and transmits cookie data to remote server."
+      },
+      "remediation": "Remove version 3.1.0. Upgrade to 3.1.1 which removes the malicious dependency. Clear browser cookies and re-authenticate with sensitive services.",
+      "references": ["https://example.com/advisories/CLAW-2026-011"],
+      "npm_package": "mcp-markdown-renderer",
+      "sha256_malicious": ["d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"],
+      "versions_safe": ["3.0.0", "3.1.1"]
+    },
+    {
+      "id": "CLAW-2026-012",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-image-processor",
+      "versions_affected": "<1.0.5",
+      "versions_fixed": ["1.0.5"],
+      "severity": "Medium",
+      "description": "Denial-of-service vulnerability. Crafted image files can cause unbounded memory allocation leading to OOM conditions on the host.",
+      "discovery_date": "2026-02-05",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Processing specially crafted PNG or SVG files causes memory usage to grow without bound."
+      },
+      "remediation": "Upgrade to version 1.0.5 or later which includes memory limits on image processing operations.",
+      "references": ["https://example.com/advisories/CLAW-2026-012"],
+      "npm_package": "mcp-image-processor",
+      "cve": "CVE-2026-00005",
+      "versions_safe": ["1.0.5"]
+    }
+  ]
+}

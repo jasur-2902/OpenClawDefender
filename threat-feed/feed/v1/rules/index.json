@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "packs": [
+    {
+      "id": "credential-protection",
+      "name": "Credential Protection",
+      "description": "Blocks access to SSH keys, cloud credentials, API tokens, and other sensitive authentication material.",
+      "file": "credential-protection.json",
+      "rule_count": 12
+    },
+    {
+      "id": "network-security",
+      "name": "Network Security",
+      "description": "Monitors and controls outbound network connections, blocking known malicious destinations.",
+      "file": "network-security.json",
+      "rule_count": 10
+    },
+    {
+      "id": "persistence-prevention",
+      "name": "Persistence Prevention",
+      "description": "Prevents modifications to startup items, shell configurations, and scheduled tasks.",
+      "file": "persistence-prevention.json",
+      "rule_count": 10
+    },
+    {
+      "id": "privacy-protection",
+      "name": "Privacy Protection",
+      "description": "Blocks access to browser data, email, messages, photos, and other personal information.",
+      "file": "privacy-protection.json",
+      "rule_count": 10
+    },
+    {
+      "id": "filesystem-server-hardened",
+      "name": "Filesystem Server Hardened",
+      "description": "Optimized security rules for the official @modelcontextprotocol/server-filesystem MCP server.",
+      "file": "filesystem-server-hardened.json",
+      "rule_count": 8
+    }
+  ]
+}

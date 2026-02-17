@@ -494,6 +494,7 @@ fn build_audit_record(event: &McpEvent, action: &str, rule_name: Option<&str>) -
         swarm_analysis: None,
         behavioral: None,
         injection_scan: None,
+        threat_intel: None,
     }
 }
 

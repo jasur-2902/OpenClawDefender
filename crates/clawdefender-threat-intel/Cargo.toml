@@ -1,0 +1,30 @@
+[package]
+name = "clawdefender-threat-intel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Threat intelligence feed client for ClawDefender"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+aho-corasick = { workspace = true }
+glob = { workspace = true }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+sha2 = "0.10"
+dirs = "5"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+mockito = "1"
+tokio = { workspace = true, features = ["full", "test-util"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"

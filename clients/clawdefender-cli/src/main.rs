@@ -172,6 +172,36 @@ enum Commands {
         action: GuardAction,
     },
 
+    /// Manage threat intelligence feeds.
+    Feed {
+        #[command(subcommand)]
+        action: FeedAction,
+    },
+
+    /// Manage community rule packs.
+    Rules {
+        #[command(subcommand)]
+        action: RulesAction,
+    },
+
+    /// Manage the IoC (Indicator of Compromise) database.
+    Ioc {
+        #[command(subcommand)]
+        action: IocAction,
+    },
+
+    /// Manage anonymous telemetry settings.
+    Telemetry {
+        #[command(subcommand)]
+        action: TelemetryAction,
+    },
+
+    /// Check server reputation against the blocklist.
+    Reputation {
+        /// Server name or package name to check.
+        server: String,
+    },
+
     /// Run a security scan against an MCP server.
     Scan {
         /// Server command and arguments (everything after --).
@@ -325,6 +355,64 @@ enum GuardAction {
         /// Path to a permissions config file (TOML or JSON).
         file: String,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum FeedAction {
+    /// Show feed version, last update, next check time.
+    Status,
+    /// Force an immediate feed update check.
+    Update,
+    /// Verify feed signature and file integrity.
+    Verify,
+}
+
+#[derive(Subcommand, Debug)]
+enum RulesAction {
+    /// List available and installed community rule packs.
+    List,
+    /// Install a community rule pack.
+    Install {
+        /// Pack ID to install.
+        pack: String,
+    },
+    /// Uninstall a community rule pack.
+    Uninstall {
+        /// Pack ID to uninstall.
+        pack: String,
+    },
+    /// Update all installed rule packs.
+    Update,
+}
+
+#[derive(Subcommand, Debug)]
+enum IocAction {
+    /// Show IoC database statistics.
+    Status,
+    /// Add a local IoC indicator.
+    Add {
+        /// Indicator type (ip, domain, hash, url, etc.).
+        ioc_type: String,
+        /// Indicator value.
+        value: String,
+    },
+    /// Test if a value matches any IoC in the database.
+    Test {
+        /// Value to test.
+        value: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum TelemetryAction {
+    /// Show telemetry status (enabled/disabled, last report).
+    Status,
+    /// Preview what telemetry data would be sent.
+    Preview,
+    /// Opt in to anonymous telemetry.
+    Enable,
+    /// Opt out of anonymous telemetry.
+    Disable,
 }
 
 #[derive(Subcommand, Debug)]
@@ -518,6 +606,42 @@ async fn main() -> anyhow::Result<()> {
                 list_modules,
             )
             .await?;
+        }
+
+        Commands::Feed { action } => match action {
+            FeedAction::Status => commands::threat_intel::feed_status(&config)?,
+            FeedAction::Update => commands::threat_intel::feed_update(&config).await?,
+            FeedAction::Verify => commands::threat_intel::feed_verify(&config)?,
+        },
+
+        Commands::Rules { action } => match action {
+            RulesAction::List => commands::threat_intel::rules_list(&config)?,
+            RulesAction::Install { pack } => {
+                commands::threat_intel::rules_install(&config, &pack)?
+            }
+            RulesAction::Uninstall { pack } => {
+                commands::threat_intel::rules_uninstall(&config, &pack)?
+            }
+            RulesAction::Update => commands::threat_intel::rules_update(&config)?,
+        },
+
+        Commands::Ioc { action } => match action {
+            IocAction::Status => commands::threat_intel::ioc_status(&config)?,
+            IocAction::Add { ioc_type, value } => {
+                commands::threat_intel::ioc_add(&config, &ioc_type, &value)?
+            }
+            IocAction::Test { value } => commands::threat_intel::ioc_test(&config, &value)?,
+        },
+
+        Commands::Telemetry { action } => match action {
+            TelemetryAction::Status => commands::threat_intel::telemetry_status(&config)?,
+            TelemetryAction::Preview => commands::threat_intel::telemetry_preview(&config)?,
+            TelemetryAction::Enable => commands::threat_intel::telemetry_enable(&config)?,
+            TelemetryAction::Disable => commands::threat_intel::telemetry_disable(&config)?,
+        },
+
+        Commands::Reputation { server } => {
+            commands::threat_intel::check_reputation(&config, &server)?
         }
 
         Commands::Config { action } => {

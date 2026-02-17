@@ -1,0 +1,134 @@
+{
+  "id": "privacy-protection",
+  "name": "Privacy Protection",
+  "version": "1.0.0",
+  "author": "ClawDefender Team",
+  "description": "Blocks access to browser data, email, messages, photos, and other personal information.",
+  "category": "Privacy",
+  "tags": ["privacy", "browser", "email", "photos", "personal"],
+  "compatibility": ">=0.3.0",
+  "download_count": 0,
+  "rules": [
+    {
+      "name": "block-browser-history",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Application Support/Google/Chrome/*/History*",
+        "~/Library/Application Support/Firefox/Profiles/*/places.sqlite",
+        "~/Library/Safari/History.db",
+        "~/.config/chromium/*/History*"
+      ],
+      "message": "Blocked: Access to browser history is not permitted.",
+      "tags": ["privacy", "browser", "history"]
+    },
+    {
+      "name": "block-browser-cookies",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Application Support/Google/Chrome/*/Cookies*",
+        "~/Library/Application Support/Firefox/Profiles/*/cookies.sqlite",
+        "~/Library/Cookies/*",
+        "~/.config/chromium/*/Cookies*"
+      ],
+      "message": "Blocked: Access to browser cookies is not permitted.",
+      "tags": ["privacy", "browser", "cookies", "critical"]
+    },
+    {
+      "name": "block-mail-data",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Mail/*",
+        "~/Library/Containers/com.apple.mail/*",
+        "~/.thunderbird/*/ImapMail/*",
+        "~/.local/share/evolution/mail/*"
+      ],
+      "message": "Blocked: Access to email data is not permitted.",
+      "tags": ["privacy", "email"]
+    },
+    {
+      "name": "block-messages-data",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Messages/*",
+        "~/Library/Containers/com.apple.iChat/*",
+        "~/.config/Signal/*",
+        "~/.config/Slack/*"
+      ],
+      "message": "Blocked: Access to messaging app data is not permitted.",
+      "tags": ["privacy", "messages", "chat"]
+    },
+    {
+      "name": "block-photos-library",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Pictures/Photos Library.photoslibrary/*",
+        "~/Library/Containers/com.apple.Photos/*",
+        "~/Pictures/*.photoslibrary/*"
+      ],
+      "message": "Blocked: Access to Photos library is not permitted.",
+      "tags": ["privacy", "photos"]
+    },
+    {
+      "name": "block-contacts-data",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Application Support/AddressBook/*",
+        "~/Library/Containers/com.apple.AddressBook/*",
+        "~/.local/share/contacts/*"
+      ],
+      "message": "Blocked: Access to contacts data is not permitted.",
+      "tags": ["privacy", "contacts"]
+    },
+    {
+      "name": "block-calendar-data",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Calendars/*",
+        "~/Library/Containers/com.apple.CalendarAgent/*",
+        "~/.local/share/gnome-calendar/*"
+      ],
+      "message": "Blocked: Access to calendar data is not permitted.",
+      "tags": ["privacy", "calendar"]
+    },
+    {
+      "name": "block-keychain",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Keychains/*",
+        "/Library/Keychains/*"
+      ],
+      "message": "Blocked: Access to macOS Keychain is not permitted.",
+      "tags": ["privacy", "keychain", "credentials", "critical"]
+    },
+    {
+      "name": "block-notes-data",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Group Containers/group.com.apple.notes/*",
+        "~/Library/Containers/com.apple.Notes/*"
+      ],
+      "message": "Blocked: Access to Notes data is not permitted.",
+      "tags": ["privacy", "notes"]
+    },
+    {
+      "name": "block-health-data",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": [
+        "~/Library/Health/*",
+        "~/Library/Containers/com.apple.Health/*"
+      ],
+      "message": "Blocked: Access to health data is not permitted.",
+      "tags": ["privacy", "health", "critical"]
+    }
+  ]
+}

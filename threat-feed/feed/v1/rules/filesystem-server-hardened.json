@@ -1,0 +1,77 @@
+{
+  "id": "filesystem-server-hardened",
+  "name": "Filesystem Server Hardened",
+  "version": "1.0.0",
+  "author": "ClawDefender Team",
+  "description": "Optimized security rules for the official @modelcontextprotocol/server-filesystem MCP server. Restricts file operations to expected patterns.",
+  "category": "ServerSpecific",
+  "tags": ["filesystem", "server-specific", "hardened", "mcp-official"],
+  "compatibility": ">=0.3.0",
+  "download_count": 0,
+  "rules": [
+    {
+      "name": "block-fs-dotfile-access",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["**/.*", "!**/.gitignore", "!**/.editorconfig"],
+      "message": "Blocked: Filesystem server should not access hidden/dot files except .gitignore and .editorconfig.",
+      "tags": ["filesystem", "dotfiles", "hardened"]
+    },
+    {
+      "name": "block-fs-system-dirs",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["/etc/*", "/usr/*", "/sbin/*", "/bin/*", "/System/*", "/var/*"],
+      "message": "Blocked: Filesystem server should not access system directories.",
+      "tags": ["filesystem", "system", "hardened", "critical"]
+    },
+    {
+      "name": "block-fs-home-root",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["~/.*"],
+      "message": "Blocked: Filesystem server should not access home directory dotfiles.",
+      "tags": ["filesystem", "home", "hardened"]
+    },
+    {
+      "name": "prompt-fs-binary-write",
+      "action": "prompt",
+      "methods": ["tools/call"],
+      "paths": ["**/*.exe", "**/*.dll", "**/*.so", "**/*.dylib", "**/*.bin"],
+      "message": "Filesystem server is attempting to write a binary file. Allow this?",
+      "tags": ["filesystem", "binary", "hardened"]
+    },
+    {
+      "name": "block-fs-credential-files",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/*.jks"],
+      "message": "Blocked: Filesystem server should not access certificate/key files.",
+      "tags": ["filesystem", "credentials", "hardened", "critical"]
+    },
+    {
+      "name": "prompt-fs-large-directory-listing",
+      "action": "prompt",
+      "methods": ["tools/call"],
+      "paths": ["/", "~", "~/Desktop", "~/Documents", "~/Downloads"],
+      "message": "Filesystem server is attempting to list a broad directory. Allow this?",
+      "tags": ["filesystem", "listing", "hardened"]
+    },
+    {
+      "name": "block-fs-symlink-escape",
+      "action": "block",
+      "methods": ["tools/call"],
+      "paths": ["**/->/**"],
+      "message": "Blocked: Potential symlink escape detected in filesystem server operation.",
+      "tags": ["filesystem", "symlink", "hardened"]
+    },
+    {
+      "name": "log-fs-all-writes",
+      "action": "log",
+      "methods": ["tools/call"],
+      "paths": ["**/*"],
+      "message": "Filesystem server write operation logged for audit.",
+      "tags": ["filesystem", "audit", "hardened"]
+    }
+  ]
+}
