@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings } from "../types";
+import type { AppSettings, NetworkExtensionStatus, NetworkSettings } from "../types";
 
 const defaultSettings: AppSettings = {
   theme: "system",
@@ -12,10 +12,23 @@ const defaultSettings: AppSettings = {
   event_retention_days: 30,
 };
 
+const defaultNetworkSettings: NetworkSettings = {
+  filter_enabled: false,
+  dns_enabled: false,
+  filter_all_processes: false,
+  default_action: "prompt",
+  prompt_timeout: 30,
+  block_private_ranges: false,
+  block_doh: true,
+  log_dns: true,
+};
+
 export function Settings() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [securityLevel, setSecurityLevel] = useState("balanced");
+  const [netStatus, setNetStatus] = useState<NetworkExtensionStatus | null>(null);
+  const [netSettings, setNetSettings] = useState<NetworkSettings>(defaultNetworkSettings);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -28,9 +41,33 @@ export function Settings() {
     }
   }, []);
 
+  const loadNetworkState = useCallback(async () => {
+    try {
+      const [status, ns] = await Promise.all([
+        invoke<NetworkExtensionStatus>("get_network_extension_status"),
+        invoke<NetworkSettings>("get_network_settings"),
+      ]);
+      setNetStatus(status);
+      setNetSettings(ns);
+    } catch (_err) {
+      // Network extension may not be available
+    }
+  }, []);
+
   useEffect(() => {
     loadSettings();
-  }, [loadSettings]);
+    loadNetworkState();
+  }, [loadSettings, loadNetworkState]);
+
+  async function updateNetField<K extends keyof NetworkSettings>(key: K, value: NetworkSettings[K]) {
+    const next = { ...netSettings, [key]: value };
+    setNetSettings(next);
+    try {
+      await invoke("update_network_settings", { settings: next });
+    } catch (_err) {
+      // Tauri command may not be available yet
+    }
+  }
 
   async function updateField<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     const next = { ...settings, [key]: value };
@@ -163,6 +200,159 @@ export function Settings() {
               <span>15s</span>
               <span>120s</span>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Network Protection */}
+      <section className="mb-8">
+        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">
+          Network Protection
+        </h2>
+        <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+          {/* Status indicator */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block w-2 h-2 rounded-full ${
+                  netStatus?.filter_active ? "bg-[var(--color-success)]" : "bg-[var(--color-text-secondary)]"
+                }`}
+              />
+              <p className="text-sm font-medium">
+                {netStatus?.filter_active ? "Active" : "Inactive"}
+              </p>
+              {netStatus?.filter_active && (
+                <span className="text-xs text-[var(--color-text-secondary)]">
+                  ({netStatus.filtering_count} connections filtered)
+                </span>
+              )}
+            </div>
+            {netStatus?.mock_mode && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)]">
+                Mock Mode
+              </span>
+            )}
+          </div>
+
+          {/* Enable network filtering */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Enable Network Filtering</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Filter outbound connections from AI agents</p>
+            </div>
+            <ToggleSwitch
+              checked={netSettings.filter_enabled}
+              onChange={(v) => updateNetField("filter_enabled", v)}
+            />
+          </div>
+
+          {/* Enable DNS filtering */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Enable DNS Filtering</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Monitor and filter DNS queries</p>
+            </div>
+            <ToggleSwitch
+              checked={netSettings.dns_enabled}
+              onChange={(v) => updateNetField("dns_enabled", v)}
+            />
+          </div>
+
+          {/* Filter all processes */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Filter All Processes</p>
+              <p className="text-xs text-[var(--color-warning)]">Warning: may affect system performance</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={netSettings.filter_all_processes}
+              onChange={(e) => updateNetField("filter_all_processes", e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-accent)]"
+            />
+          </div>
+
+          {/* Default action */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Default Action</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Action for unmatched connections</p>
+            </div>
+            <select
+              value={netSettings.default_action}
+              onChange={(e) => updateNetField("default_action", e.target.value as NetworkSettings["default_action"])}
+              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+            >
+              <option value="prompt">Prompt</option>
+              <option value="block">Block</option>
+              <option value="allow">Allow</option>
+            </select>
+          </div>
+
+          {/* Prompt timeout */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-sm font-medium">Prompt Timeout</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">Auto-deny after timeout</p>
+              </div>
+              <span className="text-sm text-[var(--color-text-secondary)]">{netSettings.prompt_timeout}s</span>
+            </div>
+            <input
+              type="range"
+              min={5}
+              max={60}
+              step={5}
+              value={netSettings.prompt_timeout}
+              onChange={(e) => updateNetField("prompt_timeout", Number(e.target.value))}
+              className="w-full accent-[var(--color-accent)]"
+            />
+            <div className="flex justify-between text-xs text-[var(--color-text-secondary)]">
+              <span>5s</span>
+              <span>60s</span>
+            </div>
+          </div>
+
+          {/* Block private ranges */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Block Private Ranges</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Block connections to private/internal networks</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={netSettings.block_private_ranges}
+              onChange={(e) => updateNetField("block_private_ranges", e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-accent)]"
+            />
+          </div>
+
+          {/* Block DoH */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Block DNS-over-HTTPS</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Prevent DNS bypass via encrypted DNS</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={netSettings.block_doh}
+              onChange={(e) => updateNetField("block_doh", e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-accent)]"
+            />
+          </div>
+
+          {/* Log DNS */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Log All DNS Queries</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Record all DNS lookups for audit</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={netSettings.log_dns}
+              onChange={(e) => updateNetField("log_dns", e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-accent)]"
+            />
           </div>
         </div>
       </section>

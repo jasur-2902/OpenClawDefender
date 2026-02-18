@@ -10,6 +10,8 @@ import type {
   PendingPrompt,
   FeedStatus,
   BlocklistAlert,
+  NetworkExtensionStatus,
+  NetworkSummaryData,
 } from "../types";
 
 type ProtectionLevel = "protected" | "warning" | "danger";
@@ -98,6 +100,8 @@ export function Dashboard() {
   const [servers, setServers] = useState<McpServer[]>([]);
   const [feedStatus, setFeedStatus] = useState<FeedStatus | null>(null);
   const [blocklistAlerts, setBlocklistAlerts] = useState<BlocklistAlert[]>([]);
+  const [netExtStatus, setNetExtStatus] = useState<NetworkExtensionStatus | null>(null);
+  const [networkSummary, setNetworkSummary] = useState<NetworkSummaryData | null>(null);
 
   useEffect(() => {
     invoke<DaemonStatus>("get_daemon_status")
@@ -125,6 +129,14 @@ export function Dashboard() {
 
     invoke<BlocklistAlert[]>("get_blocklist_matches")
       .then(setBlocklistAlerts)
+      .catch(() => {});
+
+    invoke<NetworkExtensionStatus>("get_network_extension_status")
+      .then(setNetExtStatus)
+      .catch(() => {});
+
+    invoke<NetworkSummaryData>("get_network_summary")
+      .then(setNetworkSummary)
       .catch(() => {});
   }, [setEvents, setDaemonRunning]);
 
@@ -247,6 +259,86 @@ export function Dashboard() {
           )}
         </div>
       </section>
+
+      {/* Network Protection Card */}
+      <section
+        aria-label="Network protection"
+        className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4"
+      >
+        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+          Network Protection
+        </h2>
+        <div className="flex items-center gap-6 text-sm">
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-block w-2 h-2 rounded-full ${
+                netExtStatus?.filter_active
+                  ? "bg-[var(--color-success)]"
+                  : "bg-[var(--color-text-secondary)]"
+              }`}
+            />
+            <span className="text-[var(--color-text-primary)] font-medium">
+              {netExtStatus?.filter_active ? "Active" : "Inactive"}
+            </span>
+          </div>
+          {netExtStatus?.filter_active && (
+            <div>
+              <span className="text-[var(--color-text-secondary)]">Connections filtered: </span>
+              <span className="text-[var(--color-text-primary)]">{netExtStatus.filtering_count}</span>
+            </div>
+          )}
+          {!netExtStatus?.filter_active && (
+            <a
+              href="/settings"
+              className="text-[var(--color-accent)] hover:underline text-sm"
+            >
+              Enable in Settings
+            </a>
+          )}
+        </div>
+      </section>
+
+      {/* Network Activity Card */}
+      {networkSummary && (
+        <section
+          aria-label="Network activity"
+          className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4"
+        >
+          <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+            Network Activity
+          </h2>
+          <div className="flex items-center gap-6 text-sm">
+            <div>
+              <span className="text-[var(--color-success)] font-bold text-lg">
+                {networkSummary.total_allowed}
+              </span>
+              <span className="text-[var(--color-text-secondary)] ml-1">allowed</span>
+            </div>
+            <div>
+              <span className="text-[var(--color-danger)] font-bold text-lg">
+                {networkSummary.total_blocked}
+              </span>
+              <span className="text-[var(--color-text-secondary)] ml-1">blocked</span>
+            </div>
+            <div>
+              <span className="text-[var(--color-warning)] font-bold text-lg">
+                {networkSummary.total_prompted}
+              </span>
+              <span className="text-[var(--color-text-secondary)] ml-1">prompted</span>
+            </div>
+            <div className="ml-auto flex items-center gap-3">
+              {networkSummary.top_destinations.slice(0, 3).map((d) => (
+                <span key={d.destination} className="text-xs text-[var(--color-text-secondary)]">
+                  {d.destination}{" "}
+                  <span className="text-[var(--color-text-primary)] font-medium">
+                    ({d.count})
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-cols-3 gap-6">
         {/* Recent Activity Feed */}

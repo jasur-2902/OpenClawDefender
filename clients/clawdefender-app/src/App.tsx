@@ -14,6 +14,7 @@ import { Guards } from "./pages/Guards";
 import { AuditLog } from "./pages/AuditLog";
 import { SystemHealth } from "./pages/SystemHealth";
 import { ThreatIntel } from "./pages/ThreatIntel";
+import { NetworkLog } from "./pages/NetworkLog";
 
 function OnboardingRedirect({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -66,6 +67,7 @@ function App() {
                     <Route path="/guards" element={<Guards />} />
                     <Route path="/audit" element={<AuditLog />} />
                     <Route path="/threat-intel" element={<ThreatIntel />} />
+                    <Route path="/network" element={<NetworkLog />} />
                     <Route path="/health" element={<SystemHealth />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>

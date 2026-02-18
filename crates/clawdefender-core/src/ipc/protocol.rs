@@ -122,6 +122,15 @@ pub enum DaemonRequest {
         action_type: Option<String>,
         tool_name: Option<String>,
     },
+    /// Query network policy for a specific connection.
+    NetworkPolicyQuery {
+        pid: u32,
+        destination_ip: String,
+        destination_port: u16,
+        domain: Option<String>,
+    },
+    /// Query network subsystem status.
+    NetworkStatus,
 }
 
 /// A response sent from the daemon to a proxy or CLI client.
@@ -167,6 +176,18 @@ pub enum DaemonResponse {
     GetPolicyResponse {
         rules: Vec<serde_json::Value>,
         default_action: String,
+    },
+    /// Result of a network policy query.
+    NetworkPolicyResult {
+        action: String,
+        reason: String,
+    },
+    /// Network subsystem status report.
+    NetworkStatusReport {
+        extension_loaded: bool,
+        filter_active: bool,
+        rules_count: u32,
+        mock_mode: bool,
     },
 }
 

@@ -468,10 +468,17 @@ function CompleteStep({
         </div>
       )}
 
-      <div className="mb-8 p-4 rounded-lg bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 max-w-sm mx-auto">
+      <div className="mb-4 p-4 rounded-lg bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 max-w-sm mx-auto">
         <p className="text-sm text-[var(--color-warning)]">
           Remember to restart your AI applications for the protection to take
           effect.
+        </p>
+      </div>
+
+      <div className="mb-8 p-4 rounded-lg bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/30 max-w-sm mx-auto">
+        <p className="text-sm text-[var(--color-accent)]">
+          For maximum protection, enable Network Protection in Settings to block
+          suspicious network connections from AI agents.
         </p>
       </div>
 

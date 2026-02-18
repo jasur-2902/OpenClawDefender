@@ -164,6 +164,7 @@ impl Event for OsEvent {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         }
     }
 

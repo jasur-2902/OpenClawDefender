@@ -88,6 +88,21 @@ dev-app:
     cd clients/clawdefender-app && npm run dev &
     cd clients/clawdefender-app/src-tauri && cargo tauri dev
 
+# Build the Swift network extension
+build-extension:
+    cd extensions/clawdefender-network && swift build
+
+# Build workspace + Swift extension
+build-all: dev build-extension
+    @echo "All components built."
+
+# Run all network-related tests (policy, DNS, logging, integration)
+test-network:
+    cargo test -p clawdefender-core -- network
+    cargo test -p clawdefender-core -- dns
+    cargo test -p clawdefender-daemon --test network_integration
+    cargo test -p clawdefender-daemon -- mock_network_extension
+
 # Check that everything compiles, passes lints, and tests
 preflight: lint test
     @echo "All checks passed."

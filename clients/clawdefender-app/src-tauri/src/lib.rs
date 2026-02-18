@@ -75,6 +75,15 @@ pub fn run() {
             commands::toggle_telemetry,
             commands::get_telemetry_preview,
             commands::check_server_reputation,
+            commands::get_network_extension_status,
+            commands::activate_network_extension,
+            commands::deactivate_network_extension,
+            commands::get_network_settings,
+            commands::update_network_settings,
+            commands::get_network_connections,
+            commands::get_network_summary,
+            commands::get_network_traffic_by_server,
+            commands::export_network_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

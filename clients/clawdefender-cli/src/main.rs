@@ -196,6 +196,12 @@ enum Commands {
         action: TelemetryAction,
     },
 
+    /// Manage network policy, DNS filter, and connection rules.
+    Network {
+        #[command(subcommand)]
+        action: commands::network::NetworkAction2,
+    },
+
     /// Check server reputation against the blocklist.
     Reputation {
         /// Server name or package name to check.
@@ -639,6 +645,10 @@ async fn main() -> anyhow::Result<()> {
             TelemetryAction::Enable => commands::threat_intel::telemetry_enable(&config)?,
             TelemetryAction::Disable => commands::threat_intel::telemetry_disable(&config)?,
         },
+
+        Commands::Network { action } => {
+            commands::network::run(&action, &config)?;
+        }
 
         Commands::Reputation { server } => {
             commands::threat_intel::check_reputation(&config, &server)?

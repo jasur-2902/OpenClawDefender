@@ -200,6 +200,7 @@ pub async fn report_action(
         behavioral: None,
         injection_scan: None,
         threat_intel: None,
+        network_connection: None,
     };
 
     let recorded = server.audit_logger.log(&record).is_ok();

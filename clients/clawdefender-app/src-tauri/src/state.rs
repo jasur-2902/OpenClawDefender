@@ -219,6 +219,83 @@ pub struct ReputationMatch {
     pub description: String,
 }
 
+// --- Network Connection Log types ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkConnectionEvent {
+    pub id: String,
+    pub timestamp: String,
+    pub pid: u32,
+    pub process_name: String,
+    pub server_name: Option<String>,
+    pub destination_ip: String,
+    pub destination_port: u16,
+    pub destination_domain: Option<String>,
+    pub protocol: String,
+    pub tls: bool,
+    pub action: String,
+    pub reason: String,
+    pub rule: Option<String>,
+    pub ioc_match: bool,
+    pub anomaly_score: Option<f64>,
+    pub behavioral: Option<String>,
+    pub kill_chain: Option<String>,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkSummaryData {
+    pub total_allowed: u64,
+    pub total_blocked: u64,
+    pub total_prompted: u64,
+    pub top_destinations: Vec<DestinationCount>,
+    pub period: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DestinationCount {
+    pub destination: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerTrafficData {
+    pub server_name: String,
+    pub total_connections: u64,
+    pub connections_allowed: u64,
+    pub connections_blocked: u64,
+    pub connections_prompted: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub unique_destinations: u32,
+    pub period: String,
+}
+
+// --- Network Extension types ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkExtensionStatus {
+    pub loaded: bool,
+    pub filter_active: bool,
+    pub dns_active: bool,
+    pub filtering_count: u64,
+    pub mock_mode: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkSettings {
+    pub filter_enabled: bool,
+    pub dns_enabled: bool,
+    pub filter_all_processes: bool,
+    pub default_action: String,
+    pub prompt_timeout: u32,
+    pub block_private_ranges: bool,
+    pub block_doh: bool,
+    pub log_dns: bool,
+}
+
 pub struct AppState {
     pub daemon_connected: Mutex<bool>,
     pub event_buffer: Mutex<Vec<AuditEvent>>,

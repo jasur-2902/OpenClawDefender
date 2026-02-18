@@ -15,6 +15,7 @@ const navItems: NavItem[] = [
   { path: "/scanner", label: "Scanner", icon: "search" },
   { path: "/guards", label: "Guards", icon: "lock" },
   { path: "/threat-intel", label: "Threat Intel", icon: "globe" },
+  { path: "/network", label: "Network Log", icon: "network" },
   { path: "/audit", label: "Audit Log", icon: "list" },
   { path: "/settings", label: "Settings", icon: "settings" },
 ];
@@ -27,6 +28,7 @@ const iconMap: Record<string, string> = {
   search: "\u2315",
   lock: "\u2261",
   globe: "\u2295",
+  network: "\u21C4",
   list: "\u2630",
   settings: "\u2699",
 };

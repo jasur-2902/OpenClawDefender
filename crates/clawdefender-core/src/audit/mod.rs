@@ -88,6 +88,10 @@ pub struct AuditRecord {
     /// Optional threat intelligence match data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub threat_intel: Option<ThreatIntelAuditData>,
+
+    /// Optional network connection log data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_connection: Option<crate::network_log::NetworkConnectionLog>,
 }
 
 /// Data from threat intelligence matching, stored alongside audit records.
@@ -253,6 +257,7 @@ mod tests {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -295,6 +300,7 @@ mod tests {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();

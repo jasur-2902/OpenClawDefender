@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.clawdefender.network</string>
+    <key>CFBundleName</key>
+    <string>ClawDefenderNetwork</string>
+    <key>CFBundleDisplayName</key>
+    <string>ClawDefender Network Filter</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.3.0</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>ClawDefender needs to install a system extension to monitor and filter network connections made by AI agent processes.</string>
+    <key>NetworkExtension</key>
+    <dict>
+        <key>NEProviderClasses</key>
+        <dict>
+            <key>com.apple.networkextension.filter-data</key>
+            <string>$(PRODUCT_MODULE_NAME).ClawDefenderFilterDataProvider</string>
+            <key>com.apple.networkextension.filter-control</key>
+            <string>$(PRODUCT_MODULE_NAME).ClawDefenderFilterControlProvider</string>
+            <key>com.apple.networkextension.dns-proxy</key>
+            <string>$(PRODUCT_MODULE_NAME).ClawDefenderDNSProxyProvider</string>
+        </dict>
+    </dict>
+</dict>
+</plist>

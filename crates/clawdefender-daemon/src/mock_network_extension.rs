@@ -79,6 +79,9 @@ struct PolicyCacheEntry {
 }
 
 /// A connect event from eslogger that we evaluate as a mock network flow.
+///
+/// SECURITY: Contains metadata only — PID, process name, destination host/port.
+/// No connection payload, request body, or response content is captured.
 #[derive(Debug, Clone)]
 pub struct MockConnectEvent {
     pub pid: u32,
@@ -91,6 +94,16 @@ pub struct MockConnectEvent {
 
 /// The mock network extension. Evaluates connect events from eslogger against
 /// network policy, logging decisions as if a real extension were installed.
+///
+/// SECURITY: Fail-open design — when the daemon is unavailable (which is the
+/// default state for the mock), all connections default to Allow. This ensures
+/// network connectivity is never broken by ClawDefender failures.
+///
+/// SECURITY: Non-agent traffic is always allowed immediately (step 1 of
+/// evaluate_connect). The mock never filters, blocks, or logs user traffic.
+///
+/// Threat model: the mock extension cannot actually block connections — it only
+/// logs what a real extension would do. It is used for development and testing.
 pub struct MockNetworkExtension {
     config: MockNetworkExtensionConfig,
     /// PID -> agent status cache.
@@ -144,6 +157,15 @@ impl MockNetworkExtension {
     ///
     /// Returns the decision and reason string. Since this is a mock, the
     /// connection is NOT actually blocked — we just log what would happen.
+    ///
+    /// SECURITY: Evaluation order is security-critical:
+    /// 1. Non-agent -> ALLOW (process isolation guarantee)
+    /// 2. Localhost -> ALLOW (system services always reachable)
+    /// 3. IoC blocklist -> BLOCK (threat intel override)
+    /// 4. Policy cache -> cached decision
+    /// 5. Default -> ALLOW (fail-open)
+    ///
+    /// On failure at any step, the default is Allow (fail-open).
     pub fn evaluate_connect(
         &mut self,
         event: &MockConnectEvent,

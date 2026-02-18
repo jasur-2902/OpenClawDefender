@@ -193,6 +193,77 @@ export interface ReputationMatch {
   description: string;
 }
 
+// --- Network Extension types ---
+
+export interface NetworkExtensionStatus {
+  loaded: boolean;
+  filter_active: boolean;
+  dns_active: boolean;
+  filtering_count: number;
+  mock_mode: boolean;
+}
+
+export interface NetworkSettings {
+  filter_enabled: boolean;
+  dns_enabled: boolean;
+  filter_all_processes: boolean;
+  default_action: "prompt" | "block" | "allow";
+  prompt_timeout: number;
+  block_private_ranges: boolean;
+  block_doh: boolean;
+  log_dns: boolean;
+}
+
+// --- Network Connection Log types ---
+
+export interface NetworkConnectionEvent {
+  id: string;
+  timestamp: string;
+  pid: number;
+  process_name: string;
+  server_name: string | null;
+  destination_ip: string;
+  destination_port: number;
+  destination_domain: string | null;
+  protocol: string;
+  tls: boolean;
+  action: "allowed" | "blocked" | "prompted";
+  reason: string;
+  rule: string | null;
+  ioc_match: boolean;
+  anomaly_score: number | null;
+  behavioral: string | null;
+  kill_chain: string | null;
+  bytes_sent: number;
+  bytes_received: number;
+  duration_ms: number;
+}
+
+export interface NetworkSummaryData {
+  total_allowed: number;
+  total_blocked: number;
+  total_prompted: number;
+  top_destinations: DestinationCount[];
+  period: string;
+}
+
+export interface DestinationCount {
+  destination: string;
+  count: number;
+}
+
+export interface ServerTrafficData {
+  server_name: string;
+  total_connections: number;
+  connections_allowed: number;
+  connections_blocked: number;
+  connections_prompted: number;
+  bytes_sent: number;
+  bytes_received: number;
+  unique_destinations: number;
+  period: string;
+}
+
 export type TauriEvent =
   | { type: "event"; payload: AuditEvent }
   | { type: "prompt"; payload: PendingPrompt }

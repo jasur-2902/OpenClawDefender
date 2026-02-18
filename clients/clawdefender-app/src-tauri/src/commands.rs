@@ -533,6 +533,203 @@ pub async fn check_server_reputation(name: String) -> Result<ReputationResult, S
     })
 }
 
+// --- Network Extension ---
+
+#[tauri::command]
+pub async fn get_network_extension_status() -> Result<NetworkExtensionStatus, String> {
+    Ok(NetworkExtensionStatus {
+        loaded: true,
+        filter_active: true,
+        dns_active: true,
+        filtering_count: 847,
+        mock_mode: true,
+    })
+}
+
+#[tauri::command]
+pub async fn activate_network_extension() -> Result<String, String> {
+    tracing::info!("Activating network extension (mock)");
+    Ok("Network extension activated successfully (mock mode)".to_string())
+}
+
+#[tauri::command]
+pub async fn deactivate_network_extension() -> Result<String, String> {
+    tracing::info!("Deactivating network extension (mock)");
+    Ok("Network extension deactivated".to_string())
+}
+
+#[tauri::command]
+pub async fn get_network_settings() -> Result<NetworkSettings, String> {
+    Ok(NetworkSettings {
+        filter_enabled: true,
+        dns_enabled: true,
+        filter_all_processes: false,
+        default_action: "prompt".to_string(),
+        prompt_timeout: 30,
+        block_private_ranges: false,
+        block_doh: true,
+        log_dns: true,
+    })
+}
+
+#[tauri::command]
+pub async fn update_network_settings(settings: NetworkSettings) -> Result<(), String> {
+    tracing::info!("Updating network settings: filter_enabled={}, dns_enabled={} (mock)", settings.filter_enabled, settings.dns_enabled);
+    Ok(())
+}
+
+// --- Network Connection Log ---
+
+#[tauri::command]
+pub async fn get_network_connections(limit: u32) -> Result<Vec<NetworkConnectionEvent>, String> {
+    let now = chrono::Utc::now();
+    let mock_connections: Vec<NetworkConnectionEvent> = (0..limit.min(20))
+        .map(|i| {
+            let (action, reason) = match i % 5 {
+                0 => ("blocked", "IoC match: known C2 domain"),
+                1 => ("prompted", "Destination unknown to server profile"),
+                _ => ("allowed", "Rule 'allow_https': HTTPS traffic allowed"),
+            };
+            let (dest_ip, dest_domain, port, protocol, tls) = match i % 4 {
+                0 => ("93.184.216.34", Some("example.com"), 443u16, "tcp", true),
+                1 => ("140.82.121.4", Some("api.github.com"), 443, "tcp", true),
+                2 => ("8.8.8.8", None, 53, "udp", false),
+                _ => ("172.217.14.206", Some("googleapis.com"), 443, "tcp", true),
+            };
+            let server = match i % 3 {
+                0 => Some("filesystem"),
+                1 => Some("github"),
+                _ => Some("everything"),
+            };
+            NetworkConnectionEvent {
+                id: format!("net-{}", 2000 + i),
+                timestamp: (now - chrono::Duration::seconds(i as i64 * 45))
+                    .to_rfc3339(),
+                pid: 10000 + (i % 5),
+                process_name: server.unwrap_or("unknown").to_string(),
+                server_name: server.map(|s| s.to_string()),
+                destination_ip: dest_ip.to_string(),
+                destination_port: port,
+                destination_domain: dest_domain.map(|d| d.to_string()),
+                protocol: protocol.to_string(),
+                tls,
+                action: action.to_string(),
+                reason: reason.to_string(),
+                rule: if action == "allowed" {
+                    Some("allow_https".to_string())
+                } else {
+                    None
+                },
+                ioc_match: action == "blocked",
+                anomaly_score: if i % 5 == 1 { Some(0.72) } else { None },
+                behavioral: if i % 5 == 1 {
+                    Some("Server has never networked before".to_string())
+                } else {
+                    None
+                },
+                kill_chain: if action == "blocked" {
+                    Some("C2 Communication".to_string())
+                } else {
+                    None
+                },
+                bytes_sent: (i as u64 + 1) * 256,
+                bytes_received: (i as u64 + 1) * 1024,
+                duration_ms: (i as u64 + 1) * 50,
+            }
+        })
+        .collect();
+    Ok(mock_connections)
+}
+
+#[tauri::command]
+pub async fn get_network_summary() -> Result<NetworkSummaryData, String> {
+    Ok(NetworkSummaryData {
+        total_allowed: 47,
+        total_blocked: 2,
+        total_prompted: 1,
+        top_destinations: vec![
+            DestinationCount {
+                destination: "api.github.com".to_string(),
+                count: 18,
+            },
+            DestinationCount {
+                destination: "googleapis.com".to_string(),
+                count: 12,
+            },
+            DestinationCount {
+                destination: "example.com".to_string(),
+                count: 8,
+            },
+            DestinationCount {
+                destination: "cdn.jsdelivr.net".to_string(),
+                count: 5,
+            },
+            DestinationCount {
+                destination: "registry.npmjs.org".to_string(),
+                count: 4,
+            },
+        ],
+        period: "last_24h".to_string(),
+    })
+}
+
+#[tauri::command]
+pub async fn get_network_traffic_by_server() -> Result<Vec<ServerTrafficData>, String> {
+    Ok(vec![
+        ServerTrafficData {
+            server_name: "filesystem".to_string(),
+            total_connections: 15,
+            connections_allowed: 14,
+            connections_blocked: 1,
+            connections_prompted: 0,
+            bytes_sent: 4096,
+            bytes_received: 32768,
+            unique_destinations: 3,
+            period: "last_24h".to_string(),
+        },
+        ServerTrafficData {
+            server_name: "github".to_string(),
+            total_connections: 28,
+            connections_allowed: 27,
+            connections_blocked: 0,
+            connections_prompted: 1,
+            bytes_sent: 12288,
+            bytes_received: 98304,
+            unique_destinations: 5,
+            period: "last_24h".to_string(),
+        },
+        ServerTrafficData {
+            server_name: "everything".to_string(),
+            total_connections: 7,
+            connections_allowed: 6,
+            connections_blocked: 1,
+            connections_prompted: 0,
+            bytes_sent: 2048,
+            bytes_received: 8192,
+            unique_destinations: 4,
+            period: "last_24h".to_string(),
+        },
+    ])
+}
+
+#[tauri::command]
+pub async fn export_network_log(format: String, range: String) -> Result<String, String> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let filename = format!(
+        "clawdefender-network-log-{}.{}",
+        range,
+        if format == "csv" { "csv" } else { "json" }
+    );
+    let path = home.join(".clawdefender/exports").join(&filename);
+    tracing::info!(
+        "Exporting network log as {} for range {} (mock) -> {}",
+        format,
+        range,
+        path.display()
+    );
+    Ok(path.to_string_lossy().to_string())
+}
+
 mod dirs {
     use std::path::PathBuf;
     pub fn home_dir() -> Option<PathBuf> {

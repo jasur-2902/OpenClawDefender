@@ -21,7 +21,10 @@ use tracing::{error, info, warn};
 use clawdefender_core::audit::logger::FileAuditLogger;
 use clawdefender_core::audit::{AuditLogger, AuditRecord};
 use clawdefender_core::config::settings::{ClawConfig, SensorConfig};
+use clawdefender_core::dns::cache::DnsCache;
+use clawdefender_core::dns::filter::DnsFilter;
 use clawdefender_core::event::correlation::CorrelatedEvent;
+use clawdefender_core::network_policy::engine::NetworkPolicyEngine;
 use clawdefender_core::policy::engine::DefaultPolicyEngine;
 use clawdefender_core::policy::PolicyEngine;
 use clawdefender_mcp_proxy::{ProxyConfig, StdioProxy, UiBridge};
@@ -87,6 +90,14 @@ pub struct Daemon {
     telemetry_aggregator: Option<Arc<std::sync::Mutex<TelemetryAggregator>>>,
     /// Feed client for threat intel updates.
     feed_client: Option<Arc<tokio::sync::Mutex<FeedClient>>>,
+    /// Network policy engine for outbound connection decisions.
+    network_policy_engine: Option<Arc<RwLock<NetworkPolicyEngine>>>,
+    /// DNS filter for domain-level blocking.
+    dns_filter: Option<Arc<RwLock<DnsFilter>>>,
+    /// DNS cache for resolved domain lookups.
+    dns_cache: Option<Arc<RwLock<DnsCache>>>,
+    /// Mock network extension for development/testing.
+    mock_network_ext: Option<Arc<RwLock<mock_network_extension::MockNetworkExtension>>>,
 }
 
 impl Daemon {
@@ -285,6 +296,85 @@ impl Daemon {
                 (None, None, None, None, None)
             };
 
+        // --- Network policy engine initialization ---
+        let (network_policy_engine, dns_filter, dns_cache, mock_network_ext) =
+            if config.network_policy.enabled {
+                use clawdefender_core::network_policy::rate_limiter::RateLimitConfig;
+                use clawdefender_core::network_policy::rules::NetworkAction;
+
+                // Parse default action from config string.
+                let default_action = match config.network_policy.default_agent_action.as_str() {
+                    "allow" => NetworkAction::Allow,
+                    "block" => NetworkAction::Block,
+                    "log" => NetworkAction::Log,
+                    _ => NetworkAction::Prompt,
+                };
+
+                let rate_config = RateLimitConfig {
+                    max_connections_per_minute: config.network_policy.rate_limit_connections_per_min,
+                    max_unique_destinations_per_10s: config.network_policy.rate_limit_unique_dest_per_10s,
+                    ..RateLimitConfig::default()
+                };
+
+                let engine = NetworkPolicyEngine::new(Vec::new(), default_action, rate_config);
+                let rules_count = engine.rules().len();
+
+                // Create DNS filter, optionally populating from IoC data.
+                let mut filter = DnsFilter::new();
+                if let Some(ref ioc_db) = ioc_database {
+                    if let Ok(db) = ioc_db.try_read() {
+                        // Extract domain IoCs for DNS filter.
+                        let domain_iocs: Vec<String> = db
+                            .indicators()
+                            .iter()
+                            .filter_map(|entry| {
+                                if let clawdefender_threat_intel::ioc::types::Indicator::MaliciousDomain(ref d) = entry.indicator {
+                                    Some(d.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        if !domain_iocs.is_empty() {
+                            filter.refresh_ioc_domains(&domain_iocs);
+                            info!(count = domain_iocs.len(), "DNS filter: loaded {} IoC domains", domain_iocs.len());
+                        }
+                    }
+                }
+
+                let cache = DnsCache::default();
+
+                // Create mock network extension if configured.
+                let mock_ext = {
+                    let mock_config = mock_network_extension::MockNetworkExtensionConfig {
+                        enabled: true,
+                        ..Default::default()
+                    };
+                    Some(Arc::new(RwLock::new(
+                        mock_network_extension::MockNetworkExtension::new(mock_config),
+                    )))
+                };
+
+                let mock_mode = mock_ext.is_some();
+                info!(
+                    rules_count,
+                    mock_mode,
+                    "Network policy engine: active ({} rules, mock mode: {})",
+                    rules_count,
+                    if mock_mode { "yes" } else { "no" }
+                );
+
+                (
+                    Some(Arc::new(RwLock::new(engine))),
+                    Some(Arc::new(RwLock::new(filter))),
+                    Some(Arc::new(RwLock::new(cache))),
+                    mock_ext,
+                )
+            } else {
+                info!("Network policy engine: disabled in config");
+                (None, None, None, None)
+            };
+
         Ok(Self {
             config,
             sensor_config,
@@ -303,6 +393,10 @@ impl Daemon {
             rule_pack_manager,
             telemetry_aggregator,
             feed_client,
+            network_policy_engine,
+            dns_filter,
+            dns_cache,
+            mock_network_ext,
         })
     }
 
@@ -1144,6 +1238,7 @@ window_ms = 1000
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
         audit_tx.send(record).await.unwrap();
         drop(audit_tx);
@@ -1267,6 +1362,7 @@ threads = 8
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
 
         logger.log(&record).unwrap();
@@ -1640,6 +1736,7 @@ sensor_config_path = "/custom/path/sensor.toml"
                 patterns_found: vec!["test_pattern".to_string()],
             }),
             threat_intel: None,
+            network_connection: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -1685,6 +1782,7 @@ sensor_config_path = "/custom/path/sensor.toml"
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -1864,6 +1962,7 @@ auto_block = false
                 blocklist_match: None,
                 community_rule: None,
             }),
+            network_connection: None,
         };
 
         // Round-trip serialization.
@@ -1953,6 +2052,7 @@ auto_block = false
             behavioral: None,
             injection_scan: None,
             threat_intel: Some(ti_data),
+            network_connection: None,
         };
 
         // 5. Verify the audit record round-trips correctly and contains IoC data.
@@ -2025,5 +2125,223 @@ notify_on_update = true
         let matcher = BlocklistMatcher::new(blocklist);
         let matches = matcher.check_server("some-server", None, None);
         assert!(matches.is_empty(), "empty blocklist should not match anything");
+    }
+
+    // --- Network policy engine integration tests ---
+
+    #[test]
+    fn network_policy_engine_initializes_when_enabled() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.network_policy.enabled = true;
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.network_policy_engine.is_some());
+        assert!(daemon.dns_filter.is_some());
+        assert!(daemon.dns_cache.is_some());
+        assert!(daemon.mock_network_ext.is_some());
+    }
+
+    #[test]
+    fn network_policy_engine_disabled_when_config_says_disabled() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.network_policy.enabled = false;
+        let daemon = Daemon::new(config, false).unwrap();
+        assert!(daemon.network_policy_engine.is_none());
+        assert!(daemon.dns_filter.is_none());
+        assert!(daemon.dns_cache.is_none());
+        assert!(daemon.mock_network_ext.is_none());
+    }
+
+    #[test]
+    fn network_policy_engine_has_default_rules() {
+        let dir = TempDir::new().unwrap();
+        let mut config = test_config(&dir);
+        config.network_policy.enabled = true;
+        let daemon = Daemon::new(config, false).unwrap();
+        let engine = daemon.network_policy_engine.unwrap();
+        let engine_guard = engine.try_read().unwrap();
+        assert!(
+            !engine_guard.rules().is_empty(),
+            "engine should have default rules loaded"
+        );
+    }
+
+    #[test]
+    fn network_policy_config_parsing() {
+        let toml_str = r#"
+[network_policy]
+enabled = true
+default_agent_action = "block"
+prompt_timeout_seconds = 30
+timeout_action = "allow"
+rate_limit_connections_per_min = 50
+rate_limit_unique_dest_per_10s = 5
+block_private_ranges = true
+log_all_dns = false
+"#;
+        let config: ClawConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.network_policy.enabled);
+        assert_eq!(config.network_policy.default_agent_action, "block");
+        assert_eq!(config.network_policy.prompt_timeout_seconds, 30);
+        assert_eq!(config.network_policy.timeout_action, "allow");
+        assert_eq!(config.network_policy.rate_limit_connections_per_min, 50);
+        assert_eq!(config.network_policy.rate_limit_unique_dest_per_10s, 5);
+        assert!(config.network_policy.block_private_ranges);
+        assert!(!config.network_policy.log_all_dns);
+    }
+
+    #[test]
+    fn network_policy_config_defaults() {
+        let toml_str = "";
+        let config: ClawConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.network_policy.enabled);
+        assert_eq!(config.network_policy.default_agent_action, "prompt");
+        assert_eq!(config.network_policy.prompt_timeout_seconds, 15);
+        assert_eq!(config.network_policy.timeout_action, "block");
+        assert_eq!(config.network_policy.rate_limit_connections_per_min, 100);
+        assert_eq!(config.network_policy.rate_limit_unique_dest_per_10s, 10);
+        assert!(!config.network_policy.block_private_ranges);
+        assert!(config.network_policy.log_all_dns);
+    }
+
+    #[test]
+    fn dns_filter_allow_and_block() {
+        use clawdefender_core::dns::filter::{DnsFilter, DnsQuery, DnsQueryType, DnsAction};
+
+        let mut filter = DnsFilter::new();
+        filter.add_allow("safe.example.com");
+        filter.add_block("evil.example.com");
+
+        let allowed = filter.check_domain(&DnsQuery {
+            domain: "safe.example.com".to_string(),
+            query_type: DnsQueryType::A,
+            source_pid: 1234,
+            server_name: None,
+            timestamp: chrono::Utc::now(),
+        });
+        assert_eq!(allowed.action, DnsAction::Allow);
+
+        let blocked = filter.check_domain(&DnsQuery {
+            domain: "evil.example.com".to_string(),
+            query_type: DnsQueryType::A,
+            source_pid: 1234,
+            server_name: None,
+            timestamp: chrono::Utc::now(),
+        });
+        assert_eq!(blocked.action, DnsAction::Block);
+    }
+
+    #[test]
+    fn ipc_protocol_network_variants_serialization() {
+        // NetworkPolicyQuery
+        let req = DaemonRequest::NetworkPolicyQuery {
+            pid: 1234,
+            destination_ip: "10.0.0.1".to_string(),
+            destination_port: 443,
+            domain: Some("api.example.com".to_string()),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: DaemonRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            DaemonRequest::NetworkPolicyQuery {
+                pid,
+                destination_ip,
+                destination_port,
+                domain,
+            } => {
+                assert_eq!(pid, 1234);
+                assert_eq!(destination_ip, "10.0.0.1");
+                assert_eq!(destination_port, 443);
+                assert_eq!(domain, Some("api.example.com".to_string()));
+            }
+            _ => panic!("wrong variant"),
+        }
+
+        // NetworkStatus
+        let req = DaemonRequest::NetworkStatus;
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: DaemonRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, DaemonRequest::NetworkStatus));
+
+        // NetworkPolicyResult
+        let resp = DaemonResponse::NetworkPolicyResult {
+            action: "block".to_string(),
+            reason: "IoC match".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let parsed: DaemonResponse = serde_json::from_str(&json).unwrap();
+        match parsed {
+            DaemonResponse::NetworkPolicyResult { action, reason } => {
+                assert_eq!(action, "block");
+                assert_eq!(reason, "IoC match");
+            }
+            _ => panic!("wrong variant"),
+        }
+
+        // NetworkStatusReport
+        let resp = DaemonResponse::NetworkStatusReport {
+            extension_loaded: true,
+            filter_active: true,
+            rules_count: 12,
+            mock_mode: true,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let parsed: DaemonResponse = serde_json::from_str(&json).unwrap();
+        match parsed {
+            DaemonResponse::NetworkStatusReport {
+                extension_loaded,
+                filter_active,
+                rules_count,
+                mock_mode,
+            } => {
+                assert!(extension_loaded);
+                assert!(filter_active);
+                assert_eq!(rules_count, 12);
+                assert!(mock_mode);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn subsystem_status_includes_network_policy() {
+        let status = SubsystemStatus {
+            name: "network-policy".to_string(),
+            active: true,
+            detail: "12 rules loaded, mock mode active".to_string(),
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let parsed: SubsystemStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "network-policy");
+        assert!(parsed.active);
+        assert!(parsed.detail.contains("12 rules loaded"));
+        assert!(parsed.detail.contains("mock mode active"));
+    }
+
+    #[test]
+    fn dns_cache_basic_operations() {
+        use clawdefender_core::dns::cache::DnsCache;
+        use clawdefender_core::dns::domain_intel::DomainCategory;
+        use std::time::Duration;
+
+        let mut cache = DnsCache::new(100);
+        let stats = cache.stats();
+        assert_eq!(stats.size, 0);
+
+        cache.insert(
+            "example.com",
+            vec!["1.2.3.4".parse().unwrap()],
+            Duration::from_secs(60),
+            DomainCategory::Unknown,
+        );
+
+        let entry = cache.lookup("example.com");
+        assert!(entry.is_some());
+        assert_eq!(entry.unwrap().ips.len(), 1);
+
+        let stats = cache.stats();
+        assert_eq!(stats.size, 1);
+        assert_eq!(stats.hits, 1);
     }
 }

@@ -233,6 +233,7 @@ impl FileAuditLogger {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
         // Use the channel to write session-start.
         let _ = logger.sender.send(WriterCommand::Write(Box::new(start_record)));
@@ -280,6 +281,7 @@ impl FileAuditLogger {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
         let _ = self.sender.send(WriterCommand::Write(Box::new(end_record)));
         let _ = self.sender.send(WriterCommand::Shutdown);
@@ -392,6 +394,7 @@ impl Drop for FileAuditLogger {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         };
         let _ = self.sender.send(WriterCommand::Write(Box::new(end_record)));
         let _ = self.sender.send(WriterCommand::Shutdown);
@@ -632,6 +635,7 @@ mod tests {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         }
     }
 
@@ -661,6 +665,7 @@ mod tests {
             behavioral: None,
             injection_scan: None,
             threat_intel: None,
+            network_connection: None,
         }
     }
 

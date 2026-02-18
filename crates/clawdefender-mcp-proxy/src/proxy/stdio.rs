@@ -1154,6 +1154,7 @@ fn build_audit_record(
         behavioral: None,
         injection_scan: None,
         threat_intel: None,
+        network_connection: None,
     }
 }
 
@@ -1332,6 +1333,7 @@ fn build_audit_record_from_swarm_event(
         behavioral: None,
         injection_scan: None,
         threat_intel: None,
+        network_connection: None,
     }
 }
 
