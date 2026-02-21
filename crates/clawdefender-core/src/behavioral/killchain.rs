@@ -119,7 +119,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileRead,
-                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*".into()),
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*".into()),
                     destination_pattern: None,
                     min_count: None,
                 },
@@ -148,7 +148,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
                 },
                 PatternStep {
                     event_type: StepEventType::FileRead,
-                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*".into()),
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*".into()),
                     destination_pattern: None,
                     min_count: None,
                 },
@@ -191,7 +191,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileRead,
-                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*".into()),
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*".into()),
                     destination_pattern: None,
                     min_count: Some(3),
                 },
@@ -264,9 +264,9 @@ fn builtin_patterns() -> Vec<AttackPattern> {
 
 /// Expand a leading `~` to the home directory path.
 fn expand_tilde(pattern: &str) -> String {
-    if pattern.starts_with('~') {
+    if let Some(rest) = pattern.strip_prefix('~') {
         if let Some(home) = dirs_home() {
-            return format!("{}{}", home, &pattern[1..]);
+            return format!("{}{}", home, rest);
         }
     }
     pattern.to_string()
@@ -518,8 +518,7 @@ impl KillChainDetector {
             let required_count = step.min_count.unwrap_or(1);
             let mut found_in_step: Vec<TimestampedEvent> = Vec::new();
 
-            for i in search_start..events.len() {
-                let ev = &events[i];
+            for (i, ev) in events.iter().enumerate().skip(search_start) {
                 if step_matches_event(step, &ev.event) {
                     found_in_step.push((*ev).clone());
                     if found_in_step.len() >= required_count {
@@ -1272,6 +1271,68 @@ event_type = "shell_exec"
             ts(now, 5),
         );
         assert!(!r.is_empty());
+    }
+
+    // -- Honeypot tests --
+
+    #[test]
+    fn test_honeypot_ssh_triggers_credential_theft() {
+        let mut det = KillChainDetector::new();
+        let now = Utc::now();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
+
+        // Step 1: read honeypot SSH key
+        let path = format!("{}/.config/clawdefender/honeypot/ssh/id_rsa", home);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
+
+        // Step 2: network connect to external host
+        let r = det.ingest(
+            make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
+            ts(now, 10),
+        );
+        assert!(!r.is_empty());
+        assert_eq!(r[0].pattern.name, "credential_theft_exfiltration");
+    }
+
+    #[test]
+    fn test_honeypot_aws_triggers_credential_theft() {
+        let mut det = KillChainDetector::new();
+        let now = Utc::now();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
+
+        let path = format!("{}/.config/clawdefender/honeypot/aws/credentials", home);
+        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        let r = det.ingest(
+            make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
+            ts(now, 10),
+        );
+        assert!(!r.is_empty());
+        assert_eq!(r[0].pattern.name, "credential_theft_exfiltration");
+    }
+
+    #[test]
+    fn test_honeypot_ssh_triggers_recon_credential_access() {
+        let mut det = KillChainDetector::new();
+        let now = Utc::now();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
+
+        // Step 1: broad directory listing
+        det.ingest(
+            make_event(StepEventType::FileList, Some(&format!("{}/", home)), None, "srv"),
+            now,
+        );
+
+        // Step 2: read honeypot SSH key
+        let path = format!("{}/.config/clawdefender/honeypot/ssh/id_rsa", home);
+        let r = det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            ts(now, 30),
+        );
+        let m = r.iter().find(|m| m.pattern.name == "recon_credential_access");
+        assert!(m.is_some());
     }
 
     #[test]

@@ -60,6 +60,7 @@ use clawdefender_threat_intel::{FeedCache, FeedClient, FeedVerifier};
 use event_router::{EventRouter, EventRouterConfig};
 
 /// The main daemon that orchestrates all ClawDefender subsystems.
+#[allow(dead_code)]
 pub struct Daemon {
     config: ClawConfig,
     sensor_config: SensorConfig,
@@ -147,6 +148,7 @@ impl Daemon {
                         ProfileStore::open_in_memory().expect("in-memory profile store")
                     }
                 };
+                #[allow(clippy::arc_with_non_send_sync)]
                 let store = Arc::new(store);
 
                 // Load existing profiles into learning engine

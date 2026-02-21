@@ -1,6 +1,9 @@
 mod commands;
 mod daemon;
+mod event_stream;
 mod events;
+pub mod ipc_client;
+mod monitor;
 mod state;
 mod tray;
 mod windows;
@@ -21,6 +24,12 @@ pub fn run() {
             if let Err(e) = tray::setup_tray(app.handle()) {
                 tracing::error!("Failed to setup tray: {}", e);
             }
+
+            // Start the background connection monitor
+            monitor::start_connection_monitor(app.handle().clone());
+
+            // Start the audit.jsonl event stream watcher
+            event_stream::start_event_stream(app.handle().clone());
 
             // On macOS, hide the window on close instead of quitting
             let main_window = app.get_webview_window("main");
@@ -84,6 +93,7 @@ pub fn run() {
             commands::get_network_summary,
             commands::get_network_traffic_by_server,
             commands::export_network_log,
+            commands::kill_agent_process,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

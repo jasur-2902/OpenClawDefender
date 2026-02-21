@@ -23,6 +23,124 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+/// Return the path to the honeypot canary directory: `~/.config/clawdefender/honeypot/`.
+pub fn honeypot_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    Some(home.join(".config/clawdefender/honeypot"))
+}
+
+// ---------------------------------------------------------------------------
+// DXT Extension Support
+// ---------------------------------------------------------------------------
+
+/// Represents a discovered DXT extension with its MCP config.
+pub struct DxtExtension {
+    pub id: String,
+    pub display_name: String,
+    pub installations_path: PathBuf,
+}
+
+/// Path to Claude Desktop's extensions-installations.json.
+pub fn dxt_installations_path() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+
+    #[cfg(target_os = "macos")]
+    let path = home.join("Library/Application Support/Claude/extensions-installations.json");
+
+    #[cfg(target_os = "linux")]
+    let path = home.join(".config/Claude/extensions-installations.json");
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let path = {
+        let _ = home;
+        return None;
+    };
+
+    Some(path)
+}
+
+/// Find a DXT extension by name (matches against manifest.name, manifest.display_name,
+/// or the extension id, case-insensitive).
+pub fn find_dxt_extension(server_name: &str) -> Option<DxtExtension> {
+    let path = dxt_installations_path()?;
+    if !path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&path).ok()?;
+    let json: Value = serde_json::from_str(&content).ok()?;
+    let extensions = json.get("extensions")?.as_object()?;
+
+    let needle = server_name.to_lowercase();
+    for (id, entry) in extensions {
+        let manifest = entry.get("manifest")?;
+        let name = manifest.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let display = manifest.get("display_name").and_then(|v| v.as_str()).unwrap_or("");
+
+        if id.to_lowercase() == needle
+            || name.to_lowercase() == needle
+            || display.to_lowercase() == needle
+        {
+            // Only return if this extension has an mcp_config
+            if manifest.pointer("/server/mcp_config").is_some() {
+                let label = if !display.is_empty() {
+                    display.to_string()
+                } else if !name.is_empty() {
+                    name.to_string()
+                } else {
+                    id.clone()
+                };
+                return Some(DxtExtension {
+                    id: id.clone(),
+                    display_name: label,
+                    installations_path: path,
+                });
+            }
+        }
+    }
+    None
+}
+
+/// List all DXT extensions that have an mcp_config. Returns (display_name, id) pairs.
+pub fn list_dxt_extensions() -> Vec<(String, String)> {
+    let Some(path) = dxt_installations_path() else {
+        return Vec::new();
+    };
+    if !path.exists() {
+        return Vec::new();
+    }
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let Ok(json) = serde_json::from_str::<Value>(&content) else {
+        return Vec::new();
+    };
+    let Some(extensions) = json.get("extensions").and_then(|v| v.as_object()) else {
+        return Vec::new();
+    };
+
+    let mut result = Vec::new();
+    for (id, entry) in extensions {
+        if let Some(manifest) = entry.get("manifest") {
+            if manifest.pointer("/server/mcp_config").is_some() {
+                let display = manifest
+                    .get("display_name")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| manifest.get("name").and_then(|v| v.as_str()))
+                    .unwrap_or(id.as_str());
+                result.push((display.to_string(), id.clone()));
+            }
+        }
+    }
+    result
+}
+
+/// Check if a DXT extension entry's mcp_config is already wrapped by ClawDefender.
+pub fn is_dxt_wrapped(ext_entry: &Value) -> bool {
+    ext_entry
+        .pointer("/manifest/server/mcp_config/_clawdefender_original")
+        .is_some()
+}
+
 /// Known MCP client config file locations.
 pub struct McpClient {
     pub name: &'static str,
@@ -65,21 +183,38 @@ pub fn known_clients() -> Vec<McpClient> {
     ];
 
     // Claude Desktop path is platform-specific.
+    // Newer versions use "config.json", older versions used "claude_desktop_config.json".
     #[cfg(target_os = "macos")]
-    clients.insert(0, McpClient {
-        name: "claude",
-        display_name: "Claude Desktop",
-        config_path: home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        servers_key: SERVERS_KEY_MCP,
-    });
+    {
+        let claude_dir = home.join("Library/Application Support/Claude");
+        let config_path = if claude_dir.join("config.json").exists() {
+            claude_dir.join("config.json")
+        } else {
+            claude_dir.join("claude_desktop_config.json")
+        };
+        clients.insert(0, McpClient {
+            name: "claude",
+            display_name: "Claude Desktop",
+            config_path,
+            servers_key: SERVERS_KEY_MCP,
+        });
+    }
 
     #[cfg(target_os = "linux")]
-    clients.insert(0, McpClient {
-        name: "claude",
-        display_name: "Claude Desktop",
-        config_path: home.join(".config/Claude/claude_desktop_config.json"),
-        servers_key: SERVERS_KEY_MCP,
-    });
+    {
+        let claude_dir = home.join(".config/Claude");
+        let config_path = if claude_dir.join("config.json").exists() {
+            claude_dir.join("config.json")
+        } else {
+            claude_dir.join("claude_desktop_config.json")
+        };
+        clients.insert(0, McpClient {
+            name: "claude",
+            display_name: "Claude Desktop",
+            config_path,
+            servers_key: SERVERS_KEY_MCP,
+        });
+    }
 
     clients
 }
@@ -153,20 +288,36 @@ pub fn find_client_config(server_name: &str, client_hint: &str) -> anyhow::Resul
         .map(|c| format!("  - {} ({})", c.display_name, c.config_path.display()))
         .collect();
 
-    if installed.is_empty() {
+    let dxt_exts = list_dxt_extensions();
+    let dxt_lines: Vec<String> = dxt_exts
+        .iter()
+        .map(|(name, id)| format!("  - {} (DXT: {})", name, id))
+        .collect();
+
+    if installed.is_empty() && dxt_lines.is_empty() {
         anyhow::bail!(
             "Server \"{server_name}\" not found.\n\
              No MCP client configs detected. Install Claude Desktop, Cursor, or VS Code."
         );
     }
 
+    let mut checked = installed.join("\n");
+    if !dxt_lines.is_empty() {
+        if !checked.is_empty() {
+            checked.push('\n');
+        }
+        checked.push_str(&format!(
+            "\nDXT extensions:\n{}",
+            dxt_lines.join("\n")
+        ));
+    }
+
     anyhow::bail!(
         "Server \"{server_name}\" not found in any MCP client config.\n\
          \n\
-         Checked:\n{}\n\
+         Checked:\n{checked}\n\
          \n\
-         Make sure the server name matches exactly.",
-        installed.join("\n")
+         Make sure the server name matches exactly."
     );
 }
 
@@ -341,5 +492,60 @@ mod tests {
         let clients = known_clients();
         let claude = clients.iter().find(|c| c.name == "claude").unwrap();
         assert!(claude.config_path.to_string_lossy().contains("Library/Application Support"));
+    }
+
+    #[test]
+    fn test_is_dxt_wrapped() {
+        let entry = json!({
+            "manifest": {
+                "name": "test-ext",
+                "server": {
+                    "mcp_config": {
+                        "command": "clawdefender",
+                        "args": ["proxy", "--", "node", "server.js"],
+                        "_clawdefender_original": {
+                            "command": "node",
+                            "args": ["server.js"]
+                        }
+                    }
+                }
+            }
+        });
+        assert!(is_dxt_wrapped(&entry));
+    }
+
+    #[test]
+    fn test_is_dxt_not_wrapped() {
+        let entry = json!({
+            "manifest": {
+                "name": "test-ext",
+                "server": {
+                    "mcp_config": {
+                        "command": "node",
+                        "args": ["server.js"]
+                    }
+                }
+            }
+        });
+        assert!(!is_dxt_wrapped(&entry));
+    }
+
+    #[test]
+    fn test_find_dxt_extension_by_name() {
+        // This test uses the real filesystem path so it only verifies the None case
+        // when no extensions-installations.json exists. Integration tests with temp
+        // files are in wrap.rs and unwrap.rs.
+        // If the file doesn't exist on this machine, find should return None.
+        let result = find_dxt_extension("nonexistent-extension-xyz");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_list_dxt_extensions_returns_vec() {
+        // Should not panic even if the file doesn't exist.
+        let exts = list_dxt_extensions();
+        // We can't assert the contents since it depends on the local machine,
+        // but it should return a Vec without errors.
+        let _ = exts;
     }
 }

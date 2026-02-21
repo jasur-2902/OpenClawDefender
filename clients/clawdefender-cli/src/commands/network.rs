@@ -183,8 +183,8 @@ fn rules(config: &ClawConfig) -> Result<()> {
     println!("=================================");
     println!();
     println!(
-        "{:<5} {:<25} {:<10} {:<10} {}",
-        "PRI", "NAME", "ACTION", "SOURCE", "DESCRIPTION"
+        "{:<5} {:<25} {:<10} {:<10} DESCRIPTION",
+        "PRI", "NAME", "ACTION", "SOURCE"
     );
     println!("{}", "-".repeat(80));
 

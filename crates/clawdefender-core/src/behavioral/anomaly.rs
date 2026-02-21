@@ -98,6 +98,7 @@ const DEFAULT_SENSITIVE_PATHS: &[&str] = &[
     "/.netrc",
     "/id_rsa",
     "/id_ed25519",
+    "/clawdefender/honeypot/",
 ];
 
 /// Scores behavioral events against a server profile.
@@ -1075,6 +1076,28 @@ mod tests {
         let event = make_tool_event("evil_tool", vec![("evil_arg", "evil_val")]);
         let result = scorer.score(&event, &profile).unwrap();
         assert!(result.total >= 0.0 && result.total <= 1.0);
+    }
+
+    #[test]
+    fn test_honeypot_path_is_sensitive() {
+        let scorer = AnomalyScorer::new();
+        assert!(scorer.is_sensitive_path("/Users/test/.config/clawdefender/honeypot/ssh/id_rsa"));
+        assert!(scorer.is_sensitive_path("/home/user/.config/clawdefender/honeypot/aws/credentials"));
+        assert!(scorer.is_sensitive_path("/Users/test/.config/clawdefender/honeypot/env"));
+    }
+
+    #[test]
+    fn test_honeypot_file_access_scores_high() {
+        let scorer = AnomalyScorer::new();
+        let profile = established_profile();
+        let event = make_file_event("/home/user/.config/clawdefender/honeypot/ssh/id_rsa", false);
+        let result = scorer.score(&event, &profile).unwrap();
+        assert!(
+            result.total >= 0.7,
+            "Honeypot access should score high, got {}",
+            result.total
+        );
+        assert!(result.components.iter().any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
     }
 
     #[test]

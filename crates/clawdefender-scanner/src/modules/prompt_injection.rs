@@ -464,6 +464,7 @@ fn make_finding_id(severity: Severity, counter: usize) -> String {
 // Module implementation
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
 pub struct PromptInjectionModule;
 
 impl PromptInjectionModule {

@@ -268,7 +268,7 @@ pub fn deduplicate_findings(findings: Vec<Finding>) -> Vec<Finding> {
 
 /// Cross-reference related findings. For example, if path traversal and injection
 /// both reference the same file, note the correlation in descriptions.
-pub fn correlate_findings(findings: &mut Vec<Finding>) {
+pub fn correlate_findings(findings: &mut [Finding]) {
     let n = findings.len();
     if n < 2 {
         return;
@@ -373,9 +373,9 @@ pub fn exit_code_for_findings(findings: &[Finding], threshold: Option<&Severity>
 
     if has_critical && min_severity <= Severity::Critical {
         1
-    } else if has_high && min_severity <= Severity::High {
-        2
-    } else if findings.iter().any(|f| f.severity >= min_severity) {
+    } else if (has_high && min_severity <= Severity::High)
+        || findings.iter().any(|f| f.severity >= min_severity)
+    {
         2
     } else {
         0

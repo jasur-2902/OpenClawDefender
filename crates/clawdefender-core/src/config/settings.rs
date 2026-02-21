@@ -361,7 +361,7 @@ pub struct EsloggerConfig {
 }
 
 /// Unified sensor configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SensorConfig {
     /// Eslogger sensor settings.
     #[serde(default)]
@@ -450,16 +450,6 @@ impl SensorConfig {
     }
 }
 
-impl Default for SensorConfig {
-    fn default() -> Self {
-        Self {
-            eslogger: EsloggerSensorConfig::default(),
-            fsevents: FsEventsSensorConfig::default(),
-            correlation: CorrelationConfig::default(),
-            process_tree: ProcessTreeConfig::default(),
-        }
-    }
-}
 
 impl Default for EsloggerSensorConfig {
     fn default() -> Self {

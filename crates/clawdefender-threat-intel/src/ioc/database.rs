@@ -187,8 +187,10 @@ impl IoCDatabase {
 
     /// Get statistics about the current database.
     pub fn stats(&self) -> DatabaseStats {
-        let mut stats = DatabaseStats::default();
-        stats.total_entries = self.indicators.len();
+        let mut stats = DatabaseStats {
+            total_entries: self.indicators.len(),
+            ..Default::default()
+        };
 
         let mut latest: Option<chrono::DateTime<chrono::Utc>> = None;
 

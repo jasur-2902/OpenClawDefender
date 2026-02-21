@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
+use crate::ipc_client::DaemonIpcClient;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
     pub id: String,
@@ -296,18 +298,174 @@ pub struct NetworkSettings {
     pub log_dns: bool,
 }
 
+/// Maximum number of events to keep in the buffer to prevent unbounded memory growth.
+const MAX_EVENT_BUFFER: usize = 10_000;
+
+/// Maximum number of pending prompts to keep.
+const MAX_PENDING_PROMPTS: usize = 100;
+
 pub struct AppState {
+    /// Whether the daemon is currently connected (updated by the connection monitor).
     pub daemon_connected: Mutex<bool>,
+    /// Cached daemon status from the last successful status query.
+    pub cached_status: Mutex<Option<DaemonStatus>>,
+    /// Buffer of recent audit events received from the daemon.
     pub event_buffer: Mutex<Vec<AuditEvent>>,
+    /// Pending prompts from the daemon awaiting user response.
     pub pending_prompts: Mutex<Vec<PendingPrompt>>,
+    /// Whether onboarding has been completed (persisted to disk).
+    pub onboarding_complete: Mutex<bool>,
+    /// IPC client for communicating with the daemon.
+    pub ipc_client: DaemonIpcClient,
+    /// Whether the daemon was started by this GUI instance (for clean shutdown).
+    pub daemon_started_by_gui: Mutex<bool>,
+}
+
+impl AppState {
+    /// Path to the onboarding flag file.
+    pub fn onboarding_flag_path() -> std::path::PathBuf {
+        let home = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        home.join(".clawdefender").join("onboarding_complete")
+    }
+
+    /// Check if onboarding was previously completed (persisted to disk).
+    fn load_onboarding_state() -> bool {
+        Self::onboarding_flag_path().exists()
+    }
+
+    /// Add an audit event to the buffer, enforcing the size limit.
+    pub fn push_event(&self, event: AuditEvent) {
+        if let Ok(mut buffer) = self.event_buffer.lock() {
+            buffer.push(event);
+            if buffer.len() > MAX_EVENT_BUFFER {
+                // Remove oldest events (front of the vec)
+                let excess = buffer.len() - MAX_EVENT_BUFFER;
+                buffer.drain(..excess);
+            }
+        }
+    }
+
+    /// Add a pending prompt, enforcing the size limit.
+    pub fn push_prompt(&self, prompt: PendingPrompt) {
+        if let Ok(mut prompts) = self.pending_prompts.lock() {
+            prompts.push(prompt);
+            if prompts.len() > MAX_PENDING_PROMPTS {
+                prompts.drain(..1);
+            }
+        }
+    }
+
+    /// Update the cached daemon status and connection state.
+    pub fn update_daemon_status(&self, connected: bool, status: Option<DaemonStatus>) {
+        if let Ok(mut conn) = self.daemon_connected.lock() {
+            *conn = connected;
+        }
+        if let Ok(mut cached) = self.cached_status.lock() {
+            *cached = status;
+        }
+    }
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
             daemon_connected: Mutex::new(false),
+            cached_status: Mutex::new(None),
             event_buffer: Mutex::new(Vec::new()),
             pending_prompts: Mutex::new(Vec::new()),
+            onboarding_complete: Mutex::new(Self::load_onboarding_state()),
+            ipc_client: DaemonIpcClient::new(),
+            daemon_started_by_gui: Mutex::new(false),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_event(id: &str) -> AuditEvent {
+        AuditEvent {
+            id: id.to_string(),
+            timestamp: "2025-01-15T10:30:00Z".to_string(),
+            event_type: "proxy".to_string(),
+            server_name: "test".to_string(),
+            tool_name: None,
+            action: "test".to_string(),
+            decision: "allow".to_string(),
+            risk_level: "info".to_string(),
+            details: String::new(),
+            resource: None,
+        }
+    }
+
+    fn make_prompt(id: &str) -> PendingPrompt {
+        PendingPrompt {
+            id: id.to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            server_name: "test".to_string(),
+            tool_name: "tool".to_string(),
+            action: "call".to_string(),
+            resource: "/path".to_string(),
+            risk_level: "info".to_string(),
+            context: String::new(),
+            timeout_seconds: 30,
+        }
+    }
+
+    #[test]
+    fn test_event_buffer_bounded_at_10000() {
+        let state = AppState::default();
+        for i in 0..10_050 {
+            state.push_event(make_event(&format!("evt-{}", i)));
+        }
+        let buffer = state.event_buffer.lock().unwrap();
+        assert_eq!(buffer.len(), MAX_EVENT_BUFFER);
+        // Oldest events should have been drained; first event should be evt-50
+        assert_eq!(buffer[0].id, "evt-50");
+    }
+
+    #[test]
+    fn test_pending_prompts_bounded_at_100() {
+        let state = AppState::default();
+        for i in 0..110 {
+            state.push_prompt(make_prompt(&format!("prompt-{}", i)));
+        }
+        let prompts = state.pending_prompts.lock().unwrap();
+        assert_eq!(prompts.len(), MAX_PENDING_PROMPTS);
+    }
+
+    #[test]
+    fn test_push_event_basic() {
+        let state = AppState::default();
+        state.push_event(make_event("evt-1"));
+        state.push_event(make_event("evt-2"));
+        let buffer = state.event_buffer.lock().unwrap();
+        assert_eq!(buffer.len(), 2);
+        assert_eq!(buffer[0].id, "evt-1");
+        assert_eq!(buffer[1].id, "evt-2");
+    }
+
+    #[test]
+    fn test_update_daemon_status() {
+        let state = AppState::default();
+        assert!(!*state.daemon_connected.lock().unwrap());
+
+        state.update_daemon_status(true, Some(DaemonStatus {
+            running: true,
+            pid: Some(1234),
+            uptime_seconds: Some(60),
+            version: Some("1.0".into()),
+            socket_path: "/tmp/test.sock".into(),
+            servers_proxied: 2,
+            events_processed: 100,
+        }));
+
+        assert!(*state.daemon_connected.lock().unwrap());
+        let cached = state.cached_status.lock().unwrap();
+        assert!(cached.is_some());
+        assert_eq!(cached.as_ref().unwrap().pid, Some(1234));
     }
 }

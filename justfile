@@ -85,7 +85,6 @@ build-app:
 
 # Run the Tauri GUI app in development mode
 dev-app:
-    cd clients/clawdefender-app && npm run dev &
     cd clients/clawdefender-app/src-tauri && cargo tauri dev
 
 # Build the Swift network extension

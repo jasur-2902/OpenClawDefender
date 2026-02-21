@@ -13,6 +13,7 @@ struct ShellPayload {
     template: &'static str,
 }
 
+#[derive(Default)]
 pub struct CapabilityEscalationModule;
 
 impl CapabilityEscalationModule {

@@ -85,7 +85,7 @@ pub fn try_match(
                     target_path, args, ..
                 } = &os.kind
                 {
-                    let args_str = format!("{} {}", serde_json::to_string(&tc.arguments).unwrap_or_default(), tc.arguments.to_string());
+                    let args_str = format!("{} {}", serde_json::to_string(&tc.arguments).unwrap_or_default(), tc.arguments);
                     let binary_name = target_path.rsplit('/').next().unwrap_or(target_path);
 
                     if args_str.contains(target_path) {
@@ -220,7 +220,7 @@ fn args_contains_url_or_hostname(args: &str) -> bool {
     for word in lower.split(|c: char| !c.is_alphanumeric() && c != '.' && c != '-') {
         if word.contains('.') && word.len() > 3 {
             let parts: Vec<&str> = word.split('.').collect();
-            if parts.len() >= 2 && parts.last().map_or(false, |tld| tld.len() >= 2) {
+            if parts.len() >= 2 && parts.last().is_some_and(|tld| tld.len() >= 2) {
                 return true;
             }
         }

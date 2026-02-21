@@ -14,8 +14,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::ipc;
-
 /// Configuration for the mock network extension.
 #[derive(Debug, Clone)]
 pub struct MockNetworkExtensionConfig {

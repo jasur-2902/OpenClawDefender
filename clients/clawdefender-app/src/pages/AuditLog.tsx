@@ -1,9 +1,29 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AuditEvent } from "../types";
 
 type SortField = "timestamp" | "server_name" | "tool_name" | "resource" | "action" | "risk_level";
 type SortDir = "asc" | "desc";
+
+/** Normalize backend decision values to canonical form: "allowed", "blocked", "prompted". */
+function normalizeDecision(d: string): string {
+  const lower = d.toLowerCase();
+  if (lower === "allowed" || lower === "allow") return "allowed";
+  if (lower === "blocked" || lower === "block" || lower === "denied" || lower === "deny")
+    return "blocked";
+  if (lower === "prompted" || lower === "prompt") return "prompted";
+  return lower;
+}
+
+/** Normalize backend risk_level to one of: "low", "medium", "high", "critical". */
+function normalizeRiskLevel(r: string): string {
+  const lower = r.toLowerCase();
+  if (lower === "info") return "low";
+  if (lower === "block" || lower === "review") return "medium";
+  if (lower === "low" || lower === "medium" || lower === "high" || lower === "critical")
+    return lower;
+  return "low";
+}
 
 export function AuditLog() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
@@ -56,10 +76,10 @@ export function AuditLog() {
       result = result.filter((e) => e.server_name === serverFilter);
     }
     if (actionFilter) {
-      result = result.filter((e) => e.decision === actionFilter);
+      result = result.filter((e) => normalizeDecision(e.decision) === actionFilter);
     }
     if (riskFilter) {
-      result = result.filter((e) => e.risk_level === riskFilter);
+      result = result.filter((e) => normalizeRiskLevel(e.risk_level) === riskFilter);
     }
 
     result.sort((a, b) => {
@@ -81,7 +101,8 @@ export function AuditLog() {
     }
   }
 
-  function riskBadge(level: AuditEvent["risk_level"]) {
+  function riskBadge(level: string) {
+    const normalized = normalizeRiskLevel(level);
     const styles: Record<string, string> = {
       low: "bg-[var(--color-success)]/20 text-[var(--color-success)]",
       medium: "bg-[var(--color-warning)]/20 text-[var(--color-warning)]",
@@ -89,21 +110,22 @@ export function AuditLog() {
       critical: "bg-red-900/40 text-red-300",
     };
     return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[level]}`}>
-        {level}
+      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[normalized] ?? ""}`}>
+        {normalized}
       </span>
     );
   }
 
   function decisionBadge(decision: string) {
+    const normalized = normalizeDecision(decision);
     const styles: Record<string, string> = {
       allowed: "text-[var(--color-success)]",
       blocked: "text-[var(--color-danger)]",
       prompted: "text-[var(--color-warning)]",
     };
     return (
-      <span className={`text-xs font-medium ${styles[decision] ?? "text-[var(--color-text-secondary)]"}`}>
-        {decision}
+      <span className={`text-xs font-medium ${styles[normalized] ?? "text-[var(--color-text-secondary)]"}`}>
+        {normalized}
       </span>
     );
   }
@@ -218,9 +240,8 @@ export function AuditLog() {
               </tr>
             ) : (
               filtered.map((event, i) => (
-                <>
+                <Fragment key={event.id}>
                   <tr
-                    key={event.id}
                     onClick={() =>
                       setExpandedRow(expandedRow === event.id ? null : event.id)
                     }
@@ -271,7 +292,7 @@ export function AuditLog() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))
             )}
           </tbody>

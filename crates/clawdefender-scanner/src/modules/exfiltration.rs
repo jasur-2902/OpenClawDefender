@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::finding::{Evidence, Finding, ModuleCategory, Reproduction, Severity};
 use crate::modules::{ScanContext, ScanModule};
 
+#[derive(Default)]
 pub struct ExfiltrationModule;
 
 impl ExfiltrationModule {

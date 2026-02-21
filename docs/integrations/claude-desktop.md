@@ -4,7 +4,14 @@ ClawDefender integrates with Claude Desktop by wrapping MCP servers in its
 security proxy. Every tool call from Claude passes through ClawDefender's
 policy engine before reaching the server.
 
+ClawDefender supports both configuration formats used by Claude Desktop:
+
+- **Traditional config** (`mcpServers` in `claude_desktop_config.json` or `config.json`)
+- **DXT extensions** (`extensions-installations.json`) — used by Claude Desktop for extensions installed from the extension registry
+
 ## Configuration
+
+### Traditional MCP servers
 
 Claude Desktop stores its MCP server configuration at:
 
@@ -12,23 +19,52 @@ Claude Desktop stores its MCP server configuration at:
 ~/Library/Application Support/Claude/claude_desktop_config.json
 ```
 
+Or in newer versions:
+
+```
+~/Library/Application Support/Claude/config.json
+```
+
 On Linux:
 
 ```
-~/.config/claude/claude_desktop_config.json
+~/.config/Claude/claude_desktop_config.json
 ```
+
+### DXT extensions
+
+Claude Desktop installs extensions from the extension registry into:
+
+```
+~/Library/Application Support/Claude/extensions-installations.json
+```
+
+Each extension's MCP config is nested at
+`extensions.<id>.manifest.server.mcp_config`. ClawDefender discovers and wraps
+these automatically.
 
 ## Wrapping a server
 
 ```bash
-# Wrap the filesystem server
+# Wrap a traditional MCP server
 clawdefender wrap filesystem
 
-# Wrap multiple servers
-clawdefender wrap filesystem git fetch
+# Wrap a DXT extension (by name or extension id)
+clawdefender wrap chrome-control
+clawdefender wrap "Control Chrome"
+clawdefender wrap ant.dir.ant.anthropic.chrome-control
+
+# Explicitly target Claude Desktop
+clawdefender wrap filesystem --client claude
 ```
 
-This rewrites your Claude Desktop config. Before wrapping:
+ClawDefender tries the traditional `mcpServers` config first. If the server is
+not found there, it searches DXT extensions by name, display name, or extension
+id (case-insensitive).
+
+### Traditional config — before and after
+
+Before wrapping:
 
 ```json
 {
@@ -47,14 +83,57 @@ After wrapping:
 {
   "mcpServers": {
     "filesystem": {
-      "command": "clawdefender",
-      "args": ["proxy", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+      "command": "/usr/local/bin/clawdefender",
+      "args": ["proxy", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
+      "_clawdefender_original": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+      }
     }
   }
 }
 ```
 
-ClawDefender creates a `.bak` backup of your config before modifying it.
+### DXT extension — before and after
+
+Before wrapping:
+
+```json
+{
+  "manifest": {
+    "server": {
+      "mcp_config": {
+        "command": "node",
+        "args": ["${__dirname}/server/index.js"]
+      }
+    }
+  }
+}
+```
+
+After wrapping:
+
+```json
+{
+  "manifest": {
+    "server": {
+      "mcp_config": {
+        "command": "/usr/local/bin/clawdefender",
+        "args": ["proxy", "--", "node", "${__dirname}/server/index.js"],
+        "_clawdefender_original": {
+          "command": "node",
+          "args": ["${__dirname}/server/index.js"]
+        }
+      }
+    }
+  }
+}
+```
+
+The `${__dirname}` token is preserved as-is — Claude Desktop resolves it at
+runtime before spawning the process.
+
+ClawDefender creates a `.bak` backup of the config file before modifying it.
 
 ## Restart Claude Desktop
 
@@ -162,10 +241,15 @@ tool_name = ["brave_web_search", "brave_local_search"]
 To remove ClawDefender from a server:
 
 ```bash
+# Unwrap a traditional MCP server
 clawdefender unwrap filesystem
+
+# Unwrap a DXT extension
+clawdefender unwrap chrome-control
 ```
 
-This restores the original server configuration from the backup.
+This restores the original server configuration from the `_clawdefender_original`
+data stored during wrapping. A `.bak` backup is also created before unwrapping.
 
 ## Viewing the audit log
 
@@ -180,13 +264,19 @@ clawdefender log --server filesystem
 ## Troubleshooting
 
 **Claude Desktop does not start after wrapping:**
-- Check that `clawdefender` is in your PATH
+- Check that `clawdefender` is in your PATH (the `wrap` command writes an absolute path to avoid this issue)
 - Run `clawdefender unwrap <server>` to restore the original config
-- Check the backup at `claude_desktop_config.json.bak`
+- Check the backup at `claude_desktop_config.json.bak` or `extensions-installations.json.bak`
 
 **Tool calls are slow:**
 - ClawDefender adds minimal latency (<5ms for policy evaluation)
 - If prompts are enabled, latency depends on how fast you respond
 
+**Server not found:**
+- For traditional servers, make sure the name matches the key in `mcpServers` exactly
+- For DXT extensions, you can use the extension name, display name, or full id (e.g. `chrome-control`, `"Control Chrome"`, or `ant.dir.ant.anthropic.chrome-control`)
+- Run `clawdefender wrap <name> --client claude` to search only Claude Desktop configs
+
 **Cannot find the config file:**
-- Run `clawdefender wrap --config <path> <server>` to specify the config path
+- Traditional configs: `~/Library/Application Support/Claude/claude_desktop_config.json` or `config.json`
+- DXT extensions: `~/Library/Application Support/Claude/extensions-installations.json`

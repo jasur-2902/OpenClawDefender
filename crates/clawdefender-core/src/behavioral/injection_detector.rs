@@ -225,9 +225,10 @@ struct CompiledPattern {
 struct CompiledPatternSet {
     patterns: Vec<CompiledPattern>,
     /// Aho-Corasick automaton built from short literal prefixes for fast pre-filtering.
-    ac: AhoCorasick,
+    /// Kept for future optimisation (see `scan` method).
+    _ac: AhoCorasick,
     /// Maps AC pattern index back to the pattern index.
-    ac_literals: Vec<String>,
+    _ac_literals: Vec<String>,
 }
 
 impl CompiledPatternSet {
@@ -258,8 +259,8 @@ impl CompiledPatternSet {
 
         CompiledPatternSet {
             patterns,
-            ac,
-            ac_literals,
+            _ac: ac,
+            _ac_literals: ac_literals,
         }
     }
 

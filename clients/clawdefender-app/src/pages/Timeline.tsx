@@ -45,6 +45,26 @@ function getServerColor(name: string): string {
   return serverColors[Math.abs(hash) % serverColors.length];
 }
 
+/** Normalize backend decision values to canonical form: "allowed", "blocked", "prompted". */
+function normalizeDecision(d: string): string {
+  const lower = d.toLowerCase();
+  if (lower === "allowed" || lower === "allow") return "allowed";
+  if (lower === "blocked" || lower === "block" || lower === "denied" || lower === "deny")
+    return "blocked";
+  if (lower === "prompted" || lower === "prompt") return "prompted";
+  return lower;
+}
+
+/** Normalize backend risk_level to one of: "low", "medium", "high", "critical". */
+function normalizeRiskLevel(r: string): string {
+  const lower = r.toLowerCase();
+  if (lower === "info") return "low";
+  if (lower === "block" || lower === "review") return "medium";
+  if (lower === "low" || lower === "medium" || lower === "high" || lower === "critical")
+    return lower;
+  return "low";
+}
+
 function eventTypeIcon(eventType: string): string {
   switch (eventType.toLowerCase()) {
     case "tool_call":
@@ -61,25 +81,32 @@ function eventTypeIcon(eventType: string): string {
 }
 
 function DecisionBadge({ decision }: { decision: string }) {
-  const d = decision.toLowerCase();
-  if (d === "allowed" || d === "allow") {
+  const d = normalizeDecision(decision);
+  const config: Record<string, { label: string; bg: string; color: string }> = {
+    allowed: {
+      label: "Allowed",
+      bg: "rgba(34,197,94,0.15)",
+      color: "var(--color-success)",
+    },
+    blocked: {
+      label: "Blocked",
+      bg: "rgba(239,68,68,0.15)",
+      color: "var(--color-danger)",
+    },
+    prompted: {
+      label: "Prompted",
+      bg: "rgba(245,158,11,0.15)",
+      color: "var(--color-warning)",
+    },
+  };
+  const c = config[d];
+  if (c) {
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-[rgba(34,197,94,0.15)] text-[var(--color-success)]">
-        Allowed
-      </span>
-    );
-  }
-  if (d === "blocked" || d === "deny") {
-    return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-[rgba(239,68,68,0.15)] text-[var(--color-danger)]">
-        Blocked
-      </span>
-    );
-  }
-  if (d === "prompted" || d === "prompt") {
-    return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-[rgba(245,158,11,0.15)] text-[var(--color-warning)]">
-        Prompted
+      <span
+        className="text-xs px-2 py-0.5 rounded-full"
+        style={{ backgroundColor: c.bg, color: c.color }}
+      >
+        {c.label}
       </span>
     );
   }
@@ -91,19 +118,20 @@ function DecisionBadge({ decision }: { decision: string }) {
 }
 
 function RiskBadge({ level }: { level: string }) {
+  const normalized = normalizeRiskLevel(level);
   const colors: Record<string, string> = {
     critical: "var(--color-danger)",
     high: "var(--color-danger)",
     medium: "var(--color-warning)",
     low: "var(--color-text-secondary)",
   };
-  const color = colors[level] ?? "var(--color-text-secondary)";
+  const color = colors[normalized] ?? "var(--color-text-secondary)";
   return (
     <span
       className="text-xs px-1.5 py-0.5 rounded"
       style={{ color, borderColor: color, border: "1px solid" }}
     >
-      {level}
+      {normalized}
     </span>
   );
 }
@@ -283,17 +311,13 @@ export function Timeline() {
 
     if (statusFilter.length > 0) {
       result = result.filter((e) =>
-        statusFilter.some(
-          (s) => e.decision.toLowerCase() === s.toLowerCase()
-        )
+        statusFilter.includes(normalizeDecision(e.decision))
       );
     }
 
     if (onlyBlocks) {
       result = result.filter(
-        (e) =>
-          e.decision.toLowerCase() === "blocked" ||
-          e.decision.toLowerCase() === "deny"
+        (e) => normalizeDecision(e.decision) === "blocked"
       );
     }
 
@@ -398,7 +422,7 @@ export function Timeline() {
         </select>
 
         <div className="flex items-center gap-1" role="group" aria-label="Filter by decision">
-          {["allow", "deny", "prompt"].map((status) => (
+          {["allowed", "blocked", "prompted"].map((status) => (
             <button
               key={status}
               onClick={() => toggleStatusFilter(status)}

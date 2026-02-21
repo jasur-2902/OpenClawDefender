@@ -6,13 +6,35 @@ use crate::state::{AuditEvent, PendingPrompt};
 pub const EVENT_AUDIT: &str = "clawdefender://event";
 pub const EVENT_PROMPT: &str = "clawdefender://prompt";
 pub const EVENT_ALERT: &str = "clawdefender://alert";
+pub const EVENT_AUTO_BLOCK: &str = "clawdefender://auto-block";
 pub const EVENT_STATUS_CHANGE: &str = "clawdefender://status-change";
 
+/// A suspicious event entry shown inside the AlertWindow.
+#[derive(Debug, Clone, Serialize)]
+pub struct SuspiciousEventPayload {
+    pub timestamp: String,
+    pub action: String,
+}
+
+/// Full alert payload matching the frontend `AlertData` interface.
 #[derive(Debug, Clone, Serialize)]
 pub struct AlertPayload {
+    pub id: String,
     pub level: String,
     pub message: String,
     pub details: String,
+    pub events: Vec<SuspiciousEventPayload>,
+    pub kill_chain: Option<String>,
+    pub pid: Option<u32>,
+}
+
+/// Payload for auto-block toast notifications, matching `AutoBlockInfo`.
+#[derive(Debug, Clone, Serialize)]
+pub struct AutoBlockPayload {
+    pub id: String,
+    pub server_name: String,
+    pub action: String,
+    pub anomaly_score: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -32,14 +54,17 @@ pub fn emit_prompt(app: &AppHandle, prompt: &PendingPrompt) {
     }
 }
 
-pub fn emit_alert(app: &AppHandle, level: &str, message: &str, details: &str) {
-    let payload = AlertPayload {
-        level: level.to_string(),
-        message: message.to_string(),
-        details: details.to_string(),
-    };
-    if let Err(e) = app.emit(EVENT_ALERT, &payload) {
+/// Emit a full alert payload to the frontend AlertWindow.
+pub fn emit_alert(app: &AppHandle, payload: &AlertPayload) {
+    if let Err(e) = app.emit(EVENT_ALERT, payload) {
         tracing::error!("Failed to emit alert: {}", e);
+    }
+}
+
+/// Emit an auto-block toast notification.
+pub fn emit_auto_block(app: &AppHandle, payload: &AutoBlockPayload) {
+    if let Err(e) = app.emit(EVENT_AUTO_BLOCK, payload) {
+        tracing::error!("Failed to emit auto-block: {}", e);
     }
 }
 

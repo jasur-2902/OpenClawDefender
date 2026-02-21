@@ -7,6 +7,7 @@ use clawdefender_scanner::scanner::{
     compute_delta, exit_code_for_findings, load_baseline, ScanConfig, Scanner,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     server_command: Vec<String>,
     timeout: Option<u64>,

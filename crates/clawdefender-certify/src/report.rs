@@ -46,7 +46,7 @@ impl LevelReport {
 
         let result = if passed == total {
             LevelResult::Pass
-        } else if total > 0 && passed >= (total + 1) / 2 {
+        } else if total > 0 && passed >= total.div_ceil(2) {
             LevelResult::Partial
         } else {
             LevelResult::Fail

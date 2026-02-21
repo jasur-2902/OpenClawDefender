@@ -42,21 +42,12 @@ impl Default for RateLimitConfig {
 }
 
 /// Per-PID rate tracking window.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct RateWindow {
     /// Timestamps of connections in the last minute.
     connection_times: Vec<DateTime<Utc>>,
     /// (destination, timestamp) pairs for unique destination tracking.
     destination_times: Vec<(String, DateTime<Utc>)>,
-}
-
-impl Default for RateWindow {
-    fn default() -> Self {
-        Self {
-            connection_times: Vec::new(),
-            destination_times: Vec::new(),
-        }
-    }
 }
 
 /// An alert generated when rate limits are exceeded.

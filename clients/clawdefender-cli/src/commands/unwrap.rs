@@ -2,9 +2,23 @@
 
 use anyhow::{bail, Result};
 
-use super::{backup_config, detect_servers_key, find_client_config, is_wrapped, list_servers, read_config, write_config};
+use super::{backup_config, detect_servers_key, find_client_config, find_dxt_extension, is_dxt_wrapped, is_wrapped, list_servers, read_config, write_config};
 
 pub fn run(server_name: &str, client_hint: &str) -> Result<()> {
+    match try_unwrap_traditional(server_name, client_hint) {
+        Ok(()) => Ok(()),
+        Err(traditional_err) => {
+            // Traditional lookup failed — try DXT extensions before giving up.
+            if let Some(ext) = find_dxt_extension(server_name) {
+                return unwrap_dxt_extension(&ext, server_name);
+            }
+            Err(traditional_err)
+        }
+    }
+}
+
+/// Try to unwrap a server found in a traditional mcpServers config.
+fn try_unwrap_traditional(server_name: &str, client_hint: &str) -> Result<()> {
     let client = find_client_config(server_name, client_hint)?;
     let mut config = read_config(&client.config_path)?;
 
@@ -59,6 +73,53 @@ pub fn run(server_name: &str, client_hint: &str) -> Result<()> {
     println!();
     println!("The original MCP server configuration has been restored.");
     println!("Restart {} for changes to take effect.", client.display_name);
+
+    Ok(())
+}
+
+/// Unwrap a DXT extension by restoring its original mcp_config.
+fn unwrap_dxt_extension(ext: &super::DxtExtension, _server_name: &str) -> Result<()> {
+    let mut root = read_config(&ext.installations_path)?;
+
+    let ext_entry = root
+        .pointer(&format!("/extensions/{}", ext.id))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    if !is_dxt_wrapped(&ext_entry) {
+        println!(
+            "\"{}\" (DXT: {}) is not wrapped by ClawDefender.",
+            ext.display_name, ext.id
+        );
+        return Ok(());
+    }
+
+    let mcp_config = root
+        .pointer_mut(&format!("/extensions/{}/manifest/server/mcp_config", ext.id))
+        .ok_or_else(|| anyhow::anyhow!("DXT extension \"{}\" has no mcp_config", ext.id))?;
+
+    let original = mcp_config
+        .get("_clawdefender_original")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Missing _clawdefender_original in DXT extension config"))?;
+
+    backup_config(&ext.installations_path)?;
+
+    let mcp_obj = mcp_config.as_object_mut().unwrap();
+    if let Some(cmd) = original.get("command") {
+        mcp_obj.insert("command".to_string(), cmd.clone());
+    }
+    if let Some(args) = original.get("args") {
+        mcp_obj.insert("args".to_string(), args.clone());
+    }
+    mcp_obj.remove("_clawdefender_original");
+
+    write_config(&ext.installations_path, &root)?;
+
+    println!("Unwrapped \"{}\" (DXT: {})", ext.display_name, ext.id);
+    println!();
+    println!("The original DXT extension configuration has been restored.");
+    println!("Restart Claude Desktop for changes to take effect.");
 
     Ok(())
 }
@@ -186,6 +247,63 @@ mod tests {
 
         assert_eq!(config["servers"]["cursor-server"]["command"], "node");
         assert!(!is_wrapped(&config["servers"]["cursor-server"]));
+    }
+
+    /// Unwrap a DXT extension restores the original mcp_config.
+    #[test]
+    fn test_unwrap_dxt_extension() {
+        use super::super::{is_dxt_wrapped, read_config, write_config};
+
+        let wrapped_json = json!({
+            "extensions": {
+                "com.example.unwrap-test": {
+                    "manifest": {
+                        "name": "unwrap-test",
+                        "display_name": "Unwrap Test",
+                        "server": {
+                            "mcp_config": {
+                                "command": "clawdefender",
+                                "args": ["proxy", "--", "node", "server.js", "--port", "3000"],
+                                "env": {"NODE_ENV": "production"},
+                                "_clawdefender_original": {
+                                    "command": "node",
+                                    "args": ["server.js", "--port", "3000"]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("extensions-installations.json");
+        std::fs::write(&path, serde_json::to_string_pretty(&wrapped_json).unwrap()).unwrap();
+
+        // Verify it's wrapped.
+        let root: serde_json::Value = read_config(&path).unwrap();
+        assert!(is_dxt_wrapped(root.pointer("/extensions/com.example.unwrap-test").unwrap()));
+
+        // Simulate unwrap.
+        let mut root: serde_json::Value = read_config(&path).unwrap();
+        let mcp_config = root
+            .pointer_mut("/extensions/com.example.unwrap-test/manifest/server/mcp_config")
+            .unwrap();
+        let original = mcp_config.get("_clawdefender_original").cloned().unwrap();
+        let mcp_obj = mcp_config.as_object_mut().unwrap();
+        mcp_obj.insert("command".to_string(), original["command"].clone());
+        mcp_obj.insert("args".to_string(), original["args"].clone());
+        mcp_obj.remove("_clawdefender_original");
+
+        write_config(&path, &root).unwrap();
+
+        // Verify restored.
+        let result: serde_json::Value = read_config(&path).unwrap();
+        let mcp = result.pointer("/extensions/com.example.unwrap-test/manifest/server/mcp_config").unwrap();
+        assert_eq!(mcp["command"], "node");
+        assert_eq!(mcp["args"], json!(["server.js", "--port", "3000"]));
+        assert_eq!(mcp["env"]["NODE_ENV"], "production");
+        assert!(!is_dxt_wrapped(result.pointer("/extensions/com.example.unwrap-test").unwrap()));
     }
 
     /// Legacy _clawai_original key should be handled by unwrap.

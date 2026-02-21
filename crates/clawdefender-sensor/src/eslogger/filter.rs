@@ -162,7 +162,7 @@ impl EventPreFilter {
 
             // Periodic cleanup to prevent unbounded growth
             self.debounce_cleanup_counter += 1;
-            if self.debounce_cleanup_counter % 10_000 == 0 {
+            if self.debounce_cleanup_counter.is_multiple_of(10_000) {
                 self.cleanup_debounce_map(now);
             }
         }

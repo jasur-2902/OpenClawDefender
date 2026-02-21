@@ -67,10 +67,14 @@ This generates a default policy file at `~/.config/clawdefender/policy.toml` wit
 ### 2. Wrap an MCP server
 
 ```bash
+# Wrap a traditional MCP server (from claude_desktop_config.json or config.json)
 clawdefender wrap filesystem-server
+
+# Wrap a DXT extension installed from the Claude Desktop extension registry
+clawdefender wrap chrome-control
 ```
 
-This rewrites your MCP client configuration so that ClawDefender sits between the client and server transparently. If you use Claude Desktop, the config at `~/Library/Application Support/Claude/claude_desktop_config.json` is updated automatically.
+This rewrites your MCP client configuration so that ClawDefender sits between the client and server transparently. ClawDefender supports both traditional `mcpServers` configs and DXT extensions (`extensions-installations.json`).
 
 ### 3. Restart your MCP client
 
@@ -258,7 +262,7 @@ See [v0.5.0 Release Notes](docs/v5-release-notes.md) for details.
 
 | Client | Status | Notes |
 |---|---|---|
-| Claude Desktop | Supported | Auto-detected by `clawdefender wrap` |
+| Claude Desktop | Supported | Auto-detected by `clawdefender wrap`. Supports both traditional `mcpServers` config and DXT extensions. |
 | Cursor | Supported | Auto-detected by `clawdefender wrap` |
 | VS Code (Copilot) | Planned | Coming in a future release |
 
@@ -269,7 +273,7 @@ See [v0.5.0 Release Notes](docs/v5-release-notes.md) for details.
 - **Interactive prompts** -- when a tool call matches a `prompt` rule, ClawDefender asks you before forwarding it via a terminal TUI.
 - **Audit logging** -- structured JSONL logs of every intercepted call, decision made, and response returned. Query with `clawdefender log`.
 - **Terminal TUI** -- real-time dashboard showing intercepted events, policy decisions, and interactive prompt handling.
-- **CLI tooling** -- `clawdefender init`, `clawdefender wrap`/`unwrap`, `clawdefender log`, `clawdefender policy test` for managing your setup.
+- **CLI tooling** -- `clawdefender init`, `clawdefender wrap`/`unwrap`, `clawdefender log`, `clawdefender policy test` for managing your setup. Supports both traditional MCP configs and DXT extensions.
 - **Path canonicalization** -- prevents path traversal attacks (e.g., `../../etc/passwd`) in policy matching.
 - **AI-powered risk analysis** -- on-device small language model (SLM) evaluates tool call intent and assigns risk levels (Low/Medium/High/Critical) with explanations. Runs locally, no data leaves your machine.
 - **Noise filter** -- automatically suppresses benign developer activity (compilers, git, IDEs, package managers, test runners) from SLM analysis to reduce overhead.

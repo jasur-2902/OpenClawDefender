@@ -393,8 +393,7 @@ pub fn telemetry_preview(_config: &ClawConfig) -> Result<()> {
 pub fn telemetry_enable(_config: &ClawConfig) -> Result<()> {
     use clawdefender_threat_intel::telemetry::{ConsentManager, TelemetryConfig};
 
-    let mut config = TelemetryConfig::default();
-    config.enabled = true;
+    let config = TelemetryConfig { enabled: true, ..Default::default() };
     let mut consent = ConsentManager::new(config);
     let _id = consent.opt_in();
     println!("Telemetry enabled. Thank you for helping improve ClawDefender.");

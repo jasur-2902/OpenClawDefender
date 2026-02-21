@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./pages/Dashboard";
 import { Timeline } from "./pages/Timeline";
@@ -15,6 +16,26 @@ import { AuditLog } from "./pages/AuditLog";
 import { SystemHealth } from "./pages/SystemHealth";
 import { ThreatIntel } from "./pages/ThreatIntel";
 import { NetworkLog } from "./pages/NetworkLog";
+
+function TrayNavigationListener() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<string>("clawdefender://navigate", (event) => {
+      navigate(event.payload);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [navigate]);
+
+  return null;
+}
 
 function OnboardingRedirect({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -46,6 +67,7 @@ function OnboardingRedirect({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter>
+      <TrayNavigationListener />
       <OnboardingRedirect>
         <Routes>
           <Route

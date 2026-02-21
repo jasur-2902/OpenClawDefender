@@ -73,6 +73,7 @@ impl CrashClass {
     }
 }
 
+#[derive(Default)]
 pub struct FuzzingModule;
 
 impl FuzzingModule {

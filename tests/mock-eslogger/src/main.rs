@@ -181,7 +181,7 @@ fn run_basic(args: &Args) {
 
 fn run_crash(args: &Args) {
     // Emit a few events, then exit with non-zero code to simulate crash.
-    let events = vec![
+    let events = [
         make_exec_event(args.pid, args.ppid, "/bin/ls", &["ls"]),
         make_open_event(args.pid, args.ppid, "/tmp/foo.txt"),
         make_connect_event(args.pid, args.ppid, "10.0.0.1", 443),
@@ -199,7 +199,7 @@ fn run_crash(args: &Args) {
 
 fn run_hang(args: &Args) {
     // Emit a few events, then stop producing output (hang).
-    let events = vec![
+    let events = [
         make_exec_event(args.pid, args.ppid, "/bin/echo", &["echo", "hello"]),
         make_open_event(args.pid, args.ppid, "/tmp/test.txt"),
     ];

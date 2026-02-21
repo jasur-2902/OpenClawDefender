@@ -162,7 +162,7 @@ impl RateLimiter {
 
         if self.sampling_active {
             self.pass_counter += 1;
-            self.pass_counter % self.sample_ratio == 0
+            self.pass_counter.is_multiple_of(self.sample_ratio)
         } else {
             true
         }
@@ -201,10 +201,8 @@ pub async fn run_debounce_pipeline(
             }
             _ = interval.tick() => {
                 for ev in debouncer.flush() {
-                    if rate_limiter.should_pass() {
-                        if output.send(ev).await.is_err() {
-                            return;
-                        }
+                    if rate_limiter.should_pass() && output.send(ev).await.is_err() {
+                        return;
                     }
                 }
             }

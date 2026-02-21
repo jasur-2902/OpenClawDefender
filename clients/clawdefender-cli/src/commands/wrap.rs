@@ -3,9 +3,94 @@
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
 
-use super::{backup_config, detect_servers_key, find_client_config, is_wrapped, list_servers, read_config, write_config};
+use super::{backup_config, detect_servers_key, find_client_config, find_dxt_extension, is_dxt_wrapped, is_wrapped, known_clients, list_dxt_extensions, list_servers, read_config, write_config, DxtExtension};
+
+/// Wrap all MCP servers across all detected clients and DXT extensions.
+pub fn run_all(client_hint: &str) -> Result<()> {
+    let mut wrapped = 0u32;
+    let mut skipped = 0u32;
+    let mut errors = Vec::new();
+
+    // Wrap servers in traditional MCP client configs.
+    let clients = if client_hint == "auto" {
+        known_clients()
+    } else {
+        known_clients().into_iter().filter(|c| c.name == client_hint).collect()
+    };
+
+    for client in &clients {
+        if !client.config_path.exists() {
+            continue;
+        }
+        let config = match read_config(&client.config_path) {
+            Ok(c) => c,
+            Err(e) => {
+                errors.push(format!("{}: {e}", client.display_name));
+                continue;
+            }
+        };
+        let servers = list_servers(&config);
+        for server_name in &servers {
+            match run(server_name, client.name) {
+                Ok(()) => wrapped += 1,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("already wrapped") {
+                        skipped += 1;
+                    } else {
+                        errors.push(format!("{}/{}: {e}", client.display_name, server_name));
+                    }
+                }
+            }
+        }
+    }
+
+    // Wrap DXT extensions.
+    for (display_name, id) in list_dxt_extensions() {
+        if let Some(ext) = find_dxt_extension(&id) {
+            match wrap_dxt_extension(&ext, &id) {
+                Ok(()) => wrapped += 1,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("already wrapped") {
+                        skipped += 1;
+                    } else {
+                        errors.push(format!("DXT {display_name}: {e}"));
+                    }
+                }
+            }
+        }
+    }
+
+    println!();
+    println!("Wrap all complete: {wrapped} wrapped, {skipped} already wrapped.");
+    if !errors.is_empty() {
+        println!();
+        println!("Errors:");
+        for e in &errors {
+            println!("  - {e}");
+        }
+    }
+
+    Ok(())
+}
 
 pub fn run(server_name: &str, client_hint: &str) -> Result<()> {
+    // Try traditional mcpServers config first, then fall back to DXT extensions.
+    match try_wrap_traditional(server_name, client_hint) {
+        Ok(()) => Ok(()),
+        Err(traditional_err) => {
+            // Traditional lookup failed — try DXT extensions before giving up.
+            if let Some(ext) = find_dxt_extension(server_name) {
+                return wrap_dxt_extension(&ext, server_name);
+            }
+            Err(traditional_err)
+        }
+    }
+}
+
+/// Try to wrap a server found in a traditional mcpServers config.
+fn try_wrap_traditional(server_name: &str, client_hint: &str) -> Result<()> {
     let client = find_client_config(server_name, client_hint)?;
     let mut config = read_config(&client.config_path)?;
 
@@ -76,6 +161,69 @@ pub fn run(server_name: &str, client_hint: &str) -> Result<()> {
     println!();
     println!("ClawDefender will now intercept all MCP communication with this server.");
     println!("Restart {} for changes to take effect.", client.display_name);
+    println!();
+    println!("To undo: clawdefender unwrap {}", server_name);
+
+    Ok(())
+}
+
+/// Wrap a DXT extension by rewriting its mcp_config in extensions-installations.json.
+fn wrap_dxt_extension(ext: &DxtExtension, server_name: &str) -> Result<()> {
+    let mut root: Value = read_config(&ext.installations_path)?;
+
+    if root.pointer(&format!("/extensions/{}/manifest/server/mcp_config", ext.id)).is_none() {
+        bail!("DXT extension \"{}\" has no mcp_config", ext.id);
+    }
+
+    let ext_entry = root
+        .pointer(&format!("/extensions/{}", ext.id))
+        .cloned()
+        .unwrap_or(Value::Null);
+    if is_dxt_wrapped(&ext_entry) {
+        println!(
+            "\"{}\" (DXT: {}) is already wrapped by ClawDefender.",
+            ext.display_name, ext.id
+        );
+        return Ok(());
+    }
+
+    // Re-borrow mutably after the cloned read above.
+    let mcp_config = root
+        .pointer_mut(&format!("/extensions/{}/manifest/server/mcp_config", ext.id))
+        .unwrap();
+
+    let original_command = mcp_config.get("command").cloned().unwrap_or(Value::Null);
+    let original_args = mcp_config.get("args").cloned().unwrap_or(json!([]));
+
+    let original_command_str = original_command
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("DXT extension \"{}\" mcp_config has no \"command\"", ext.id))?;
+
+    let mut proxy_args: Vec<Value> = vec![json!("proxy"), json!("--")];
+    proxy_args.push(json!(original_command_str));
+    if let Some(arr) = original_args.as_array() {
+        proxy_args.extend(arr.iter().cloned());
+    }
+
+    let mut original = serde_json::Map::new();
+    original.insert("command".to_string(), original_command.clone());
+    original.insert("args".to_string(), original_args);
+
+    backup_config(&ext.installations_path)?;
+
+    let clawdefender_bin = resolve_clawdefender_path();
+
+    let mcp_obj = mcp_config.as_object_mut().unwrap();
+    mcp_obj.insert("command".to_string(), json!(clawdefender_bin));
+    mcp_obj.insert("args".to_string(), json!(proxy_args));
+    mcp_obj.insert("_clawdefender_original".to_string(), Value::Object(original));
+
+    write_config(&ext.installations_path, &root)?;
+
+    println!("Wrapped \"{}\" (DXT: {})", ext.display_name, ext.id);
+    println!();
+    println!("ClawDefender will now intercept all MCP communication with this extension.");
+    println!("Restart Claude Desktop for changes to take effect.");
     println!();
     println!("To undo: clawdefender unwrap {}", server_name);
 
@@ -227,5 +375,232 @@ mod tests {
             path.starts_with('/'),
             "Expected absolute path, got: {path}"
         );
+    }
+
+    // --- DXT Extension wrap tests ---
+
+    fn make_dxt_installations(extensions_json: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("extensions-installations.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(f, "{extensions_json}").unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn test_wrap_dxt_extension() {
+        use super::super::{backup_config, is_dxt_wrapped, read_config, write_config, DxtExtension};
+
+        let (_dir, path) = make_dxt_installations(&serde_json::to_string(&json!({
+            "extensions": {
+                "com.example.test-ext": {
+                    "manifest": {
+                        "name": "test-ext",
+                        "display_name": "Test Extension",
+                        "server": {
+                            "mcp_config": {
+                                "command": "node",
+                                "args": ["server.js", "--port", "3000"]
+                            }
+                        }
+                    }
+                }
+            }
+        })).unwrap());
+
+        let ext = DxtExtension {
+            id: "com.example.test-ext".to_string(),
+            display_name: "Test Extension".to_string(),
+            installations_path: path.clone(),
+        };
+
+        // Simulate wrap_dxt_extension logic (we can't call run() because it uses real paths).
+        let mut root: Value = read_config(&path).unwrap();
+        let mcp_config = root
+            .pointer_mut("/extensions/com.example.test-ext/manifest/server/mcp_config")
+            .unwrap();
+
+        let orig_cmd = mcp_config.get("command").cloned().unwrap();
+        let orig_args = mcp_config.get("args").cloned().unwrap();
+
+        let mut proxy_args: Vec<Value> = vec![json!("proxy"), json!("--")];
+        proxy_args.push(orig_cmd.clone());
+        proxy_args.extend(orig_args.as_array().unwrap().iter().cloned());
+
+        let mcp_obj = mcp_config.as_object_mut().unwrap();
+        mcp_obj.insert("command".to_string(), json!("clawdefender"));
+        mcp_obj.insert("args".to_string(), json!(proxy_args));
+        mcp_obj.insert("_clawdefender_original".to_string(), json!({
+            "command": orig_cmd,
+            "args": orig_args,
+        }));
+
+        write_config(&path, &root).unwrap();
+
+        // Verify structure.
+        let result: Value = read_config(&path).unwrap();
+        let mcp = result.pointer("/extensions/com.example.test-ext/manifest/server/mcp_config").unwrap();
+        assert_eq!(mcp["command"], "clawdefender");
+        let args = mcp["args"].as_array().unwrap();
+        assert_eq!(args[0], "proxy");
+        assert_eq!(args[1], "--");
+        assert_eq!(args[2], "node");
+        assert_eq!(args[3], "server.js");
+        assert_eq!(args[4], "--port");
+        assert_eq!(args[5], "3000");
+        assert!(mcp.get("_clawdefender_original").is_some());
+
+        let ext_entry = result.pointer("/extensions/com.example.test-ext").unwrap();
+        assert!(is_dxt_wrapped(ext_entry));
+    }
+
+    #[test]
+    fn test_wrap_dxt_preserves_dirname_token() {
+        use super::super::{read_config, write_config};
+
+        let (_dir, path) = make_dxt_installations(&serde_json::to_string(&json!({
+            "extensions": {
+                "com.example.dirname-ext": {
+                    "manifest": {
+                        "name": "dirname-ext",
+                        "server": {
+                            "mcp_config": {
+                                "command": "node",
+                                "args": ["${__dirname}/dist/index.js"]
+                            }
+                        }
+                    }
+                }
+            }
+        })).unwrap());
+
+        let mut root: Value = read_config(&path).unwrap();
+        let mcp_config = root
+            .pointer_mut("/extensions/com.example.dirname-ext/manifest/server/mcp_config")
+            .unwrap();
+
+        let orig_cmd = mcp_config.get("command").cloned().unwrap();
+        let orig_args = mcp_config.get("args").cloned().unwrap();
+
+        let mut proxy_args: Vec<Value> = vec![json!("proxy"), json!("--")];
+        proxy_args.push(orig_cmd.clone());
+        proxy_args.extend(orig_args.as_array().unwrap().iter().cloned());
+
+        let mcp_obj = mcp_config.as_object_mut().unwrap();
+        mcp_obj.insert("command".to_string(), json!("clawdefender"));
+        mcp_obj.insert("args".to_string(), json!(proxy_args));
+        mcp_obj.insert("_clawdefender_original".to_string(), json!({
+            "command": orig_cmd,
+            "args": orig_args,
+        }));
+
+        write_config(&path, &root).unwrap();
+
+        let result: Value = read_config(&path).unwrap();
+        let args = result
+            .pointer("/extensions/com.example.dirname-ext/manifest/server/mcp_config/args")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        // ${__dirname} token should be preserved as-is.
+        assert_eq!(args[3], "${__dirname}/dist/index.js");
+    }
+
+    #[test]
+    fn test_wrap_dxt_idempotent() {
+        use super::super::is_dxt_wrapped;
+
+        let entry = json!({
+            "manifest": {
+                "name": "test-ext",
+                "server": {
+                    "mcp_config": {
+                        "command": "clawdefender",
+                        "args": ["proxy", "--", "node", "server.js"],
+                        "_clawdefender_original": {
+                            "command": "node",
+                            "args": ["server.js"]
+                        }
+                    }
+                }
+            }
+        });
+        // Already wrapped — wrap_dxt_extension would return early.
+        assert!(is_dxt_wrapped(&entry));
+    }
+
+    #[test]
+    fn test_wrap_dxt_roundtrip() {
+        use super::super::{is_dxt_wrapped, read_config, write_config};
+
+        let original_json = json!({
+            "extensions": {
+                "com.example.roundtrip": {
+                    "manifest": {
+                        "name": "roundtrip-ext",
+                        "display_name": "Roundtrip Extension",
+                        "server": {
+                            "mcp_config": {
+                                "command": "python",
+                                "args": ["-m", "my_server", "--verbose"],
+                                "env": {"PYTHONPATH": "/usr/local/lib"}
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let (_dir, path) = make_dxt_installations(&serde_json::to_string(&original_json).unwrap());
+
+        // Wrap.
+        let mut root: Value = read_config(&path).unwrap();
+        let mcp_config = root
+            .pointer_mut("/extensions/com.example.roundtrip/manifest/server/mcp_config")
+            .unwrap();
+
+        let orig_cmd = mcp_config.get("command").cloned().unwrap();
+        let orig_args = mcp_config.get("args").cloned().unwrap();
+
+        let mut proxy_args: Vec<Value> = vec![json!("proxy"), json!("--")];
+        proxy_args.push(orig_cmd.clone());
+        proxy_args.extend(orig_args.as_array().unwrap().iter().cloned());
+
+        let mcp_obj = mcp_config.as_object_mut().unwrap();
+        mcp_obj.insert("command".to_string(), json!("clawdefender"));
+        mcp_obj.insert("args".to_string(), json!(proxy_args));
+        mcp_obj.insert("_clawdefender_original".to_string(), json!({
+            "command": orig_cmd,
+            "args": orig_args,
+        }));
+
+        write_config(&path, &root).unwrap();
+
+        let wrapped: Value = read_config(&path).unwrap();
+        assert!(is_dxt_wrapped(wrapped.pointer("/extensions/com.example.roundtrip").unwrap()));
+
+        // Unwrap.
+        let mut root2: Value = read_config(&path).unwrap();
+        let mcp_config2 = root2
+            .pointer_mut("/extensions/com.example.roundtrip/manifest/server/mcp_config")
+            .unwrap();
+        let mcp_obj2 = mcp_config2.as_object_mut().unwrap();
+
+        let original = mcp_obj2.get("_clawdefender_original").cloned().unwrap();
+        mcp_obj2.insert("command".to_string(), original["command"].clone());
+        mcp_obj2.insert("args".to_string(), original["args"].clone());
+        mcp_obj2.remove("_clawdefender_original");
+
+        write_config(&path, &root2).unwrap();
+
+        // Verify restored.
+        let restored: Value = read_config(&path).unwrap();
+        let mcp_restored = restored
+            .pointer("/extensions/com.example.roundtrip/manifest/server/mcp_config")
+            .unwrap();
+        assert_eq!(mcp_restored["command"], "python");
+        assert_eq!(mcp_restored["args"], json!(["-m", "my_server", "--verbose"]));
+        assert_eq!(mcp_restored["env"]["PYTHONPATH"], "/usr/local/lib");
+        assert!(!is_dxt_wrapped(restored.pointer("/extensions/com.example.roundtrip").unwrap()));
     }
 }

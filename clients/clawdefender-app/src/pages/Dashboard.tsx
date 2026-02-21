@@ -28,22 +28,25 @@ function getProtectionLevel(
 
 const protectionConfig: Record<
   ProtectionLevel,
-  { label: string; color: string; bg: string }
+  { label: string; color: string; bg: string; description: string }
 > = {
   protected: {
     label: "You're Protected",
     color: "var(--color-success)",
     bg: "rgba(34, 197, 94, 0.1)",
+    description: "All systems operational",
   },
   warning: {
     label: "Action Needed",
     color: "var(--color-warning)",
     bg: "rgba(245, 158, 11, 0.1)",
+    description: "Some items need your attention",
   },
   danger: {
-    label: "Threat Detected",
+    label: "Daemon Not Running",
     color: "var(--color-danger)",
     bg: "rgba(239, 68, 68, 0.1)",
+    description: "Start the daemon to enable protection",
   },
 };
 
@@ -65,7 +68,7 @@ function StatusBadge({ decision }: { decision: string }) {
       </span>
     );
   }
-  if (lower === "blocked" || lower === "deny") {
+  if (lower === "blocked" || lower === "deny" || lower === "denied" || lower === "block") {
     return (
       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[rgba(239,68,68,0.15)] text-[var(--color-danger)]">
         ✗ Blocked
@@ -102,16 +105,19 @@ export function Dashboard() {
   const [blocklistAlerts, setBlocklistAlerts] = useState<BlocklistAlert[]>([]);
   const [netExtStatus, setNetExtStatus] = useState<NetworkExtensionStatus | null>(null);
   const [networkSummary, setNetworkSummary] = useState<NetworkSummaryData | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchDashboardData = useCallback(() => {
     invoke<DaemonStatus>("get_daemon_status")
       .then((s) => {
         setStatus(s);
         setDaemonRunning(s.running);
+        setError(null);
       })
-      .catch(() => {});
+      .catch((e) => setError(String(e)));
 
-    invoke<AuditEvent[]>("get_recent_events")
+    invoke<AuditEvent[]>("get_recent_events", { count: 50 })
       .then((evts) => setEvents(evts))
       .catch(() => {});
 
@@ -140,14 +146,37 @@ export function Dashboard() {
       .catch(() => {});
   }, [setEvents, setDaemonRunning]);
 
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  const handleStartDaemon = useCallback(async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      await invoke("start_daemon");
+      // Refresh status after starting
+      const s = await invoke<DaemonStatus>("get_daemon_status");
+      setStatus(s);
+      setDaemonRunning(s.running);
+    } catch (e) {
+      setError(`Failed to start daemon: ${e}`);
+    } finally {
+      setStarting(false);
+    }
+  }, [setDaemonRunning]);
+
   const handleNewEvent = useCallback(
     (payload: AuditEvent) => addEvent(payload),
     [addEvent]
   );
   const handleStatusChange = useCallback(
-    (payload: { daemon_running: boolean }) =>
-      setDaemonRunning(payload.daemon_running),
-    [setDaemonRunning]
+    (payload: { daemon_running: boolean }) => {
+      setDaemonRunning(payload.daemon_running);
+      // Refresh dashboard data when daemon state changes
+      fetchDashboardData();
+    },
+    [setDaemonRunning, fetchDashboardData]
   );
   const handlePrompt = useCallback(
     (payload: PendingPrompt) => addPrompt(payload),
@@ -161,9 +190,10 @@ export function Dashboard() {
   );
   useTauriEvent<PendingPrompt>("clawdefender://prompt", handlePrompt);
 
-  const blockedCount = events.filter(
-    (e) => e.decision === "blocked" || e.decision === "deny"
-  ).length;
+  const blockedCount = events.filter((e) => {
+    const d = e.decision.toLowerCase();
+    return d === "blocked" || d === "deny" || d === "denied" || d === "block";
+  }).length;
   const level = getProtectionLevel(
     daemonRunning,
     blockedCount,
@@ -178,8 +208,24 @@ export function Dashboard() {
   );
   const unresolvedAlerts = alerts.slice(0, 5);
 
+  // Derive per-server event counts from the event store
+  const serverEventCounts = new Map<string, number>();
+  for (const evt of events) {
+    serverEventCounts.set(
+      evt.server_name,
+      (serverEventCounts.get(evt.server_name) ?? 0) + 1
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
+      {/* Error Banner */}
+      {error && (
+        <div className="rounded-lg p-3 bg-[rgba(239,68,68,0.1)] border border-[var(--color-danger)] text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+
       {/* Protection Status Hero */}
       <section aria-label="Protection status" className="rounded-xl p-6 border" style={{
           backgroundColor: config.bg,
@@ -196,10 +242,25 @@ export function Dashboard() {
             {config.label}
           </h1>
         </div>
-        <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-          {status?.servers_proxied ?? 0} MCP servers monitored &bull;{" "}
-          {events.length} events today &bull; {blockedCount} blocked
-        </p>
+        {daemonRunning ? (
+          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+            {status?.servers_proxied ?? 0} MCP servers monitored &bull;{" "}
+            {events.length} events today &bull; {blockedCount} blocked
+          </p>
+        ) : (
+          <div className="mt-3 flex items-center gap-3">
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              {config.description}
+            </p>
+            <button
+              onClick={handleStartDaemon}
+              disabled={starting}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {starting ? "Starting..." : "Start Daemon"}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Quick Stats Row */}
@@ -442,7 +503,7 @@ export function Dashboard() {
                 </div>
                 <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)]">
                   <span>{srv.status}</span>
-                  <span>{srv.events_count} events</span>
+                  <span>{serverEventCounts.get(srv.name) ?? srv.events_count} events</span>
                 </div>
                 {srv.wrapped && (
                   <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded bg-[rgba(59,130,246,0.15)] text-[var(--color-accent)]">

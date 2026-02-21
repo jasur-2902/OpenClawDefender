@@ -29,6 +29,7 @@ const PATH_PARAM_NAMES: &[&str] = &[
     "path", "file", "directory", "filename", "filepath", "dir",
 ];
 
+#[derive(Default)]
 pub struct PathTraversalModule;
 
 impl PathTraversalModule {

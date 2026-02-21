@@ -328,9 +328,7 @@ impl NetworkPolicyEngine {
             .clone()
             .unwrap_or_else(|| "No behavioral anomalies detected".to_string());
 
-        let recommendation = if decision.signals.ioc_match.is_some() {
-            "ClawDefender strongly recommends BLOCKING.".to_string()
-        } else if anomaly > 0.7 {
+        let recommendation = if decision.signals.ioc_match.is_some() || anomaly > 0.7 {
             "ClawDefender strongly recommends BLOCKING.".to_string()
         } else if anomaly > 0.4 {
             "ClawDefender recommends caution.".to_string()

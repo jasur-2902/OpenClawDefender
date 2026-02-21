@@ -20,6 +20,12 @@ export function PolicyEditor() {
   const [levelOpen, setLevelOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  function showFeedback(type: "success" | "error", message: string) {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 3000);
+  }
 
   const loadPolicy = useCallback(async () => {
     try {
@@ -62,8 +68,9 @@ export function PolicyEditor() {
   async function handleDeleteRule(ruleName: string) {
     try {
       await invoke("delete_rule", { ruleName });
-    } catch (_err) {
-      // fallback: remove locally
+      showFeedback("success", `Rule "${ruleName}" deleted`);
+    } catch (err) {
+      showFeedback("error", `Failed to delete rule: ${err}`);
     }
     setPolicy((prev) =>
       prev ? { ...prev, rules: prev.rules.filter((r) => r.name !== ruleName) } : prev
@@ -147,7 +154,43 @@ export function PolicyEditor() {
         </button>
       </div>
 
+      {/* Feedback toast */}
+      {feedback && (
+        <div
+          className={`mb-4 px-4 py-2 rounded-lg text-sm ${
+            feedback.type === "success"
+              ? "bg-[var(--color-success)]/15 text-[var(--color-success)]"
+              : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+          }`}
+        >
+          {feedback.message}
+        </div>
+      )}
+
       {/* Rules list */}
+      {policy?.rules.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 mb-6 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+          <p className="text-sm text-[var(--color-text-secondary)] mb-1">No rules configured</p>
+          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
+            Add a rule or apply a template to get started.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={openNewRule}
+              className="px-3 py-1.5 rounded-md text-xs text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)]"
+            >
+              + Add Rule
+            </button>
+            <button
+              onClick={() => setTemplateOpen(true)}
+              className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
+            >
+              Browse Templates
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="space-y-2 mb-6">
         {policy?.rules.map((rule, index) => {
           const config = actionConfig[rule.action];
@@ -247,7 +290,9 @@ export function PolicyEditor() {
         </button>
         <button
           onClick={() => {
-            invoke("reload_policy").then(() => loadPolicy()).catch(() => {});
+            invoke("reload_policy")
+              .then(() => { loadPolicy(); showFeedback("success", "Policy reloaded from disk"); })
+              .catch((err) => showFeedback("error", `Reload failed: ${err}`));
           }}
           className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
         >

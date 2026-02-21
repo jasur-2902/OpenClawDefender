@@ -29,6 +29,7 @@ export function Settings() {
   const [securityLevel, setSecurityLevel] = useState("balanced");
   const [netStatus, setNetStatus] = useState<NetworkExtensionStatus | null>(null);
   const [netSettings, setNetSettings] = useState<NetworkSettings>(defaultNetworkSettings);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const loadSettings = useCallback(async () => {
     try {
@@ -72,10 +73,14 @@ export function Settings() {
   async function updateField<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     const next = { ...settings, [key]: value };
     setSettings(next);
+    setSaveStatus("saving");
     try {
       await invoke("update_settings", { settings: next });
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
     } catch (_err) {
-      // Tauri command may not be available yet
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
     }
   }
 
@@ -89,7 +94,18 @@ export function Settings() {
 
   return (
     <div className="p-6 max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <h1 className="text-2xl font-bold">Settings</h1>
+        {saveStatus === "saving" && (
+          <span className="text-xs text-[var(--color-text-secondary)]">Saving...</span>
+        )}
+        {saveStatus === "saved" && (
+          <span className="text-xs text-[var(--color-success)]">Saved</span>
+        )}
+        {saveStatus === "error" && (
+          <span className="text-xs text-[var(--color-danger)]">Save failed</span>
+        )}
+      </div>
 
       {/* General */}
       <section className="mb-8">
@@ -204,12 +220,17 @@ export function Settings() {
         </div>
       </section>
 
-      {/* Network Protection */}
+      {/* Network Protection — Coming Soon */}
       <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">
-          Network Protection
-        </h2>
-        <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+            Network Protection
+          </h2>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-medium">
+            Coming Soon
+          </span>
+        </div>
+        <div className="relative space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 select-none pointer-events-none opacity-40">
           {/* Status indicator */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

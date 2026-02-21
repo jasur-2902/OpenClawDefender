@@ -244,7 +244,7 @@ pub async fn get_policy(
     // we report what we can determine.
     let rules = vec![PolicyRuleSummary {
         name: format!("matched_{action_str}"),
-        description: format!("Policy evaluation result for query"),
+        description: "Policy evaluation result for query".to_string(),
         action: action_str.to_string(),
         message: match &action {
             PolicyAction::Prompt(msg) => msg.clone(),

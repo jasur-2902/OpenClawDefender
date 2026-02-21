@@ -71,19 +71,19 @@ fn matches_single_range(version_str: &str, range: &str) -> bool {
         None => return false,
     };
 
-    if range.starts_with("<=") {
-        SemVer::parse(&range[2..]).map_or(false, |bound| ver <= bound)
-    } else if range.starts_with(">=") {
-        SemVer::parse(&range[2..]).map_or(false, |bound| ver >= bound)
-    } else if range.starts_with('<') {
-        SemVer::parse(&range[1..]).map_or(false, |bound| ver < bound)
-    } else if range.starts_with('>') {
-        SemVer::parse(&range[1..]).map_or(false, |bound| ver > bound)
-    } else if range.starts_with('=') {
-        SemVer::parse(&range[1..]).map_or(false, |bound| ver == bound)
+    if let Some(rest) = range.strip_prefix("<=") {
+        SemVer::parse(rest).is_some_and(|bound| ver <= bound)
+    } else if let Some(rest) = range.strip_prefix(">=") {
+        SemVer::parse(rest).is_some_and(|bound| ver >= bound)
+    } else if let Some(rest) = range.strip_prefix('<') {
+        SemVer::parse(rest).is_some_and(|bound| ver < bound)
+    } else if let Some(rest) = range.strip_prefix('>') {
+        SemVer::parse(rest).is_some_and(|bound| ver > bound)
+    } else if let Some(rest) = range.strip_prefix('=') {
+        SemVer::parse(rest).is_some_and(|bound| ver == bound)
     } else {
         // bare version = exact match
-        SemVer::parse(range).map_or(false, |bound| ver == bound)
+        SemVer::parse(range).is_some_and(|bound| ver == bound)
     }
 }
 
@@ -171,7 +171,7 @@ impl BlocklistMatcher {
                 let npm_match = entry
                     .npm_package
                     .as_ref()
-                    .map_or(false, |npm| npm.to_ascii_lowercase() == name_lower);
+                    .is_some_and(|npm| npm.to_ascii_lowercase() == name_lower);
                 if !npm_match {
                     continue;
                 }
@@ -208,7 +208,7 @@ impl BlocklistMatcher {
                                 let is_safe = entry
                                     .versions_safe
                                     .as_ref()
-                                    .map_or(false, |safe| safe.iter().any(|s| s == ver));
+                                    .is_some_and(|safe| safe.iter().any(|s| s == ver));
                                 if !is_safe {
                                     matches.push(build_match(entry, MatchType::SemverRange));
                                 }

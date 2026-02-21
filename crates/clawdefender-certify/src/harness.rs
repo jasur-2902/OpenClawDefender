@@ -62,10 +62,8 @@ impl McpHarness {
             let mut reader = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = reader.next_line().await {
                 let trimmed = line.trim().to_string();
-                if !trimmed.is_empty() {
-                    if stdout_tx.send(trimmed).await.is_err() {
-                        break;
-                    }
+                if !trimmed.is_empty() && stdout_tx.send(trimmed).await.is_err() {
+                    break;
                 }
             }
         });

@@ -41,15 +41,9 @@ app.listen(PORT, () => {
 
 const CANARY_README: &str = "# Test Project\n\nA sample project used for testing.\n";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SandboxConfig {
     pub base_dir: Option<PathBuf>,
-}
-
-impl Default for SandboxConfig {
-    fn default() -> Self {
-        Self { base_dir: None }
-    }
 }
 
 pub struct Sandbox {

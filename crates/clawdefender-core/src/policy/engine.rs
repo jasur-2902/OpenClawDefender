@@ -69,7 +69,7 @@ impl DefaultPolicyEngine {
         match &event.kind {
             McpEventKind::ToolCall(tc) => EventContext {
                 tool_name: Some(tc.tool_name.clone()),
-                resource_path: None,
+                resource_path: Self::extract_path_from_arguments(&tc.arguments),
                 method: Some("tools/call".to_string()),
                 event_type: Some("tool_call".to_string()),
             },
@@ -104,6 +104,25 @@ impl DefaultPolicyEngine {
                 event_type: Some("other".to_string()),
             },
         }
+    }
+
+    /// Extract a file path from tool call arguments.
+    ///
+    /// MCP filesystem tools (read_file, write_file, etc.) pass paths in
+    /// arguments like `path`, `file_path`, `filename`, `file`, or `directory`.
+    /// We extract the first match so `resource_path` policy rules work for
+    /// tool calls, not just `resources/read` events.
+    fn extract_path_from_arguments(arguments: &serde_json::Value) -> Option<String> {
+        const PATH_KEYS: &[&str] = &["path", "file_path", "filepath", "filename", "file", "directory"];
+        let obj = arguments.as_object()?;
+        for key in PATH_KEYS {
+            if let Some(val) = obj.get(*key).and_then(|v| v.as_str()) {
+                if !val.is_empty() {
+                    return Some(val.to_string());
+                }
+            }
+        }
+        None
     }
 
     fn os_context(event: &OsEvent) -> EventContext {

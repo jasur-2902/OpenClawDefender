@@ -12,6 +12,7 @@ use serde_json::Value;
 use crate::finding::{Evidence, Finding, ModuleCategory, Severity};
 use crate::modules::{ScanContext, ScanModule};
 
+#[derive(Default)]
 pub struct DependencyAuditModule;
 
 impl DependencyAuditModule {
@@ -44,9 +45,10 @@ struct NpmVuln {
 #[serde(untagged)]
 enum NpmVia {
     Advisory(NpmAdvisory),
-    Name(String),
+    Name(#[allow(dead_code)] String),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct NpmAdvisory {
     #[serde(default)]
@@ -169,6 +171,7 @@ fn default_cvss_for_severity(s: &Severity) -> f64 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_finding(
     id_counter: &mut u32,
     title: String,
@@ -368,7 +371,7 @@ fn parse_npm_audit_json(json_str: &str, project_dir: &Path, id_counter: &mut u32
     let audit: NpmAuditOutput = serde_json::from_str(json_str).ok()?;
     let mut findings = Vec::new();
 
-    for (_pkg_name, vuln) in &audit.vulnerabilities {
+    for vuln in audit.vulnerabilities.values() {
         let base_severity = npm_severity_to_severity(&vuln.severity);
 
         let has_fix = match &vuln.fix_available {

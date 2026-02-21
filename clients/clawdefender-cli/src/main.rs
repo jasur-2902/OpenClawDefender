@@ -26,11 +26,15 @@ enum Commands {
     /// Wrap an MCP server so ClawDefender intercepts its communication.
     Wrap {
         /// Name of the MCP server in the client config (e.g. "filesystem-server").
-        server_name: String,
+        server_name: Option<String>,
 
         /// MCP client to modify: auto, claude, cursor, vscode.
         #[arg(long, default_value = "auto")]
         client: String,
+
+        /// Wrap all MCP servers across all detected clients.
+        #[arg(long)]
+        all: bool,
     },
 
     /// Unwrap an MCP server, restoring its original configuration.
@@ -468,8 +472,14 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Init => commands::init::run(&config)?,
 
-        Commands::Wrap { server_name, client } => {
-            commands::wrap::run(&server_name, &client)?;
+        Commands::Wrap { server_name, client, all } => {
+            if all {
+                commands::wrap::run_all(&client)?;
+            } else if let Some(name) = server_name {
+                commands::wrap::run(&name, &client)?;
+            } else {
+                anyhow::bail!("Either provide a server name or use --all.\n\nUsage:\n  clawdefender wrap <SERVER_NAME>\n  clawdefender wrap --all");
+            }
         }
 
         Commands::Unwrap { server_name, client } => {
