@@ -83,7 +83,10 @@ impl RuleCatalog {
         match feed_cache.read_file("rules/index.json")? {
             Some(data) => {
                 let index: FeedRulesIndex = serde_json::from_slice(&data)?;
-                info!(count = index.packs.len(), "refreshed community rule catalog");
+                info!(
+                    count = index.packs.len(),
+                    "refreshed community rule catalog"
+                );
                 self.available = index.packs;
             }
             None => {
@@ -114,9 +117,11 @@ impl RuleCatalog {
                 // Check if any server name appears in the pack's tags.
                 let pack_tags_lower: Vec<String> =
                     pack.tags.iter().map(|t| t.to_lowercase()).collect();
-                lower_names
-                    .iter()
-                    .any(|name| pack_tags_lower.iter().any(|tag| tag.contains(name.as_str())))
+                lower_names.iter().any(|name| {
+                    pack_tags_lower
+                        .iter()
+                        .any(|tag| tag.contains(name.as_str()))
+                })
             })
             .cloned()
             .collect()

@@ -8,12 +8,12 @@
 //! - PID recycling attacks
 //! - Oversized field injection
 
-use clawdefender_sensor::eslogger::types::sanitize_path;
-use clawdefender_sensor::fsevents::classify_path;
-use clawdefender_sensor::proctree::{ProcessInfo, ProcessTree};
-use clawdefender_sensor::parse_event;
 use chrono::DateTime;
 use clawdefender_core::event::os::{OsEvent, OsEventKind};
+use clawdefender_sensor::eslogger::types::sanitize_path;
+use clawdefender_sensor::fsevents::classify_path;
+use clawdefender_sensor::parse_event;
+use clawdefender_sensor::proctree::{ProcessInfo, ProcessTree};
 use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
@@ -198,8 +198,14 @@ fn transitive_identification_across_three_generations() {
 
     // All should be identified as agent-related
     assert!(tree.is_agent(100), "Claude itself should be identified");
-    assert!(tree.is_agent(200), "child of agent should be identified transitively");
-    assert!(tree.is_agent(300), "grandchild of agent should be identified transitively");
+    assert!(
+        tree.is_agent(200),
+        "child of agent should be identified transitively"
+    );
+    assert!(
+        tree.is_agent(300),
+        "grandchild of agent should be identified transitively"
+    );
 }
 
 #[test]

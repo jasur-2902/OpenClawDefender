@@ -56,11 +56,7 @@ fn make_os_open(path: &str, flags: u32, ts: chrono::DateTime<chrono::Utc>) -> Os
     }
 }
 
-fn _make_os_connect(
-    address: &str,
-    port: u16,
-    ts: chrono::DateTime<chrono::Utc>,
-) -> OsEvent {
+fn _make_os_connect(address: &str, port: u16, ts: chrono::DateTime<chrono::Utc>) -> OsEvent {
     OsEvent {
         timestamp: ts,
         pid: 1234,
@@ -711,7 +707,10 @@ fn test_e2e_learning_to_scoring_transition() {
 
     // Now scoring should work
     let score = scorer.score(&be, learned_profile);
-    assert!(score.is_some(), "Scoring should work after learning completes");
+    assert!(
+        score.is_some(),
+        "Scoring should work after learning completes"
+    );
 }
 
 #[test]

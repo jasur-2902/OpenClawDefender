@@ -87,7 +87,10 @@ pub async fn handle_request(
     request: &JsonRpcRequest,
     caller_id: &str,
 ) -> Option<JsonRpcResponse> {
-    debug!("handling method: {} from caller: {}", request.method, caller_id);
+    debug!(
+        "handling method: {} from caller: {}",
+        request.method, caller_id
+    );
 
     // Notifications (no id) don't get responses (except for initialize).
     let id = request.id.clone();
@@ -329,10 +332,15 @@ async fn handle_tools_call(
             match serde_json::from_value::<CheckIntentParams>(arguments) {
                 Ok(tool_params) => {
                     // Validate input fields
-                    if let Err(e) = crate::validation::validate_string_field("description", &tool_params.description) {
+                    if let Err(e) = crate::validation::validate_string_field(
+                        "description",
+                        &tool_params.description,
+                    ) {
                         return JsonRpcResponse::error(id, INVALID_PARAMS, e.to_string());
                     }
-                    if let Err(e) = crate::validation::validate_string_field("target", &tool_params.target) {
+                    if let Err(e) =
+                        crate::validation::validate_string_field("target", &tool_params.target)
+                    {
                         return JsonRpcResponse::error(id, INVALID_PARAMS, e.to_string());
                     }
                     if let Some(ref reason) = tool_params.reason {
@@ -379,14 +387,21 @@ async fn handle_tools_call(
             match serde_json::from_value::<RequestPermissionParams>(arguments) {
                 Ok(tool_params) => {
                     // Validate inputs
-                    if let Err(e) = crate::validation::validate_string_field("resource", &tool_params.resource) {
+                    if let Err(e) =
+                        crate::validation::validate_string_field("resource", &tool_params.resource)
+                    {
                         return JsonRpcResponse::error(id, INVALID_PARAMS, e.to_string());
                     }
-                    if let Err(e) = crate::validation::validate_string_field("justification", &tool_params.justification) {
+                    if let Err(e) = crate::validation::validate_string_field(
+                        "justification",
+                        &tool_params.justification,
+                    ) {
                         return JsonRpcResponse::error(id, INVALID_PARAMS, e.to_string());
                     }
                     // Scope escalation: resource must be exact (no wildcards)
-                    if let Err(e) = crate::validation::validate_resource_path_exact(&tool_params.resource) {
+                    if let Err(e) =
+                        crate::validation::validate_resource_path_exact(&tool_params.resource)
+                    {
                         return JsonRpcResponse::error(id, INVALID_PARAMS, e.to_string());
                     }
 
@@ -435,10 +450,15 @@ async fn handle_tools_call(
             match serde_json::from_value::<ReportActionParams>(arguments) {
                 Ok(tool_params) => {
                     // Validate string fields
-                    if let Err(e) = crate::validation::validate_string_field("description", &tool_params.description) {
+                    if let Err(e) = crate::validation::validate_string_field(
+                        "description",
+                        &tool_params.description,
+                    ) {
                         return JsonRpcResponse::error(id, INVALID_PARAMS, e.to_string());
                     }
-                    if let Err(e) = crate::validation::validate_string_field("target", &tool_params.target) {
+                    if let Err(e) =
+                        crate::validation::validate_string_field("target", &tool_params.target)
+                    {
                         return JsonRpcResponse::error(id, INVALID_PARAMS, e.to_string());
                     }
 
@@ -463,33 +483,25 @@ async fn handle_tools_call(
             }
         }
 
-        "getPolicy" => {
-            match serde_json::from_value::<GetPolicyParams>(arguments) {
-                Ok(tool_params) => match tools::get_policy(server, tool_params).await {
-                    Ok(result) => JsonRpcResponse::success(
-                        id,
-                        json!({
-                            "content": [{
-                                "type": "text",
-                                "text": serde_json::to_string_pretty(&result).unwrap()
-                            }]
-                        }),
-                    ),
-                    Err(e) => JsonRpcResponse::error(id, INTERNAL_ERROR, e.to_string()),
-                },
-                Err(e) => JsonRpcResponse::error(
+        "getPolicy" => match serde_json::from_value::<GetPolicyParams>(arguments) {
+            Ok(tool_params) => match tools::get_policy(server, tool_params).await {
+                Ok(result) => JsonRpcResponse::success(
                     id,
-                    INVALID_PARAMS,
-                    format!("Invalid getPolicy params: {e}"),
+                    json!({
+                        "content": [{
+                            "type": "text",
+                            "text": serde_json::to_string_pretty(&result).unwrap()
+                        }]
+                    }),
                 ),
+                Err(e) => JsonRpcResponse::error(id, INTERNAL_ERROR, e.to_string()),
+            },
+            Err(e) => {
+                JsonRpcResponse::error(id, INVALID_PARAMS, format!("Invalid getPolicy params: {e}"))
             }
-        }
+        },
 
-        _ => JsonRpcResponse::error(
-            id,
-            METHOD_NOT_FOUND,
-            format!("Unknown tool: {tool_name}"),
-        ),
+        _ => JsonRpcResponse::error(id, METHOD_NOT_FOUND, format!("Unknown tool: {tool_name}")),
     }
 }
 

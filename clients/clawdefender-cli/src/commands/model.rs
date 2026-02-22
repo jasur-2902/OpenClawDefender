@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clawdefender_core::config::ClawConfig;
-use clawdefender_slm::model_manager::{ModelManager, recommended_models};
+use clawdefender_slm::model_manager::{recommended_models, ModelManager};
 
 use crate::ModelAction;
 
@@ -25,9 +25,10 @@ pub fn run(action: &ModelAction, config: &ClawConfig) -> Result<()> {
 
 fn cmd_download(mgr: &ModelManager, name: &str) -> Result<()> {
     let registry = recommended_models();
-    let model = registry
-        .iter()
-        .find(|m| m.name.to_lowercase().contains(&name.to_lowercase()) || m.filename.to_lowercase().contains(&name.to_lowercase()));
+    let model = registry.iter().find(|m| {
+        m.name.to_lowercase().contains(&name.to_lowercase())
+            || m.filename.to_lowercase().contains(&name.to_lowercase())
+    });
 
     match model {
         Some(m) => {
@@ -42,9 +43,7 @@ fn cmd_download(mgr: &ModelManager, name: &str) -> Result<()> {
             println!("  Size: {:.1} MB", m.size_bytes as f64 / 1_000_000.0);
             println!("  Quantization: {}", m.quantization);
             println!();
-            println!(
-                "To download, run with the `download` feature enabled."
-            );
+            println!("To download, run with the `download` feature enabled.");
             println!(
                 "Or manually download from:\n  {}\n\nAnd place in:\n  {}",
                 m.url,
@@ -153,7 +152,9 @@ fn cmd_set(name_or_path: &str, _config: &ClawConfig) -> Result<()> {
     let registry = recommended_models();
     if let Some(m) = registry.iter().find(|m| {
         m.name.to_lowercase().contains(&name_or_path.to_lowercase())
-            || m.filename.to_lowercase().contains(&name_or_path.to_lowercase())
+            || m.filename
+                .to_lowercase()
+                .contains(&name_or_path.to_lowercase())
     }) {
         let model_path = mgr.model_path(&m.filename);
         if !model_path.exists() {
@@ -214,7 +215,9 @@ mod tests {
 
     #[test]
     fn test_model_list_runs() {
-        let mgr = ModelManager::new(std::path::PathBuf::from("/tmp/clawdefender-test-models-nonexistent"));
+        let mgr = ModelManager::new(std::path::PathBuf::from(
+            "/tmp/clawdefender-test-models-nonexistent",
+        ));
         let config = ClawConfig::default();
         // Should not panic.
         cmd_list(&mgr, &config).unwrap();
@@ -222,7 +225,9 @@ mod tests {
 
     #[test]
     fn test_model_download_unknown() {
-        let mgr = ModelManager::new(std::path::PathBuf::from("/tmp/clawdefender-test-models-nonexistent"));
+        let mgr = ModelManager::new(std::path::PathBuf::from(
+            "/tmp/clawdefender-test-models-nonexistent",
+        ));
         // Should print "not found" but not error.
         cmd_download(&mgr, "nonexistent-model-xyz").unwrap();
     }

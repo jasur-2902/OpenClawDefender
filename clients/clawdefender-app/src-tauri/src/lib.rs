@@ -10,6 +10,7 @@ mod windows;
 
 use state::AppState;
 use tauri::Manager;
+use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +19,10 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .manage(AppState::default())
         .setup(|app| {
             // Set up system tray
@@ -30,6 +35,24 @@ pub fn run() {
 
             // Start the audit.jsonl event stream watcher
             event_stream::start_event_stream(app.handle().clone());
+
+            // Auto-start the daemon if it's not already running
+            if !daemon::is_daemon_running() {
+                tracing::info!("Daemon not running — attempting auto-start");
+                match daemon::start_daemon_process() {
+                    Ok(()) => {
+                        if let Some(state) = app.try_state::<AppState>() {
+                            if let Ok(mut flag) = state.daemon_started_by_gui.lock() {
+                                *flag = true;
+                            }
+                        }
+                        tracing::info!("Daemon auto-started by GUI");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Could not auto-start daemon: {}", e);
+                    }
+                }
+            }
 
             // On macOS, hide the window on close instead of quitting
             let main_window = app.get_webview_window("main");
@@ -94,6 +117,11 @@ pub fn run() {
             commands::get_network_traffic_by_server,
             commands::export_network_log,
             commands::kill_agent_process,
+            commands::enable_autostart,
+            commands::disable_autostart,
+            commands::is_autostart_enabled,
+            commands::export_settings,
+            commands::import_settings_from_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

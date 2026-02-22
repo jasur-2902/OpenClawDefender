@@ -109,8 +109,8 @@ impl KeyStore for KeychainManager {
         let service = provider.service_name();
         let account = "api-key";
 
-        let bytes = get_generic_password(&service, account)
-            .context("API key not found in Keychain")?;
+        let bytes =
+            get_generic_password(&service, account).context("API key not found in Keychain")?;
         let key = String::from_utf8(bytes).context("API key is not valid UTF-8")?;
         Ok(key)
     }

@@ -46,11 +46,7 @@ impl ProfileUpdater {
     }
 
     /// Update a post-learning profile with an MCP event.
-    pub fn update_with_mcp_event(
-        &mut self,
-        profile: &mut ServerProfile,
-        event: &McpEvent,
-    ) {
+    pub fn update_with_mcp_event(&mut self, profile: &mut ServerProfile, event: &McpEvent) {
         if profile.learning_mode {
             return; // Should use LearningEngine instead
         }
@@ -104,11 +100,7 @@ impl ProfileUpdater {
     }
 
     /// Update a post-learning profile with an OS event.
-    pub fn update_with_os_event(
-        &mut self,
-        profile: &mut ServerProfile,
-        event: &OsEvent,
-    ) {
+    pub fn update_with_os_event(&mut self, profile: &mut ServerProfile, event: &OsEvent) {
         if profile.learning_mode {
             return;
         }
@@ -128,9 +120,7 @@ impl ProfileUpdater {
                 self.update_file_profile_incremental(profile, source, false);
                 self.update_file_profile_incremental(profile, dest, false);
             }
-            OsEventKind::Connect {
-                address, port, ..
-            } => {
+            OsEventKind::Connect { address, port, .. } => {
                 // Update network profile conservatively
                 if profile.network_profile.observed_hosts.contains(address) {
                     // Known host, update rate
@@ -246,12 +236,7 @@ impl ProfileUpdater {
     }
 
     /// Track a pending port observation.
-    fn observe_pending_port(
-        &mut self,
-        server_name: &str,
-        port: u16,
-        target: &mut HashSet<u16>,
-    ) {
+    fn observe_pending_port(&mut self, server_name: &str, port: u16, target: &mut HashSet<u16>) {
         let pending_key = (
             server_name.to_string(),
             "port".to_string(),
@@ -270,17 +255,8 @@ impl ProfileUpdater {
     }
 
     /// Track a pending directory observation.
-    fn observe_pending_dir(
-        &mut self,
-        server_name: &str,
-        dir: &str,
-        target: &mut HashSet<String>,
-    ) {
-        let pending_key = (
-            server_name.to_string(),
-            "dir".to_string(),
-            dir.to_string(),
-        );
+    fn observe_pending_dir(&mut self, server_name: &str, dir: &str, target: &mut HashSet<String>) {
+        let pending_key = (server_name.to_string(), "dir".to_string(), dir.to_string());
         let count = self.pending_observations.entry(pending_key).or_insert(0);
         *count += 1;
         if *count >= self.set_expansion_threshold {
@@ -301,12 +277,7 @@ impl ProfileUpdater {
     }
 
     /// Get the current pending observation count for a key.
-    pub fn pending_count(
-        &self,
-        server_name: &str,
-        category: &str,
-        key: &str,
-    ) -> u64 {
+    pub fn pending_count(&self, server_name: &str, category: &str, key: &str) -> u64 {
         self.pending_observations
             .get(&(
                 server_name.to_string(),
@@ -334,8 +305,7 @@ mod tests {
     use serde_json::json;
 
     fn make_learned_profile() -> ServerProfile {
-        let mut profile =
-            ServerProfile::new("test-server".to_string(), "test-client".to_string());
+        let mut profile = ServerProfile::new("test-server".to_string(), "test-client".to_string());
         profile.learning_mode = false;
         profile.observation_count = 100;
         profile
@@ -399,7 +369,10 @@ mod tests {
         updater.update_with_mcp_event(&mut profile, &make_tool_event("dangerous_tool"));
 
         // Should NOT be in the profile yet
-        assert!(!profile.tool_profile.tool_counts.contains_key("dangerous_tool"));
+        assert!(!profile
+            .tool_profile
+            .tool_counts
+            .contains_key("dangerous_tool"));
     }
 
     #[test]
@@ -433,14 +406,8 @@ mod tests {
         let mut updater = ProfileUpdater::new();
 
         // Access ~/.ssh/ only twice (below threshold of 5)
-        updater.update_with_os_event(
-            &mut profile,
-            &make_os_open("/home/user/.ssh/id_rsa"),
-        );
-        updater.update_with_os_event(
-            &mut profile,
-            &make_os_open("/home/user/.ssh/known_hosts"),
-        );
+        updater.update_with_os_event(&mut profile, &make_os_open("/home/user/.ssh/id_rsa"));
+        updater.update_with_os_event(&mut profile, &make_os_open("/home/user/.ssh/known_hosts"));
 
         // ~/.ssh should NOT be in the baseline
         assert!(
@@ -466,12 +433,10 @@ mod tests {
         }
 
         // Now it should be in the baseline
-        assert!(
-            profile
-                .file_profile
-                .directory_prefixes
-                .contains("/home/user/.ssh"),
-        );
+        assert!(profile
+            .file_profile
+            .directory_prefixes
+            .contains("/home/user/.ssh"),);
     }
 
     #[test]
@@ -508,7 +473,10 @@ mod tests {
         };
         updater.update_with_os_event(&mut profile, &event);
 
-        assert!(!profile.network_profile.observed_hosts.contains("evil.example.com"));
+        assert!(!profile
+            .network_profile
+            .observed_hosts
+            .contains("evil.example.com"));
     }
 
     #[test]

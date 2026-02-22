@@ -78,14 +78,37 @@ bump-version VERSION:
     @echo "Version bumped to {{VERSION}} in workspace Cargo.toml"
     @echo "Remember to update Formula/clawdefender.rb version too."
 
-# Build the Tauri GUI app (frontend + backend)
+# Build the daemon binary
+build-daemon:
+    cargo build -p clawdefender-daemon
+
+# Build the Tauri GUI app (frontend + backend + daemon)
 build-app:
+    cargo build -p clawdefender-daemon --release
     cd clients/clawdefender-app && npm install && npm run build
     cd clients/clawdefender-app/src-tauri && cargo build --release
 
-# Run the Tauri GUI app in development mode
+# Run the Tauri GUI app in development mode (builds daemon first)
 dev-app:
+    cargo build -p clawdefender-daemon -p clawdefender-cli
     cd clients/clawdefender-app/src-tauri && cargo tauri dev
+
+# Copy daemon binary to Tauri sidecar location for bundling
+build-sidecar:
+    cargo build -p clawdefender-daemon --release
+    mkdir -p clients/clawdefender-app/src-tauri/binaries
+    cp target/release/clawdefender-daemon clients/clawdefender-app/src-tauri/binaries/clawdefender-daemon-$(rustc -vV | grep host | cut -d' ' -f2)
+
+# Build the .dmg installer
+build-dmg:
+    cargo build -p clawdefender-daemon --release
+    mkdir -p clients/clawdefender-app/src-tauri/binaries
+    cp target/release/clawdefender-daemon "clients/clawdefender-app/src-tauri/binaries/clawdefender-daemon-$(rustc -vV | grep host | cut -d' ' -f2)"
+    cd clients/clawdefender-app && npm install && cargo tauri build
+
+# Build .dmg for a specific target (e.g., aarch64-apple-darwin or x86_64-apple-darwin)
+build-dmg-target TARGET:
+    cd clients/clawdefender-app && npm install && cargo tauri build --target {{TARGET}}
 
 # Build the Swift network extension
 build-extension:

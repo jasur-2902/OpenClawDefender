@@ -34,10 +34,20 @@ async fn guard_deregister_via_registry() {
 async fn guard_list_multiple() {
     let registry = GuardRegistry::new();
     registry
-        .register("agent-a".into(), 100, test_permissions(), GuardMode::Enforce)
+        .register(
+            "agent-a".into(),
+            100,
+            test_permissions(),
+            GuardMode::Enforce,
+        )
         .await;
     registry
-        .register("agent-b".into(), 200, test_permissions(), GuardMode::Monitor)
+        .register(
+            "agent-b".into(),
+            200,
+            test_permissions(),
+            GuardMode::Monitor,
+        )
         .await;
     let list = registry.list().await;
     assert_eq!(list.len(), 2);
@@ -64,7 +74,12 @@ async fn guard_cleanup_removes_dead_pids() {
     let registry = GuardRegistry::new();
     // Register with a PID that is very unlikely to exist.
     let (id, _) = registry
-        .register("dead-agent".into(), 999999, test_permissions(), GuardMode::Enforce)
+        .register(
+            "dead-agent".into(),
+            999999,
+            test_permissions(),
+            GuardMode::Enforce,
+        )
         .await;
     assert!(registry.get(&id).await.is_some());
 
@@ -81,7 +96,12 @@ async fn guard_cleanup_keeps_alive_pids() {
     // Register with our own PID (which is alive).
     let own_pid = std::process::id();
     let (id, _) = registry
-        .register("alive-agent".into(), own_pid, test_permissions(), GuardMode::Enforce)
+        .register(
+            "alive-agent".into(),
+            own_pid,
+            test_permissions(),
+            GuardMode::Enforce,
+        )
         .await;
 
     registry.cleanup_dead_pids().await;
@@ -117,7 +137,9 @@ fn guard_register_request_serialization() {
     let json = serde_json::to_string(&req).unwrap();
     let parsed: GuardRequest = serde_json::from_str(&json).unwrap();
     match parsed {
-        GuardRequest::GuardRegister { agent_name, pid, .. } => {
+        GuardRequest::GuardRegister {
+            agent_name, pid, ..
+        } => {
             assert_eq!(agent_name, "my-bot");
             assert_eq!(pid, 12345);
         }
@@ -210,7 +232,12 @@ fn guard_error_response_serialization() {
 async fn guard_policy_only_applies_to_registered_guard() {
     let registry = GuardRegistry::new();
     let (id, _) = registry
-        .register("scoped-agent".into(), 100, test_permissions(), GuardMode::Enforce)
+        .register(
+            "scoped-agent".into(),
+            100,
+            test_permissions(),
+            GuardMode::Enforce,
+        )
         .await;
 
     // Guard's PID (100) should be checked against guard policy.
@@ -219,7 +246,9 @@ async fn guard_policy_only_applies_to_registered_guard() {
     assert!(!result.unwrap().allowed);
 
     // Non-existent guard should return None.
-    let result = registry.check_action("nonexistent", "shell", "rm -rf /").await;
+    let result = registry
+        .check_action("nonexistent", "shell", "rm -rf /")
+        .await;
     assert!(result.is_none());
 }
 
@@ -228,11 +257,20 @@ async fn guard_policy_allows_permitted_operations() {
     let registry = GuardRegistry::new();
     let home = std::env::var("HOME").unwrap_or_default();
     let (id, _) = registry
-        .register("permissive-agent".into(), 1, test_permissions(), GuardMode::Enforce)
+        .register(
+            "permissive-agent".into(),
+            1,
+            test_permissions(),
+            GuardMode::Enforce,
+        )
         .await;
 
     let result = registry
-        .check_action(&id, "file_read", &format!("{}/Projects/workspace/src/main.rs", home))
+        .check_action(
+            &id,
+            "file_read",
+            &format!("{}/Projects/workspace/src/main.rs", home),
+        )
         .await
         .unwrap();
     assert!(result.allowed);
@@ -242,7 +280,12 @@ async fn guard_policy_allows_permitted_operations() {
 async fn guard_policy_blocks_sensitive_paths() {
     let registry = GuardRegistry::new();
     let (id, _) = registry
-        .register("sensitive-agent".into(), 1, test_permissions(), GuardMode::Enforce)
+        .register(
+            "sensitive-agent".into(),
+            1,
+            test_permissions(),
+            GuardMode::Enforce,
+        )
         .await;
 
     let result = registry

@@ -173,7 +173,8 @@ fn test_hash_match() {
     assert_eq!(matches.len(), 1);
 
     // Non-matching
-    event.file_hash = Some("0000000000000000000000000000000000000000000000000000000000000000".to_string());
+    event.file_hash =
+        Some("0000000000000000000000000000000000000000000000000000000000000000".to_string());
     let matches = engine.check_event(&event);
     assert!(matches.is_empty());
 }
@@ -342,10 +343,7 @@ fn test_arg_pattern_match() {
 
 #[test]
 fn test_combined_confidence() {
-    let mut entry = make_entry(
-        Indicator::MaliciousIP("10.0.0.1".to_string()),
-        "conf-1",
-    );
+    let mut entry = make_entry(Indicator::MaliciousIP("10.0.0.1".to_string()), "conf-1");
     entry.confidence = 0.8;
     entry.false_positive_rate = 0.1;
 
@@ -369,10 +367,7 @@ fn test_combined_confidence() {
 fn test_database_add_and_match() {
     let mut db = IoCDatabase::new();
 
-    let entry = make_entry(
-        Indicator::MaliciousIP("10.0.0.1".to_string()),
-        "db-1",
-    );
+    let entry = make_entry(Indicator::MaliciousIP("10.0.0.1".to_string()), "db-1");
     db.add_indicator_and_rebuild(entry);
 
     assert_eq!(db.len(), 1);
@@ -388,14 +383,8 @@ fn test_database_add_and_match() {
 fn test_database_deduplication() {
     let mut db = IoCDatabase::new();
 
-    let entry1 = make_entry(
-        Indicator::MaliciousIP("10.0.0.1".to_string()),
-        "dedup-1",
-    );
-    let mut entry2 = make_entry(
-        Indicator::MaliciousIP("10.0.0.1".to_string()),
-        "dedup-1",
-    );
+    let entry1 = make_entry(Indicator::MaliciousIP("10.0.0.1".to_string()), "dedup-1");
+    let mut entry2 = make_entry(Indicator::MaliciousIP("10.0.0.1".to_string()), "dedup-1");
     entry2.severity = Severity::Critical;
 
     db.add_indicator(entry1);
@@ -411,31 +400,19 @@ fn test_database_expiration() {
     let mut db = IoCDatabase::with_expiration_days(30);
 
     // Fresh indicator
-    let fresh = make_entry(
-        Indicator::MaliciousIP("10.0.0.1".to_string()),
-        "fresh-1",
-    );
+    let fresh = make_entry(Indicator::MaliciousIP("10.0.0.1".to_string()), "fresh-1");
 
     // Old indicator (updated 60 days ago)
-    let mut old = make_entry(
-        Indicator::MaliciousIP("10.0.0.2".to_string()),
-        "old-1",
-    );
+    let mut old = make_entry(Indicator::MaliciousIP("10.0.0.2".to_string()), "old-1");
     old.last_updated = Utc::now() - Duration::days(60);
 
     // Permanent indicator (old but should not expire)
-    let mut perm = make_entry(
-        Indicator::MaliciousIP("10.0.0.3".to_string()),
-        "perm-1",
-    );
+    let mut perm = make_entry(Indicator::MaliciousIP("10.0.0.3".to_string()), "perm-1");
     perm.last_updated = Utc::now() - Duration::days(60);
     perm.permanent = true;
 
     // Indicator with explicit expiry in the past
-    let mut expired = make_entry(
-        Indicator::MaliciousIP("10.0.0.4".to_string()),
-        "expired-1",
-    );
+    let mut expired = make_entry(Indicator::MaliciousIP("10.0.0.4".to_string()), "expired-1");
     expired.expires_at = Some(Utc::now() - Duration::hours(1));
 
     db.add_indicator(fresh);
@@ -548,10 +525,7 @@ fn test_performance_10k_events_1k_indicators() {
     }
     for i in 0..200 {
         entries.push(make_entry(
-            Indicator::MaliciousFileHash(format!(
-                "{:064x}",
-                i as u64 * 0x0123456789abcdef_u64
-            )),
+            Indicator::MaliciousFileHash(format!("{:064x}", i as u64 * 0x0123456789abcdef_u64)),
             &format!("perf-hash-{}", i),
         ));
     }
@@ -637,10 +611,7 @@ fn test_performance_10k_events_1k_indicators() {
 #[test]
 fn test_multiple_matches_single_event() {
     let entries = vec![
-        make_entry(
-            Indicator::MaliciousIP("10.0.0.1".to_string()),
-            "multi-1",
-        ),
+        make_entry(Indicator::MaliciousIP("10.0.0.1".to_string()), "multi-1"),
         make_entry(
             Indicator::MaliciousDomain("evil.com".to_string()),
             "multi-2",

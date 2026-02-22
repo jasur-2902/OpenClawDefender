@@ -8,11 +8,11 @@
 //! - Bundled baseline feed for first-run scenarios
 
 pub mod baseline;
-pub mod ioc;
 pub mod blocklist;
 pub mod cache;
 pub mod client;
 pub mod error;
+pub mod ioc;
 pub mod patterns;
 pub mod rules;
 pub mod signature;

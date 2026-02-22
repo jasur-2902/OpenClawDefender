@@ -176,7 +176,14 @@ fn flow_dns_filter_blocks_malicious_domain() {
     assert!(result.reason.contains("blocklist"));
 
     // Log the blocked DNS query as a blocked connection.
-    let log = make_log("blocked", "0.0.0.0", Some("malware-c2.evil.com"), Some("test-server"), 0, 0);
+    let log = make_log(
+        "blocked",
+        "0.0.0.0",
+        Some("malware-c2.evil.com"),
+        Some("test-server"),
+        0,
+        0,
+    );
     assert_eq!(log.decision.action, "blocked");
 }
 
@@ -219,11 +226,7 @@ fn flow_rate_limiter_fires_on_burst() {
 
     // Send 6 connections from same PID to unique destinations.
     for i in 0..6 {
-        let alerts = limiter.record_connection(
-            1000,
-            &format!("dest-{}.example.com", i),
-            now,
-        );
+        let alerts = limiter.record_connection(1000, &format!("dest-{}.example.com", i), now);
 
         if i >= 5 {
             // Should have connection rate alert after exceeding 5/min.
@@ -442,10 +445,38 @@ fn flow_mock_extension_full_lifecycle() {
 #[test]
 fn flow_log_aggregation_summary() {
     let logs = vec![
-        make_log("allowed", "1.1.1.1", Some("api.github.com"), Some("github"), 500, 1000),
-        make_log("allowed", "1.1.1.2", Some("cdn.github.com"), Some("github"), 200, 3000),
-        make_log("blocked", "10.0.0.1", Some("c2.evil.com"), Some("github"), 0, 0),
-        make_log("prompted", "172.16.0.1", Some("internal.corp"), Some("other"), 50, 100),
+        make_log(
+            "allowed",
+            "1.1.1.1",
+            Some("api.github.com"),
+            Some("github"),
+            500,
+            1000,
+        ),
+        make_log(
+            "allowed",
+            "1.1.1.2",
+            Some("cdn.github.com"),
+            Some("github"),
+            200,
+            3000,
+        ),
+        make_log(
+            "blocked",
+            "10.0.0.1",
+            Some("c2.evil.com"),
+            Some("github"),
+            0,
+            0,
+        ),
+        make_log(
+            "prompted",
+            "172.16.0.1",
+            Some("internal.corp"),
+            Some("other"),
+            50,
+            100,
+        ),
     ];
 
     let summary = NetworkSummary::from_logs(&logs, "last_24h");
@@ -458,9 +489,30 @@ fn flow_log_aggregation_summary() {
 #[test]
 fn flow_log_aggregation_per_server() {
     let logs = vec![
-        make_log("allowed", "1.1.1.1", Some("api.github.com"), Some("github"), 500, 1000),
-        make_log("blocked", "10.0.0.1", Some("evil.com"), Some("github"), 0, 0),
-        make_log("allowed", "93.184.216.34", Some("example.com"), Some("filesystem"), 100, 200),
+        make_log(
+            "allowed",
+            "1.1.1.1",
+            Some("api.github.com"),
+            Some("github"),
+            500,
+            1000,
+        ),
+        make_log(
+            "blocked",
+            "10.0.0.1",
+            Some("evil.com"),
+            Some("github"),
+            0,
+            0,
+        ),
+        make_log(
+            "allowed",
+            "93.184.216.34",
+            Some("example.com"),
+            Some("filesystem"),
+            100,
+            200,
+        ),
     ];
 
     let stats = NetworkTrafficStats::from_logs(&logs, "github", "last_24h");

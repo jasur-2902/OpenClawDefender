@@ -176,12 +176,10 @@ impl McpHarness {
         self.send_notification("notifications/initialized", json!({}))
             .await?;
 
-        resp.get("result")
-            .cloned()
-            .ok_or_else(|| {
-                let err = resp.get("error").cloned().unwrap_or(Value::Null);
-                anyhow::anyhow!("Initialize failed: {err}")
-            })
+        resp.get("result").cloned().ok_or_else(|| {
+            let err = resp.get("error").cloned().unwrap_or(Value::Null);
+            anyhow::anyhow!("Initialize failed: {err}")
+        })
     }
 
     /// List available tools.
@@ -198,8 +196,11 @@ impl McpHarness {
 
     /// Call a tool by name with given arguments.
     pub async fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value> {
-        self.send_request("tools/call", json!({ "name": name, "arguments": arguments }))
-            .await
+        self.send_request(
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+        )
+        .await
     }
 
     /// Call a tool with a custom timeout.

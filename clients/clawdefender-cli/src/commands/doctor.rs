@@ -67,10 +67,7 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     }
 
     // 4. Check audit log dir writable.
-    let audit_dir = config
-        .audit_log_path
-        .parent()
-        .unwrap_or(Path::new("/tmp"));
+    let audit_dir = config.audit_log_path.parent().unwrap_or(Path::new("/tmp"));
     let audit_writable = if audit_dir.exists() {
         // Try creating a temp file.
         let test_file = audit_dir.join(".clawdefender_doctor_test");
@@ -171,14 +168,14 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     println!();
     println!("MCP Server (Cooperative Security):");
 
-    check_pass(
-        "MCP server enabled in config",
-        config.mcp_server.enabled,
-    );
+    check_pass("MCP server enabled in config", config.mcp_server.enabled);
 
     if config.mcp_server.enabled {
         check_pass(
-            &format!("MCP server HTTP port configured ({})", config.mcp_server.http_port),
+            &format!(
+                "MCP server HTTP port configured ({})",
+                config.mcp_server.http_port
+            ),
             config.mcp_server.http_port > 0,
         );
 
@@ -195,7 +192,9 @@ pub fn run(config: &ClawConfig) -> Result<()> {
             &format!("MCP server HTTP endpoint reachable ({})", http_url),
             http_reachable,
         ) {
-            hint("Run `clawdefender serve` or `clawdefender daemon start` to start the MCP server.");
+            hint(
+                "Run `clawdefender serve` or `clawdefender daemon start` to start the MCP server.",
+            );
         }
     }
 
@@ -229,7 +228,8 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         }
 
         // Check daemon accepting guard registrations via IPC.
-        let daemon_accepting = std::os::unix::net::UnixStream::connect(&config.daemon_socket_path).is_ok();
+        let daemon_accepting =
+            std::os::unix::net::UnixStream::connect(&config.daemon_socket_path).is_ok();
         if !check_pass("Daemon accepting guard registrations", daemon_accepting) {
             hint("The daemon must be running for guards to register.");
         }
@@ -270,10 +270,7 @@ pub fn run(config: &ClawConfig) -> Result<()> {
 
         // Check rules directory.
         let rules_dir = data_dir.join("rules");
-        check_pass(
-            "Community rules directory exists",
-            rules_dir.exists(),
-        );
+        check_pass("Community rules directory exists", rules_dir.exists());
     }
 
     // 11. Network policy checks.
@@ -288,7 +285,8 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         check_pass("Network policy engine enabled", true);
 
         // Show rule count.
-        let engine = clawdefender_core::network_policy::engine::NetworkPolicyEngine::with_defaults();
+        let engine =
+            clawdefender_core::network_policy::engine::NetworkPolicyEngine::with_defaults();
         let rules_count = engine.rules().len();
         check_pass(
             &format!("Network rules loaded ({})", rules_count),
@@ -296,13 +294,17 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         );
 
         // Network extension status — currently mock mode only.
-        check_pass("Network extension mode: mock (system extension not installed)", true);
+        check_pass(
+            "Network extension mode: mock (system extension not installed)",
+            true,
+        );
 
         // DNS filter status.
         check_pass("DNS filter active", true);
 
         // Check if daemon is running and has network policy active.
-        let daemon_running = std::os::unix::net::UnixStream::connect(&config.daemon_socket_path).is_ok();
+        let daemon_running =
+            std::os::unix::net::UnixStream::connect(&config.daemon_socket_path).is_ok();
         if !check_pass("Daemon running with network policy", daemon_running) {
             hint("Run `clawdefender daemon start` to activate network policy enforcement.");
         }

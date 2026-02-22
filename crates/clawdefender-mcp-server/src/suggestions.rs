@@ -173,13 +173,17 @@ mod tests {
     #[test]
     fn sudo_command_suggests_avoiding_privileges() {
         let suggestions = suggest(&ActionType::ShellExecute, "sudo apt install foo");
-        assert!(suggestions.iter().any(|s| s.contains("elevated privileges")));
+        assert!(suggestions
+            .iter()
+            .any(|s| s.contains("elevated privileges")));
     }
 
     #[test]
     fn env_file_read_suggests_specific_vars() {
         let suggestions = suggest(&ActionType::FileRead, "/app/.env");
-        assert!(suggestions.iter().any(|s| s.contains("environment variable")));
+        assert!(suggestions
+            .iter()
+            .any(|s| s.contains("environment variable")));
     }
 
     #[test]

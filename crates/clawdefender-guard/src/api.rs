@@ -60,10 +60,7 @@ impl Default for ApiConfig {
 }
 
 /// Start the REST API server.
-pub async fn run_api_server(
-    config: ApiConfig,
-    registry: GuardRegistry,
-) -> anyhow::Result<()> {
+pub async fn run_api_server(config: ApiConfig, registry: GuardRegistry) -> anyhow::Result<()> {
     let listener = TcpListener::bind(config.bind_addr).await?;
     info!(addr = %config.bind_addr, "guard REST API server listening");
 
@@ -196,12 +193,8 @@ async fn read_body(req: Request<Incoming>) -> Result<Bytes, Response<BoxBody>> {
 /// Parse JSON body into a type.
 #[allow(clippy::result_large_err)]
 fn parse_json<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, Response<BoxBody>> {
-    serde_json::from_slice(bytes).map_err(|e| {
-        error_response(
-            StatusCode::BAD_REQUEST,
-            &format!("invalid JSON: {}", e),
-        )
-    })
+    serde_json::from_slice(bytes)
+        .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("invalid JSON: {}", e)))
 }
 
 /// POST /api/v1/guard — Create and activate a guard.
@@ -385,10 +378,7 @@ mod tests {
 
     #[test]
     fn test_json_response() {
-        let resp = json_response(
-            StatusCode::OK,
-            serde_json::json!({"hello": "world"}),
-        );
+        let resp = json_response(StatusCode::OK, serde_json::json!({"hello": "world"}));
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
             resp.headers().get("content-type").unwrap(),

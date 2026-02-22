@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import type { AppSettings, NetworkExtensionStatus, NetworkSettings } from "../types";
 
 const defaultSettings: AppSettings = {
@@ -30,6 +31,7 @@ export function Settings() {
   const [netStatus, setNetStatus] = useState<NetworkExtensionStatus | null>(null);
   const [netSettings, setNetSettings] = useState<NetworkSettings>(defaultNetworkSettings);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -58,6 +60,12 @@ export function Settings() {
   useEffect(() => {
     loadSettings();
     loadNetworkState();
+    // Sync autostart state from the OS
+    invoke<boolean>("is_autostart_enabled")
+      .then((enabled) => {
+        setSettings((s) => ({ ...s, auto_start_daemon: enabled }));
+      })
+      .catch(() => {});
   }, [loadSettings, loadNetworkState]);
 
   async function updateNetField<K extends keyof NetworkSettings>(key: K, value: NetworkSettings[K]) {
@@ -121,7 +129,11 @@ export function Settings() {
             </div>
             <select
               value={settings.theme}
-              onChange={(e) => updateField("theme", e.target.value as AppSettings["theme"])}
+              onChange={(e) => {
+                const newTheme = e.target.value as AppSettings["theme"];
+                updateField("theme", newTheme);
+                emit("clawdefender://theme-changed", newTheme);
+              }}
               className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
             >
               <option value="system">System</option>
@@ -138,7 +150,18 @@ export function Settings() {
             </div>
             <ToggleSwitch
               checked={settings.auto_start_daemon}
-              onChange={(v) => updateField("auto_start_daemon", v)}
+              onChange={async (v) => {
+                try {
+                  if (v) {
+                    await invoke("enable_autostart");
+                  } else {
+                    await invoke("disable_autostart");
+                  }
+                  updateField("auto_start_daemon", v);
+                } catch (_err) {
+                  // Autostart toggle failed
+                }
+              }}
             />
           </div>
 
@@ -220,17 +243,24 @@ export function Settings() {
         </div>
       </section>
 
-      {/* Network Protection — Coming Soon */}
+      {/* Network Protection */}
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-3">
           <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
             Network Protection
           </h2>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-medium">
-            Coming Soon
-          </span>
+          {(!netStatus || !netStatus.loaded) && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-danger)]/15 text-[var(--color-danger)] font-medium">
+              Not Available
+            </span>
+          )}
         </div>
-        <div className="relative space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 select-none pointer-events-none opacity-40">
+        {(!netStatus || !netStatus.loaded) && (
+          <p className="text-xs text-[var(--color-text-secondary)] mb-3">
+            Network Extension is not installed. This feature requires a macOS system extension.
+          </p>
+        )}
+        <div className={`relative space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 ${!netStatus || !netStatus.loaded ? "select-none pointer-events-none opacity-40" : ""}`}>
           {/* Status indicator */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -420,22 +450,64 @@ export function Settings() {
           </div>
 
           {/* Export / Import / Reset */}
-          <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
-            <button className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
-              Export Config
-            </button>
-            <button className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
-              Import Config
-            </button>
-            <button
-              onClick={() => {
-                setSettings(defaultSettings);
-                invoke("update_settings", { settings: defaultSettings }).catch(() => {});
-              }}
-              className="ml-auto px-3 py-1.5 rounded-md text-xs border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
-            >
-              Reset to Defaults
-            </button>
+          <div className="flex flex-col gap-2 pt-2 border-t border-[var(--color-border)]">
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const path = await invoke<string>("export_settings");
+                    setExportStatus(`Exported to ${path}`);
+                    setTimeout(() => setExportStatus(null), 4000);
+                  } catch (err) {
+                    setExportStatus(`Export failed: ${err}`);
+                    setTimeout(() => setExportStatus(null), 4000);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              >
+                Export Config
+              </button>
+              <button
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".json";
+                  input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      try {
+                        const content = await file.text();
+                        await invoke("import_settings_from_content", { content });
+                        setExportStatus("Settings imported successfully");
+                        loadSettings();
+                        setTimeout(() => setExportStatus(null), 4000);
+                      } catch (err) {
+                        setExportStatus(`Import failed: ${err}`);
+                        setTimeout(() => setExportStatus(null), 4000);
+                      }
+                    }
+                  };
+                  input.click();
+                }}
+                className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              >
+                Import Config
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm("Reset all settings to defaults? This cannot be undone.")) {
+                    setSettings(defaultSettings);
+                    invoke("update_settings", { settings: defaultSettings }).catch(() => {});
+                  }
+                }}
+                className="ml-auto px-3 py-1.5 rounded-md text-xs border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
+              >
+                Reset to Defaults
+              </button>
+            </div>
+            {exportStatus && (
+              <p className="text-xs text-[var(--color-text-secondary)]">{exportStatus}</p>
+            )}
           </div>
         </div>
       </section>

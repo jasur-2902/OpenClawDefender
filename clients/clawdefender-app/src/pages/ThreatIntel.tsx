@@ -115,40 +115,51 @@ export function ThreatIntel() {
           </button>
         </div>
         {feedStatus ? (
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-[var(--color-text-secondary)]">
-                Version:{" "}
-              </span>
-              <span className="text-[var(--color-text-primary)] font-medium">
-                {feedStatus.version}
-              </span>
+          feedStatus.version === "not configured" || feedStatus.entries_count === 0 ? (
+            <div className="text-sm">
+              <p className="text-[var(--color-warning)] font-medium mb-1">
+                Threat feed not initialized.
+              </p>
+              <p className="text-[var(--color-text-secondary)]">
+                Run <code className="px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] font-mono text-xs">clawdefender feed update</code> from the terminal to set up the threat intelligence database.
+              </p>
             </div>
-            <div>
-              <span className="text-[var(--color-text-secondary)]">
-                Entries:{" "}
-              </span>
-              <span className="text-[var(--color-text-primary)] font-medium">
-                {feedStatus.entries_count}
-              </span>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-[var(--color-text-secondary)]">
+                  Version:{" "}
+                </span>
+                <span className="text-[var(--color-text-primary)] font-medium">
+                  {feedStatus.version}
+                </span>
+              </div>
+              <div>
+                <span className="text-[var(--color-text-secondary)]">
+                  Entries:{" "}
+                </span>
+                <span className="text-[var(--color-text-primary)] font-medium">
+                  {feedStatus.entries_count}
+                </span>
+              </div>
+              <div>
+                <span className="text-[var(--color-text-secondary)]">
+                  Last Updated:{" "}
+                </span>
+                <span className="text-[var(--color-text-primary)]">
+                  {formatTime(feedStatus.last_updated)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[var(--color-text-secondary)]">
+                  Next Check:{" "}
+                </span>
+                <span className="text-[var(--color-text-primary)]">
+                  {formatTime(feedStatus.next_check)}
+                </span>
+              </div>
             </div>
-            <div>
-              <span className="text-[var(--color-text-secondary)]">
-                Last Updated:{" "}
-              </span>
-              <span className="text-[var(--color-text-primary)]">
-                {formatTime(feedStatus.last_updated)}
-              </span>
-            </div>
-            <div>
-              <span className="text-[var(--color-text-secondary)]">
-                Next Check:{" "}
-              </span>
-              <span className="text-[var(--color-text-primary)]">
-                {formatTime(feedStatus.next_check)}
-              </span>
-            </div>
-          </div>
+          )
         ) : (
           <p className="text-sm text-[var(--color-text-secondary)]">
             Loading feed status...
@@ -203,6 +214,11 @@ export function ThreatIntel() {
             Community Rule Packs
           </h2>
           <div className="space-y-3">
+            {rulePacks.length === 0 && (
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                No community rule packs installed. Rule packs add specialized detection rules for common MCP threat patterns.
+              </p>
+            )}
             {rulePacks.map((pack) => (
               <div
                 key={pack.id}
@@ -244,17 +260,28 @@ export function ThreatIntel() {
             IoC Database
           </h2>
           {iocStats ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <IoCStatCard label="Network" value={iocStats.network} />
-                <IoCStatCard label="File" value={iocStats.file} />
-                <IoCStatCard label="Behavioral" value={iocStats.behavioral} />
-                <IoCStatCard label="Total" value={iocStats.total} color="var(--color-accent)" />
+            iocStats.total === 0 ? (
+              <div className="text-sm">
+                <p className="text-[var(--color-text-secondary)] mb-1">
+                  IoC database is empty.
+                </p>
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  Indicators of Compromise will be populated when the threat feed is initialized. Run <code className="px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] font-mono text-xs">clawdefender feed update</code> to get started.
+                </p>
               </div>
-              <p className="text-xs text-[var(--color-text-secondary)]">
-                Last updated: {formatTime(iocStats.last_updated)}
-              </p>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <IoCStatCard label="Network" value={iocStats.network} />
+                  <IoCStatCard label="File" value={iocStats.file} />
+                  <IoCStatCard label="Behavioral" value={iocStats.behavioral} />
+                  <IoCStatCard label="Total" value={iocStats.total} color="var(--color-accent)" />
+                </div>
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  Last updated: {formatTime(iocStats.last_updated)}
+                </p>
+              </div>
+            )
           ) : (
             <p className="text-sm text-[var(--color-text-secondary)]">
               Loading IoC stats...

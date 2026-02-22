@@ -4,19 +4,19 @@ pub mod config;
 pub mod daemon;
 pub mod doctor;
 pub mod guard;
-pub mod network;
-pub mod threat_intel;
-pub mod usage;
 pub mod init;
 pub mod log;
 pub mod model;
+pub mod network;
 pub mod policy;
 pub mod profile_cmd;
 pub mod proxy;
 pub mod scan;
 pub mod serve;
 pub mod status;
+pub mod threat_intel;
 pub mod unwrap;
+pub mod usage;
 pub mod wrap;
 
 use std::path::{Path, PathBuf};
@@ -74,7 +74,10 @@ pub fn find_dxt_extension(server_name: &str) -> Option<DxtExtension> {
     for (id, entry) in extensions {
         let manifest = entry.get("manifest")?;
         let name = manifest.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        let display = manifest.get("display_name").and_then(|v| v.as_str()).unwrap_or("");
+        let display = manifest
+            .get("display_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
 
         if id.to_lowercase() == needle
             || name.to_lowercase() == needle
@@ -192,12 +195,15 @@ pub fn known_clients() -> Vec<McpClient> {
         } else {
             claude_dir.join("claude_desktop_config.json")
         };
-        clients.insert(0, McpClient {
-            name: "claude",
-            display_name: "Claude Desktop",
-            config_path,
-            servers_key: SERVERS_KEY_MCP,
-        });
+        clients.insert(
+            0,
+            McpClient {
+                name: "claude",
+                display_name: "Claude Desktop",
+                config_path,
+                servers_key: SERVERS_KEY_MCP,
+            },
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -208,12 +214,15 @@ pub fn known_clients() -> Vec<McpClient> {
         } else {
             claude_dir.join("claude_desktop_config.json")
         };
-        clients.insert(0, McpClient {
-            name: "claude",
-            display_name: "Claude Desktop",
-            config_path,
-            servers_key: SERVERS_KEY_MCP,
-        });
+        clients.insert(
+            0,
+            McpClient {
+                name: "claude",
+                display_name: "Claude Desktop",
+                config_path,
+                servers_key: SERVERS_KEY_MCP,
+            },
+        );
     }
 
     clients
@@ -223,7 +232,11 @@ pub fn known_clients() -> Vec<McpClient> {
 /// Cursor configs may use `"mcpServers"` (standard) or `"servers"` (legacy/alternate).
 /// Returns the key that exists in the config, preferring `"mcpServers"`.
 pub fn detect_servers_key(config: &Value) -> &'static str {
-    if config.get("mcpServers").and_then(|v| v.as_object()).is_some() {
+    if config
+        .get("mcpServers")
+        .and_then(|v| v.as_object())
+        .is_some()
+    {
         "mcpServers"
     } else if config.get("servers").and_then(|v| v.as_object()).is_some() {
         "servers"
@@ -306,10 +319,7 @@ pub fn find_client_config(server_name: &str, client_hint: &str) -> anyhow::Resul
         if !checked.is_empty() {
             checked.push('\n');
         }
-        checked.push_str(&format!(
-            "\nDXT extensions:\n{}",
-            dxt_lines.join("\n")
-        ));
+        checked.push_str(&format!("\nDXT extensions:\n{}", dxt_lines.join("\n")));
     }
 
     anyhow::bail!(
@@ -471,19 +481,28 @@ mod tests {
     #[test]
     fn test_known_clients_includes_cursor() {
         let clients = known_clients();
-        assert!(clients.iter().any(|c| c.name == "cursor"), "should include cursor");
+        assert!(
+            clients.iter().any(|c| c.name == "cursor"),
+            "should include cursor"
+        );
     }
 
     #[test]
     fn test_known_clients_includes_vscode() {
         let clients = known_clients();
-        assert!(clients.iter().any(|c| c.name == "vscode"), "should include vscode");
+        assert!(
+            clients.iter().any(|c| c.name == "vscode"),
+            "should include vscode"
+        );
     }
 
     #[test]
     fn test_known_clients_includes_windsurf() {
         let clients = known_clients();
-        assert!(clients.iter().any(|c| c.name == "windsurf"), "should include windsurf");
+        assert!(
+            clients.iter().any(|c| c.name == "windsurf"),
+            "should include windsurf"
+        );
     }
 
     #[cfg(target_os = "macos")]
@@ -491,7 +510,10 @@ mod tests {
     fn test_known_clients_includes_claude_on_macos() {
         let clients = known_clients();
         let claude = clients.iter().find(|c| c.name == "claude").unwrap();
-        assert!(claude.config_path.to_string_lossy().contains("Library/Application Support"));
+        assert!(claude
+            .config_path
+            .to_string_lossy()
+            .contains("Library/Application Support"));
     }
 
     #[test]

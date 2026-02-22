@@ -6,13 +6,15 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use chrono::Utc;
 use clawdefender_core::audit::logger::FileAuditLogger;
 use clawdefender_core::audit::{AuditFilter, AuditLogger};
 use clawdefender_core::config::ClawConfig;
-use clawdefender_core::event::mcp::{McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall};
+use clawdefender_core::event::mcp::{
+    McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall,
+};
 use clawdefender_core::policy::engine::DefaultPolicyEngine;
 use clawdefender_core::policy::PolicyEngine;
-use chrono::Utc;
 use serde_json::Value;
 
 /// Print all rules loaded from the policy file.
@@ -35,10 +37,7 @@ pub fn list(policy_path: &Path) -> Result<()> {
 
     println!("Policy rules from {}:", policy_path.display());
     println!();
-    println!(
-        "  {:<4} {:<24} {:<8} DESCRIPTION",
-        "PRI", "NAME", "ACTION"
-    );
+    println!("  {:<4} {:<24} {:<8} DESCRIPTION", "PRI", "NAME", "ACTION");
     println!("  {}", "-".repeat(72));
 
     for rule in &rules {
@@ -196,10 +195,26 @@ fn read_line<R: BufRead>(reader: &mut R) -> Result<String> {
 
 /// Embedded policy templates (compiled into the binary).
 const TEMPLATES: &[(&str, &str, &str)] = &[
-    ("audit-only", "Log everything, block nothing", include_str!("../../../../policies/templates/audit-only.toml")),
-    ("data-science", "Policy for data science workflows", include_str!("../../../../policies/templates/data-science.toml")),
-    ("development", "Balanced policy for development", include_str!("../../../../policies/templates/development.toml")),
-    ("strict", "Maximum security, blocks shell and network", include_str!("../../../../policies/templates/strict.toml")),
+    (
+        "audit-only",
+        "Log everything, block nothing",
+        include_str!("../../../../policies/templates/audit-only.toml"),
+    ),
+    (
+        "data-science",
+        "Policy for data science workflows",
+        include_str!("../../../../policies/templates/data-science.toml"),
+    ),
+    (
+        "development",
+        "Balanced policy for development",
+        include_str!("../../../../policies/templates/development.toml"),
+    ),
+    (
+        "strict",
+        "Maximum security, blocks shell and network",
+        include_str!("../../../../policies/templates/strict.toml"),
+    ),
 ];
 
 /// List available policy templates.
@@ -250,10 +265,7 @@ pub fn template_apply(name: &str, policy_path: &Path) -> Result<()> {
 
 /// Analyze audit log patterns and suggest policy rules.
 pub fn suggest(config: &ClawConfig) -> Result<()> {
-    let logger = FileAuditLogger::new(
-        config.audit_log_path.clone(),
-        config.log_rotation.clone(),
-    )?;
+    let logger = FileAuditLogger::new(config.audit_log_path.clone(), config.log_rotation.clone())?;
 
     // Query recent mcp-server source events.
     let mcp_filter = AuditFilter {

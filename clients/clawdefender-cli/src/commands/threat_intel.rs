@@ -63,9 +63,8 @@ pub async fn feed_update(config: &ClawConfig) -> Result<()> {
     println!("Checking for feed updates...");
 
     let cache = FeedCache::new(data_dir());
-    let verifier = FeedVerifier::from_hex(
-        "0000000000000000000000000000000000000000000000000000000000000000",
-    )?;
+    let verifier =
+        FeedVerifier::from_hex("0000000000000000000000000000000000000000000000000000000000000000")?;
 
     let ti_config = clawdefender_threat_intel::ThreatIntelConfig {
         enabled: config.threat_intel.enabled,
@@ -206,7 +205,10 @@ pub fn rules_list(_config: &ClawConfig) -> Result<()> {
             } else {
                 ""
             };
-            println!("    - {} v{} — {}{}", pack.id, pack.version, pack.name, installed_marker);
+            println!(
+                "    - {} v{} — {}{}",
+                pack.id, pack.version, pack.name, installed_marker
+            );
         }
     }
 
@@ -317,8 +319,8 @@ pub fn ioc_add(_config: &ClawConfig, ioc_type: &str, value: &str) -> Result<()> 
 }
 
 pub fn ioc_test(_config: &ClawConfig, value: &str) -> Result<()> {
-    use clawdefender_threat_intel::ioc::IoCDatabase;
     use clawdefender_threat_intel::ioc::types::EventData;
+    use clawdefender_threat_intel::ioc::IoCDatabase;
 
     println!("Testing value against IoC database: {}", value);
 
@@ -348,7 +350,10 @@ pub fn ioc_test(_config: &ClawConfig, value: &str) -> Result<()> {
     } else {
         println!("  {} match(es) found:", matches.len());
         for m in &matches {
-            println!("    - {} (severity: {:?})", m.indicator.threat_id, m.indicator.severity);
+            println!(
+                "    - {} (severity: {:?})",
+                m.indicator.threat_id, m.indicator.severity
+            );
         }
     }
 
@@ -393,7 +398,10 @@ pub fn telemetry_preview(_config: &ClawConfig) -> Result<()> {
 pub fn telemetry_enable(_config: &ClawConfig) -> Result<()> {
     use clawdefender_threat_intel::telemetry::{ConsentManager, TelemetryConfig};
 
-    let config = TelemetryConfig { enabled: true, ..Default::default() };
+    let config = TelemetryConfig {
+        enabled: true,
+        ..Default::default()
+    };
     let mut consent = ConsentManager::new(config);
     let _id = consent.opt_in();
     println!("Telemetry enabled. Thank you for helping improve ClawDefender.");
@@ -433,7 +441,10 @@ pub fn check_reputation(_config: &ClawConfig, server_name: &str) -> Result<()> {
     if results.is_empty() {
         println!("  No blocklist matches found. Server appears clean.");
     } else {
-        println!("  WARNING: Server matches {} blocklist entry(ies)!", results.len());
+        println!(
+            "  WARNING: Server matches {} blocklist entry(ies)!",
+            results.len()
+        );
         for result in &results {
             println!("  Entry ID:    {}", result.entry_id);
             println!("  Name:        {}", result.entry_name);

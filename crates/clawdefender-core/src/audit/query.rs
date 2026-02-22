@@ -427,16 +427,11 @@ mod tests {
 
         // Write records to rotated file .1
         let rotated = rotated_path(&path, 1);
-        let old_records = vec![
-            make_record("old", "allow"),
-            make_record("old", "block"),
-        ];
+        let old_records = vec![make_record("old", "allow"), make_record("old", "block")];
         write_records_to_file(&rotated, &old_records);
 
         // Write records to current file
-        let current_records = vec![
-            make_record("new", "allow"),
-        ];
+        let current_records = vec![make_record("new", "allow")];
         write_records_to_file(&path, &current_records);
 
         let filter = LogFilter {

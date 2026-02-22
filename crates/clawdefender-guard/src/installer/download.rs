@@ -140,9 +140,7 @@ pub fn verify_checksum(data: &[u8], checksum_content: &str) -> Result<()> {
     let actual = compute_sha256(data);
 
     if actual != expected {
-        bail!(
-            "Checksum mismatch: expected {expected}, got {actual}"
-        );
+        bail!("Checksum mismatch: expected {expected}, got {actual}");
     }
 
     Ok(())
@@ -183,7 +181,8 @@ mod tests {
     #[test]
     fn test_verify_checksum_invalid() {
         let data = b"test data";
-        let checksum_content = "0000000000000000000000000000000000000000000000000000000000000000  clawdefender\n";
+        let checksum_content =
+            "0000000000000000000000000000000000000000000000000000000000000000  clawdefender\n";
         assert!(verify_checksum(data, &checksum_content).is_err());
     }
 

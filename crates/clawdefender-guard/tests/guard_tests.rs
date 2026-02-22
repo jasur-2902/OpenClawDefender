@@ -29,9 +29,7 @@ fn builder_with_permissions() {
         tools: vec!["read_file".to_string()],
         ..Default::default()
     };
-    let guard = GuardBuilder::new("test-agent")
-        .permissions(perms)
-        .build();
+    let guard = GuardBuilder::new("test-agent").permissions(perms).build();
     assert_eq!(guard.name(), "test-agent");
 }
 
@@ -335,7 +333,13 @@ fn monitor_mode_does_not_block() {
     guard.activate().unwrap();
 
     let result = guard.check_action("dangerous_tool", "/etc/passwd");
-    assert!(matches!(result, ActionResult::Monitored { would_block: true, .. }));
+    assert!(matches!(
+        result,
+        ActionResult::Monitored {
+            would_block: true,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -388,10 +392,16 @@ fn suggest_permissions_from_monitored_ops() {
     guard.check_action("custom_tool", "anything");
 
     let suggested = guard.suggest_permissions();
-    assert!(suggested.file_read.contains(&"/project/src/main.rs".to_string()));
-    assert!(suggested.file_write.contains(&"/project/src/lib.rs".to_string()));
+    assert!(suggested
+        .file_read
+        .contains(&"/project/src/main.rs".to_string()));
+    assert!(suggested
+        .file_write
+        .contains(&"/project/src/lib.rs".to_string()));
     assert!(suggested.shell_commands.contains(&"bash".to_string()));
-    assert!(suggested.network_hosts.contains(&"api.example.com".to_string()));
+    assert!(suggested
+        .network_hosts
+        .contains(&"api.example.com".to_string()));
     assert!(suggested.tools.contains(&"custom_tool".to_string()));
 }
 
@@ -638,7 +648,10 @@ fn fallback_catchall_blocks() {
 fn expand_socket_path_with_tilde() {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
     let expanded = expand_socket_path("~/.local/share/clawdefender/clawdefender.sock");
-    assert_eq!(expanded, format!("{home}/.local/share/clawdefender/clawdefender.sock"));
+    assert_eq!(
+        expanded,
+        format!("{home}/.local/share/clawdefender/clawdefender.sock")
+    );
 }
 
 #[test]

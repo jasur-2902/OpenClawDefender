@@ -27,8 +27,14 @@ pub fn list(config: &ClawConfig) -> Result<()> {
                 println!("  {}", "-".repeat(86));
 
                 for guard in guards {
-                    let id = guard.get("guard_id").and_then(|v| v.as_str()).unwrap_or("-");
-                    let name = guard.get("agent_name").and_then(|v| v.as_str()).unwrap_or("-");
+                    let id = guard
+                        .get("guard_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-");
+                    let name = guard
+                        .get("agent_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-");
                     let pid = guard
                         .get("pid")
                         .and_then(|v| v.as_u64())
@@ -41,7 +47,10 @@ pub fn list(config: &ClawConfig) -> Result<()> {
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "0".to_string());
 
-                    println!("  {:<36} {:<20} {:<8} {:<10} {:<8}", id, name, pid, mode, checks);
+                    println!(
+                        "  {:<36} {:<20} {:<8} {:<10} {:<8}",
+                        id, name, pid, mode, checks
+                    );
                 }
                 println!();
                 println!("  {} guard(s) active", guards.len());
@@ -67,17 +76,54 @@ pub fn show(config: &ClawConfig, guard_id: &str) -> Result<()> {
     match ureq_get_json(&url) {
         Ok(json) => {
             println!("Guard Details:");
-            println!("  ID:          {}", json.get("guard_id").and_then(|v| v.as_str()).unwrap_or("-"));
-            println!("  Agent:       {}", json.get("agent_name").and_then(|v| v.as_str()).unwrap_or("-"));
-            println!("  PID:         {}", json.get("pid").and_then(|v| v.as_u64()).unwrap_or(0));
-            println!("  Mode:        {}", json.get("mode").and_then(|v| v.as_str()).unwrap_or("-"));
-            println!("  Status:      {}", json.get("status").and_then(|v| v.as_str()).unwrap_or("-"));
-            println!("  Created:     {}", json.get("created_at").and_then(|v| v.as_str()).unwrap_or("-"));
+            println!(
+                "  ID:          {}",
+                json.get("guard_id").and_then(|v| v.as_str()).unwrap_or("-")
+            );
+            println!(
+                "  Agent:       {}",
+                json.get("agent_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+            );
+            println!(
+                "  PID:         {}",
+                json.get("pid").and_then(|v| v.as_u64()).unwrap_or(0)
+            );
+            println!(
+                "  Mode:        {}",
+                json.get("mode").and_then(|v| v.as_str()).unwrap_or("-")
+            );
+            println!(
+                "  Status:      {}",
+                json.get("status").and_then(|v| v.as_str()).unwrap_or("-")
+            );
+            println!(
+                "  Created:     {}",
+                json.get("created_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+            );
             println!();
             println!("Statistics:");
-            println!("  Total checks:   {}", json.get("checks_total").and_then(|v| v.as_u64()).unwrap_or(0));
-            println!("  Allowed:        {}", json.get("checks_allowed").and_then(|v| v.as_u64()).unwrap_or(0));
-            println!("  Blocked:        {}", json.get("checks_blocked").and_then(|v| v.as_u64()).unwrap_or(0));
+            println!(
+                "  Total checks:   {}",
+                json.get("checks_total")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0)
+            );
+            println!(
+                "  Allowed:        {}",
+                json.get("checks_allowed")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0)
+            );
+            println!(
+                "  Blocked:        {}",
+                json.get("checks_blocked")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0)
+            );
 
             // Show stats details
             let stats_url = format!("http://127.0.0.1:{}/api/v1/guard/{}/stats", port, guard_id);
@@ -121,7 +167,10 @@ pub fn kill(config: &ClawConfig, guard_id: &str) -> Result<()> {
 
     match ureq_delete_json(&url) {
         Ok(json) => {
-            let status = json.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let status = json
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             println!("Guard {}: {}", guard_id, status);
         }
         Err(e) => {
@@ -176,8 +225,7 @@ pub fn test(_config: &ClawConfig, file: &str) -> Result<()> {
 /// Send a JSON message to the daemon via IPC and return the response.
 #[allow(dead_code)]
 fn send_guard_ipc(socket_path: &Path, request: &serde_json::Value) -> Result<serde_json::Value> {
-    let mut stream =
-        UnixStream::connect(socket_path).context("connecting to daemon IPC socket")?;
+    let mut stream = UnixStream::connect(socket_path).context("connecting to daemon IPC socket")?;
 
     let msg = serde_json::to_string(request)? + "\n";
     stream.write_all(msg.as_bytes())?;
@@ -224,10 +272,7 @@ fn ureq_get_json(url: &str) -> Result<serde_json::Value> {
     stream.read_to_string(&mut response)?;
 
     // Parse HTTP response body (after headers).
-    let body = response
-        .split("\r\n\r\n")
-        .nth(1)
-        .unwrap_or("");
+    let body = response.split("\r\n\r\n").nth(1).unwrap_or("");
 
     serde_json::from_str(body).context("parsing guard API response")
 }
@@ -263,10 +308,7 @@ fn ureq_delete_json(url: &str) -> Result<serde_json::Value> {
     let mut response = String::new();
     stream.read_to_string(&mut response)?;
 
-    let body = response
-        .split("\r\n\r\n")
-        .nth(1)
-        .unwrap_or("");
+    let body = response.split("\r\n\r\n").nth(1).unwrap_or("");
 
     serde_json::from_str(body).context("parsing guard API response")
 }

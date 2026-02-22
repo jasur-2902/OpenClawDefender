@@ -36,8 +36,8 @@ pub fn populate_cache_from_baseline(cache: &crate::cache::FeedCache) -> Result<b
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::cache::FeedCache;
+    use tempfile::TempDir;
 
     #[test]
     fn test_baseline_manifest_loads() {

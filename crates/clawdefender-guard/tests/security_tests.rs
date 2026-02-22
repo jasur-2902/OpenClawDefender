@@ -5,17 +5,15 @@
 
 use std::env;
 
-use clawdefender_guard::types::*;
-use clawdefender_guard::guard::GuardBuilder;
-use clawdefender_guard::registry::{
-    GuardMode as RegistryGuardMode,
-    GuardRegistry,
-    PermissionSet as RegistryPermissionSet,
-};
 use clawdefender_guard::api_auth;
+use clawdefender_guard::guard::GuardBuilder;
 use clawdefender_guard::installer::download::{
-    build_download_url, build_checksum_url, compute_sha256, verify_checksum,
+    build_checksum_url, build_download_url, compute_sha256, verify_checksum,
 };
+use clawdefender_guard::registry::{
+    GuardMode as RegistryGuardMode, GuardRegistry, PermissionSet as RegistryPermissionSet,
+};
+use clawdefender_guard::types::*;
 
 // ---------------------------------------------------------------------------
 // Helper to create a registry PermissionSet for tests
@@ -54,16 +52,38 @@ async fn security_global_sensitive_blocks_override_guard_permissions() {
         max_files_per_minute: None,
         max_network_requests_per_minute: None,
     };
-    let (id, _) = registry.register("broad-agent".into(), 9999, perms, RegistryGuardMode::Enforce).await;
+    let (id, _) = registry
+        .register(
+            "broad-agent".into(),
+            9999,
+            perms,
+            RegistryGuardMode::Enforce,
+        )
+        .await;
 
     // Even with wildcard permissions, sensitive paths must be blocked.
-    let result = registry.check_action(&id, "file_read", "/home/user/.ssh/id_rsa").await.unwrap();
-    assert!(!result.allowed, "Sensitive path .ssh/id_rsa should be blocked even with broad perms");
+    let result = registry
+        .check_action(&id, "file_read", "/home/user/.ssh/id_rsa")
+        .await
+        .unwrap();
+    assert!(
+        !result.allowed,
+        "Sensitive path .ssh/id_rsa should be blocked even with broad perms"
+    );
 
-    let result = registry.check_action(&id, "file_read", "/home/user/.aws/credentials").await.unwrap();
-    assert!(!result.allowed, "Sensitive path .aws/credentials should be blocked");
+    let result = registry
+        .check_action(&id, "file_read", "/home/user/.aws/credentials")
+        .await
+        .unwrap();
+    assert!(
+        !result.allowed,
+        "Sensitive path .aws/credentials should be blocked"
+    );
 
-    let result = registry.check_action(&id, "file_read", "/app/.env").await.unwrap();
+    let result = registry
+        .check_action(&id, "file_read", "/app/.env")
+        .await
+        .unwrap();
     assert!(!result.allowed, ".env files should always be blocked");
 }
 
@@ -75,7 +95,12 @@ async fn security_guard_with_dead_pid_is_cleaned_up() {
     let registry = GuardRegistry::new();
     // Use a PID that almost certainly does not exist.
     let (id, _) = registry
-        .register("dead-pid-agent".into(), 999999, registry_perms(vec![], vec![]), RegistryGuardMode::Enforce)
+        .register(
+            "dead-pid-agent".into(),
+            999999,
+            registry_perms(vec![], vec![]),
+            RegistryGuardMode::Enforce,
+        )
         .await;
 
     // Guard is initially present.
@@ -95,10 +120,20 @@ async fn security_guard_with_dead_pid_is_cleaned_up() {
 async fn security_one_guard_cannot_deregister_another() {
     let registry = GuardRegistry::new();
     let (id_a, _) = registry
-        .register("agent-a".into(), 1, registry_perms(vec![], vec![]), RegistryGuardMode::Enforce)
+        .register(
+            "agent-a".into(),
+            1,
+            registry_perms(vec![], vec![]),
+            RegistryGuardMode::Enforce,
+        )
         .await;
     let (id_b, _) = registry
-        .register("agent-b".into(), 2, registry_perms(vec![], vec![]), RegistryGuardMode::Enforce)
+        .register(
+            "agent-b".into(),
+            2,
+            registry_perms(vec![], vec![]),
+            RegistryGuardMode::Enforce,
+        )
         .await;
 
     // Guard A cannot deregister Guard B using Guard A's ID — deregister
@@ -125,8 +160,14 @@ fn security_api_rejects_wrong_token() {
 /// REST API authentication rejects malformed bearer prefix.
 #[test]
 fn security_api_rejects_malformed_bearer() {
-    assert!(!api_auth::validate_bearer_token("Basic secret-token", "secret-token"));
-    assert!(!api_auth::validate_bearer_token("secret-token", "secret-token"));
+    assert!(!api_auth::validate_bearer_token(
+        "Basic secret-token",
+        "secret-token"
+    ));
+    assert!(!api_auth::validate_bearer_token(
+        "secret-token",
+        "secret-token"
+    ));
 }
 
 /// Even a guard with broad permissions should still have sensitive paths blocked.
@@ -144,7 +185,9 @@ async fn security_broad_permissions_still_block_sensitive_paths() {
         max_files_per_minute: None,
         max_network_requests_per_minute: None,
     };
-    let (id, _) = registry.register("broad".into(), 1, perms, RegistryGuardMode::Enforce).await;
+    let (id, _) = registry
+        .register("broad".into(), 1, perms, RegistryGuardMode::Enforce)
+        .await;
 
     for sensitive in &[
         "/home/user/.ssh/id_rsa",
@@ -153,7 +196,10 @@ async fn security_broad_permissions_still_block_sensitive_paths() {
         "/home/user/project/.env",
         "/home/user/.ssh/id_ed25519",
     ] {
-        let result = registry.check_action(&id, "file_read", sensitive).await.unwrap();
+        let result = registry
+            .check_action(&id, "file_read", sensitive)
+            .await
+            .unwrap();
         assert!(
             !result.allowed,
             "Sensitive path {} should be blocked even with broad perms",
@@ -215,9 +261,19 @@ fn security_blocked_operations_tracked_in_stats() {
     guard.check_action("read_file", "/tmp/allowed/ok.txt");
 
     let stats = guard.stats();
-    assert_eq!(stats.operations_blocked, 2, "Two operations should be blocked");
-    assert_eq!(stats.operations_allowed, 1, "One operation should be allowed");
-    assert_eq!(stats.blocked_details.len(), 2, "Two blocked detail records expected");
+    assert_eq!(
+        stats.operations_blocked, 2,
+        "Two operations should be blocked"
+    );
+    assert_eq!(
+        stats.operations_allowed, 1,
+        "One operation should be allowed"
+    );
+    assert_eq!(
+        stats.blocked_details.len(),
+        2,
+        "Two blocked detail records expected"
+    );
     guard.deactivate().unwrap();
 }
 
@@ -290,19 +346,31 @@ async fn security_multi_guard_isolation_workspace_a_vs_b() {
         vec![&format!("{home}/workspace-b/**")],
     );
 
-    let (id_a, _) = registry.register("agent-a".into(), 100, perms_a, RegistryGuardMode::Enforce).await;
-    let (id_b, _) = registry.register("agent-b".into(), 200, perms_b, RegistryGuardMode::Enforce).await;
+    let (id_a, _) = registry
+        .register("agent-a".into(), 100, perms_a, RegistryGuardMode::Enforce)
+        .await;
+    let (id_b, _) = registry
+        .register("agent-b".into(), 200, perms_b, RegistryGuardMode::Enforce)
+        .await;
 
     // Guard A can access workspace-a
     let result = registry
-        .check_action(&id_a, "file_read", &format!("{home}/workspace-a/src/main.rs"))
+        .check_action(
+            &id_a,
+            "file_read",
+            &format!("{home}/workspace-a/src/main.rs"),
+        )
         .await
         .unwrap();
     assert!(result.allowed, "Guard A should access workspace-a");
 
     // Guard A cannot access workspace-b
     let result = registry
-        .check_action(&id_a, "file_read", &format!("{home}/workspace-b/secret.txt"))
+        .check_action(
+            &id_a,
+            "file_read",
+            &format!("{home}/workspace-b/secret.txt"),
+        )
         .await
         .unwrap();
     assert!(!result.allowed, "Guard A should NOT access workspace-b");
@@ -316,7 +384,11 @@ async fn security_multi_guard_isolation_workspace_a_vs_b() {
 
     // Guard B cannot access workspace-a
     let result = registry
-        .check_action(&id_b, "file_read", &format!("{home}/workspace-a/config.toml"))
+        .check_action(
+            &id_b,
+            "file_read",
+            &format!("{home}/workspace-a/config.toml"),
+        )
         .await
         .unwrap();
     assert!(!result.allowed, "Guard B should NOT access workspace-a");
@@ -328,26 +400,29 @@ async fn security_multi_guard_independent_stats() {
     let registry = GuardRegistry::new();
     let home = env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
 
-    let perms_a = registry_perms(
-        vec![&format!("{home}/workspace-a/**")],
-        vec![],
-    );
-    let perms_b = registry_perms(
-        vec![&format!("{home}/workspace-b/**")],
-        vec![],
-    );
+    let perms_a = registry_perms(vec![&format!("{home}/workspace-a/**")], vec![]);
+    let perms_b = registry_perms(vec![&format!("{home}/workspace-b/**")], vec![]);
 
-    let (id_a, _) = registry.register("a".into(), 1, perms_a, RegistryGuardMode::Enforce).await;
-    let (id_b, _) = registry.register("b".into(), 2, perms_b, RegistryGuardMode::Enforce).await;
+    let (id_a, _) = registry
+        .register("a".into(), 1, perms_a, RegistryGuardMode::Enforce)
+        .await;
+    let (id_b, _) = registry
+        .register("b".into(), 2, perms_b, RegistryGuardMode::Enforce)
+        .await;
 
     // Only guard A performs a check.
-    registry.check_action(&id_a, "file_read", "/etc/secret").await;
+    registry
+        .check_action(&id_a, "file_read", "/etc/secret")
+        .await;
 
     let stats_a = registry.get_stats(&id_a).await.unwrap();
     let stats_b = registry.get_stats(&id_b).await.unwrap();
 
     assert_eq!(stats_a["checks_total"], 1);
-    assert_eq!(stats_b["checks_total"], 0, "Guard B stats should be independent of Guard A");
+    assert_eq!(
+        stats_b["checks_total"], 0,
+        "Guard B stats should be independent of Guard A"
+    );
 }
 
 // ===========================================================================
@@ -472,9 +547,21 @@ fn security_install_permissions_not_world_writable() {
     // 0o755 = rwxr-xr-x — owner can read/write/execute, others can read/execute.
     // World-writable would be 0o777. Verify our expected mode is correct.
     let expected_mode: u32 = 0o755;
-    assert_eq!(expected_mode & 0o002, 0, "Binary should not be world-writable");
-    assert_eq!(expected_mode & 0o020, 0, "Binary should not be group-writable");
-    assert_ne!(expected_mode & 0o100, 0, "Binary should be owner-executable");
+    assert_eq!(
+        expected_mode & 0o002,
+        0,
+        "Binary should not be world-writable"
+    );
+    assert_eq!(
+        expected_mode & 0o020,
+        0,
+        "Binary should not be group-writable"
+    );
+    assert_ne!(
+        expected_mode & 0o100,
+        0,
+        "Binary should be owner-executable"
+    );
 }
 
 // ===========================================================================
@@ -484,8 +571,7 @@ fn security_install_permissions_not_world_writable() {
 /// Shell execution should be denied by default.
 #[test]
 fn security_shell_denied_by_default() {
-    let mut guard = GuardBuilder::new("shell-default")
-        .build();
+    let mut guard = GuardBuilder::new("shell-default").build();
     guard.activate().unwrap();
 
     let result = guard.check_action("bash", "rm -rf /");
@@ -526,12 +612,24 @@ fn security_network_access_to_undeclared_host_blocked() {
 #[test]
 fn security_constant_time_token_comparison() {
     // Valid token should match.
-    assert!(api_auth::validate_bearer_token("Bearer correct-token", "correct-token"));
+    assert!(api_auth::validate_bearer_token(
+        "Bearer correct-token",
+        "correct-token"
+    ));
 
     // Tokens differing only in last character should both fail equally.
-    assert!(!api_auth::validate_bearer_token("Bearer correct-tokeX", "correct-token"));
-    assert!(!api_auth::validate_bearer_token("Bearer Xorrect-token", "correct-token"));
+    assert!(!api_auth::validate_bearer_token(
+        "Bearer correct-tokeX",
+        "correct-token"
+    ));
+    assert!(!api_auth::validate_bearer_token(
+        "Bearer Xorrect-token",
+        "correct-token"
+    ));
 
     // Different length tokens should fail.
-    assert!(!api_auth::validate_bearer_token("Bearer short", "correct-token"));
+    assert!(!api_auth::validate_bearer_token(
+        "Bearer short",
+        "correct-token"
+    ));
 }

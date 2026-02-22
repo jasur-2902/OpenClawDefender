@@ -2,7 +2,10 @@
 
 use anyhow::{bail, Result};
 
-use super::{backup_config, detect_servers_key, find_client_config, find_dxt_extension, is_dxt_wrapped, is_wrapped, list_servers, read_config, write_config};
+use super::{
+    backup_config, detect_servers_key, find_client_config, find_dxt_extension, is_dxt_wrapped,
+    is_wrapped, list_servers, read_config, write_config,
+};
 
 pub fn run(server_name: &str, client_hint: &str) -> Result<()> {
     match try_unwrap_traditional(server_name, client_hint) {
@@ -26,7 +29,9 @@ fn try_unwrap_traditional(server_name: &str, client_hint: &str) -> Result<()> {
     let servers = config
         .get_mut(servers_key)
         .and_then(|s| s.as_object_mut())
-        .ok_or_else(|| anyhow::anyhow!("No MCP servers found in {}", client.config_path.display()))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("No MCP servers found in {}", client.config_path.display())
+        })?;
 
     let server = match servers.get_mut(server_name) {
         Some(s) => s,
@@ -36,7 +41,11 @@ fn try_unwrap_traditional(server_name: &str, client_hint: &str) -> Result<()> {
                 "Server \"{}\" not found in {}.\n\nAvailable servers:\n{}",
                 server_name,
                 client.display_name,
-                available.iter().map(|s| format!("  - {s}")).collect::<Vec<_>>().join("\n"),
+                available
+                    .iter()
+                    .map(|s| format!("  - {s}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             );
         }
     };
@@ -72,7 +81,10 @@ fn try_unwrap_traditional(server_name: &str, client_hint: &str) -> Result<()> {
     println!("Unwrapped \"{}\" in {}", server_name, client.display_name);
     println!();
     println!("The original MCP server configuration has been restored.");
-    println!("Restart {} for changes to take effect.", client.display_name);
+    println!(
+        "Restart {} for changes to take effect.",
+        client.display_name
+    );
 
     Ok(())
 }
@@ -95,7 +107,10 @@ fn unwrap_dxt_extension(ext: &super::DxtExtension, _server_name: &str) -> Result
     }
 
     let mcp_config = root
-        .pointer_mut(&format!("/extensions/{}/manifest/server/mcp_config", ext.id))
+        .pointer_mut(&format!(
+            "/extensions/{}/manifest/server/mcp_config",
+            ext.id
+        ))
         .ok_or_else(|| anyhow::anyhow!("DXT extension \"{}\" has no mcp_config", ext.id))?;
 
     let original = mcp_config
@@ -155,7 +170,9 @@ mod tests {
         server.remove("_clawdefender_original");
 
         assert_eq!(config["mcpServers"]["test-server"]["command"], "npx");
-        let args = config["mcpServers"]["test-server"]["args"].as_array().unwrap();
+        let args = config["mcpServers"]["test-server"]["args"]
+            .as_array()
+            .unwrap();
         assert_eq!(args.len(), 2);
         assert_eq!(args[0], "-y");
         assert_eq!(args[1], "@mcp/server");
@@ -282,7 +299,9 @@ mod tests {
 
         // Verify it's wrapped.
         let root: serde_json::Value = read_config(&path).unwrap();
-        assert!(is_dxt_wrapped(root.pointer("/extensions/com.example.unwrap-test").unwrap()));
+        assert!(is_dxt_wrapped(
+            root.pointer("/extensions/com.example.unwrap-test").unwrap()
+        ));
 
         // Simulate unwrap.
         let mut root: serde_json::Value = read_config(&path).unwrap();
@@ -299,11 +318,17 @@ mod tests {
 
         // Verify restored.
         let result: serde_json::Value = read_config(&path).unwrap();
-        let mcp = result.pointer("/extensions/com.example.unwrap-test/manifest/server/mcp_config").unwrap();
+        let mcp = result
+            .pointer("/extensions/com.example.unwrap-test/manifest/server/mcp_config")
+            .unwrap();
         assert_eq!(mcp["command"], "node");
         assert_eq!(mcp["args"], json!(["server.js", "--port", "3000"]));
         assert_eq!(mcp["env"]["NODE_ENV"], "production");
-        assert!(!is_dxt_wrapped(result.pointer("/extensions/com.example.unwrap-test").unwrap()));
+        assert!(!is_dxt_wrapped(
+            result
+                .pointer("/extensions/com.example.unwrap-test")
+                .unwrap()
+        ));
     }
 
     /// Legacy _clawai_original key should be handled by unwrap.
@@ -322,7 +347,9 @@ mod tests {
             }
         });
 
-        let server = config["mcpServers"]["legacy-server"].as_object_mut().unwrap();
+        let server = config["mcpServers"]["legacy-server"]
+            .as_object_mut()
+            .unwrap();
         assert!(is_wrapped(&serde_json::Value::Object(server.clone())));
 
         // Simulate unwrap logic: check _clawdefender_original first, then _clawai_original.

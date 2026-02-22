@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::ipc_client::DaemonIpcClient;
@@ -298,6 +299,16 @@ pub struct NetworkSettings {
     pub log_dns: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ScanTracker {
+    pub status: String,
+    pub progress_percent: f64,
+    pub modules_completed: u32,
+    pub modules_total: u32,
+    pub findings_count: u32,
+    pub current_module: Option<String>,
+}
+
 /// Maximum number of events to keep in the buffer to prevent unbounded memory growth.
 const MAX_EVENT_BUFFER: usize = 10_000;
 
@@ -319,6 +330,8 @@ pub struct AppState {
     pub ipc_client: DaemonIpcClient,
     /// Whether the daemon was started by this GUI instance (for clean shutdown).
     pub daemon_started_by_gui: Mutex<bool>,
+    /// Active and completed scan trackers, keyed by scan ID.
+    pub active_scans: Mutex<HashMap<String, ScanTracker>>,
 }
 
 impl AppState {
@@ -378,6 +391,7 @@ impl Default for AppState {
             onboarding_complete: Mutex::new(Self::load_onboarding_state()),
             ipc_client: DaemonIpcClient::new(),
             daemon_started_by_gui: Mutex::new(false),
+            active_scans: Mutex::new(HashMap::new()),
         }
     }
 }

@@ -241,7 +241,8 @@ impl SlmEngine {
         self.total_inferences.fetch_add(1, Ordering::Relaxed);
         self.total_tokens
             .fetch_add(response.tokens_used as u64, Ordering::Relaxed);
-        self.total_latency_ms.fetch_add(latency_ms, Ordering::Relaxed);
+        self.total_latency_ms
+            .fetch_add(latency_ms, Ordering::Relaxed);
         self.last_latency_ms.store(latency_ms, Ordering::Relaxed);
 
         Ok(response)
@@ -342,9 +343,8 @@ impl Default for MockSlmBackend {
             model_name: "mock-model-q4".to_string(),
             model_size: 1_000_000,
             gpu: false,
-            response_text:
-                "RISK: low\nCONFIDENCE: 0.9\nEXPLANATION: This operation appears safe."
-                    .to_string(),
+            response_text: "RISK: low\nCONFIDENCE: 0.9\nEXPLANATION: This operation appears safe."
+                .to_string(),
             latency: std::time::Duration::from_millis(5),
         }
     }
@@ -511,18 +511,13 @@ mod tests {
             latency: std::time::Duration::from_secs(10),
             ..Default::default()
         };
-        let engine = std::sync::Arc::new(SlmEngine::new(
-            Box::new(backend),
-            SlmConfig::default(),
-        ));
+        let engine = std::sync::Arc::new(SlmEngine::new(Box::new(backend), SlmConfig::default()));
 
         // Spawn 1 (running) + MAX_QUEUED (waiting) tasks to fill capacity.
         let mut handles = Vec::new();
         for _ in 0..=MAX_QUEUED {
             let eng = engine.clone();
-            handles.push(tokio::spawn(async move {
-                eng.infer("fill").await
-            }));
+            handles.push(tokio::spawn(async move { eng.infer("fill").await }));
         }
 
         // Give tasks time to acquire permits.

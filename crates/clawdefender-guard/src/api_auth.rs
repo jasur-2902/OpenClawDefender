@@ -34,10 +34,7 @@ pub fn validate_bearer_token(auth_header: &str, expected_token: &str) -> bool {
 
 /// Extract and validate the bearer token from an HTTP request's headers.
 /// Returns Ok(()) if valid, Err(message) if invalid.
-pub fn authenticate(
-    auth_header: Option<&str>,
-    expected_token: &str,
-) -> Result<(), &'static str> {
+pub fn authenticate(auth_header: Option<&str>, expected_token: &str) -> Result<(), &'static str> {
     match auth_header {
         None => Err("missing Authorization header"),
         Some(header) => {

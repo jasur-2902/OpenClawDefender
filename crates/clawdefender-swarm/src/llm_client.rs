@@ -97,10 +97,7 @@ impl HttpLlmClient {
             anyhow::bail!("Anthropic API returned {status}");
         }
 
-        let resp_body: AnthropicResponse = resp
-            .error_for_status()?
-            .json()
-            .await?;
+        let resp_body: AnthropicResponse = resp.error_for_status()?.json().await?;
 
         let content = resp_body
             .content
@@ -154,10 +151,7 @@ impl HttpLlmClient {
             anyhow::bail!("OpenAI API returned {status}");
         }
 
-        let resp_body: OpenAiResponse = resp
-            .error_for_status()?
-            .json()
-            .await?;
+        let resp_body: OpenAiResponse = resp.error_for_status()?.json().await?;
 
         let content = resp_body
             .choices

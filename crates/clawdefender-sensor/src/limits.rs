@@ -105,7 +105,10 @@ fn estimate_rss_mb() -> usize {
     use sysinfo::{ProcessesToUpdate, System};
     let pid = std::process::id();
     let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]), true);
+    sys.refresh_processes(
+        ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]),
+        true,
+    );
     sys.process(sysinfo::Pid::from_u32(pid))
         .map(|p| (p.memory() / (1024 * 1024)) as usize)
         .unwrap_or(0)

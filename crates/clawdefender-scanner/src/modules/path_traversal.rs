@@ -20,14 +20,10 @@ const SENSITIVE_TARGETS: &[(&str, Severity, f64)] = &[
 ];
 
 /// Keywords that indicate a tool handles files.
-const FILE_TOOL_KEYWORDS: &[&str] = &[
-    "file", "read", "write", "edit", "search", "list",
-];
+const FILE_TOOL_KEYWORDS: &[&str] = &["file", "read", "write", "edit", "search", "list"];
 
 /// Parameter names that indicate a path-like argument.
-const PATH_PARAM_NAMES: &[&str] = &[
-    "path", "file", "directory", "filename", "filepath", "dir",
-];
+const PATH_PARAM_NAMES: &[&str] = &["path", "file", "directory", "filename", "filepath", "dir"];
 
 #[derive(Default)]
 pub struct PathTraversalModule;
@@ -263,11 +259,7 @@ impl ScanModule for PathTraversalModule {
             let absolute_paths: Vec<(String, Severity, f64)> = vec![
                 ("/etc/passwd".to_string(), Severity::High, 7.0),
                 ("/etc/hosts".to_string(), Severity::High, 7.0),
-                (
-                    ssh_key_abs.display().to_string(),
-                    Severity::Critical,
-                    9.1,
-                ),
+                (ssh_key_abs.display().to_string(), Severity::Critical, 9.1),
             ];
             for (tpath, severity, cvss) in &absolute_paths {
                 let args = json!({ &param_name: tpath });
@@ -408,10 +400,7 @@ impl ScanModule for PathTraversalModule {
                             let fid = next_finding_id(&mut id_counters, severity);
                             findings.push(Finding {
                                 id: fid,
-                                title: format!(
-                                    "Case-insensitive path bypass via {}",
-                                    tool_name
-                                ),
+                                title: format!("Case-insensitive path bypass via {}", tool_name),
                                 severity: *severity,
                                 cvss: *cvss,
                                 category: ModuleCategory::PathTraversal,
@@ -482,11 +471,7 @@ fn detect_file_tools(tools: &[ToolInfo]) -> Vec<&ToolInfo> {
 fn find_path_param(schema: &Value) -> Option<String> {
     let properties = schema
         .get("properties")
-        .or_else(|| {
-            schema
-                .get("inputSchema")
-                .and_then(|s| s.get("properties"))
-        })?;
+        .or_else(|| schema.get("inputSchema").and_then(|s| s.get("properties")))?;
 
     if let Value::Object(props) = properties {
         for key in props.keys() {
@@ -656,7 +641,10 @@ mod tests {
     #[test]
     fn test_check_response_for_data_clean() {
         let response = json!({ "result": { "content": [{ "text": "normal file content" }] } });
-        let canaries = vec!["CANARY_SSH_KEY_CONTENT_DO_NOT_EXFILTRATE", "CANARY_AWS_ACCESS_KEY"];
+        let canaries = vec![
+            "CANARY_SSH_KEY_CONTENT_DO_NOT_EXFILTRATE",
+            "CANARY_AWS_ACCESS_KEY",
+        ];
         let detected = check_response_for_data(&response, &canaries);
         assert!(detected.is_empty());
     }
@@ -664,11 +652,20 @@ mod tests {
     #[test]
     fn test_finding_id_generation() {
         let mut counters = HashMap::new();
-        assert_eq!(next_finding_id(&mut counters, &Severity::Critical), "CRIT-001");
-        assert_eq!(next_finding_id(&mut counters, &Severity::Critical), "CRIT-002");
+        assert_eq!(
+            next_finding_id(&mut counters, &Severity::Critical),
+            "CRIT-001"
+        );
+        assert_eq!(
+            next_finding_id(&mut counters, &Severity::Critical),
+            "CRIT-002"
+        );
         assert_eq!(next_finding_id(&mut counters, &Severity::High), "HIGH-001");
         assert_eq!(next_finding_id(&mut counters, &Severity::Medium), "MED-001");
-        assert_eq!(next_finding_id(&mut counters, &Severity::Critical), "CRIT-003");
+        assert_eq!(
+            next_finding_id(&mut counters, &Severity::Critical),
+            "CRIT-003"
+        );
     }
 
     #[test]
@@ -733,7 +730,11 @@ mod tests {
                 }]
             }
         });
-        let canaries = vec!["CANARY_AWS_ACCESS_KEY", "CANARY_AWS_SECRET_KEY", "CANARY_OTHER"];
+        let canaries = vec![
+            "CANARY_AWS_ACCESS_KEY",
+            "CANARY_AWS_SECRET_KEY",
+            "CANARY_OTHER",
+        ];
         let detected = check_response_for_data(&response, &canaries);
         assert_eq!(detected.len(), 2);
     }

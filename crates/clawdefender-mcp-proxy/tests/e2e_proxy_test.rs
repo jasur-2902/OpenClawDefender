@@ -353,7 +353,10 @@ async fn test_message_ordering() {
             "response id mismatch: expected {i}, got {}",
             resp["id"]
         );
-        assert!(resp["result"].is_object(), "expected result for request {i}");
+        assert!(
+            resp["result"].is_object(),
+            "expected result for request {i}"
+        );
     }
 
     h.shutdown().await;

@@ -182,8 +182,7 @@ impl NetworkTrafficStats {
             period: period.to_string(),
         };
 
-        let mut unique_dests: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut unique_dests: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for log in logs {
             if log.server_name.as_deref() != Some(server_name) {
@@ -260,7 +259,14 @@ mod tests {
 
     #[test]
     fn test_network_connection_log_serialization() {
-        let log = make_log("allowed", "93.184.216.34", Some("example.com"), Some("filesystem"), 1024, 2048);
+        let log = make_log(
+            "allowed",
+            "93.184.216.34",
+            Some("example.com"),
+            Some("filesystem"),
+            1024,
+            2048,
+        );
 
         let json = serde_json::to_string(&log).unwrap();
         assert!(json.contains("network_connection"));
@@ -269,7 +275,10 @@ mod tests {
 
         let deserialized: NetworkConnectionLog = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.event_type, "network_connection");
-        assert_eq!(deserialized.connection.destination_domain.as_deref(), Some("example.com"));
+        assert_eq!(
+            deserialized.connection.destination_domain.as_deref(),
+            Some("example.com")
+        );
         assert_eq!(deserialized.decision.action, "allowed");
         assert_eq!(deserialized.bytes_sent, 1024);
         assert_eq!(deserialized.bytes_received, 2048);
@@ -313,10 +322,31 @@ mod tests {
     #[test]
     fn test_network_summary_aggregation() {
         let logs = vec![
-            make_log("allowed", "93.184.216.34", Some("example.com"), Some("fs"), 100, 200),
-            make_log("allowed", "93.184.216.34", Some("example.com"), Some("fs"), 150, 300),
+            make_log(
+                "allowed",
+                "93.184.216.34",
+                Some("example.com"),
+                Some("fs"),
+                100,
+                200,
+            ),
+            make_log(
+                "allowed",
+                "93.184.216.34",
+                Some("example.com"),
+                Some("fs"),
+                150,
+                300,
+            ),
             make_log("blocked", "10.0.0.1", None, Some("fs"), 0, 0),
-            make_log("prompted", "172.16.0.1", Some("internal.corp"), Some("gh"), 50, 100),
+            make_log(
+                "prompted",
+                "172.16.0.1",
+                Some("internal.corp"),
+                Some("gh"),
+                50,
+                100,
+            ),
         ];
 
         let summary = NetworkSummary::from_logs(&logs, "last_24h");
@@ -342,10 +372,31 @@ mod tests {
     #[test]
     fn test_traffic_stats_per_server() {
         let logs = vec![
-            make_log("allowed", "1.1.1.1", Some("api.github.com"), Some("github"), 500, 1000),
-            make_log("allowed", "1.1.1.2", Some("cdn.github.com"), Some("github"), 200, 5000),
+            make_log(
+                "allowed",
+                "1.1.1.1",
+                Some("api.github.com"),
+                Some("github"),
+                500,
+                1000,
+            ),
+            make_log(
+                "allowed",
+                "1.1.1.2",
+                Some("cdn.github.com"),
+                Some("github"),
+                200,
+                5000,
+            ),
             make_log("blocked", "10.0.0.1", None, Some("github"), 0, 0),
-            make_log("allowed", "93.184.216.34", Some("example.com"), Some("filesystem"), 100, 200),
+            make_log(
+                "allowed",
+                "93.184.216.34",
+                Some("example.com"),
+                Some("filesystem"),
+                100,
+                200,
+            ),
         ];
 
         let stats = NetworkTrafficStats::from_logs(&logs, "github", "last_24h");
@@ -361,9 +412,14 @@ mod tests {
 
     #[test]
     fn test_traffic_stats_no_matching_server() {
-        let logs = vec![
-            make_log("allowed", "1.1.1.1", None, Some("other"), 100, 200),
-        ];
+        let logs = vec![make_log(
+            "allowed",
+            "1.1.1.1",
+            None,
+            Some("other"),
+            100,
+            200,
+        )];
 
         let stats = NetworkTrafficStats::from_logs(&logs, "nonexistent", "last_24h");
         assert_eq!(stats.total_connections, 0);

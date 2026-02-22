@@ -2,8 +2,8 @@
 
 use tracing::{info, warn};
 
-use crate::types::{ActionResult, GuardStatus};
 use crate::fallback::FallbackEngine;
+use crate::types::{ActionResult, GuardStatus};
 
 /// Result of a single self-test check.
 #[derive(Debug)]

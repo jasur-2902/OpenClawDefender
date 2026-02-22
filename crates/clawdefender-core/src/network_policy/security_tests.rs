@@ -234,9 +234,7 @@ fn security_pid_zero_handled_gracefully() {
     let request = agent_request(0, Some(ip4(93, 184, 216, 34)), Some("example.com"), 443);
     let decision = engine.evaluate(&request, &no_signals());
     // Should not panic — PID 0 is unusual but engine should handle it.
-    assert!(
-        decision.action == NetworkAction::Prompt || decision.action == NetworkAction::Allow
-    );
+    assert!(decision.action == NetworkAction::Prompt || decision.action == NetworkAction::Allow);
 }
 
 #[test]

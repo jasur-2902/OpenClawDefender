@@ -67,10 +67,7 @@ impl ModelManager {
             if path.extension().and_then(|e| e.to_str()) == Some("gguf") {
                 let metadata = entry.metadata()?;
                 installed.push(InstalledModel {
-                    filename: entry
-                        .file_name()
-                        .to_string_lossy()
-                        .to_string(),
+                    filename: entry.file_name().to_string_lossy().to_string(),
                     path,
                     size_bytes: metadata.len(),
                 });
@@ -103,11 +100,7 @@ impl ModelManager {
     ///
     /// Only available when the `download` feature is enabled.
     #[cfg(feature = "download")]
-    pub async fn download<F>(
-        &self,
-        model: &ModelInfo,
-        progress: F,
-    ) -> Result<PathBuf>
+    pub async fn download<F>(&self, model: &ModelInfo, progress: F) -> Result<PathBuf>
     where
         F: Fn(u64, u64) + Send + 'static,
     {

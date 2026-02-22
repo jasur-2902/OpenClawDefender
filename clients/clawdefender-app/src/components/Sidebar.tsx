@@ -85,7 +85,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-4 py-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-secondary)]">
-        v0.10.0
+        v0.3.0-beta
       </div>
     </aside>
   );

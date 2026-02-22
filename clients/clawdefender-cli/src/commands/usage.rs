@@ -53,7 +53,12 @@ pub fn run(detail: bool, reset: bool) -> anyhow::Result<()> {
         for r in &records {
             println!(
                 "{:<22} {:<12} {:<30} {:>8} {:>8} ${:>9.6}",
-                r.timestamp, r.provider, r.model, r.input_tokens, r.output_tokens, r.estimated_cost_usd
+                r.timestamp,
+                r.provider,
+                r.model,
+                r.input_tokens,
+                r.output_tokens,
+                r.estimated_cost_usd
             );
         }
         return Ok(());

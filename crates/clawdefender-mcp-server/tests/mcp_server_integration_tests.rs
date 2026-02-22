@@ -454,7 +454,9 @@ async fn ping_returns_empty_result() {
 #[tokio::test]
 async fn invalid_json_returns_parse_error() {
     let (server, _) = make_server(default_policy());
-    let resp = protocol::handle_message(&server, "not valid json").await.unwrap();
+    let resp = protocol::handle_message(&server, "not valid json")
+        .await
+        .unwrap();
     let v: Value = serde_json::from_str(&resp).unwrap();
 
     assert_eq!(v["error"]["code"], -32700); // PARSE_ERROR

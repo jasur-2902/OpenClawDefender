@@ -212,7 +212,13 @@ fn find_files_recursive(dir: &Path, name: &str, max_depth: u32) -> Vec<PathBuf> 
     results
 }
 
-fn find_files_inner(dir: &Path, name: &str, depth: u32, max_depth: u32, results: &mut Vec<PathBuf>) {
+fn find_files_inner(
+    dir: &Path,
+    name: &str,
+    depth: u32,
+    max_depth: u32,
+    results: &mut Vec<PathBuf>,
+) {
     if depth > max_depth {
         return;
     }
@@ -235,13 +241,22 @@ fn find_files_inner(dir: &Path, name: &str, depth: u32, max_depth: u32, results:
 }
 
 fn collect_source_files(dir: &Path, max_depth: u32) -> Vec<PathBuf> {
-    let extensions = ["js", "ts", "py", "rb", "go", "rs", "java", "env", "cfg", "ini", "toml", "yaml", "yml", "json", "sh"];
+    let extensions = [
+        "js", "ts", "py", "rb", "go", "rs", "java", "env", "cfg", "ini", "toml", "yaml", "yml",
+        "json", "sh",
+    ];
     let mut results = Vec::new();
     collect_source_inner(dir, &extensions, 0, max_depth, &mut results);
     results
 }
 
-fn collect_source_inner(dir: &Path, extensions: &[&str], depth: u32, max_depth: u32, results: &mut Vec<PathBuf>) {
+fn collect_source_inner(
+    dir: &Path,
+    extensions: &[&str],
+    depth: u32,
+    max_depth: u32,
+    results: &mut Vec<PathBuf>,
+) {
     if depth > max_depth {
         return;
     }
@@ -328,7 +343,12 @@ impl ScanModule for DependencyAuditModule {
         check_deprecated_runtimes(&mut findings, &mut id_counter);
 
         // 4. Manifest audit
-        check_manifest(&sandbox_root, &ctx.tool_list, &mut findings, &mut id_counter);
+        check_manifest(
+            &sandbox_root,
+            &ctx.tool_list,
+            &mut findings,
+            &mut id_counter,
+        );
 
         Ok(findings)
     }
@@ -367,7 +387,11 @@ fn try_npm_audit(project_dir: &Path, id_counter: &mut u32) -> Option<Vec<Finding
     parse_npm_audit_json(&stdout, project_dir, id_counter)
 }
 
-fn parse_npm_audit_json(json_str: &str, project_dir: &Path, id_counter: &mut u32) -> Option<Vec<Finding>> {
+fn parse_npm_audit_json(
+    json_str: &str,
+    project_dir: &Path,
+    id_counter: &mut u32,
+) -> Option<Vec<Finding>> {
     let audit: NpmAuditOutput = serde_json::from_str(json_str).ok()?;
     let mut findings = Vec::new();
 
@@ -415,7 +439,10 @@ fn parse_npm_audit_json(json_str: &str, project_dir: &Path, id_counter: &mut u32
         }
 
         let remediation = if has_fix {
-            format!("Run `npm audit fix` in {} to update to a patched version.", project_dir.display())
+            format!(
+                "Run `npm audit fix` in {} to update to a patched version.",
+                project_dir.display()
+            )
         } else {
             format!(
                 "No fix is currently available for {}. Consider finding an alternative package or monitoring for updates.",
@@ -507,7 +534,8 @@ fn scan_python_deps(root: &Path, findings: &mut Vec<Finding>, id_counter: &mut u
                      and pip-audit is not available.",
                     path.display()
                 ),
-                "Generate requirements.txt and run pip-audit to check for vulnerabilities.".to_string(),
+                "Generate requirements.txt and run pip-audit to check for vulnerabilities."
+                    .to_string(),
                 vec![format!("Dependency file at {}", path.display())],
             ));
         }
@@ -525,7 +553,11 @@ fn try_pip_audit(project_dir: &Path, id_counter: &mut u32) -> Option<Vec<Finding
     parse_pip_audit_json(&stdout, project_dir, id_counter)
 }
 
-fn parse_pip_audit_json(json_str: &str, project_dir: &Path, id_counter: &mut u32) -> Option<Vec<Finding>> {
+fn parse_pip_audit_json(
+    json_str: &str,
+    project_dir: &Path,
+    id_counter: &mut u32,
+) -> Option<Vec<Finding>> {
     let entries: Vec<PipAuditEntry> = serde_json::from_str(json_str).ok()?;
     let mut findings = Vec::new();
 
@@ -544,7 +576,9 @@ fn parse_pip_audit_json(json_str: &str, project_dir: &Path, id_counter: &mut u32
                 entry.name,
                 entry.version,
                 vuln.id,
-                vuln.description.as_deref().unwrap_or("No description available.")
+                vuln.description
+                    .as_deref()
+                    .unwrap_or("No description available.")
             );
 
             let remediation = if has_fix {
@@ -649,11 +683,7 @@ fn check_running_as_root(findings: &mut Vec<Finding>, id_counter: &mut u32) {
     }
 }
 
-fn check_world_writable_files(
-    root: &Path,
-    findings: &mut Vec<Finding>,
-    id_counter: &mut u32,
-) {
+fn check_world_writable_files(root: &Path, findings: &mut Vec<Finding>, id_counter: &mut u32) {
     let writable = check_world_writable(root, 4);
     for path in writable {
         findings.push(make_finding(
@@ -677,11 +707,7 @@ fn check_world_writable_files(
     }
 }
 
-fn check_hardcoded_secrets(
-    root: &Path,
-    findings: &mut Vec<Finding>,
-    id_counter: &mut u32,
-) {
+fn check_hardcoded_secrets(root: &Path, findings: &mut Vec<Finding>, id_counter: &mut u32) {
     let source_files = collect_source_files(root, 5);
     let compiled_patterns: Vec<(&SecretPattern, Regex)> = SECRET_PATTERNS
         .iter()
@@ -706,7 +732,11 @@ fn check_hardcoded_secrets(
 
                 findings.push(make_finding(
                     id_counter,
-                    format!("Hardcoded secret: {} in {}", pattern.name, file_path.file_name().unwrap_or_default().to_string_lossy()),
+                    format!(
+                        "Hardcoded secret: {} in {}",
+                        pattern.name,
+                        file_path.file_name().unwrap_or_default().to_string_lossy()
+                    ),
                     Severity::High,
                     pattern.cvss,
                     ModuleCategory::Configuration,
@@ -793,10 +823,7 @@ fn check_manifest(
     };
 
     // Check declared tools vs actual tools
-    if let Some(declared_tools) = manifest
-        .get("tools")
-        .and_then(|t| t.as_array())
-    {
+    if let Some(declared_tools) = manifest.get("tools").and_then(|t| t.as_array()) {
         let declared_names: Vec<&str> = declared_tools
             .iter()
             .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
@@ -1007,7 +1034,10 @@ fn parse_toml_value(s: &str) -> Value {
         if inner.is_empty() {
             return Value::Array(Vec::new());
         }
-        let items: Vec<Value> = inner.split(',').map(|i| parse_toml_value(i.trim())).collect();
+        let items: Vec<Value> = inner
+            .split(',')
+            .map(|i| parse_toml_value(i.trim()))
+            .collect();
         return Value::Array(items);
     }
     // Fallback: string
@@ -1104,7 +1134,12 @@ mod tests {
         let content = "# requirements\nflask==2.0.1\nrequests>=2.25.0\n-e git+https://example.com\n\ndjango==3.2.0\n";
         let mut findings = Vec::new();
         let mut id_counter = 1;
-        parse_requirements_txt(content, Path::new("/test/requirements.txt"), &mut findings, &mut id_counter);
+        parse_requirements_txt(
+            content,
+            Path::new("/test/requirements.txt"),
+            &mut findings,
+            &mut id_counter,
+        );
         assert_eq!(findings.len(), 1);
         assert!(findings[0].description.contains("flask==2.0.1"));
         assert!(findings[0].description.contains("requests==2.25.0"));
@@ -1167,10 +1202,10 @@ mod tests {
     fn test_eol_node_versions() {
         assert!(is_eol_node("v14.21.3")); // Even < 18 = EOL
         assert!(is_eol_node("v16.20.0")); // Even < 18 = EOL
-        assert!(is_eol_node("v17.9.1"));  // Odd = always EOL
+        assert!(is_eol_node("v17.9.1")); // Odd = always EOL
         assert!(!is_eol_node("v18.19.0")); // LTS, still supported
         assert!(!is_eol_node("v20.10.0")); // LTS, still supported
-        assert!(is_eol_node("v15.0.0"));   // Odd = EOL
+        assert!(is_eol_node("v15.0.0")); // Odd = EOL
     }
 
     #[test]
@@ -1291,12 +1326,12 @@ scope = "**"
             Some("read_file")
         );
 
-        let perms = parsed.get("permissions").and_then(|p| p.as_array()).unwrap();
+        let perms = parsed
+            .get("permissions")
+            .and_then(|p| p.as_array())
+            .unwrap();
         assert_eq!(perms.len(), 1);
-        assert_eq!(
-            perms[0].get("scope").and_then(|s| s.as_str()),
-            Some("**")
-        );
+        assert_eq!(perms[0].get("scope").and_then(|s| s.as_str()), Some("**"));
     }
 
     #[test]

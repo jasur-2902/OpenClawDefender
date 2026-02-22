@@ -58,12 +58,7 @@ const HIGH_PREFIXES: &[&str] = &[
     "Library/LaunchAgents",
 ];
 
-const HIGH_EXACT: &[&str] = &[
-    ".bashrc",
-    ".bash_profile",
-    ".zshrc",
-    ".zprofile",
-];
+const HIGH_EXACT: &[&str] = &[".bashrc", ".bash_profile", ".zshrc", ".zprofile"];
 
 /// Classify a path into a sensitivity tier.
 pub fn classify_path(path: &Path, project_root: Option<&Path>) -> SensitivityTier {
@@ -259,8 +254,8 @@ impl FsWatcher {
     pub fn watch(&mut self, paths: &[PathBuf]) -> Result<mpsc::Receiver<FsEvent>> {
         let (tx, rx) = mpsc::channel(256);
 
-        let watcher = notify::recommended_watcher(move |res: notify::Result<NotifyEvent>| {
-            match res {
+        let watcher =
+            notify::recommended_watcher(move |res: notify::Result<NotifyEvent>| match res {
                 Ok(event) => {
                     if let Some(fs_kind) = convert_event_kind(&event.kind) {
                         for path in &event.paths {
@@ -278,9 +273,8 @@ impl FsWatcher {
                 Err(e) => {
                     tracing::warn!(error = %e, "filesystem watcher error");
                 }
-            }
-        })
-        .context("failed to create filesystem watcher")?;
+            })
+            .context("failed to create filesystem watcher")?;
 
         self.watcher = Some(watcher);
 
@@ -344,13 +338,12 @@ impl EnhancedFsWatcher {
 
         let project_root = self.project_root.clone();
 
-        let watcher = notify::recommended_watcher(move |res: notify::Result<NotifyEvent>| {
-            match res {
+        let watcher =
+            notify::recommended_watcher(move |res: notify::Result<NotifyEvent>| match res {
                 Ok(event) => {
                     if let Some(fs_kind) = convert_event_kind(&event.kind) {
                         for path in &event.paths {
-                            let sensitivity =
-                                classify_path(path, project_root.as_deref());
+                            let sensitivity = classify_path(path, project_root.as_deref());
                             let fs_event = FsEvent {
                                 path: path.clone(),
                                 kind: fs_kind.clone(),
@@ -365,9 +358,8 @@ impl EnhancedFsWatcher {
                 Err(e) => {
                     tracing::warn!(error = %e, "filesystem watcher error");
                 }
-            }
-        })
-        .context("failed to create enhanced filesystem watcher")?;
+            })
+            .context("failed to create enhanced filesystem watcher")?;
 
         self.watcher = Some(watcher);
 
@@ -385,8 +377,14 @@ impl EnhancedFsWatcher {
         let rate_threshold = self.rate_threshold;
         let sample_ratio = self.sample_ratio;
         tokio::spawn(async move {
-            run_debounce_pipeline(raw_rx, out_tx, debounce_window, rate_threshold, sample_ratio)
-                .await;
+            run_debounce_pipeline(
+                raw_rx,
+                out_tx,
+                debounce_window,
+                rate_threshold,
+                sample_ratio,
+            )
+            .await;
         });
 
         Ok(out_rx)

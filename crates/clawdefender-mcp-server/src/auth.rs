@@ -86,10 +86,7 @@ mod tests {
 
     #[test]
     fn validate_correct_token() {
-        assert!(validate_bearer_token(
-            "Bearer abc123def456",
-            "abc123def456"
-        ));
+        assert!(validate_bearer_token("Bearer abc123def456", "abc123def456"));
     }
 
     #[test]

@@ -363,7 +363,10 @@ mod tests {
         assert_eq!(engine.pending_count(), 0);
 
         // One matched, one uncorrelated
-        let matched = results.iter().filter(|r| r.status == CorrelationStatus::Matched).count();
+        let matched = results
+            .iter()
+            .filter(|r| r.status == CorrelationStatus::Matched)
+            .count();
         let uncorrelated = results
             .iter()
             .filter(|r| r.status == CorrelationStatus::Uncorrelated)

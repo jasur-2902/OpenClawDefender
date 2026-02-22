@@ -191,7 +191,11 @@ async fn send_message_handler(
         }
     };
 
-    match state.chat_manager.send_message(&session_id, &body.message).await {
+    match state
+        .chat_manager
+        .send_message(&session_id, &body.message)
+        .await
+    {
         Ok(content) => Json(SendMessageResponse { content }).into_response(),
         Err(e) => {
             let msg = format!("{e}");
@@ -210,14 +214,13 @@ async fn chat_page_handler(
     Path(event_id): Path<String>,
 ) -> impl IntoResponse {
     // Load session info if it exists
-    let (event_summary, swarm_verdict) =
-        match state.chat_manager.find_session_by_event(&event_id) {
-            Ok(Some(session_id)) => match state.chat_manager.get_session(&session_id) {
-                Ok(s) => (s.event_summary, s.swarm_verdict),
-                Err(_) => (format!("Event {}", event_id), "Unknown".to_string()),
-            },
-            _ => (format!("Event {}", event_id), "Unknown".to_string()),
-        };
+    let (event_summary, swarm_verdict) = match state.chat_manager.find_session_by_event(&event_id) {
+        Ok(Some(session_id)) => match state.chat_manager.get_session(&session_id) {
+            Ok(s) => (s.event_summary, s.swarm_verdict),
+            Err(_) => (format!("Event {}", event_id), "Unknown".to_string()),
+        },
+        _ => (format!("Event {}", event_id), "Unknown".to_string()),
+    };
 
     let html = render_chat_page(&event_id, &event_summary, &swarm_verdict);
     Html(html)

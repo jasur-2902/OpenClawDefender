@@ -16,6 +16,7 @@ import { AuditLog } from "./pages/AuditLog";
 import { SystemHealth } from "./pages/SystemHealth";
 import { ThreatIntel } from "./pages/ThreatIntel";
 import { NetworkLog } from "./pages/NetworkLog";
+import { useTheme } from "./hooks/useTheme";
 
 function TrayNavigationListener() {
   const navigate = useNavigate();
@@ -65,6 +66,8 @@ function OnboardingRedirect({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  useTheme();
+
   return (
     <BrowserRouter>
       <TrayNavigationListener />

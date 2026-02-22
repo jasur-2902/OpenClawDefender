@@ -23,14 +23,14 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
 
 use clawdefender_core::audit::AuditRecord;
-use clawdefender_core::event::mcp::{McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall};
+use clawdefender_core::event::mcp::{
+    McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall,
+};
 use clawdefender_core::ipc::protocol::UiRequest;
 use clawdefender_core::policy::engine::DefaultPolicyEngine;
 use clawdefender_core::policy::{PolicyAction, PolicyEngine};
 
-use crate::classifier::rules::{
-    classify, extract_resource_uri, extract_tool_call, Classification,
-};
+use crate::classifier::rules::{classify, extract_resource_uri, extract_tool_call, Classification};
 use crate::jsonrpc::parser::parse_message;
 use crate::jsonrpc::types::{
     JsonRpcError, JsonRpcId, JsonRpcMessage, JsonRpcResponse, POLICY_BLOCK_ERROR_CODE,
@@ -147,10 +147,7 @@ impl HttpProxy {
 }
 
 /// Handle SSE streaming -- relay without blocking.
-async fn handle_sse(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Response {
+async fn handle_sse(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let url = format!("{}/sse", state.target_url.trim_end_matches('/'));
 
     let mut req_builder = state.http_client.get(&url);
@@ -233,7 +230,11 @@ async fn handle_jsonrpc(
                     }
                     let record = build_audit_record(
                         &event,
-                        if matches!(action, PolicyAction::Log) { "log" } else { "allow" },
+                        if matches!(action, PolicyAction::Log) {
+                            "log"
+                        } else {
+                            "allow"
+                        },
                         None,
                     );
                     let _ = state.audit_tx.try_send(record);
@@ -374,10 +375,9 @@ fn make_http_block_response(request_id: &JsonRpcId, message: &str) -> Response {
 
     let mut response = Response::new(Body::from(body));
     *response.status_mut() = StatusCode::OK;
-    response.headers_mut().insert(
-        "content-type",
-        HeaderValue::from_static("application/json"),
-    );
+    response
+        .headers_mut()
+        .insert("content-type", HeaderValue::from_static("application/json"));
     response
 }
 

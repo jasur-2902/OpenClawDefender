@@ -214,8 +214,7 @@ mod tests {
 
     #[test]
     fn reject_missing_id_and_method() {
-        let result: Result<JsonRpcMessage, _> =
-            serde_json::from_str(r#"{"jsonrpc":"2.0"}"#);
+        let result: Result<JsonRpcMessage, _> = serde_json::from_str(r#"{"jsonrpc":"2.0"}"#);
         assert!(result.is_err());
     }
 
@@ -249,7 +248,10 @@ mod tests {
             }),
         });
         let json = serde_json::to_string(&original).unwrap();
-        assert!(json.contains("\"id\":null"), "null id should serialize as null");
+        assert!(
+            json.contains("\"id\":null"),
+            "null id should serialize as null"
+        );
         let parsed: JsonRpcMessage = serde_json::from_str(&json).unwrap();
         match parsed {
             JsonRpcMessage::Response(r) => {

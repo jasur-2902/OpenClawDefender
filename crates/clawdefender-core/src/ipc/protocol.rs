@@ -82,9 +82,7 @@ pub enum DaemonRequest {
     /// Unregister an MCP proxy session.
     ProxyUnregister { server_name: String },
     /// Forward an MCP event to the correlation engine.
-    McpEventForward {
-        event: crate::event::mcp::McpEvent,
-    },
+    McpEventForward { event: crate::event::mcp::McpEvent },
     /// Respond to a user prompt from the daemon.
     PromptResponse {
         event_id: String,
@@ -146,9 +144,7 @@ pub enum DaemonResponse {
         options: Vec<String>,
     },
     /// Status report of all subsystems.
-    StatusReport {
-        subsystems: Vec<SubsystemStatus>,
-    },
+    StatusReport { subsystems: Vec<SubsystemStatus> },
     /// Generic success acknowledgement.
     Ok,
     /// Error response.
@@ -168,20 +164,14 @@ pub enum DaemonResponse {
         expires_at: Option<String>,
     },
     /// Response to a ReportActionRequest.
-    ReportActionResponse {
-        recorded: bool,
-        event_id: String,
-    },
+    ReportActionResponse { recorded: bool, event_id: String },
     /// Response to a GetPolicyRequest.
     GetPolicyResponse {
         rules: Vec<serde_json::Value>,
         default_action: String,
     },
     /// Result of a network policy query.
-    NetworkPolicyResult {
-        action: String,
-        reason: String,
-    },
+    NetworkPolicyResult { action: String, reason: String },
     /// Network subsystem status report.
     NetworkStatusReport {
         extension_loaded: bool,

@@ -57,13 +57,34 @@ fn status(config: &ClawConfig) -> Result<()> {
     }
 
     println!("  Network policy engine: ENABLED");
-    println!("  Default agent action:  {}", config.network_policy.default_agent_action);
-    println!("  Prompt timeout:        {}s", config.network_policy.prompt_timeout_seconds);
-    println!("  Timeout action:        {}", config.network_policy.timeout_action);
-    println!("  Rate limit (conn/min): {}", config.network_policy.rate_limit_connections_per_min);
-    println!("  Rate limit (dest/10s): {}", config.network_policy.rate_limit_unique_dest_per_10s);
-    println!("  Block private ranges:  {}", config.network_policy.block_private_ranges);
-    println!("  Log all DNS:           {}", config.network_policy.log_all_dns);
+    println!(
+        "  Default agent action:  {}",
+        config.network_policy.default_agent_action
+    );
+    println!(
+        "  Prompt timeout:        {}s",
+        config.network_policy.prompt_timeout_seconds
+    );
+    println!(
+        "  Timeout action:        {}",
+        config.network_policy.timeout_action
+    );
+    println!(
+        "  Rate limit (conn/min): {}",
+        config.network_policy.rate_limit_connections_per_min
+    );
+    println!(
+        "  Rate limit (dest/10s): {}",
+        config.network_policy.rate_limit_unique_dest_per_10s
+    );
+    println!(
+        "  Block private ranges:  {}",
+        config.network_policy.block_private_ranges
+    );
+    println!(
+        "  Log all DNS:           {}",
+        config.network_policy.log_all_dns
+    );
     println!();
 
     // Show rule count from default engine.
@@ -71,8 +92,12 @@ fn status(config: &ClawConfig) -> Result<()> {
     println!("  Built-in rules loaded: {}", engine.rules().len());
 
     // Check if daemon is running via socket.
-    let daemon_running = std::os::unix::net::UnixStream::connect(&config.daemon_socket_path).is_ok();
-    println!("  Daemon running:        {}", if daemon_running { "yes" } else { "no" });
+    let daemon_running =
+        std::os::unix::net::UnixStream::connect(&config.daemon_socket_path).is_ok();
+    println!(
+        "  Daemon running:        {}",
+        if daemon_running { "yes" } else { "no" }
+    );
     println!("  Extension mode:        mock (system extension not installed)");
 
     Ok(())
@@ -83,10 +108,7 @@ fn log(config: &ClawConfig, blocked_only: bool) -> Result<()> {
     use clawdefender_core::audit::logger::FileAuditLogger;
     use clawdefender_core::audit::{AuditFilter, AuditLogger};
 
-    let logger = FileAuditLogger::new(
-        config.audit_log_path.clone(),
-        config.log_rotation.clone(),
-    )?;
+    let logger = FileAuditLogger::new(config.audit_log_path.clone(), config.log_rotation.clone())?;
 
     let filter = AuditFilter {
         source: Some("network".to_string()),
@@ -117,15 +139,8 @@ fn log(config: &ClawConfig, blocked_only: bool) -> Result<()> {
 
     for record in &records {
         let ts = record.timestamp.format("%Y-%m-%d %H:%M:%S");
-        let dest = record
-            .event_summary
-            .chars()
-            .take(40)
-            .collect::<String>();
-        let reason = record
-            .rule_matched
-            .as_deref()
-            .unwrap_or("-");
+        let dest = record.event_summary.chars().take(40).collect::<String>();
+        let reason = record.rule_matched.as_deref().unwrap_or("-");
         println!(
             "{:<20} {:<8} {:<40} {:<10}",
             ts, record.action_taken, dest, reason
@@ -176,7 +191,11 @@ fn rules(config: &ClawConfig) -> Result<()> {
         _ => NetworkAction::Prompt,
     };
 
-    let engine = NetworkPolicyEngine::new(Vec::new(), default_action.clone(), RateLimitConfig::default());
+    let engine = NetworkPolicyEngine::new(
+        Vec::new(),
+        default_action.clone(),
+        RateLimitConfig::default(),
+    );
     let rules = engine.rules();
 
     println!("Network Policy Rules ({} loaded)", rules.len());

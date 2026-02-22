@@ -56,9 +56,7 @@ pub fn default_metadata_path() -> PathBuf {
 /// Check if an update is available by comparing installed vs latest version.
 pub fn check_for_update(installed: &str, latest: &str) -> Option<String> {
     if super::detect::version_less_than(installed, latest) {
-        Some(format!(
-            "Update available: {installed} -> {latest}"
-        ))
+        Some(format!("Update available: {installed} -> {latest}"))
     } else {
         None
     }

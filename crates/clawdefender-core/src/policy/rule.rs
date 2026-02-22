@@ -39,7 +39,10 @@ impl PolicyRule {
         if let Some(ref tool_names) = criteria.tool_names {
             has_any_criterion = true;
             if let Some(ref event_tool) = ctx.tool_name {
-                if !tool_names.iter().any(|pat| pattern_matches(pat, event_tool)) {
+                if !tool_names
+                    .iter()
+                    .any(|pat| pattern_matches(pat, event_tool))
+                {
                     return false;
                 }
             } else {
@@ -55,11 +58,17 @@ impl PolicyRule {
                 let canonical = match canonicalize_path(event_path) {
                     Ok(p) => p,
                     Err(e) => {
-                        warn!("path canonicalization failed for '{}': {e}, rejecting match", event_path);
+                        warn!(
+                            "path canonicalization failed for '{}': {e}, rejecting match",
+                            event_path
+                        );
                         return false;
                     }
                 };
-                if !resource_paths.iter().any(|pat| glob_matches(pat, &canonical)) {
+                if !resource_paths
+                    .iter()
+                    .any(|pat| glob_matches(pat, &canonical))
+                {
                     return false;
                 }
             } else {
@@ -109,9 +118,9 @@ mod glob_cache {
     pub fn glob_matches_cached(pattern: &str, value: &str) -> bool {
         CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
-            let entry = cache.entry(pattern.to_string()).or_insert_with(|| {
-                GlobMatcher::new(pattern).ok()
-            });
+            let entry = cache
+                .entry(pattern.to_string())
+                .or_insert_with(|| GlobMatcher::new(pattern).ok());
             match entry {
                 Some(matcher) => matcher.is_match(value),
                 None => false,
@@ -170,8 +179,8 @@ pub(crate) struct RawMatch {
 
 /// Parse a TOML string into a list of policy rules.
 pub fn parse_policy_toml(content: &str) -> Result<Vec<PolicyRule>> {
-    let file: PolicyFile = toml::from_str(content)
-        .map_err(|e| anyhow::anyhow!("failed to parse policy TOML: {e}"))?;
+    let file: PolicyFile =
+        toml::from_str(content).map_err(|e| anyhow::anyhow!("failed to parse policy TOML: {e}"))?;
 
     let mut rules = Vec::new();
     for (idx, (name, raw)) in file.rules.into_iter().enumerate() {
@@ -235,7 +244,10 @@ mod tests {
     #[test]
     fn any_matches_everything() {
         let rule = make_rule(
-            MatchCriteria { any: true, ..Default::default() },
+            MatchCriteria {
+                any: true,
+                ..Default::default()
+            },
             PolicyAction::Log,
         );
         let ctx = EventContext::default();

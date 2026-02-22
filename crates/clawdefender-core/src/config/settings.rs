@@ -450,7 +450,6 @@ impl SensorConfig {
     }
 }
 
-
 impl Default for EsloggerSensorConfig {
     fn default() -> Self {
         Self {
@@ -768,7 +767,10 @@ chat_port = 4000
 "#;
         let config: ClawConfig = toml::from_str(toml_str).unwrap();
         assert!(!config.swarm.enabled);
-        assert_eq!(config.swarm.preferred_provider.as_deref(), Some("anthropic"));
+        assert_eq!(
+            config.swarm.preferred_provider.as_deref(),
+            Some("anthropic")
+        );
         assert!((config.swarm.daily_budget_usd - 5.0).abs() < f64::EPSILON);
         assert!((config.swarm.monthly_budget_usd - 100.0).abs() < f64::EPSILON);
         assert_eq!(config.swarm.timeout_secs, 30);

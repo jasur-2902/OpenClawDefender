@@ -223,9 +223,7 @@ impl CorrelationEngine {
         if let (Some(mcp_key), Some(_match_result)) = (best_mcp_key, best_match) {
             // Add OS event to the pending MCP's matched list
             if let Some(pending) = self.pending_mcp.get_mut(&mcp_key) {
-                pending
-                    .matched_os
-                    .push((event, _match_result));
+                pending.matched_os.push((event, _match_result));
             }
         } else {
             // No MCP match; register as pending OS
@@ -285,10 +283,8 @@ impl CorrelationEngine {
 
         for key in expired_os {
             if let Some(pending) = self.pending_os.remove(&key) {
-                let severity = rate_uncorrelated(
-                    &pending.event,
-                    self.config.project_dir.as_deref(),
-                );
+                let severity =
+                    rate_uncorrelated(&pending.event, self.config.project_dir.as_deref());
                 debug!(
                     pid = pending.event.pid,
                     ?severity,
@@ -383,9 +379,9 @@ impl CorrelationEngine {
 
         for (os_event, _match) in &os_matches {
             let kind_key = format!("{:?}", std::mem::discriminant(&os_event.kind));
-            let dominated = seen_kinds.iter().any(|(k, ts)| {
-                k == &kind_key && (os_event.timestamp - *ts).abs() < dedup_window
-            });
+            let dominated = seen_kinds
+                .iter()
+                .any(|(k, ts)| k == &kind_key && (os_event.timestamp - *ts).abs() < dedup_window);
             if !dominated {
                 seen_kinds.push((kind_key, os_event.timestamp));
                 deduped.push(os_event.clone());
@@ -450,7 +446,7 @@ impl CorrelationEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clawdefender_core::event::mcp::{McpEventKind, ToolCall, ResourceRead};
+    use clawdefender_core::event::mcp::{McpEventKind, ResourceRead, ToolCall};
     use clawdefender_core::event::os::OsEventKind;
     use serde_json::json;
     use std::time::Duration;
@@ -570,7 +566,10 @@ mod tests {
         engine.tick();
 
         // The MCP event should have matched the OS event
-        assert!(engine.pending_os_count() == 0, "OS event should have been matched");
+        assert!(
+            engine.pending_os_count() == 0,
+            "OS event should have been matched"
+        );
     }
 
     #[test]
@@ -615,7 +614,11 @@ mod tests {
         let os = make_os_open(200, 100, "/Users/dev/test.txt");
         engine.process_os_event(os, &tree);
 
-        assert_eq!(engine.pending_os_count(), 0, "OS event should have matched file tool");
+        assert_eq!(
+            engine.pending_os_count(),
+            0,
+            "OS event should have matched file tool"
+        );
     }
 
     #[test]
@@ -640,7 +643,11 @@ mod tests {
         // The network tool won't match by IP directly since the IP isn't in args.
         // But the "example.com" substring match should trigger.
         // This tests the fuzzy matching logic.
-        assert_eq!(engine.pending_os_count(), 0, "OS connect should have matched network tool via hostname");
+        assert_eq!(
+            engine.pending_os_count(),
+            0,
+            "OS connect should have matched network tool via hostname"
+        );
     }
 
     #[tokio::test]
@@ -753,7 +760,11 @@ mod tests {
         assert_eq!(event.status, CorrelationStatus::Matched);
         assert!(event.mcp_event.is_some());
         // After dedup, same-kind events within 1s collapse to 1
-        assert_eq!(event.os_events.len(), 1, "dedup should collapse 3 identical opens to 1");
+        assert_eq!(
+            event.os_events.len(),
+            1,
+            "dedup should collapse 3 identical opens to 1"
+        );
     }
 
     #[test]
@@ -776,7 +787,11 @@ mod tests {
         let os = make_os_open(200, 100, "/Users/dev/file.txt");
         engine.process_os_event(os, &tree);
 
-        assert_eq!(engine.pending_os_count(), 0, "tilde path should match expanded path");
+        assert_eq!(
+            engine.pending_os_count(),
+            0,
+            "tilde path should match expanded path"
+        );
     }
 
     #[tokio::test]
@@ -810,7 +825,11 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         engine.tick();
 
-        assert_eq!(engine.pending_os_count(), 0, "pending should have been expired");
+        assert_eq!(
+            engine.pending_os_count(),
+            0,
+            "pending should have been expired"
+        );
         let event = rx.try_recv().expect("should have uncorrelated event");
         assert_eq!(event.status, CorrelationStatus::Uncorrelated);
     }

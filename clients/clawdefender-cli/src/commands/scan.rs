@@ -24,12 +24,7 @@ pub async fn run(
         let mods = Scanner::default_modules();
         println!("Available scan modules:\n");
         for m in &mods {
-            println!(
-                "  {:<25} {} [{}]",
-                m.name(),
-                m.description(),
-                m.category()
-            );
+            println!("  {:<25} {} [{}]", m.name(), m.description(), m.category());
         }
         println!("\nUse --modules <name1,name2,...> to run specific modules.");
         return Ok(());
@@ -49,7 +44,9 @@ pub async fn run(
         Some("medium") => Some(Severity::Medium),
         Some("low") => Some(Severity::Low),
         Some("info") => Some(Severity::Info),
-        Some(other) => anyhow::bail!("Unknown threshold: {other}. Use: critical, high, medium, low, info"),
+        Some(other) => {
+            anyhow::bail!("Unknown threshold: {other}. Use: critical, high, medium, low, info")
+        }
         None => None,
     };
 

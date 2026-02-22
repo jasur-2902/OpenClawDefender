@@ -296,8 +296,7 @@ fn test_exfiltration_base64_subdomain() {
     assert!(alert.is_some());
     let alert = alert.unwrap();
     assert!(
-        alert.detection_reason.contains("encoded")
-            || alert.detection_reason.contains("entropy")
+        alert.detection_reason.contains("encoded") || alert.detection_reason.contains("entropy")
     );
 }
 

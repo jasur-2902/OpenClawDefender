@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_notification::NotificationExt;
 use tracing::{debug, info, warn};
 
 use crate::events::{self, AlertPayload, AutoBlockPayload, SuspiciousEventPayload};
@@ -54,7 +55,7 @@ fn expire_timed_out_prompts(app: &AppHandle) {
 
 /// The daemon's audit record format (subset of fields we care about).
 /// Uses `default` on all optional fields so deserialization is lenient.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonAuditRecord {
     pub timestamp: String,
     #[serde(default)]
@@ -92,7 +93,7 @@ pub fn audit_log_path() -> PathBuf {
 pub(crate) fn is_safe_audit_path(path: &PathBuf) -> bool {
     match std::fs::symlink_metadata(path) {
         Ok(meta) => !meta.file_type().is_symlink(),
-        Err(_) => false, // file doesn't exist yet, safe to proceed
+        Err(_) => false, // file doesn't exist yet, caller should check existence first
     }
 }
 
@@ -150,6 +151,72 @@ fn effective_risk(event: &AuditEvent) -> &str {
     event.risk_level.as_str()
 }
 
+/// Sanitize a resource path for display in notifications.
+/// Replaces the user's home directory with ~ and truncates long paths
+/// to avoid leaking sensitive information to shoulder surfers.
+fn sanitize_path_for_notification(path: &str) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let sanitized = if !home.is_empty() && path.starts_with(&home) {
+        format!("~{}", &path[home.len()..])
+    } else {
+        path.to_string()
+    };
+    // Truncate very long paths, keeping the last component visible
+    if sanitized.len() > 60 {
+        let last_slash = sanitized.rfind('/').unwrap_or(0);
+        if last_slash > 10 {
+            format!("...{}", &sanitized[last_slash..])
+        } else {
+            format!("{}...", &sanitized[..57])
+        }
+    } else {
+        sanitized
+    }
+}
+
+/// Check whether the user has notifications enabled in config.toml.
+fn notifications_enabled_in_config() -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let path = std::path::PathBuf::from(home).join(".config/clawdefender/config.toml");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return true, // default to enabled if config is missing
+    };
+    let table: toml::Value = match content.parse() {
+        Ok(t) => t,
+        Err(_) => return true,
+    };
+    table
+        .get("ui")
+        .and_then(|ui| ui.get("notifications"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
+/// Send a native macOS notification if the main window is not focused
+/// and the user has notifications enabled.
+fn send_native_notification(app: &AppHandle, title: &str, body: &str, sound: bool) {
+    // Check user preference
+    if !notifications_enabled_in_config() {
+        return;
+    }
+
+    // Check if main window is focused — skip notification if the user can see the in-app UI
+    if let Some(window) = app.get_webview_window("main") {
+        if let Ok(true) = window.is_focused() {
+            return;
+        }
+    }
+
+    let mut builder = app.notification().builder().title(title).body(body);
+    if sound {
+        builder = builder.sound("default");
+    }
+    if let Err(e) = builder.show() {
+        debug!(error = %e, "Failed to send native notification (permission may be denied)");
+    }
+}
+
 /// Process a single parsed audit event: push to state and emit frontend events.
 fn process_event(app: &AppHandle, event: AuditEvent) {
     let state = app.state::<AppState>();
@@ -170,6 +237,13 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
             pid: None,
         };
         events::emit_alert(app, &alert);
+
+        send_native_notification(
+            app,
+            "ClawDefender \u{2014} Security Alert",
+            &format!("{} \u{2014} {}", event.server_name, event.action),
+            true,
+        );
     }
 
     // Create a pending prompt for "prompted" decisions
@@ -187,6 +261,18 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
         };
         state.push_prompt(prompt.clone());
         events::emit_prompt(app, &prompt);
+
+        let resource_display = if event.resource.as_deref().unwrap_or("").is_empty() {
+            event.action.clone()
+        } else {
+            sanitize_path_for_notification(event.resource.as_deref().unwrap_or(""))
+        };
+        send_native_notification(
+            app,
+            "ClawDefender \u{2014} Action Required",
+            &format!("{} wants to {}", event.server_name, resource_display),
+            true,
+        );
     }
 
     // Emit auto-block event for denied/blocked decisions
@@ -198,6 +284,13 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
             anomaly_score: 0.0,
         };
         events::emit_auto_block(app, &auto_block);
+
+        send_native_notification(
+            app,
+            "ClawDefender \u{2014} Blocked",
+            &format!("Blocked {} by {}", event.action, event.server_name),
+            false,
+        );
     }
 
     // Always push to state and emit the audit event
@@ -321,7 +414,7 @@ pub fn start_event_stream(app: AppHandle) {
                 Err(_) => continue,
             };
 
-            if let Err(_) = file.seek(SeekFrom::Start(last_size)) {
+            if file.seek(SeekFrom::Start(last_size)).is_err() {
                 continue;
             }
 

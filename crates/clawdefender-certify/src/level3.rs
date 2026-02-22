@@ -228,7 +228,10 @@ async fn run_graceful_degradation(config: &CertifyConfig) -> Result<()> {
     // Call all tools — server should respond gracefully even if it cannot
     // perform operations (e.g., when permissions would be denied)
     for tool in &tools {
-        let tool_name = tool.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+        let tool_name = tool
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("unknown");
         let resp = harness.call_tool(tool_name, json!({})).await?;
 
         // Must have either result or error — not crash

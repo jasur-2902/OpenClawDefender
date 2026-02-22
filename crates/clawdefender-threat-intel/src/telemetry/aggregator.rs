@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use chrono::Utc;
 
 use super::types::{
-    AnomalyAggregate, BlocklistMatchReport, IoCMatchRates, KillchainTriggerReport,
-    ScannerSummary, TelemetryReport, REPORT_SCHEMA_VERSION,
+    AnomalyAggregate, BlocklistMatchReport, IoCMatchRates, KillchainTriggerReport, ScannerSummary,
+    TelemetryReport, REPORT_SCHEMA_VERSION,
 };
 
 /// Collects telemetry data points and produces aggregate reports.
@@ -81,7 +81,10 @@ impl TelemetryAggregator {
             "file" => self.ioc_file += 1,
             "behavioral" => self.ioc_behavioral += 1,
             _ => {
-                tracing::warn!(indicator_type, "unknown IoC indicator type, counting as behavioral");
+                tracing::warn!(
+                    indicator_type,
+                    "unknown IoC indicator type, counting as behavioral"
+                );
                 self.ioc_behavioral += 1;
             }
         }
@@ -90,7 +93,10 @@ impl TelemetryAggregator {
     /// Record a scanner finding. Only categories and severity are recorded.
     pub fn record_scan_finding(&mut self, category: &str, severity: &str) {
         self.scan_categories.insert(category.to_string(), true);
-        *self.scan_severity_counts.entry(severity.to_string()).or_insert(0) += 1;
+        *self
+            .scan_severity_counts
+            .entry(severity.to_string())
+            .or_insert(0) += 1;
     }
 
     /// Build a complete telemetry report from accumulated data.
@@ -104,14 +110,15 @@ impl TelemetryAggregator {
             behavioral_matches: self.ioc_behavioral,
         };
 
-        let scanner_summary = if self.scan_categories.is_empty() && self.scan_severity_counts.is_empty() {
-            None
-        } else {
-            Some(ScannerSummary {
-                finding_categories: self.scan_categories.keys().cloned().collect(),
-                severity_counts: self.scan_severity_counts.clone(),
-            })
-        };
+        let scanner_summary =
+            if self.scan_categories.is_empty() && self.scan_severity_counts.is_empty() {
+                None
+            } else {
+                Some(ScannerSummary {
+                    finding_categories: self.scan_categories.keys().cloned().collect(),
+                    severity_counts: self.scan_severity_counts.clone(),
+                })
+            };
 
         TelemetryReport {
             installation_id: installation_id.to_string(),

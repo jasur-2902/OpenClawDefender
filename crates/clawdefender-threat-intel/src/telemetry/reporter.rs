@@ -45,8 +45,9 @@ impl TelemetryReporter {
     /// Network errors are logged as warnings (the caller should retry next cycle).
     /// Server errors (4xx/5xx) are logged but do not trigger immediate retry.
     pub async fn send_report(&self, report: &TelemetryReport) -> Result<()> {
-        let json = serde_json::to_string(report)
-            .map_err(|e| ThreatIntelError::FetchError(format!("failed to serialize report: {e}")))?;
+        let json = serde_json::to_string(report).map_err(|e| {
+            ThreatIntelError::FetchError(format!("failed to serialize report: {e}"))
+        })?;
 
         if self.dry_run {
             tracing::info!(

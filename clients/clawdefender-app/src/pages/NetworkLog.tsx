@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   NetworkConnectionEvent,
+  NetworkExtensionStatus,
   NetworkSummaryData,
 } from "../types";
 
@@ -206,6 +207,7 @@ function ConnectionDetail({
 export function NetworkLog() {
   const [connections, setConnections] = useState<NetworkConnectionEvent[]>([]);
   const [summary, setSummary] = useState<NetworkSummaryData | null>(null);
+  const [netStatus, setNetStatus] = useState<NetworkExtensionStatus | null>(null);
   const [searchText, setSearchText] = useState("");
   const [protocolFilter, setProtocolFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
@@ -218,6 +220,10 @@ export function NetworkLog() {
 
     invoke<NetworkSummaryData>("get_network_summary")
       .then(setSummary)
+      .catch(() => {});
+
+    invoke<NetworkExtensionStatus>("get_network_extension_status")
+      .then(setNetStatus)
       .catch(() => {});
   }, []);
 
@@ -274,8 +280,11 @@ export function NetworkLog() {
         </button>
       </div>
 
-      {/* Summary Card */}
-      {summary && (
+      {/* Summary Card — hidden when all counts are zero */}
+      {summary &&
+        (summary.total_allowed > 0 ||
+          summary.total_blocked > 0 ||
+          summary.total_prompted > 0) && (
         <div className="mx-6 mt-4 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4">
           <div className="flex items-center gap-6 text-sm">
             <div>
@@ -419,10 +428,23 @@ export function NetworkLog() {
         </table>
 
         {filteredConnections.length === 0 && (
-          <div className="flex items-center justify-center h-32 text-sm text-[var(--color-text-secondary)]">
-            {connections.length === 0
-              ? "No network connections recorded yet."
-              : "No connections match your filters."}
+          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+            {connections.length === 0 ? (
+              <>
+                <p className="text-sm text-[var(--color-text-secondary)] mb-2">
+                  No network connections recorded.
+                </p>
+                <p className="text-xs text-[var(--color-text-secondary)] max-w-md">
+                  {netStatus && !netStatus.loaded
+                    ? "The Network Extension is not installed. Network filtering requires a macOS system extension."
+                    : "Network events appear here when MCP servers make outbound connections through the ClawDefender proxy."}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                No connections match your filters.
+              </p>
+            )}
           </div>
         )}
       </div>

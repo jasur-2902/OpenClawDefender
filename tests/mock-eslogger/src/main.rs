@@ -160,19 +160,33 @@ fn emit(event: &MockEvent) {
 
 fn run_basic(args: &Args) {
     let events = vec![
-        make_exec_event(args.pid, args.ppid, "/usr/bin/curl", &["curl", "http://example.com"]),
+        make_exec_event(
+            args.pid,
+            args.ppid,
+            "/usr/bin/curl",
+            &["curl", "http://example.com"],
+        ),
         make_connect_event(args.pid, args.ppid, "93.184.216.34", 80),
         make_open_event(args.pid, args.ppid, "/tmp/output.txt"),
         make_exec_event(args.pid, args.ppid, "/bin/ls", &["ls", "-la"]),
         make_open_event(args.pid, args.ppid, "/etc/hosts"),
         make_fork_event(args.pid, args.ppid, args.pid + 1),
-        make_exec_event(args.pid + 1, args.pid, "/usr/bin/grep", &["grep", "pattern"]),
+        make_exec_event(
+            args.pid + 1,
+            args.pid,
+            "/usr/bin/grep",
+            &["grep", "pattern"],
+        ),
         make_connect_event(args.pid, args.ppid, "127.0.0.1", 8080),
         make_open_event(args.pid, args.ppid, "/Users/dev/.ssh/id_rsa"),
         make_exit_event(args.pid + 1, args.pid, 0),
     ];
 
-    let count = if args.count == 0 { events.len() as u64 } else { args.count.min(events.len() as u64) };
+    let count = if args.count == 0 {
+        events.len() as u64
+    } else {
+        args.count.min(events.len() as u64)
+    };
     for event in events.iter().take(count as usize) {
         emit(event);
         thread::sleep(Duration::from_millis(args.delay_ms));
@@ -219,7 +233,12 @@ fn run_hang(args: &Args) {
 fn run_burst(args: &Args) {
     // Emit many events rapidly to test rate limiting/backpressure.
     for i in 0..args.count {
-        let event = make_exec_event(args.pid, args.ppid, "/bin/ls", &["ls", &format!("file_{i}")]);
+        let event = make_exec_event(
+            args.pid,
+            args.ppid,
+            "/bin/ls",
+            &["ls", &format!("file_{i}")],
+        );
         emit(&event);
         // Minimal delay for burst mode
         if args.delay_ms > 0 {
@@ -238,11 +257,21 @@ fn run_mixed(args: &Args) {
     let events = vec![
         // Server 1: curl to example.com
         make_fork_event(server1_pid, args.ppid, server1_child),
-        make_exec_event(server1_child, server1_pid, "/usr/bin/curl", &["curl", "http://example.com"]),
+        make_exec_event(
+            server1_child,
+            server1_pid,
+            "/usr/bin/curl",
+            &["curl", "http://example.com"],
+        ),
         make_connect_event(server1_child, server1_pid, "93.184.216.34", 80),
         // Server 2: read a file
         make_fork_event(server2_pid, args.ppid, server2_child),
-        make_exec_event(server2_child, server2_pid, "/usr/bin/cat", &["cat", "/tmp/data.txt"]),
+        make_exec_event(
+            server2_child,
+            server2_pid,
+            "/usr/bin/cat",
+            &["cat", "/tmp/data.txt"],
+        ),
         make_open_event(server2_child, server2_pid, "/tmp/data.txt"),
         // Server 1: write file
         make_open_event(server1_child, server1_pid, "/tmp/output.html"),
@@ -251,7 +280,11 @@ fn run_mixed(args: &Args) {
         make_exit_event(server2_child, server2_pid, 0),
     ];
 
-    let count = if args.count == 0 { events.len() as u64 } else { args.count.min(events.len() as u64) };
+    let count = if args.count == 0 {
+        events.len() as u64
+    } else {
+        args.count.min(events.len() as u64)
+    };
     for event in events.iter().take(count as usize) {
         emit(event);
         thread::sleep(Duration::from_millis(args.delay_ms));

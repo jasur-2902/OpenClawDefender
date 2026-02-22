@@ -22,7 +22,9 @@ fn compiler_profile() -> ActivityProfile {
         description: "Compiler and build tool invocations".into(),
         rules: vec![
             NoiseRule {
-                tool_pattern: Some(r"^(gcc|g\+\+|clang|clang\+\+|rustc|swiftc|javac|make|cmake|ninja)$".into()),
+                tool_pattern: Some(
+                    r"^(gcc|g\+\+|clang|clang\+\+|rustc|swiftc|javac|make|cmake|ninja)$".into(),
+                ),
                 argument_pattern: None,
                 server_pattern: None,
                 max_frequency: None,
@@ -42,7 +44,9 @@ fn compiler_profile() -> ActivityProfile {
             // File operations in build output directories
             NoiseRule {
                 tool_pattern: None,
-                argument_pattern: Some(r"(^|[\s/])(target|build|dist|node_modules|\.build)/".into()),
+                argument_pattern: Some(
+                    r"(^|[\s/])(target|build|dist|node_modules|\.build)/".into(),
+                ),
                 server_pattern: None,
                 max_frequency: None,
             },

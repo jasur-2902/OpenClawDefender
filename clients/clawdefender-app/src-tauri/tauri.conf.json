@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
   "productName": "ClawDefender",
-  "version": "0.10.0",
-  "identifier": "com.clawdefender.app",
+  "version": "0.3.0",
+  "identifier": "com.clawdefender.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -41,11 +41,14 @@
     "macOS": {
       "minimumSystemVersion": "13.0",
       "entitlements": "Entitlements.plist",
-      "signingIdentity": null
-    },
-    "externalBin": [
-      "binaries/clawdefender"
-    ]
+      "signingIdentity": null,
+      "dmg": {
+        "background": "icons/dmg-background.png",
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 420, "y": 170 },
+        "windowSize": { "width": 600, "height": 400 }
+      }
+    }
   },
   "plugins": {
     "updater": {

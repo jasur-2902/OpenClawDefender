@@ -453,11 +453,7 @@ fn severity_for_technique(technique: InjectionTechnique, canary_found: bool) -> 
 
 /// Generate a finding ID like "PI-CRIT-001".
 fn make_finding_id(severity: Severity, counter: usize) -> String {
-    format!(
-        "PI-{}-{:03}",
-        severity.finding_id_prefix(),
-        counter
-    )
+    format!("PI-{}-{:03}", severity.finding_id_prefix(), counter)
 }
 
 // ---------------------------------------------------------------------------
@@ -506,9 +502,7 @@ impl ScanModule for PromptInjectionModule {
         // Single-shot payloads (skip multi-turn B parts; we handle pairs separately)
         let single_payloads: Vec<&InjectionPayload> = PAYLOADS
             .iter()
-            .filter(|p| {
-                !(p.technique == InjectionTechnique::MultiTurn && p.name.ends_with("_b"))
-            })
+            .filter(|p| !(p.technique == InjectionTechnique::MultiTurn && p.name.ends_with("_b")))
             .collect();
 
         for (tool_name, param_name) in &text_tools {
@@ -868,7 +862,10 @@ mod tests {
 
     #[test]
     fn test_encoded_base64_payload_present() {
-        let b64_payload = PAYLOADS.iter().find(|p| p.name == "encoded_base64").unwrap();
+        let b64_payload = PAYLOADS
+            .iter()
+            .find(|p| p.name == "encoded_base64")
+            .unwrap();
         assert!(b64_payload.payload.contains("SWdub3Jl"));
         assert_eq!(b64_payload.technique, InjectionTechnique::Encoded);
     }
@@ -947,7 +944,11 @@ mod tests {
             .iter()
             .filter(|p| p.technique == InjectionTechnique::DataExfiltration)
             .collect();
-        let all_text: String = exfil_payloads.iter().map(|p| p.payload).collect::<Vec<_>>().join(" ");
+        let all_text: String = exfil_payloads
+            .iter()
+            .map(|p| p.payload)
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(all_text.contains(".ssh"));
         assert!(all_text.contains(".aws"));
         assert!(all_text.contains(".env"));
@@ -966,7 +967,10 @@ mod tests {
     fn test_all_payloads_have_nonempty_fields() {
         for payload in PAYLOADS {
             assert!(!payload.name.is_empty(), "payload name must not be empty");
-            assert!(!payload.payload.is_empty(), "payload text must not be empty");
+            assert!(
+                !payload.payload.is_empty(),
+                "payload text must not be empty"
+            );
             assert!(
                 !payload.description.is_empty(),
                 "payload description must not be empty for {}",
@@ -1004,7 +1008,10 @@ mod tests {
 
     #[test]
     fn test_technique_labels() {
-        assert_eq!(InjectionTechnique::DirectOverride.label(), "direct-override");
+        assert_eq!(
+            InjectionTechnique::DirectOverride.label(),
+            "direct-override"
+        );
         assert_eq!(InjectionTechnique::IndirectData.label(), "indirect-data");
         assert_eq!(InjectionTechnique::Encoded.label(), "encoded");
         assert_eq!(InjectionTechnique::MultiTurn.label(), "multi-turn");

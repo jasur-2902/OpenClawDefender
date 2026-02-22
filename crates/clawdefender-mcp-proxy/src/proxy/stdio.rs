@@ -18,18 +18,18 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
 use clawdefender_core::audit::{AuditRecord, SlmAnalysisRecord, SwarmAnalysisRecord};
-use clawdefender_core::event::mcp::{McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall};
-use clawdefender_slm::analyzer::{
-    AnalysisContext as SlmAnalysisContext, AnalysisEventType, AnalysisRequest, EventSummary as SlmEventSummary,
-    ServerReputation, build_user_prompt,
+use clawdefender_core::event::mcp::{
+    McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall,
 };
 use clawdefender_core::ipc::protocol::{UiRequest, UiResponse, UserDecision};
 use clawdefender_core::policy::engine::DefaultPolicyEngine;
 use clawdefender_core::policy::{MatchCriteria, PolicyAction, PolicyEngine, PolicyRule};
-
-use crate::classifier::rules::{
-    classify, extract_resource_uri, extract_tool_call, Classification,
+use clawdefender_slm::analyzer::{
+    build_user_prompt, AnalysisContext as SlmAnalysisContext, AnalysisEventType, AnalysisRequest,
+    EventSummary as SlmEventSummary, ServerReputation,
 };
+
+use crate::classifier::rules::{classify, extract_resource_uri, extract_tool_call, Classification};
 use crate::jsonrpc::parser::{serialize_message, RawJsonRpcMessage, StreamParser};
 use crate::jsonrpc::types::{
     JsonRpcError, JsonRpcId, JsonRpcMessage, JsonRpcResponse, POLICY_BLOCK_ERROR_CODE,
@@ -543,10 +543,8 @@ impl StdioProxy {
                                                 child_writer.write_all(&bytes).await?;
                                                 child_writer.flush().await?;
                                                 // Add session rule
-                                                let session_rule =
-                                                    build_session_allow_rule(&event);
-                                                let mut engine =
-                                                    self.policy_engine.write().await;
+                                                let session_rule = build_session_allow_rule(&event);
+                                                let mut engine = self.policy_engine.write().await;
                                                 engine.add_session_rule(session_rule);
                                                 let record = build_audit_record(
                                                     &event,
@@ -562,10 +560,8 @@ impl StdioProxy {
                                                 let bytes = serialize_message(&msg);
                                                 child_writer.write_all(&bytes).await?;
                                                 child_writer.flush().await?;
-                                                let perm_rule =
-                                                    build_session_allow_rule(&event);
-                                                let mut engine =
-                                                    self.policy_engine.write().await;
+                                                let perm_rule = build_session_allow_rule(&event);
+                                                let mut engine = self.policy_engine.write().await;
                                                 let _ = engine.add_permanent_rule(perm_rule);
                                                 let record = build_audit_record(
                                                     &event,
@@ -670,7 +666,10 @@ async fn handle_client_message(
     match classification {
         Classification::Pass => {
             metrics.inc_allowed();
-            child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+            child_tx
+                .send(raw_msg.raw_bytes_with_newline())
+                .await
+                .map_err(|_| anyhow::anyhow!("child channel closed"))?;
         }
         Classification::Log => {
             let event = build_mcp_event(&raw_msg.parsed);
@@ -678,7 +677,10 @@ async fn handle_client_message(
             metrics.inc_logged();
             let record = build_audit_record(&event, "log", None);
             let _ = audit_tx.try_send(record);
-            child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+            child_tx
+                .send(raw_msg.raw_bytes_with_newline())
+                .await
+                .map_err(|_| anyhow::anyhow!("child channel closed"))?;
         }
         Classification::Review => {
             let event = build_mcp_event(&raw_msg.parsed);
@@ -745,14 +747,21 @@ async fn handle_client_message(
                     let mut record = build_audit_record(&event, "allow", None);
                     record.threat_intel = threat_intel_data.clone();
                     let _ = audit_tx.try_send(record);
-                    child_tx.send(forward_bytes.clone()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+                    child_tx
+                        .send(forward_bytes.clone())
+                        .await
+                        .map_err(|_| anyhow::anyhow!("child channel closed"))?;
                 }
                 PolicyAction::Block => {
                     metrics.inc_blocked();
                     if let Some(id) = request_id(&raw_msg.parsed) {
-                        let block_resp = make_block_response(&id, "Blocked by ClawDefender policy", None);
+                        let block_resp =
+                            make_block_response(&id, "Blocked by ClawDefender policy", None);
                         let bytes = serialize_message(&block_resp);
-                        client_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("client channel closed"))?;
+                        client_tx
+                            .send(bytes)
+                            .await
+                            .map_err(|_| anyhow::anyhow!("client channel closed"))?;
                     }
                     let mut record = build_audit_record(&event, "block", None);
                     record.threat_intel = threat_intel_data.clone();
@@ -772,7 +781,10 @@ async fn handle_client_message(
                                     None,
                                 );
                                 let bytes = serialize_message(&block_resp);
-                                client_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("client channel closed"))?;
+                                client_tx
+                                    .send(bytes)
+                                    .await
+                                    .map_err(|_| anyhow::anyhow!("client channel closed"))?;
                             }
                             return Ok(());
                         }
@@ -863,8 +875,7 @@ async fn handle_client_message(
                                     let session_rule = build_session_allow_rule(&event);
                                     let mut engine = policy_engine.write().await;
                                     engine.add_session_rule(session_rule);
-                                    let record =
-                                        build_audit_record(&event, "allow_session", None);
+                                    let record = build_audit_record(&event, "allow_session", None);
                                     let _ = audit_tx.try_send(record);
                                     metrics.inc_allowed();
                                 }
@@ -876,8 +887,7 @@ async fn handle_client_message(
                                     let perm_rule = build_session_allow_rule(&event);
                                     let mut engine = policy_engine.write().await;
                                     let _ = engine.add_permanent_rule(perm_rule);
-                                    let record =
-                                        build_audit_record(&event, "add_to_policy", None);
+                                    let record = build_audit_record(&event, "add_to_policy", None);
                                     let _ = audit_tx.try_send(record);
                                     metrics.inc_allowed();
                                 }
@@ -914,7 +924,8 @@ async fn handle_client_message(
                                             model: "local-slm".to_string(),
                                         };
                                         // Send a supplementary audit record with SLM analysis.
-                                        let mut record = build_audit_record(&event, "slm_analysis", None);
+                                        let mut record =
+                                            build_audit_record(&event, "slm_analysis", None);
                                         record.slm_analysis = Some(slm_record);
                                         let _ = audit_tx.try_send(record);
                                         debug!(
@@ -935,11 +946,18 @@ async fn handle_client_message(
 
                             // SAFETY: Swarm verdict is advisory only. Never modifies policy decisions.
                             // Escalate to cloud swarm if SLM risk >= escalation threshold.
-                            if let (Some(ref swarm_ctx), Some(ref risk_str)) = (&swarm_ctx_for_spawn, &slm_risk_level_str) {
-                                let should_escalate = match swarm_ctx.escalation_threshold.as_str() {
+                            if let (Some(ref swarm_ctx), Some(ref risk_str)) =
+                                (&swarm_ctx_for_spawn, &slm_risk_level_str)
+                            {
+                                let should_escalate = match swarm_ctx.escalation_threshold.as_str()
+                                {
                                     "CRITICAL" => risk_str == "CRITICAL",
                                     "HIGH" => risk_str == "HIGH" || risk_str == "CRITICAL",
-                                    "MEDIUM" => risk_str == "MEDIUM" || risk_str == "HIGH" || risk_str == "CRITICAL",
+                                    "MEDIUM" => {
+                                        risk_str == "MEDIUM"
+                                            || risk_str == "HIGH"
+                                            || risk_str == "CRITICAL"
+                                    }
                                     _ => risk_str == "HIGH" || risk_str == "CRITICAL",
                                 };
 
@@ -951,26 +969,39 @@ async fn handle_client_message(
 
                                     // Spawn async swarm analysis — does NOT block the prompt.
                                     tokio::spawn(async move {
-                                        debug!("Escalating to cloud swarm (SLM risk: {})", risk_str_owned);
+                                        debug!(
+                                            "Escalating to cloud swarm (SLM risk: {})",
+                                            risk_str_owned
+                                        );
                                         match commander.analyze(&swarm_event).await {
                                             Ok(verdict) => {
                                                 let swarm_record = SwarmAnalysisRecord {
                                                     risk_level: verdict.risk_level.clone(),
                                                     explanation: verdict.explanation.clone(),
-                                                    recommended_action: verdict.recommended_action.clone(),
+                                                    recommended_action: verdict
+                                                        .recommended_action
+                                                        .clone(),
                                                     confidence: verdict.confidence,
-                                                    specialist_summaries: verdict.specialist_reports
+                                                    specialist_summaries: verdict
+                                                        .specialist_reports
                                                         .iter()
-                                                        .map(|r| format!("{}: {}", r.risk_level, r.verdict))
+                                                        .map(|r| {
+                                                            format!(
+                                                                "{}: {}",
+                                                                r.risk_level, r.verdict
+                                                            )
+                                                        })
                                                         .collect(),
-                                                    total_tokens: verdict.total_input_tokens + verdict.total_output_tokens,
+                                                    total_tokens: verdict.total_input_tokens
+                                                        + verdict.total_output_tokens,
                                                     estimated_cost_usd: verdict.estimated_cost_usd,
                                                     latency_ms: verdict.total_latency_ms,
                                                 };
-                                                let mut record = build_audit_record_from_swarm_event(
-                                                    &swarm_event,
-                                                    "swarm_analysis",
-                                                );
+                                                let mut record =
+                                                    build_audit_record_from_swarm_event(
+                                                        &swarm_event,
+                                                        "swarm_analysis",
+                                                    );
                                                 record.swarm_analysis = Some(swarm_record);
                                                 let _ = audit_tx_swarm.try_send(record);
                                                 info!(
@@ -996,7 +1027,10 @@ async fn handle_client_message(
                             "prompt action not wired to IPC, allowing"
                         );
                         metrics.inc_allowed();
-                        child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+                        child_tx
+                            .send(raw_msg.raw_bytes_with_newline())
+                            .await
+                            .map_err(|_| anyhow::anyhow!("child channel closed"))?;
                     }
                 }
                 PolicyAction::Log => {
@@ -1004,7 +1038,10 @@ async fn handle_client_message(
                     debug!(event_summary = %event_summary(&event), "policy: log and forward");
                     let record = build_audit_record(&event, "log", None);
                     let _ = audit_tx.try_send(record);
-                    child_tx.send(raw_msg.raw_bytes_with_newline()).await.map_err(|_| anyhow::anyhow!("child channel closed"))?;
+                    child_tx
+                        .send(raw_msg.raw_bytes_with_newline())
+                        .await
+                        .map_err(|_| anyhow::anyhow!("child channel closed"))?;
                 }
             }
         }
@@ -1013,7 +1050,10 @@ async fn handle_client_message(
             if let Some(id) = request_id(&raw_msg.parsed) {
                 let block_resp = make_block_response(&id, "Blocked by classifier", None);
                 let bytes = serialize_message(&block_resp);
-                client_tx.send(bytes).await.map_err(|_| anyhow::anyhow!("client channel closed"))?;
+                client_tx
+                    .send(bytes)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("client channel closed"))?;
             }
             info!("message hard-blocked by classifier");
         }
@@ -1124,11 +1164,7 @@ fn event_summary(event: &McpEvent) -> String {
 }
 
 /// Build an audit record from an McpEvent.
-fn build_audit_record(
-    event: &McpEvent,
-    action: &str,
-    rule_name: Option<&str>,
-) -> AuditRecord {
+fn build_audit_record(event: &McpEvent, action: &str, rule_name: Option<&str>) -> AuditRecord {
     AuditRecord {
         timestamp: event.timestamp,
         source: event.source.clone(),
@@ -1523,10 +1559,16 @@ any = true
             .unwrap();
 
         // Nothing should be forwarded to child.
-        assert!(child_buf.is_empty(), "blocked message should not reach server");
+        assert!(
+            child_buf.is_empty(),
+            "blocked message should not reach server"
+        );
 
         // Client should receive a block error response.
-        assert!(!client_buf.is_empty(), "client should receive error response");
+        assert!(
+            !client_buf.is_empty(),
+            "client should receive error response"
+        );
         let resp = parse_message(&client_buf[..client_buf.len() - 1]).unwrap();
         match resp {
             JsonRpcMessage::Response(r) => {
@@ -1637,11 +1679,7 @@ any = true
 
     #[test]
     fn test_new_with_missing_policy_uses_empty() {
-        let proxy = StdioProxy::new(
-            "echo".into(),
-            vec![],
-            Path::new("/nonexistent/policy.toml"),
-        );
+        let proxy = StdioProxy::new("echo".into(), vec![], Path::new("/nonexistent/policy.toml"));
         assert!(proxy.is_ok(), "should fall back to empty policy");
     }
 
@@ -1669,8 +1707,7 @@ any = true
     #[tokio::test]
     async fn test_prompt_with_ui_bridge_allow_once() {
         let f = write_temp_policy(block_policy_toml());
-        let (ui_tx, mut ui_rx) =
-            mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
+        let (ui_tx, mut ui_rx) = mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
         let bridge = Arc::new(UiBridge::new(ui_tx));
 
         let (audit_tx, _audit_rx) = mpsc::channel(1024);
@@ -1722,8 +1759,7 @@ any = true
     #[tokio::test]
     async fn test_prompt_with_ui_bridge_deny() {
         let f = write_temp_policy(block_policy_toml());
-        let (ui_tx, mut ui_rx) =
-            mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
+        let (ui_tx, mut ui_rx) = mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
         let bridge = Arc::new(UiBridge::new(ui_tx));
 
         let (audit_tx, _audit_rx) = mpsc::channel(1024);
@@ -1776,8 +1812,7 @@ any = true
     #[tokio::test]
     async fn test_prompt_timeout_auto_denies() {
         let f = write_temp_policy(block_policy_toml());
-        let (ui_tx, mut ui_rx) =
-            mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
+        let (ui_tx, mut ui_rx) = mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
         let bridge = Arc::new(UiBridge::new(ui_tx));
 
         let (audit_tx, _audit_rx) = mpsc::channel(1024);
@@ -1818,8 +1853,7 @@ any = true
     #[tokio::test]
     async fn test_prompt_allow_session_adds_rule() {
         let f = write_temp_policy(block_policy_toml());
-        let (ui_tx, mut ui_rx) =
-            mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
+        let (ui_tx, mut ui_rx) = mpsc::channel::<(UiRequest, oneshot::Sender<UiResponse>)>(16);
         let bridge = Arc::new(UiBridge::new(ui_tx));
 
         let (audit_tx, _audit_rx) = mpsc::channel(1024);
@@ -1865,7 +1899,11 @@ any = true
         let event = build_mcp_event(&make_tools_call_request("ssh_connect"));
         let engine = policy_engine.read().await;
         let action = engine.evaluate(&event);
-        assert_eq!(action, PolicyAction::Allow, "session rule should auto-allow");
+        assert_eq!(
+            action,
+            PolicyAction::Allow,
+            "session rule should auto-allow"
+        );
     }
 
     #[tokio::test]
@@ -1881,7 +1919,9 @@ any = true
                 jsonrpc: "2.0".into(),
                 id: JsonRpcId::Number(i),
                 method: "tools/call".into(),
-                params: Some(json!({"name": "read_file", "arguments": {"path": format!("/tmp/{i}")}})),
+                params: Some(
+                    json!({"name": "read_file", "arguments": {"path": format!("/tmp/{i}")}}),
+                ),
             });
             proxy
                 .handle_client_message(msg, &mut child_buf, &mut client_buf)
@@ -1969,10 +2009,22 @@ any = true
             _ => risk == "HIGH" || risk == "CRITICAL",
         };
 
-        assert!(should_escalate("HIGH"), "HIGH risk should trigger escalation with HIGH threshold");
-        assert!(should_escalate("CRITICAL"), "CRITICAL risk should trigger escalation with HIGH threshold");
-        assert!(!should_escalate("MEDIUM"), "MEDIUM risk should NOT trigger escalation with HIGH threshold");
-        assert!(!should_escalate("LOW"), "LOW risk should NOT trigger escalation with HIGH threshold");
+        assert!(
+            should_escalate("HIGH"),
+            "HIGH risk should trigger escalation with HIGH threshold"
+        );
+        assert!(
+            should_escalate("CRITICAL"),
+            "CRITICAL risk should trigger escalation with HIGH threshold"
+        );
+        assert!(
+            !should_escalate("MEDIUM"),
+            "MEDIUM risk should NOT trigger escalation with HIGH threshold"
+        );
+        assert!(
+            !should_escalate("LOW"),
+            "LOW risk should NOT trigger escalation with HIGH threshold"
+        );
     }
 
     #[test]
@@ -1985,10 +2037,22 @@ any = true
             _ => risk == "HIGH" || risk == "CRITICAL",
         };
 
-        assert!(should_escalate("MEDIUM"), "MEDIUM risk should trigger with MEDIUM threshold");
-        assert!(should_escalate("HIGH"), "HIGH risk should trigger with MEDIUM threshold");
-        assert!(should_escalate("CRITICAL"), "CRITICAL risk should trigger with MEDIUM threshold");
-        assert!(!should_escalate("LOW"), "LOW risk should NOT trigger with MEDIUM threshold");
+        assert!(
+            should_escalate("MEDIUM"),
+            "MEDIUM risk should trigger with MEDIUM threshold"
+        );
+        assert!(
+            should_escalate("HIGH"),
+            "HIGH risk should trigger with MEDIUM threshold"
+        );
+        assert!(
+            should_escalate("CRITICAL"),
+            "CRITICAL risk should trigger with MEDIUM threshold"
+        );
+        assert!(
+            !should_escalate("LOW"),
+            "LOW risk should NOT trigger with MEDIUM threshold"
+        );
     }
 
     #[test]
@@ -2001,10 +2065,22 @@ any = true
             _ => risk == "HIGH" || risk == "CRITICAL",
         };
 
-        assert!(should_escalate("CRITICAL"), "CRITICAL risk should trigger with CRITICAL threshold");
-        assert!(!should_escalate("HIGH"), "HIGH risk should NOT trigger with CRITICAL threshold");
-        assert!(!should_escalate("MEDIUM"), "MEDIUM risk should NOT trigger with CRITICAL threshold");
-        assert!(!should_escalate("LOW"), "LOW risk should NOT trigger with CRITICAL threshold");
+        assert!(
+            should_escalate("CRITICAL"),
+            "CRITICAL risk should trigger with CRITICAL threshold"
+        );
+        assert!(
+            !should_escalate("HIGH"),
+            "HIGH risk should NOT trigger with CRITICAL threshold"
+        );
+        assert!(
+            !should_escalate("MEDIUM"),
+            "MEDIUM risk should NOT trigger with CRITICAL threshold"
+        );
+        assert!(
+            !should_escalate("LOW"),
+            "LOW risk should NOT trigger with CRITICAL threshold"
+        );
     }
 
     #[tokio::test]
@@ -2016,7 +2092,10 @@ any = true
             let m = make_initialize_request();
             let mut c: Vec<u8> = Vec::new();
             let mut p: Vec<u8> = Vec::new();
-            proxy.handle_client_message(m, &mut c, &mut p).await.unwrap();
+            proxy
+                .handle_client_message(m, &mut c, &mut p)
+                .await
+                .unwrap();
         }
         let us = t.elapsed().as_micros() / n as u128;
         assert!(us < 1000, "pass-through {us}us > 1ms");
@@ -2031,7 +2110,10 @@ any = true
             let m = make_tools_call_request(&format!("t{}", i % 100));
             let mut c: Vec<u8> = Vec::new();
             let mut p: Vec<u8> = Vec::new();
-            proxy.handle_client_message(m, &mut c, &mut p).await.unwrap();
+            proxy
+                .handle_client_message(m, &mut c, &mut p)
+                .await
+                .unwrap();
         }
         let us = t.elapsed().as_micros() / n as u128;
         assert!(us < 1000, "review {us}us > 1ms");

@@ -164,7 +164,16 @@ fn is_file_related_tool(tool: &ToolInfo) -> bool {
     let name_lower = tool.name.to_lowercase();
     let desc_lower = tool.description.to_lowercase();
     let keywords = [
-        "file", "read", "write", "path", "directory", "dir", "folder", "fs", "open", "save",
+        "file",
+        "read",
+        "write",
+        "path",
+        "directory",
+        "dir",
+        "folder",
+        "fs",
+        "open",
+        "save",
         "list",
     ];
     keywords
@@ -315,9 +324,7 @@ impl ScanModule for CapabilityEscalationModule {
                 }
 
                 // Large string test
-                if let Some((param_name, _)) =
-                    all_params.iter().find(|(_, t)| t == "string")
-                {
+                if let Some((param_name, _)) = all_params.iter().find(|(_, t)| t == "string") {
                     let large = generate_large_string(100_000);
                     let args = json!({ param_name: large });
                     debug!(tool = tool.name, "Testing large string input");
@@ -420,9 +427,7 @@ impl ScanModule for CapabilityEscalationModule {
                             reproduction: Some(Reproduction {
                                 method: "tools/call".to_string(),
                                 tool: Some(tool.name.clone()),
-                                arguments: Some(
-                                    json!({ first_param: "<100-level nested JSON>" }),
-                                ),
+                                arguments: Some(json!({ first_param: "<100-level nested JSON>" })),
                             }),
                             evidence: Evidence::empty(),
                             remediation: "Implement JSON depth limits when parsing tool \
@@ -449,9 +454,7 @@ impl ScanModule for CapabilityEscalationModule {
                             reproduction: Some(Reproduction {
                                 method: "tools/call".to_string(),
                                 tool: Some(tool.name.clone()),
-                                arguments: Some(
-                                    json!({ first_param: "<100-level nested JSON>" }),
-                                ),
+                                arguments: Some(json!({ first_param: "<100-level nested JSON>" })),
                             }),
                             evidence: Evidence::empty(),
                             remediation: "Implement JSON depth limits and request timeouts."
@@ -599,9 +602,11 @@ impl ScanModule for CapabilityEscalationModule {
                                         arguments: Some(write_args.clone()),
                                     }),
                                     evidence: Evidence {
-                                        messages: vec![
-                                            ctx.client.history().len().saturating_sub(1),
-                                        ],
+                                        messages: vec![ctx
+                                            .client
+                                            .history()
+                                            .len()
+                                            .saturating_sub(1)],
                                         ..Evidence::empty()
                                     },
                                     remediation: "Enforce capability boundaries. Read-only \
@@ -653,9 +658,11 @@ impl ScanModule for CapabilityEscalationModule {
                                         arguments: Some(parent_args.clone()),
                                     }),
                                     evidence: Evidence {
-                                        messages: vec![
-                                            ctx.client.history().len().saturating_sub(1),
-                                        ],
+                                        messages: vec![ctx
+                                            .client
+                                            .history()
+                                            .len()
+                                            .saturating_sub(1)],
                                         ..Evidence::empty()
                                     },
                                     remediation: "Implement path canonicalization and enforce \
@@ -688,10 +695,7 @@ impl ScanModule for CapabilityEscalationModule {
 
                 debug!(tool = hidden_name, "Testing for undeclared tool");
 
-                let result = ctx
-                    .client
-                    .call_tool_raw(hidden_name, json!({}))
-                    .await;
+                let result = ctx.client.call_tool_raw(hidden_name, json!({})).await;
 
                 if let Ok(ref resp) = result {
                     if !is_error_response(resp) {
@@ -699,10 +703,7 @@ impl ScanModule for CapabilityEscalationModule {
                         warn!(tool = hidden_name, "Undeclared tool is accessible!");
                         findings.push(Finding {
                             id: format!("HIGH-CAPESC-{finding_counter:03}"),
-                            title: format!(
-                                "Undeclared tool '{}' is accessible",
-                                hidden_name
-                            ),
+                            title: format!("Undeclared tool '{}' is accessible", hidden_name),
                             severity: Severity::High,
                             cvss: 7.5,
                             category: ModuleCategory::CapabilityEscalation,
@@ -718,9 +719,7 @@ impl ScanModule for CapabilityEscalationModule {
                                 arguments: Some(json!({})),
                             }),
                             evidence: Evidence {
-                                messages: vec![
-                                    ctx.client.history().len().saturating_sub(1),
-                                ],
+                                messages: vec![ctx.client.history().len().saturating_sub(1)],
                                 ..Evidence::empty()
                             },
                             remediation: "Remove or properly declare all accessible tools. \
@@ -763,10 +762,7 @@ impl ScanModule for CapabilityEscalationModule {
                         finding_counter += 1;
                         findings.push(Finding {
                             id: format!("HIGH-CAPESC-{finding_counter:03}"),
-                            title: format!(
-                                "Undeclared resource URI '{}' is accessible",
-                                uri
-                            ),
+                            title: format!("Undeclared resource URI '{}' is accessible", uri),
                             severity: Severity::High,
                             cvss: 7.5,
                             category: ModuleCategory::CapabilityEscalation,
@@ -781,9 +777,7 @@ impl ScanModule for CapabilityEscalationModule {
                                 arguments: Some(json!({ "uri": uri })),
                             }),
                             evidence: Evidence {
-                                messages: vec![
-                                    ctx.client.history().len().saturating_sub(1),
-                                ],
+                                messages: vec![ctx.client.history().len().saturating_sub(1)],
                                 ..Evidence::empty()
                             },
                             remediation: "Restrict resource access to declared URIs only."
@@ -809,7 +803,10 @@ mod tests {
     #[test]
     fn test_shell_injection_payloads_comprehensive() {
         let payloads = shell_injection_payloads();
-        assert!(payloads.len() >= 8, "Should have at least 8 injection payloads");
+        assert!(
+            payloads.len() >= 8,
+            "Should have at least 8 injection payloads"
+        );
 
         let labels: Vec<&str> = payloads.iter().map(|p| p.label).collect();
         assert!(labels.contains(&"semicolon"));
@@ -922,7 +919,10 @@ mod tests {
     #[test]
     fn test_undeclared_tool_names_list() {
         let names = undeclared_tool_names();
-        assert!(names.len() >= 12, "Should have at least 12 hidden tool names");
+        assert!(
+            names.len() >= 12,
+            "Should have at least 12 hidden tool names"
+        );
         assert!(names.contains(&"run_command"));
         assert!(names.contains(&"execute"));
         assert!(names.contains(&"shell"));

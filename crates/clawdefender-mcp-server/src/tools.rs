@@ -105,7 +105,10 @@ pub async fn request_permission(
         PolicyAction::Prompt(_) => {
             // In a full implementation, this would send a prompt to the UI
             // and wait for the user's decision. For now, treat as denied.
-            warn!("requestPermission requires user prompt for: {}", params.resource);
+            warn!(
+                "requestPermission requires user prompt for: {}",
+                params.resource
+            );
             (false, PermissionScope::Once)
         }
     };
@@ -116,10 +119,21 @@ pub async fn request_permission(
     // in the protocol handler before reaching this code.
     if granted && scope == PermissionScope::Session {
         let mut policy_engine = server.policy_engine.lock().await;
-        let event_type = params.operation.to_action_type().to_event_type().to_string();
+        let event_type = params
+            .operation
+            .to_action_type()
+            .to_event_type()
+            .to_string();
         policy_engine.add_session_rule(clawdefender_core::policy::PolicyRule {
-            name: format!("mcp_grant_{}_{}", params.resource.replace('/', "_"), Uuid::new_v4()),
-            description: format!("MCP server grant: {} on {}", params.justification, params.resource),
+            name: format!(
+                "mcp_grant_{}_{}",
+                params.resource.replace('/', "_"),
+                Uuid::new_v4()
+            ),
+            description: format!(
+                "MCP server grant: {} on {}",
+                params.justification, params.resource
+            ),
             match_criteria: clawdefender_core::policy::MatchCriteria {
                 // Exact path only — no glob patterns allowed
                 resource_paths: Some(vec![params.resource.clone()]),
@@ -127,7 +141,10 @@ pub async fn request_permission(
                 ..Default::default()
             },
             action: PolicyAction::Allow,
-            message: format!("Granted via MCP requestPermission: {}", params.justification),
+            message: format!(
+                "Granted via MCP requestPermission: {}",
+                params.justification
+            ),
             priority: 0,
         });
     }
@@ -205,19 +222,13 @@ pub async fn report_action(
 
     let recorded = server.audit_logger.log(&record).is_ok();
 
-    Ok(ReportActionResponse {
-        recorded,
-        event_id,
-    })
+    Ok(ReportActionResponse { recorded, event_id })
 }
 
 /// Execute the `getPolicy` tool.
 ///
 /// Queries the policy engine and returns matching rules filtered by the given parameters.
-pub async fn get_policy(
-    server: &McpServer,
-    params: GetPolicyParams,
-) -> Result<GetPolicyResponse> {
+pub async fn get_policy(server: &McpServer, params: GetPolicyParams) -> Result<GetPolicyResponse> {
     debug!(
         "getPolicy: resource={:?}, action_type={:?}, tool_name={:?}",
         params.resource, params.action_type, params.tool_name

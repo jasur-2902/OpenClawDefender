@@ -46,16 +46,18 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     } else {
         0
     };
-    println!("  Policy: {} ({} rule(s))", config.policy_path.display(), rule_count);
+    println!(
+        "  Policy: {} ({} rule(s))",
+        config.policy_path.display(),
+        rule_count
+    );
     println!("  Audit:  {}", config.audit_log_path.display());
 
     // MCP server status.
     if config.mcp_server.enabled {
         let addr = format!("127.0.0.1:{}", config.mcp_server.http_port);
-        let reachable = TcpStream::connect_timeout(
-            &addr.parse().unwrap(),
-            Duration::from_secs(1),
-        ).is_ok();
+        let reachable =
+            TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(1)).is_ok();
         if reachable {
             println!("  MCP Server: running (http://{})", addr);
         } else {
@@ -68,10 +70,9 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     // Guard API status.
     if config.guard_api.enabled {
         let guard_addr = format!("127.0.0.1:{}", config.guard_api.port);
-        let guard_reachable = TcpStream::connect_timeout(
-            &guard_addr.parse().unwrap(),
-            Duration::from_secs(1),
-        ).is_ok();
+        let guard_reachable =
+            TcpStream::connect_timeout(&guard_addr.parse().unwrap(), Duration::from_secs(1))
+                .is_ok();
         if guard_reachable {
             println!("  Guard API: running (http://{})", guard_addr);
         } else {

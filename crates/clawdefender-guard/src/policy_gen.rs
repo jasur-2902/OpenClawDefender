@@ -24,14 +24,7 @@ const SHELL_TOOLS: &[&str] = &[
 ];
 
 /// Network tool names to block.
-const NETWORK_TOOLS: &[&str] = &[
-    "fetch",
-    "http_request",
-    "curl",
-    "wget",
-    "http",
-    "request",
-];
+const NETWORK_TOOLS: &[&str] = &["fetch", "http_request", "curl", "wget", "http", "request"];
 
 /// Generate a complete TOML policy string from an agent name and permission set.
 pub fn generate_policy_toml(agent_name: &str, permissions: &PermissionSet) -> String {
@@ -231,7 +224,7 @@ fn format_string_array_owned(items: &[String]) -> String {
 
 /// Verify that generated TOML is valid by parsing it.
 pub fn validate_policy_toml(toml_content: &str) -> anyhow::Result<()> {
-    let _: toml::Value = toml::from_str(toml_content)
-        .map_err(|e| anyhow::anyhow!("invalid generated TOML: {e}"))?;
+    let _: toml::Value =
+        toml::from_str(toml_content).map_err(|e| anyhow::anyhow!("invalid generated TOML: {e}"))?;
     Ok(())
 }

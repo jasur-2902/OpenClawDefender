@@ -74,8 +74,7 @@ fn build_learned_profile(
     let gap_count = event_count.saturating_sub(1);
     let gap_sum = gap_mean_ms * gap_count as f64;
     // Approximate sum-of-squares for the given mean and stddev
-    let gap_sum_sq = gap_count as f64
-        * (gap_stddev_ms * gap_stddev_ms + gap_mean_ms * gap_mean_ms);
+    let gap_sum_sq = gap_count as f64 * (gap_stddev_ms * gap_stddev_ms + gap_mean_ms * gap_mean_ms);
 
     let end_time = base_time + Duration::minutes(duration_minutes);
 
@@ -135,7 +134,12 @@ fn normal_tool_event(
         .get(tool)
         .map(|keys| {
             keys.iter()
-                .map(|k| (k.clone(), "/home/user/Projects/myapp/src/main.ts".to_string()))
+                .map(|k| {
+                    (
+                        k.clone(),
+                        "/home/user/Projects/myapp/src/main.ts".to_string(),
+                    )
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -172,11 +176,7 @@ fn malicious_file_event(path: &str, timestamp: DateTime<Utc>) -> BehavioralEvent
     }
 }
 
-fn malicious_network_event(
-    host: &str,
-    port: u16,
-    timestamp: DateTime<Utc>,
-) -> BehavioralEvent {
+fn malicious_network_event(host: &str, port: u16, timestamp: DateTime<Utc>) -> BehavioralEvent {
     BehavioralEvent {
         event_type: BehavioralEventType::NetworkConnect {
             host: host.to_string(),
@@ -236,10 +236,7 @@ fn test_behavioral_harness_detects_compromise() {
     // Phase 3: Compromise — reading sensitive files, then network exfiltration
     let compromise_start = normal_start + Duration::seconds(2000);
     let malicious_events = vec![
-        malicious_file_event(
-            "/home/user/.ssh/id_rsa",
-            compromise_start,
-        ),
+        malicious_file_event("/home/user/.ssh/id_rsa", compromise_start),
         malicious_file_event(
             "/home/user/.aws/credentials",
             compromise_start + Duration::seconds(2),

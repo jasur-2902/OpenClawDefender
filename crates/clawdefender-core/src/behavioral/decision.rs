@@ -214,7 +214,10 @@ impl DecisionEngine {
         };
 
         // Apply kill chain boost: add 0.3 to the anomaly score (capped at 1.0).
-        let kill_chain_boost = kill_chain.as_ref().map(|kc| kc.anomaly_boost()).unwrap_or(0.0);
+        let kill_chain_boost = kill_chain
+            .as_ref()
+            .map(|kc| kc.anomaly_boost())
+            .unwrap_or(0.0);
         let effective_score = (score.total + kill_chain_boost).min(1.0);
 
         // Build a score with the boosted total for decision-making.
@@ -422,9 +425,7 @@ impl DecisionEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::behavioral::anomaly::{
-        AnomalyComponent, AnomalyDimension, AnomalyScore,
-    };
+    use crate::behavioral::anomaly::{AnomalyComponent, AnomalyDimension, AnomalyScore};
     use crate::behavioral::killchain::{AttackPattern, KillChainMatch, Severity};
     use crate::behavioral::profile::*;
     use crate::policy::PolicyAction;
@@ -591,12 +592,7 @@ mod tests {
     fn test_learning_mode_returns_learning() {
         let mut engine = DecisionEngine::new();
         let profile = make_profile(true);
-        let decision = engine.decide(
-            &PolicyAction::Prompt("check".into()),
-            &profile,
-            None,
-            None,
-        );
+        let decision = engine.decide(&PolicyAction::Prompt("check".into()), &profile, None, None);
         assert!(matches!(decision, BehavioralDecision::Learning));
     }
 
@@ -837,12 +833,7 @@ mod tests {
     fn test_audit_data_learning_mode() {
         let mut engine = DecisionEngine::new();
         let profile = make_profile(true);
-        let decision = engine.decide(
-            &PolicyAction::Prompt("check".into()),
-            &profile,
-            None,
-            None,
-        );
+        let decision = engine.decide(&PolicyAction::Prompt("check".into()), &profile, None, None);
         let audit = engine.build_audit_data(&decision, &profile);
         assert!(!audit.auto_blocked);
         assert_eq!(audit.profile_status, "learning");
@@ -855,8 +846,7 @@ mod tests {
     fn test_audit_data_skip() {
         let mut engine = DecisionEngine::new();
         let profile = make_profile(false);
-        let decision =
-            engine.decide(&PolicyAction::Allow, &profile, Some(make_score(0.5)), None);
+        let decision = engine.decide(&PolicyAction::Allow, &profile, Some(make_score(0.5)), None);
         let audit = engine.build_audit_data(&decision, &profile);
         assert!(!audit.auto_blocked);
         assert_eq!(audit.profile_status, "active");

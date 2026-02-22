@@ -148,14 +148,20 @@ mod tests {
     #[test]
     fn test_multilingual_injection_patterns_chinese() {
         let patterns = InjectionSignatureLoader::multilingual_patterns();
-        let zh = patterns.iter().find(|p| p.language.as_deref() == Some("zh")).unwrap();
+        let zh = patterns
+            .iter()
+            .find(|p| p.language.as_deref() == Some("zh"))
+            .unwrap();
         assert!(InjectionSignatureLoader::validate_regex(&zh.regex));
     }
 
     #[test]
     fn test_multilingual_injection_patterns_arabic() {
         let patterns = InjectionSignatureLoader::multilingual_patterns();
-        let ar = patterns.iter().find(|p| p.language.as_deref() == Some("ar")).unwrap();
+        let ar = patterns
+            .iter()
+            .find(|p| p.language.as_deref() == Some("ar"))
+            .unwrap();
         assert!(InjectionSignatureLoader::validate_regex(&ar.regex));
     }
 
@@ -172,7 +178,10 @@ mod tests {
     #[test]
     fn test_xml_tag_injection_detection() {
         let patterns = InjectionSignatureLoader::multilingual_patterns();
-        let xml_pat = patterns.iter().find(|p| p.id == "xml_tag_injection").unwrap();
+        let xml_pat = patterns
+            .iter()
+            .find(|p| p.id == "xml_tag_injection")
+            .unwrap();
         let re = Regex::new(&xml_pat.regex).unwrap();
 
         assert!(re.is_match("<system>evil</system>"));
@@ -185,7 +194,10 @@ mod tests {
     #[test]
     fn test_homoglyph_detection() {
         let patterns = InjectionSignatureLoader::multilingual_patterns();
-        let homo_pat = patterns.iter().find(|p| p.id == "homoglyph_injection").unwrap();
+        let homo_pat = patterns
+            .iter()
+            .find(|p| p.id == "homoglyph_injection")
+            .unwrap();
         let re = Regex::new(&homo_pat.regex).unwrap();
 
         // Cyrillic 'а' (U+0430) next to Latin 'b'
@@ -284,7 +296,10 @@ mod tests {
             updated_at: Utc::now(),
         };
 
-        assert!(tracker.register(v1.clone()), "First registration should be 'new'");
+        assert!(
+            tracker.register(v1.clone()),
+            "First registration should be 'new'"
+        );
         assert!(!tracker.register(v1), "Same version should not be 'update'");
 
         let v2 = PatternVersion {
@@ -293,7 +308,10 @@ mod tests {
             source: PatternSource::Feed,
             updated_at: Utc::now(),
         };
-        assert!(tracker.register(v2), "New version should be detected as update");
+        assert!(
+            tracker.register(v2),
+            "New version should be detected as update"
+        );
         assert_eq!(tracker.get_version("pat_1").unwrap().version, "2.0.0");
     }
 
@@ -339,7 +357,10 @@ mod tests {
             source: PatternSource::Feed,
             updated_at: Utc::now(),
         };
-        assert!(tracker.register(v2_retry), "Unpinned pattern should accept update");
+        assert!(
+            tracker.register(v2_retry),
+            "Unpinned pattern should accept update"
+        );
         assert_eq!(tracker.get_version("pat_1").unwrap().version, "2.0.0");
     }
 

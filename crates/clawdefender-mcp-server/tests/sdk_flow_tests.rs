@@ -101,11 +101,7 @@ any = true
 "#
 }
 
-async fn call_check_intent(
-    server: &Arc<McpServer>,
-    action_type: &str,
-    target: &str,
-) -> Value {
+async fn call_check_intent(server: &Arc<McpServer>, action_type: &str, target: &str) -> Value {
     let msg = serde_json::to_string(&json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -192,7 +188,12 @@ async fn check_intent_allowed_returns_true() {
 
     assert_eq!(result["allowed"], true);
     assert_eq!(result["risk_level"], "Low");
-    assert!(result["suggestions"].is_null() || result["suggestions"].as_array().map_or(true, |a| a.is_empty()));
+    assert!(
+        result["suggestions"].is_null()
+            || result["suggestions"]
+                .as_array()
+                .map_or(true, |a| a.is_empty())
+    );
 }
 
 #[tokio::test]
@@ -380,8 +381,5 @@ async fn full_sdk_flow_blocked_action_no_report() {
         .iter()
         .filter(|r| r.source == "mcp-server-intent")
         .collect();
-    assert!(
-        !intent_records.is_empty(),
-        "Intent check should be logged"
-    );
+    assert!(!intent_records.is_empty(), "Intent check should be logged");
 }

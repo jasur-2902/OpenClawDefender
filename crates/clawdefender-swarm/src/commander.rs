@@ -41,10 +41,7 @@ pub struct Commander {
 }
 
 impl Commander {
-    pub fn new(
-        client: Arc<dyn LlmClient>,
-        cost_tracker: Option<Arc<Mutex<CostTracker>>>,
-    ) -> Self {
+    pub fn new(client: Arc<dyn LlmClient>, cost_tracker: Option<Arc<Mutex<CostTracker>>>) -> Self {
         Self {
             client,
             cost_tracker,
@@ -113,9 +110,7 @@ impl Commander {
 
             if let Some(ref tracker) = self.cost_tracker {
                 let record = UsageRecord {
-                    timestamp: chrono::Utc::now()
-                        .format("%Y-%m-%dT%H:%M:%S")
-                        .to_string(),
+                    timestamp: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                     provider: "anthropic".to_string(),
                     model: resp.model.clone(),
                     input_tokens: resp.input_tokens,
@@ -256,18 +251,17 @@ fn compute_confidence(reports: &[SpecialistReport]) -> f32 {
     let mut total = 0.0f32;
     let mut count = 0;
     for report in reports {
-        let conf =
-            if report.verdict.contains("Unable to parse")
-                || report.verdict == "analysis unavailable"
-                || report
-                    .findings
-                    .first()
-                    .is_some_and(|f| f.contains("Unable to parse"))
-            {
-                0.5
-            } else {
-                0.85
-            };
+        let conf = if report.verdict.contains("Unable to parse")
+            || report.verdict == "analysis unavailable"
+            || report
+                .findings
+                .first()
+                .is_some_and(|f| f.contains("Unable to parse"))
+        {
+            0.5
+        } else {
+            0.85
+        };
         total += conf;
         count += 1;
     }
@@ -368,11 +362,7 @@ mod tests {
     #[test]
     fn test_synthesis_mixed_high_low_medium() {
         let reports = vec![
-            parse_specialist_response(&make_response(
-                "HIGH",
-                "Suspicious connection",
-                "Risky",
-            )),
+            parse_specialist_response(&make_response("HIGH", "Suspicious connection", "Risky")),
             parse_specialist_response(&make_response("LOW", "No issues", "Safe")),
             parse_specialist_response(&make_response("MEDIUM", "Minor concern", "Moderate")),
         ];

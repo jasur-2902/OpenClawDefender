@@ -32,7 +32,11 @@ impl DefaultPolicyEngine {
         let content = fs::read_to_string(path)
             .with_context(|| format!("failed to read policy file: {}", path.display()))?;
         let file_rules = parse_policy_toml(&content)?;
-        debug!("loaded {} policy rules from {}", file_rules.len(), path.display());
+        debug!(
+            "loaded {} policy rules from {}",
+            file_rules.len(),
+            path.display()
+        );
         Ok(Self {
             policy_path: path.to_path_buf(),
             session_rules: Vec::new(),
@@ -61,7 +65,10 @@ impl DefaultPolicyEngine {
         }
 
         // Fallback: no specific context extractable.
-        warn!("unknown event type from source '{}', no context extracted", event.source());
+        warn!(
+            "unknown event type from source '{}', no context extracted",
+            event.source()
+        );
         EventContext::default()
     }
 
@@ -113,7 +120,14 @@ impl DefaultPolicyEngine {
     /// We extract the first match so `resource_path` policy rules work for
     /// tool calls, not just `resources/read` events.
     fn extract_path_from_arguments(arguments: &serde_json::Value) -> Option<String> {
-        const PATH_KEYS: &[&str] = &["path", "file_path", "filepath", "filename", "file", "directory"];
+        const PATH_KEYS: &[&str] = &[
+            "path",
+            "file_path",
+            "filepath",
+            "filename",
+            "file",
+            "directory",
+        ];
         let obj = arguments.as_object()?;
         for key in PATH_KEYS {
             if let Some(val) = obj.get(*key).and_then(|v| v.as_str()) {
@@ -157,7 +171,11 @@ impl DefaultPolicyEngine {
                 method: None,
                 event_type: Some("unlink".to_string()),
             },
-            OsEventKind::Connect { address, port, protocol } => EventContext {
+            OsEventKind::Connect {
+                address,
+                port,
+                protocol,
+            } => EventContext {
                 tool_name: None,
                 resource_path: Some(format!("{protocol}://{address}:{port}")),
                 method: None,
@@ -208,8 +226,9 @@ impl PolicyEngine for DefaultPolicyEngine {
     }
 
     fn reload(&mut self) -> Result<()> {
-        let content = fs::read_to_string(&self.policy_path)
-            .with_context(|| format!("failed to read policy file: {}", self.policy_path.display()))?;
+        let content = fs::read_to_string(&self.policy_path).with_context(|| {
+            format!("failed to read policy file: {}", self.policy_path.display())
+        })?;
         self.file_rules = parse_policy_toml(&content)?;
         debug!("reloaded {} policy rules", self.file_rules.len());
         Ok(())
@@ -226,8 +245,12 @@ impl PolicyEngine for DefaultPolicyEngine {
         let mut content = fs::read_to_string(&self.policy_path).unwrap_or_default();
         content.push('\n');
         content.push_str(&toml_fragment);
-        fs::write(&self.policy_path, &content)
-            .with_context(|| format!("failed to write policy file: {}", self.policy_path.display()))?;
+        fs::write(&self.policy_path, &content).with_context(|| {
+            format!(
+                "failed to write policy file: {}",
+                self.policy_path.display()
+            )
+        })?;
 
         // Also add to in-memory list.
         self.file_rules.push(rule);
@@ -454,7 +477,9 @@ any = true
         assert_eq!(engine.file_rules.len(), 4);
 
         // Overwrite with a smaller policy.
-        fs::write(f.path(), r#"
+        fs::write(
+            f.path(),
+            r#"
 [rules.only_one]
 description = "Only rule"
 action = "allow"
@@ -463,7 +488,9 @@ priority = 0
 
 [rules.only_one.match]
 any = true
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         engine.reload().unwrap();
         assert_eq!(engine.file_rules.len(), 1);
@@ -508,17 +535,19 @@ any = true
         let mut engine = DefaultPolicyEngine::load(f.path()).unwrap();
         assert_eq!(engine.file_rules.len(), 0);
 
-        engine.add_permanent_rule(PolicyRule {
-            name: "block_network".to_string(),
-            description: "Block network".to_string(),
-            match_criteria: super::super::MatchCriteria {
-                event_types: Some(vec!["connect".to_string()]),
-                ..Default::default()
-            },
-            action: PolicyAction::Block,
-            message: "Network blocked".to_string(),
-            priority: 0,
-        }).unwrap();
+        engine
+            .add_permanent_rule(PolicyRule {
+                name: "block_network".to_string(),
+                description: "Block network".to_string(),
+                match_criteria: super::super::MatchCriteria {
+                    event_types: Some(vec!["connect".to_string()]),
+                    ..Default::default()
+                },
+                action: PolicyAction::Block,
+                message: "Network blocked".to_string(),
+                priority: 0,
+            })
+            .unwrap();
 
         assert_eq!(engine.file_rules.len(), 1);
 

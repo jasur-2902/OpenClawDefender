@@ -98,7 +98,12 @@ fn parse_version_string(output: &str) -> Option<String> {
         return Some(ver.trim().to_string());
     }
     // Try just version number
-    if trimmed.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+    if trimmed
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
         return Some(trimmed.to_string());
     }
     None
@@ -151,10 +156,7 @@ mod tests {
             parse_version_string("clawdefender 0.1.0"),
             Some("0.1.0".to_string())
         );
-        assert_eq!(
-            parse_version_string("0.2.0\n"),
-            Some("0.2.0".to_string())
-        );
+        assert_eq!(parse_version_string("0.2.0\n"), Some("0.2.0".to_string()));
         assert_eq!(parse_version_string("garbage"), None);
     }
 

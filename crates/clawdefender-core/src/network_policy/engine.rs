@@ -129,7 +129,11 @@ impl NetworkPolicyEngine {
 
     /// Create an engine with only default rules, suitable for testing.
     pub fn with_defaults() -> Self {
-        Self::new(Vec::new(), NetworkAction::Prompt, RateLimitConfig::default())
+        Self::new(
+            Vec::new(),
+            NetworkAction::Prompt,
+            RateLimitConfig::default(),
+        )
     }
 
     /// Evaluate a connection request and return a decision.
@@ -164,11 +168,9 @@ impl NetworkPolicyEngine {
                 .map(|ip| ip.to_string())
                 .unwrap_or_default()
         };
-        let _rate_alerts = self.rate_limiter.record_connection(
-            request.pid,
-            &dest_label,
-            chrono::Utc::now(),
-        );
+        let _rate_alerts =
+            self.rate_limiter
+                .record_connection(request.pid, &dest_label, chrono::Utc::now());
 
         // 1. Non-agent traffic → always allow.
         if !request.is_agent {
@@ -205,10 +207,7 @@ impl NetworkPolicyEngine {
                     Some(format!("Destination {} not in guard allowlist", dest));
                 return NetworkDecision {
                     action: NetworkAction::Block,
-                    reason: format!(
-                        "Blocked: {} not in guard network allowlist",
-                        dest
-                    ),
+                    reason: format!("Blocked: {} not in guard network allowlist", dest),
                     rule_name: Some("guard_restriction".to_string()),
                     signals: net_signals,
                     severity: Severity::High,
@@ -223,10 +222,11 @@ impl NetworkPolicyEngine {
                 continue;
             }
 
-            if rule.matches_destination(request.destination_ip, request.destination_domain.as_deref())
-            {
-                net_signals.static_rule =
-                    Some((rule.name.clone(), rule.action.clone()));
+            if rule.matches_destination(
+                request.destination_ip,
+                request.destination_domain.as_deref(),
+            ) {
+                net_signals.static_rule = Some((rule.name.clone(), rule.action.clone()));
                 let mut severity = match rule.action {
                     NetworkAction::Block => Severity::High,
                     NetworkAction::Prompt => Severity::Medium,
@@ -238,20 +238,16 @@ impl NetworkPolicyEngine {
                     net_signals.behavioral_context =
                         Some("Server has NEVER made network connections".to_string());
                     // If static rule would allow, escalate to prompt.
-                    if rule.action == NetworkAction::Allow
-                        && rule.source != RuleSource::Default
-                    {
+                    if rule.action == NetworkAction::Allow && rule.source != RuleSource::Default {
                         // User explicitly allowed, don't override.
                     } else if rule.action == NetworkAction::Allow {
-                        return self.build_behavioral_escalation(
-                            request,
-                            &net_signals,
-                            signals,
-                        );
+                        return self.build_behavioral_escalation(request, &net_signals, signals);
                     }
                 }
                 if signals.destination_unknown_to_profile {
-                    let ctx = net_signals.behavioral_context.get_or_insert_with(String::new);
+                    let ctx = net_signals
+                        .behavioral_context
+                        .get_or_insert_with(String::new);
                     if !ctx.is_empty() {
                         ctx.push_str("; ");
                     }
@@ -266,10 +262,7 @@ impl NetworkPolicyEngine {
 
                 return NetworkDecision {
                     action: rule.action.clone(),
-                    reason: format!(
-                        "Rule '{}': {}",
-                        rule.name, rule.description
-                    ),
+                    reason: format!("Rule '{}': {}", rule.name, rule.description),
                     rule_name: Some(rule.name.clone()),
                     signals: net_signals,
                     severity,
@@ -283,7 +276,9 @@ impl NetworkPolicyEngine {
                 Some("Server has NEVER made network connections".to_string());
         }
         if signals.destination_unknown_to_profile {
-            let ctx = net_signals.behavioral_context.get_or_insert_with(String::new);
+            let ctx = net_signals
+                .behavioral_context
+                .get_or_insert_with(String::new);
             if !ctx.is_empty() {
                 ctx.push_str("; ");
             }
@@ -318,10 +313,7 @@ impl NetworkPolicyEngine {
         decision: &NetworkDecision,
     ) -> NetworkPromptInfo {
         let dest = format_destination(request);
-        let anomaly = decision
-            .signals
-            .anomaly_score
-            .unwrap_or(0.0);
+        let anomaly = decision.signals.anomaly_score.unwrap_or(0.0);
         let behavioral = decision
             .signals
             .behavioral_context
@@ -345,9 +337,11 @@ impl NetworkPolicyEngine {
             domain: request.destination_domain.clone(),
             anomaly_score: anomaly,
             behavioral_context: behavioral,
-            ioc_info: decision.signals.ioc_match.as_ref().map(|id| {
-                format!("IoC Match: {}", id)
-            }),
+            ioc_info: decision
+                .signals
+                .ioc_match
+                .as_ref()
+                .map(|id| format!("IoC Match: {}", id)),
             kill_chain_info: decision.signals.kill_chain.clone(),
             recommendation,
             timeout_action: NetworkAction::Block,

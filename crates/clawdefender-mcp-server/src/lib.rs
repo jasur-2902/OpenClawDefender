@@ -94,26 +94,26 @@ impl Default for ServerInfo {
 
 impl McpServer {
     /// Create a new MCP server with the given policy engine and audit logger.
-    pub fn new(
-        policy_engine: Box<dyn PolicyEngine>,
-        audit_logger: Arc<dyn AuditLogger>,
-    ) -> Self {
+    pub fn new(policy_engine: Box<dyn PolicyEngine>, audit_logger: Arc<dyn AuditLogger>) -> Self {
         Self {
             policy_engine: Arc::new(Mutex::new(policy_engine)),
             audit_logger,
             server_info: ServerInfo::default(),
             // 10 permission requests per 60 seconds per server (prompt flooding prevention)
-            permission_rate_limiter: Arc::new(Mutex::new(
-                PromptRateLimiter::new(10, Duration::from_secs(60)),
-            )),
+            permission_rate_limiter: Arc::new(Mutex::new(PromptRateLimiter::new(
+                10,
+                Duration::from_secs(60),
+            ))),
             // 100 checkIntent calls per 60 seconds per caller
-            intent_rate_limiter: Arc::new(Mutex::new(
-                ToolRateLimiter::new(100, Duration::from_secs(60)),
-            )),
+            intent_rate_limiter: Arc::new(Mutex::new(ToolRateLimiter::new(
+                100,
+                Duration::from_secs(60),
+            ))),
             // 1000 reportAction calls per 60 seconds per server
-            report_rate_limiter: Arc::new(Mutex::new(
-                ToolRateLimiter::new(1000, Duration::from_secs(60)),
-            )),
+            report_rate_limiter: Arc::new(Mutex::new(ToolRateLimiter::new(
+                1000,
+                Duration::from_secs(60),
+            ))),
             auth_token: None,
         }
     }

@@ -474,7 +474,8 @@ mod tests {
     fn raw_message_preserves_exact_bytes() {
         let mut parser = StreamParser::new();
         // Use specific formatting: extra spaces, specific key order
-        let original = r#"{"jsonrpc" : "2.0",  "id":1, "method":"tools/call","params":{"name":"exec"}}"#;
+        let original =
+            r#"{"jsonrpc" : "2.0",  "id":1, "method":"tools/call","params":{"name":"exec"}}"#;
         let data = format!("{}\n", original);
         parser.feed(data.as_bytes());
 
@@ -518,7 +519,8 @@ mod tests {
     fn raw_message_preserves_key_ordering() {
         let mut parser = StreamParser::new();
         // Non-standard key ordering: params before method
-        let original = r#"{"params":{"name":"read"},"jsonrpc":"2.0","id":42,"method":"tools/call"}"#;
+        let original =
+            r#"{"params":{"name":"read"},"jsonrpc":"2.0","id":42,"method":"tools/call"}"#;
         let data = format!("{}\n", original);
         parser.feed(data.as_bytes());
 
@@ -554,16 +556,14 @@ mod tests {
 
         let raw_msg = parser.next_raw_message().unwrap().unwrap();
         assert!(matches!(raw_msg.parsed, JsonRpcMessage::Notification(_)));
-        assert_eq!(
-            std::str::from_utf8(&raw_msg.raw_bytes).unwrap(),
-            original
-        );
+        assert_eq!(std::str::from_utf8(&raw_msg.raw_bytes).unwrap(), original);
     }
 
     #[test]
     fn raw_message_null_id_response() {
         let mut parser = StreamParser::new();
-        let original = r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#;
+        let original =
+            r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#;
         let data = format!("{}\n", original);
         parser.feed(data.as_bytes());
 
@@ -574,9 +574,6 @@ mod tests {
             }
             _ => panic!("expected response with null id"),
         }
-        assert_eq!(
-            std::str::from_utf8(&raw_msg.raw_bytes).unwrap(),
-            original
-        );
+        assert_eq!(std::str::from_utf8(&raw_msg.raw_bytes).unwrap(), original);
     }
 }

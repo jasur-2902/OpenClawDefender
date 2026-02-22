@@ -391,6 +391,7 @@ dependencies = [
  "clawdefender-swarm",
  "clawdefender-threat-intel",
  "clawdefender-tui",
+ "libc",
  "notify",
  "serde_json",
  "tempfile",

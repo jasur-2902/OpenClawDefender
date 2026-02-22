@@ -108,7 +108,10 @@ impl AgentGuard {
 
     /// Activate the guard. Attempts daemon connection, falls back to embedded mode.
     pub fn activate(&mut self) -> Result<()> {
-        info!("Activating AgentGuard '{}' in {:?} mode", self.name, self.mode);
+        info!(
+            "Activating AgentGuard '{}' in {:?} mode",
+            self.name, self.mode
+        );
 
         // Try connecting to the daemon.
         let socket = DEFAULT_SOCKET_PATH;
@@ -135,7 +138,10 @@ impl AgentGuard {
         stats.activated_at = Some(Utc::now());
         stats.status = test_status;
 
-        info!("AgentGuard '{}' activated with status: {:?}", self.name, self.status);
+        info!(
+            "AgentGuard '{}' activated with status: {:?}",
+            self.name, self.status
+        );
         Ok(())
     }
 
@@ -179,7 +185,10 @@ impl AgentGuard {
                     would_block,
                     reason: reason.clone(),
                 });
-                ActionResult::Monitored { would_block, reason }
+                ActionResult::Monitored {
+                    would_block,
+                    reason,
+                }
             }
         }
     }

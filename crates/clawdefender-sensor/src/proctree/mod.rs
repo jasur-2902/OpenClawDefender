@@ -75,10 +75,7 @@ impl ProcessTree {
 
         for (raw_pid, process) in sys.processes() {
             let pid = raw_pid.as_u32();
-            let ppid = process
-                .parent()
-                .map(|p| p.as_u32())
-                .unwrap_or(0);
+            let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
 
             let exe_path = process
                 .exe()
@@ -99,7 +96,11 @@ impl ProcessTree {
                 ppid,
                 name: process.name().to_string_lossy().into_owned(),
                 path: exe_path,
-                args: process.cmd().iter().map(|s| s.to_string_lossy().into_owned()).collect(),
+                args: process
+                    .cmd()
+                    .iter()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .collect(),
                 start_time,
             };
             self.processes.insert(pid, info);
@@ -180,10 +181,13 @@ impl ProcessTree {
 
         // Compute and cache
         let ancestry: Vec<ProcessInfo> = self.get_ancestry(pid).into_iter().cloned().collect();
-        self.ancestry_cache.insert(pid, AncestryCache {
-            ancestry: ancestry.clone(),
-            cached_at: Instant::now(),
-        });
+        self.ancestry_cache.insert(
+            pid,
+            AncestryCache {
+                ancestry: ancestry.clone(),
+                cached_at: Instant::now(),
+            },
+        );
         ancestry
     }
 
@@ -193,11 +197,14 @@ impl ProcessTree {
     /// PID recycling.
     pub fn register_agent(&mut self, pid: u32, name: String, client: String) {
         let start_time = self.processes.get(&pid).and_then(|p| p.start_time);
-        self.agents.insert(pid, TaggedAgent {
-            agent_name: name,
-            client_name: client,
-            start_time,
-        });
+        self.agents.insert(
+            pid,
+            TaggedAgent {
+                agent_name: name,
+                client_name: client,
+                start_time,
+            },
+        );
     }
 
     /// Get tagged agent info for a PID (used by identify_agent Layer 1).
@@ -351,7 +358,12 @@ mod tests {
     #[test]
     fn is_agent_detects_known_client() {
         let mut tree = ProcessTree::new();
-        tree.insert(make_proc(50, 1, "Cursor", "/Applications/Cursor.app/Contents/MacOS/Cursor"));
+        tree.insert(make_proc(
+            50,
+            1,
+            "Cursor",
+            "/Applications/Cursor.app/Contents/MacOS/Cursor",
+        ));
         assert!(tree.is_agent(50));
     }
 

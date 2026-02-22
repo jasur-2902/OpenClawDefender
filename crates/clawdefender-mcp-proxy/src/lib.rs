@@ -6,7 +6,9 @@ pub mod proxy;
 
 pub use proxy::http::HttpProxy;
 pub use proxy::stdio::StdioProxy;
-pub use proxy::{ProxyConfig, ProxyMetrics, SlmContext, SwarmContext, ThreatIntelContext, UiBridge};
+pub use proxy::{
+    ProxyConfig, ProxyMetrics, SlmContext, SwarmContext, ThreatIntelContext, UiBridge,
+};
 
 use std::net::SocketAddr;
 use std::path::Path;
@@ -18,11 +20,7 @@ use clawdefender_core::policy::engine::DefaultPolicyEngine;
 use tokio::sync::mpsc;
 
 /// Convenience function to create and run a stdio MCP proxy.
-pub async fn run_stdio_proxy(
-    cmd: String,
-    args: Vec<String>,
-    policy_path: &Path,
-) -> Result<()> {
+pub async fn run_stdio_proxy(cmd: String, args: Vec<String>, policy_path: &Path) -> Result<()> {
     let proxy = StdioProxy::new(cmd, args, policy_path)?;
     proxy.run().await
 }

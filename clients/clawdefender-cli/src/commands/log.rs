@@ -91,14 +91,8 @@ pub fn run(
         } else {
             &record.action_taken
         };
-        let server_name = record
-            .server_name
-            .as_deref()
-            .unwrap_or("-");
-        let method = record
-            .jsonrpc_method
-            .as_deref()
-            .unwrap_or("-");
+        let server_name = record.server_name.as_deref().unwrap_or("-");
+        let method = record.jsonrpc_method.as_deref().unwrap_or("-");
 
         let summary = if record.event_summary.len() > 30 {
             format!("{}...", &record.event_summary[..27])

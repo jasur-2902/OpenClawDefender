@@ -31,6 +31,8 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum DaemonCommand {
+    /// Run the daemon in standalone mode (IPC server, sensors, audit).
+    Run,
     /// Proxy an MCP server, intercepting JSON-RPC messages.
     Proxy {
         /// Command and arguments for the MCP server (after --).
@@ -63,9 +65,7 @@ async fn main() -> Result<()> {
             .with_ansi(false)
             .init();
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 
     // Resolve config path.
@@ -81,6 +81,10 @@ async fn main() -> Result<()> {
     }
 
     match args.command {
+        Some(DaemonCommand::Run) | None => {
+            let daemon = Daemon::new(config, args.tui)?;
+            daemon.run().await
+        }
         Some(DaemonCommand::Proxy { server_command }) => {
             if server_command.is_empty() {
                 anyhow::bail!("proxy command requires a server command: clawdefender proxy -- <cmd> [args...]");
@@ -90,12 +94,6 @@ async fn main() -> Result<()> {
 
             let daemon = Daemon::new(config, args.tui)?;
             daemon.run_proxy(command, cmd_args).await
-        }
-        None => {
-            // Default: print help.
-            anyhow::bail!(
-                "no subcommand specified. Use `clawdefender proxy -- <cmd>` to proxy an MCP server."
-            );
         }
     }
 }

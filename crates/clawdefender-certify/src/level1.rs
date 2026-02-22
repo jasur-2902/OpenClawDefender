@@ -55,7 +55,10 @@ async fn run_survives_blocked_calls(config: &CertifyConfig) -> Result<()> {
     // the server processes it; even if we can't inject -32001 externally,
     // we verify the server stays alive after each call.
     for tool in &tools {
-        let tool_name = tool.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+        let tool_name = tool
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("unknown");
         let _resp = harness
             .call_tool(tool_name, json!({ "test": "blocked_simulation" }))
             .await?;
@@ -206,9 +209,7 @@ async fn run_rapid_fire(config: &CertifyConfig) -> Result<()> {
 
     // Send 10 rapid calls
     for i in 0..10 {
-        let resp = harness
-            .call_tool(tool_name, json!({ "rapid": i }))
-            .await;
+        let resp = harness.call_tool(tool_name, json!({ "rapid": i })).await;
         if resp.is_err() && !harness.is_running() {
             anyhow::bail!("Server crashed at rapid-fire iteration {i}");
         }

@@ -108,9 +108,14 @@ export function Behavioral() {
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">Server Profiles</h2>
         {profiles.length === 0 && !error && (
-          <p className="text-[var(--color-text-secondary)] text-sm">
-            No server profiles available yet. Profiles are created as servers are monitored.
-          </p>
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-6 text-center">
+            <p className="text-sm text-[var(--color-text-primary)] font-medium mb-2">
+              No server profiles available yet
+            </p>
+            <p className="text-sm text-[var(--color-text-secondary)] max-w-md mx-auto">
+              Behavioral profiles build automatically as your MCP servers are used. Start using your AI tools to begin building baselines.
+            </p>
+          </div>
         )}
         {profiles.map((profile) => (
           <div

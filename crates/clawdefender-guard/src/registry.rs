@@ -272,9 +272,7 @@ impl GuardRegistry {
     /// Get webhooks for a guard.
     pub async fn get_webhooks(&self, guard_id: &str) -> Option<Vec<WebhookRegistration>> {
         let guards = self.guards.read().await;
-        guards
-            .get(guard_id)
-            .map(|g| g.webhooks.clone())
+        guards.get(guard_id).map(|g| g.webhooks.clone())
     }
 
     /// Remove guards whose PIDs are no longer running.
@@ -411,7 +409,10 @@ fn evaluate_action(
     CheckResult {
         allowed: matched,
         reason: if matched {
-            format!("Path '{}' matches allowed patterns for '{}'", target, action)
+            format!(
+                "Path '{}' matches allowed patterns for '{}'",
+                target, action
+            )
         } else {
             format!(
                 "Path '{}' does not match any allowed pattern for '{}'",
@@ -476,7 +477,12 @@ mod tests {
     async fn test_register_and_get() {
         let registry = GuardRegistry::new();
         let (id, rules) = registry
-            .register("test-agent".into(), 1234, test_permissions(), GuardMode::Enforce)
+            .register(
+                "test-agent".into(),
+                1234,
+                test_permissions(),
+                GuardMode::Enforce,
+            )
             .await;
         assert!(!id.is_empty());
         assert!(rules > 0);
@@ -523,7 +529,11 @@ mod tests {
             .register("test".into(), 1, test_permissions(), GuardMode::Enforce)
             .await;
         let result = registry
-            .check_action(&id, "file_read", &format!("{}/Projects/workspace/foo.txt", home))
+            .check_action(
+                &id,
+                "file_read",
+                &format!("{}/Projects/workspace/foo.txt", home),
+            )
             .await
             .unwrap();
         assert!(result.allowed);
@@ -652,7 +662,12 @@ mod tests {
         let result = evaluate_action(&perms, GuardMode::Enforce, "file_read", "/home/.ssh/id_rsa");
         assert!(!result.allowed);
 
-        let result = evaluate_action(&perms, GuardMode::Enforce, "file_read", "/home/.aws/credentials");
+        let result = evaluate_action(
+            &perms,
+            GuardMode::Enforce,
+            "file_read",
+            "/home/.aws/credentials",
+        );
         assert!(!result.allowed);
 
         let result = evaluate_action(&perms, GuardMode::Enforce, "file_read", "/path/.env");

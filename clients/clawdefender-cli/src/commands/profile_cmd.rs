@@ -24,7 +24,11 @@ pub fn list(_config: &ClawConfig) -> Result<()> {
     println!("{}", "-".repeat(80));
 
     for p in &profiles {
-        let status = if p.learning_mode { "learning" } else { "active" };
+        let status = if p.learning_mode {
+            "learning"
+        } else {
+            "active"
+        };
         println!(
             "{:<30} {:<10} {:>8} {:>6} {:>6} {:>6}",
             p.server_name,
@@ -58,9 +62,22 @@ pub fn show(server: &str) -> Result<()> {
     println!("========{}", "=".repeat(profile.server_name.len()));
     println!();
     println!("  Client:       {}", profile.client_name);
-    println!("  Status:       {}", if profile.learning_mode { "learning" } else { "active" });
-    println!("  First seen:   {}", profile.first_seen.format("%Y-%m-%d %H:%M:%S UTC"));
-    println!("  Last updated: {}", profile.last_updated.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!(
+        "  Status:       {}",
+        if profile.learning_mode {
+            "learning"
+        } else {
+            "active"
+        }
+    );
+    println!(
+        "  First seen:   {}",
+        profile.first_seen.format("%Y-%m-%d %H:%M:%S UTC")
+    );
+    println!(
+        "  Last updated: {}",
+        profile.last_updated.format("%Y-%m-%d %H:%M:%S UTC")
+    );
     println!("  Observations: {}", profile.observation_count);
 
     // Tool profile
@@ -104,7 +121,10 @@ pub fn show(server: &str) -> Result<()> {
     // Network profile
     println!();
     println!("  Network Profile:");
-    println!("    Has networked: {}", profile.network_profile.has_networked);
+    println!(
+        "    Has networked: {}",
+        profile.network_profile.has_networked
+    );
     if !profile.network_profile.observed_hosts.is_empty() {
         println!("    Known hosts:");
         for host in &profile.network_profile.observed_hosts {
@@ -112,7 +132,12 @@ pub fn show(server: &str) -> Result<()> {
         }
     }
     if !profile.network_profile.observed_ports.is_empty() {
-        let ports: Vec<String> = profile.network_profile.observed_ports.iter().map(|p| p.to_string()).collect();
+        let ports: Vec<String> = profile
+            .network_profile
+            .observed_ports
+            .iter()
+            .map(|p| p.to_string())
+            .collect();
         println!("    Known ports: {}", ports.join(", "));
     }
 
@@ -127,7 +152,10 @@ pub fn show(server: &str) -> Result<()> {
         "    Gap stddev:             {:.0}ms",
         profile.temporal_profile.inter_request_gap_stddev_ms
     );
-    println!("    Gap samples:            {}", profile.temporal_profile.gap_count);
+    println!(
+        "    Gap samples:            {}",
+        profile.temporal_profile.gap_count
+    );
 
     Ok(())
 }

@@ -98,10 +98,8 @@ impl DnsExfiltrationDetector {
             return None;
         }
         // parent = last two labels, subdomain = everything before
-        let parent_start = domain.len()
-            - labels[labels.len() - 2].len()
-            - 1
-            - labels[labels.len() - 1].len();
+        let parent_start =
+            domain.len() - labels[labels.len() - 2].len() - 1 - labels[labels.len() - 1].len();
         let parent = &domain[parent_start..];
         let subdomain = if parent_start > 0 {
             &domain[..parent_start - 1]

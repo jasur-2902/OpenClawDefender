@@ -34,10 +34,7 @@ const KNOWN_REGISTRIES: &[&str] = &[
 fn classify_connection(conn: &str) -> (Severity, String) {
     let lower = conn.to_lowercase();
     // Localhost
-    if lower.contains("127.0.0.1")
-        || lower.contains("::1")
-        || lower.contains("localhost")
-    {
+    if lower.contains("127.0.0.1") || lower.contains("::1") || lower.contains("localhost") {
         return (Severity::Info, "Localhost connection".to_string());
     }
     // Known registries
@@ -142,7 +139,11 @@ fn is_dns_exfiltration_pattern(domain: &str) -> bool {
 
 /// Analyze timing measurements for side-channel leakage.
 /// Returns true if average difference exceeds threshold_ms.
-fn has_timing_oracle(existing_times_ms: &[f64], missing_times_ms: &[f64], threshold_ms: f64) -> bool {
+fn has_timing_oracle(
+    existing_times_ms: &[f64],
+    missing_times_ms: &[f64],
+    threshold_ms: f64,
+) -> bool {
     if existing_times_ms.is_empty() || missing_times_ms.is_empty() {
         return false;
     }
@@ -182,7 +183,7 @@ impl ScanModule for ExfiltrationModule {
             let (severity, desc) = classify_connection(conn);
             match severity {
                 Severity::Info => {} // skip informational localhost
-                Severity::Low => {} // skip known registries
+                Severity::Low => {}  // skip known registries
                 _ => {
                     let cvss = match severity {
                         Severity::Critical => 9.0,
@@ -213,7 +214,10 @@ impl ScanModule for ExfiltrationModule {
         // 2a. Error message info leakage — call tools with invalid args
         for tool in &ctx.tool_list.clone() {
             let invalid_args = json!({"__invalid_field__": true, "wrong_type": 12345});
-            let resp = ctx.client.call_tool_raw(&tool.name, invalid_args.clone()).await;
+            let resp = ctx
+                .client
+                .call_tool_raw(&tool.name, invalid_args.clone())
+                .await;
             if let Ok(val) = resp {
                 let text = val.to_string();
 
@@ -286,14 +290,24 @@ impl ScanModule for ExfiltrationModule {
         }
 
         // 2c. Environment variable expansion via tool arguments
-        let env_test_strings = ["$HOME", "$PATH", "$AWS_SECRET_ACCESS_KEY", "${HOME}", "${SECRET_KEY}"];
+        let env_test_strings = [
+            "$HOME",
+            "$PATH",
+            "$AWS_SECRET_ACCESS_KEY",
+            "${HOME}",
+            "${SECRET_KEY}",
+        ];
         for tool in &ctx.tool_list.clone() {
             for env_str in &env_test_strings {
                 let args = json!({"path": env_str, "input": env_str});
                 if let Ok(val) = ctx.client.call_tool_raw(&tool.name, args).await {
                     let text = val.to_string();
                     // If the response contains an expanded path (not the literal $VAR), it leaked
-                    if !text.contains(env_str) && (text.contains("/Users/") || text.contains("/home/") || text.contains("/root")) {
+                    if !text.contains(env_str)
+                        && (text.contains("/Users/")
+                            || text.contains("/home/")
+                            || text.contains("/root"))
+                    {
                         findings.push(Finding {
                             id: next_id(&mut finding_counter),
                             title: format!("Environment variable expansion in tool '{}'", tool.name),
@@ -347,14 +361,20 @@ impl ScanModule for ExfiltrationModule {
                 let start = Instant::now();
                 let _ = ctx
                     .client
-                    .call_tool_raw(file_tool, json!({"path": existing_path.to_string_lossy().to_string()}))
+                    .call_tool_raw(
+                        file_tool,
+                        json!({"path": existing_path.to_string_lossy().to_string()}),
+                    )
                     .await;
                 existing_times.push(start.elapsed().as_secs_f64() * 1000.0);
 
                 let start = Instant::now();
                 let _ = ctx
                     .client
-                    .call_tool_raw(file_tool, json!({"path": missing_path.to_string_lossy().to_string()}))
+                    .call_tool_raw(
+                        file_tool,
+                        json!({"path": missing_path.to_string_lossy().to_string()}),
+                    )
                     .await;
                 missing_times.push(start.elapsed().as_secs_f64() * 1000.0);
             }
@@ -383,7 +403,10 @@ impl ScanModule for ExfiltrationModule {
             // 3b. Error message differential
             let resp_missing = ctx
                 .client
-                .call_tool_raw(file_tool, json!({"path": missing_path.to_string_lossy().to_string()}))
+                .call_tool_raw(
+                    file_tool,
+                    json!({"path": missing_path.to_string_lossy().to_string()}),
+                )
                 .await;
             let resp_denied = ctx
                 .client
@@ -477,7 +500,8 @@ impl ScanModule for ExfiltrationModule {
                         network_connections: vec![conn.clone()],
                         ..Evidence::empty()
                     },
-                    remediation: "Investigate domains with unusually long or encoded subdomains.".to_string(),
+                    remediation: "Investigate domains with unusually long or encoded subdomains."
+                        .to_string(),
                 });
             }
         }
@@ -568,7 +592,9 @@ mod tests {
 
     #[test]
     fn test_contains_stack_trace_js() {
-        assert!(contains_stack_trace("Error: something failed\n    at Object.method (/src/index.js:10:5)"));
+        assert!(contains_stack_trace(
+            "Error: something failed\n    at Object.method (/src/index.js:10:5)"
+        ));
         assert!(contains_stack_trace("at Object.create"));
     }
 
@@ -607,8 +633,12 @@ mod tests {
 
     #[test]
     fn test_contains_env_var_leak() {
-        assert!(contains_env_var_leak("aws_secret_access_key = AKIAIOSFODNN7EXAMPLE"));
-        assert!(contains_env_var_leak("DATABASE_URL= postgres://user:pass@host/db"));
+        assert!(contains_env_var_leak(
+            "aws_secret_access_key = AKIAIOSFODNN7EXAMPLE"
+        ));
+        assert!(contains_env_var_leak(
+            "DATABASE_URL= postgres://user:pass@host/db"
+        ));
         assert!(contains_env_var_leak("API_KEY= sk-12345"));
     }
 
@@ -633,9 +663,7 @@ mod tests {
 
     #[test]
     fn test_dns_exfiltration_pattern_base64() {
-        assert!(is_dns_exfiltration_pattern(
-            "SGVsbG8gV29ybGQhIFRo.evil.com"
-        ));
+        assert!(is_dns_exfiltration_pattern("SGVsbG8gV29ybGQhIFRo.evil.com"));
     }
 
     #[test]
@@ -667,7 +695,9 @@ mod tests {
     #[test]
     fn test_finding_severity_stack_trace() {
         // Stack trace findings get Medium
-        assert!(contains_stack_trace("at Object.run (/app/src/handler.js:42:13)"));
+        assert!(contains_stack_trace(
+            "at Object.run (/app/src/handler.js:42:13)"
+        ));
     }
 
     #[test]

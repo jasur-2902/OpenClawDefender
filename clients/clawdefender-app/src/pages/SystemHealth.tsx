@@ -106,8 +106,27 @@ export function SystemHealth() {
                     </p>
                     {check.fix_suggestion && (
                       <button
-                        onClick={() => {
-                          // Placeholder: would execute fix
+                        onClick={async () => {
+                          const suggestion = check.fix_suggestion!.toLowerCase();
+                          if (
+                            suggestion.includes("system settings") ||
+                            suggestion.includes("privacy")
+                          ) {
+                            try {
+                              await invoke("open_url", {
+                                url: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+                              });
+                            } catch {
+                              // Command may not exist; ignore
+                            }
+                          } else if (suggestion.includes("start daemon")) {
+                            try {
+                              await invoke("start_daemon");
+                              loadData();
+                            } catch {
+                              // ignore
+                            }
+                          }
                         }}
                         className="mt-2 px-3 py-1 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors"
                       >

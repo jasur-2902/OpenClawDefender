@@ -231,8 +231,14 @@ fn test_tilde_traversal_to_ssh_blocked() {
 #[test]
 fn test_unicode_path_matching() {
     let m = GlobMatcher::new("/project/**").unwrap();
-    assert!(m.is_match("/project/na\u{00ef}ve.txt"), "Unicode paths must be matchable");
-    assert!(m.is_match("/project/\u{1F600}.txt"), "Emoji in path must be matchable");
+    assert!(
+        m.is_match("/project/na\u{00ef}ve.txt"),
+        "Unicode paths must be matchable"
+    );
+    assert!(
+        m.is_match("/project/\u{1F600}.txt"),
+        "Emoji in path must be matchable"
+    );
 }
 
 #[test]
@@ -259,14 +265,20 @@ fn test_reload_with_invalid_toml_preserves_old_rules() {
     f.flush().unwrap();
 
     let mut engine = DefaultPolicyEngine::load(f.path()).unwrap();
-    assert_eq!(engine.evaluate(&make_resource_event("/home/user/.ssh/id_rsa")), PolicyAction::Block);
+    assert_eq!(
+        engine.evaluate(&make_resource_event("/home/user/.ssh/id_rsa")),
+        PolicyAction::Block
+    );
 
     // Write invalid TOML
     std::fs::write(f.path(), "this is {{{{ not valid toml").unwrap();
 
     // Reload should fail
     let result = engine.reload();
-    assert!(result.is_err(), "Reload with invalid TOML must return error");
+    assert!(
+        result.is_err(),
+        "Reload with invalid TOML must return error"
+    );
 
     // Original rules must still be in effect
     assert_eq!(
@@ -277,8 +289,8 @@ fn test_reload_with_invalid_toml_preserves_old_rules() {
 }
 
 fn make_resource_event(uri: &str) -> clawdefender_core::event::mcp::McpEvent {
-    use clawdefender_core::event::mcp::*;
     use chrono::Utc;
+    use clawdefender_core::event::mcp::*;
     use serde_json::json;
     McpEvent {
         timestamp: Utc::now(),
@@ -314,11 +326,7 @@ fn test_all_policy_templates_parse_successfully() {
             result.err()
         );
         let rules = result.unwrap();
-        assert!(
-            !rules.is_empty(),
-            "Template {} parsed but has no rules",
-            i
-        );
+        assert!(!rules.is_empty(), "Template {} parsed but has no rules", i);
     }
 }
 
@@ -369,8 +377,10 @@ fn test_glob_single_star_does_not_cross_directory() {
     let m = GlobMatcher::new("/project/*").unwrap();
     assert!(m.is_match("/project/file.txt"));
     // With require_literal_separator enabled, * should NOT match across dirs
-    assert!(!m.is_match("/project/sub/file.txt"),
-        "* must not match across directory boundaries");
+    assert!(
+        !m.is_match("/project/sub/file.txt"),
+        "* must not match across directory boundaries"
+    );
 }
 
 #[test]

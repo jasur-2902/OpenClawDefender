@@ -60,7 +60,8 @@ pub async fn start_chat(event_id: &str) -> anyhow::Result<()> {
 
     let keystore = keychain::default_keystore();
     let client = Arc::new(HttpLlmClient::new(Arc::from(keystore)));
-    let cost_tracker = CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default())?;
+    let cost_tracker =
+        CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default())?;
     let cost_tracker = Some(Arc::new(std::sync::Mutex::new(cost_tracker)));
 
     let mgr = Arc::new(ChatManager::new(&db_path, client, cost_tracker)?);

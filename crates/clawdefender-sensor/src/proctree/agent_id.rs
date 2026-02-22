@@ -15,31 +15,11 @@ pub const KNOWN_MCP_CLIENTS: &[&str] = &["Claude", "Cursor", "Code", "Windsurf",
 
 /// Extended client signatures: (display_name, name_patterns, path_patterns).
 const CLIENT_SIGNATURES: &[(&str, &[&str], &[&str])] = &[
-    (
-        "Claude",
-        &["Claude"],
-        &["Claude.app/Contents/MacOS/"],
-    ),
-    (
-        "Cursor",
-        &["Cursor", "Cursor Helper"],
-        &["Cursor.app/"],
-    ),
-    (
-        "VS Code",
-        &["Code", "Code Helper"],
-        &["Code.app/"],
-    ),
-    (
-        "Windsurf",
-        &["Windsurf"],
-        &["Windsurf.app/"],
-    ),
-    (
-        "Zed",
-        &["Zed"],
-        &["Zed.app/"],
-    ),
+    ("Claude", &["Claude"], &["Claude.app/Contents/MacOS/"]),
+    ("Cursor", &["Cursor", "Cursor Helper"], &["Cursor.app/"]),
+    ("VS Code", &["Code", "Code Helper"], &["Code.app/"]),
+    ("Windsurf", &["Windsurf"], &["Windsurf.app/"]),
+    ("Zed", &["Zed"], &["Zed.app/"]),
 ];
 
 /// Well-known runtimes commonly used by AI agent tool-call subprocesses.
@@ -96,11 +76,7 @@ pub fn identify_agent(process: &ProcessInfo, tree: &ProcessTree) -> Option<Agent
 
 /// Layer 2: Check if the process itself is a known MCP client.
 fn check_known_client(process: &ProcessInfo) -> Option<AgentInfo> {
-    let proc_name = process
-        .path
-        .rsplit('/')
-        .next()
-        .unwrap_or(&process.name);
+    let proc_name = process.path.rsplit('/').next().unwrap_or(&process.name);
 
     for &(display_name, name_patterns, path_patterns) in CLIENT_SIGNATURES {
         // Check executable name
@@ -153,11 +129,7 @@ fn check_known_client(process: &ProcessInfo) -> Option<AgentInfo> {
 
 /// Layer 3: Check if process is a known runtime with MCP-related args.
 fn check_runtime_heuristic(process: &ProcessInfo) -> Option<AgentInfo> {
-    let proc_name = process
-        .path
-        .rsplit('/')
-        .next()
-        .unwrap_or(&process.name);
+    let proc_name = process.path.rsplit('/').next().unwrap_or(&process.name);
 
     let is_runtime = KNOWN_AGENT_RUNTIMES
         .iter()
@@ -185,11 +157,7 @@ fn check_runtime_heuristic(process: &ProcessInfo) -> Option<AgentInfo> {
 /// Layer 4: Transitive identification — walk ancestry, if parent is an agent, child inherits.
 /// Known parent → Heuristic child. Heuristic parent → Heuristic child.
 fn check_transitive(process: &ProcessInfo, tree: &ProcessTree) -> Option<AgentInfo> {
-    let proc_name = process
-        .path
-        .rsplit('/')
-        .next()
-        .unwrap_or(&process.name);
+    let proc_name = process.path.rsplit('/').next().unwrap_or(&process.name);
 
     let ancestry = tree.get_ancestry(process.pid);
     // Skip the first entry (the process itself)
@@ -262,8 +230,12 @@ mod tests {
     #[test]
     fn identify_known_client_by_name() {
         let tree = ProcessTree::new();
-        let proc_info =
-            make_proc(1, 0, "Claude", "/Applications/Claude.app/Contents/MacOS/Claude");
+        let proc_info = make_proc(
+            1,
+            0,
+            "Claude",
+            "/Applications/Claude.app/Contents/MacOS/Claude",
+        );
         let result = identify_agent(&proc_info, &tree);
         assert!(result.is_some());
         let info = result.unwrap();
@@ -469,8 +441,7 @@ mod tests {
     #[test]
     fn zed_detection() {
         let tree = ProcessTree::new();
-        let proc_info =
-            make_proc(1, 0, "Zed", "/Applications/Zed.app/Contents/MacOS/Zed");
+        let proc_info = make_proc(1, 0, "Zed", "/Applications/Zed.app/Contents/MacOS/Zed");
         let result = identify_agent(&proc_info, &tree);
         assert!(result.is_some());
         assert_eq!(result.unwrap().client_name, "Zed");

@@ -56,9 +56,9 @@ pub async fn start_daemon(
 
     daemon::start_daemon_process()?;
 
-    // Poll up to 5 seconds for the daemon to become reachable
+    // Poll up to 15 seconds for the daemon to become reachable (first-run may be slower)
     let mut connected = false;
-    for _ in 0..10 {
+    for _ in 0..30 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if state.ipc_client.check_connection() {
             connected = true;
@@ -67,7 +67,7 @@ pub async fn start_daemon(
     }
 
     if !connected {
-        return Err("Daemon started but did not become reachable within 5 seconds".to_string());
+        return Err("Daemon started but did not become reachable within 15 seconds".to_string());
     }
 
     if let Ok(mut flag) = state.daemon_started_by_gui.lock() {
@@ -1039,11 +1039,7 @@ pub(crate) fn read_historical_events(needed: usize, existing: &[AuditEvent]) -> 
     };
 
     // Determine how much to read
-    let read_from = if file_len > CHUNK_SIZE {
-        file_len - CHUNK_SIZE
-    } else {
-        0
-    };
+    let read_from = file_len.saturating_sub(CHUNK_SIZE);
 
     let mut reader = std::io::BufReader::new(&file);
     if read_from > 0 {
@@ -1100,143 +1096,638 @@ pub(crate) fn read_historical_events(needed: usize, existing: &[AuditEvent]) -> 
 
 // --- Behavioral engine ---
 
+/// Read behavioral profiles from the SQLite database on disk.
+fn read_profiles_from_db() -> Result<Vec<ServerProfileSummary>, String> {
+    let db_path = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join(".local/share/clawdefender/profiles.db");
+
+    if !db_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Failed to open profiles DB: {}", e))?;
+
+    let mut stmt = conn
+        .prepare("SELECT server_name, profile_json, updated_at FROM profiles LIMIT 1000")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let server_name: String = row.get(0)?;
+            let profile_json: String = row.get(1)?;
+            let updated_at: String = row.get(2)?;
+            Ok((server_name, profile_json, updated_at))
+        })
+        .map_err(|e| format!("Failed to query profiles: {}", e))?;
+
+    let mut profiles = Vec::new();
+    for row in rows {
+        let (server_name, profile_json, updated_at) = match row {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::debug!(error = %e, "Skipping malformed profile row");
+                continue;
+            }
+        };
+
+        let parsed: serde_json::Value = match serde_json::from_str(&profile_json) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::debug!(error = %e, server = %server_name, "Skipping unparseable profile JSON");
+                continue;
+            }
+        };
+
+        let learning_mode = parsed
+            .get("learning_mode")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        let tool_counts = parsed
+            .get("tool_profile")
+            .and_then(|tp| tp.get("tool_counts"))
+            .and_then(|tc| tc.as_object());
+
+        let tools_count = tool_counts.map(|m| m.len() as u32).unwrap_or(0);
+        let total_calls: u64 = tool_counts
+            .map(|m| m.values().filter_map(|v| v.as_u64()).sum())
+            .unwrap_or(0);
+
+        let status = if learning_mode {
+            "learning".to_string()
+        } else {
+            "normal".to_string()
+        };
+
+        let last_activity = parsed
+            .get("last_updated")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or(updated_at);
+
+        profiles.push(ServerProfileSummary {
+            server_name,
+            tools_count,
+            total_calls,
+            anomaly_score: 0.0,
+            status,
+            last_activity,
+        });
+    }
+
+    Ok(profiles)
+}
+
 #[tauri::command]
 pub async fn get_profiles() -> Result<Vec<ServerProfileSummary>, String> {
-    Ok(vec![
-        ServerProfileSummary {
-            server_name: "filesystem".to_string(),
-            tools_count: 5,
-            total_calls: 342,
-            anomaly_score: 0.12,
-            status: "normal".to_string(),
-            last_activity: chrono::Utc::now().to_rfc3339(),
-        },
-        ServerProfileSummary {
-            server_name: "github".to_string(),
-            tools_count: 8,
-            total_calls: 156,
-            anomaly_score: 0.05,
-            status: "normal".to_string(),
-            last_activity: (chrono::Utc::now() - chrono::Duration::minutes(15)).to_rfc3339(),
-        },
-        ServerProfileSummary {
-            server_name: "everything".to_string(),
-            tools_count: 12,
-            total_calls: 905,
-            anomaly_score: 0.67,
-            status: "anomalous".to_string(),
-            last_activity: (chrono::Utc::now() - chrono::Duration::minutes(2)).to_rfc3339(),
-        },
-    ])
+    tokio::task::spawn_blocking(read_profiles_from_db)
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]
 pub async fn get_behavioral_status() -> Result<BehavioralStatus, String> {
+    let profiles = tokio::task::spawn_blocking(read_profiles_from_db)
+        .await
+        .map_err(|e| format!("Task join error: {}", e))??;
+
+    let profiles_count = profiles.len() as u32;
+    let learning_servers = profiles.iter().filter(|p| p.status == "learning").count() as u32;
+    let monitoring_servers = profiles_count - learning_servers;
+
     Ok(BehavioralStatus {
         enabled: true,
-        profiles_count: 3,
-        total_anomalies: 7,
-        learning_servers: 1,
-        monitoring_servers: 2,
+        profiles_count,
+        total_anomalies: 0,
+        learning_servers,
+        monitoring_servers,
     })
 }
 
 // --- Guards ---
+// Guards are in-memory only in the daemon's GuardRegistry. There is no way to
+// enumerate registered guards from outside the daemon, so we return an empty
+// list. The frontend already handles this gracefully with an empty-state UI.
 
 #[tauri::command]
 pub async fn list_guards() -> Result<Vec<GuardSummary>, String> {
-    Ok(vec![
-        GuardSummary {
-            name: "secrets-guard".to_string(),
-            guard_type: "content".to_string(),
-            enabled: true,
-            triggers_count: 3,
-            last_triggered: Some((chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339()),
-            description: "Detects and blocks exposure of secrets and API keys".to_string(),
-        },
-        GuardSummary {
-            name: "path-traversal-guard".to_string(),
-            guard_type: "filesystem".to_string(),
-            enabled: true,
-            triggers_count: 1,
-            last_triggered: Some((chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339()),
-            description: "Prevents path traversal attacks in file operations".to_string(),
-        },
-        GuardSummary {
-            name: "rate-limit-guard".to_string(),
-            guard_type: "rate".to_string(),
-            enabled: true,
-            triggers_count: 0,
-            last_triggered: None,
-            description: "Rate limits tool calls to prevent abuse".to_string(),
-        },
-    ])
+    Ok(vec![])
 }
 
 // --- Scanner ---
 
-#[tauri::command]
-pub async fn start_scan(command: Vec<String>, modules: Vec<String>) -> Result<String, String> {
-    tracing::info!("Starting scan with command {:?}, modules {:?} (mock)", command, modules);
-    Ok("scan-001".to_string())
+/// Validate a server command string to prevent command injection.
+fn validate_server_command(cmd: &str) -> Result<(), String> {
+    if cmd.trim().is_empty() {
+        return Err("Server command cannot be empty".to_string());
+    }
+    const FORBIDDEN: &[char] = &[';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '\n', '\r'];
+    for ch in FORBIDDEN {
+        if cmd.contains(*ch) {
+            return Err(format!(
+                "Server command contains forbidden character '{}'",
+                ch
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Parse the findings count from scan JSON output.
+fn parse_scan_findings_count(stdout: &str) -> u32 {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(stdout) {
+        if let Some(total) = json
+            .get("summary")
+            .and_then(|s| s.get("total"))
+            .and_then(|t| t.as_u64())
+        {
+            return total as u32;
+        }
+        if let Some(findings) = json.get("findings").and_then(|f| f.as_array()) {
+            return findings.len() as u32;
+        }
+    }
+    0
 }
 
 #[tauri::command]
-pub async fn get_scan_progress(scan_id: String) -> Result<ScanProgress, String> {
+pub async fn start_scan(
+    app_handle: tauri::AppHandle,
+    server_command: String,
+    modules: Vec<String>,
+    timeout: u32,
+) -> Result<String, String> {
+    use tauri::Manager;
+
+    validate_server_command(&server_command)?;
+
+    let bin_path = resolve_clawdefender_path();
+    // Verify the binary actually exists
+    if !std::path::Path::new(&bin_path).exists() {
+        // If it's just the bare name "clawdefender", it might still be on PATH
+        if bin_path == "clawdefender" {
+            if std::process::Command::new("which")
+                .arg("clawdefender")
+                .output()
+                .map(|o| !o.status.success())
+                .unwrap_or(true)
+            {
+                return Err(
+                    "ClawDefender binary not found. Install it or place the sidecar in the binaries/ directory."
+                        .to_string(),
+                );
+            }
+        } else {
+            return Err(format!(
+                "ClawDefender binary not found at '{}'",
+                bin_path
+            ));
+        }
+    }
+
+    let state = app_handle.state::<AppState>();
+
+    // Limit to 1 concurrent scan
+    {
+        let scans = state
+            .active_scans
+            .lock()
+            .map_err(|e| format!("Failed to lock scan state: {}", e))?;
+        if scans.values().any(|s| s.status == "running") {
+            return Err("A scan is already running. Wait for it to complete.".to_string());
+        }
+    }
+
+    // Generate scan ID using timestamp + pid-based uniqueness (no rand crate needed)
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let scan_id = format!("scan-{}-{}", ts, std::process::id());
+
+    let modules_total = if modules.is_empty() {
+        6u32 // default: all 6 scanner modules
+    } else {
+        modules.len() as u32
+    };
+
+    // Store initial tracker
+    {
+        let mut scans = state
+            .active_scans
+            .lock()
+            .map_err(|e| format!("Failed to lock scan state: {}", e))?;
+        scans.insert(
+            scan_id.clone(),
+            crate::state::ScanTracker {
+                status: "running".to_string(),
+                progress_percent: 0.0,
+                modules_completed: 0,
+                modules_total,
+                findings_count: 0,
+                current_module: Some("Initializing".to_string()),
+            },
+        );
+    }
+
+    let id = scan_id.clone();
+    let handle = app_handle.clone();
+    let bin = bin_path;
+    let cmd = server_command.clone();
+    let timeout_secs = if timeout == 0 { 300u32 } else { timeout };
+
+    tokio::spawn(async move {
+        let state = handle.state::<AppState>();
+
+        let mut command = tokio::process::Command::new(&bin);
+        command.arg("scan").arg("--json").arg(&cmd);
+
+        for m in &modules {
+            command.arg("--module").arg(m);
+        }
+
+        let timeout_duration = std::time::Duration::from_secs(timeout_secs as u64);
+        let result = tokio::time::timeout(timeout_duration, command.output()).await;
+
+        match result {
+            Ok(Ok(output)) => {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let findings_count = parse_scan_findings_count(&stdout);
+                    if let Ok(mut scans) = state.active_scans.lock() {
+                        if let Some(tracker) = scans.get_mut(&id) {
+                            tracker.status = "completed".to_string();
+                            tracker.progress_percent = 100.0;
+                            tracker.modules_completed = tracker.modules_total;
+                            tracker.findings_count = findings_count;
+                            tracker.current_module = None;
+                        }
+                    }
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::error!("Scan {} failed: {}", id, stderr);
+                    if let Ok(mut scans) = state.active_scans.lock() {
+                        if let Some(tracker) = scans.get_mut(&id) {
+                            tracker.status = "failed".to_string();
+                            tracker.current_module = None;
+                        }
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                tracing::error!("Scan {} process error: {}", id, e);
+                if let Ok(mut scans) = state.active_scans.lock() {
+                    if let Some(tracker) = scans.get_mut(&id) {
+                        tracker.status = "failed".to_string();
+                        tracker.current_module = None;
+                    }
+                }
+            }
+            Err(_) => {
+                tracing::warn!("Scan {} timed out after {}s", id, timeout_secs);
+                if let Ok(mut scans) = state.active_scans.lock() {
+                    if let Some(tracker) = scans.get_mut(&id) {
+                        tracker.status = "failed".to_string();
+                        tracker.current_module = None;
+                    }
+                }
+            }
+        }
+    });
+
+    tracing::info!(
+        "Started scan {} for command '{}' with {} modules",
+        scan_id,
+        server_command,
+        modules_total
+    );
+    Ok(scan_id)
+}
+
+#[tauri::command]
+pub async fn get_scan_progress(
+    state: tauri::State<'_, AppState>,
+    scan_id: String,
+) -> Result<ScanProgress, String> {
+    let scans = state
+        .active_scans
+        .lock()
+        .map_err(|e| format!("Failed to lock scan state: {}", e))?;
+
+    let tracker = scans
+        .get(&scan_id)
+        .ok_or_else(|| format!("Scan '{}' not found", scan_id))?;
+
     Ok(ScanProgress {
         scan_id,
-        status: "completed".to_string(),
-        progress_percent: 100.0,
-        modules_completed: 4,
-        modules_total: 4,
-        findings_count: 2,
-        current_module: None,
+        status: tracker.status.clone(),
+        progress_percent: tracker.progress_percent,
+        modules_completed: tracker.modules_completed,
+        modules_total: tracker.modules_total,
+        findings_count: tracker.findings_count,
+        current_module: tracker.current_module.clone(),
     })
 }
 
 // --- System health ---
 
 #[tauri::command]
-pub async fn run_doctor() -> Result<Vec<DoctorCheck>, String> {
-    Ok(vec![
-        DoctorCheck {
+pub async fn run_doctor(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<DoctorCheck>, String> {
+    let mut checks = Vec::new();
+    let home = dirs::home_dir().unwrap_or_default();
+
+    // 1. Daemon Process
+    if state.ipc_client.check_connection() {
+        checks.push(DoctorCheck {
             name: "Daemon Process".to_string(),
             status: "pass".to_string(),
-            message: "Daemon is running (PID 12345)".to_string(),
+            message: "Daemon is running and responding".to_string(),
             fix_suggestion: None,
-        },
-        DoctorCheck {
-            name: "Socket Connection".to_string(),
+        });
+    } else {
+        checks.push(DoctorCheck {
+            name: "Daemon Process".to_string(),
+            status: "fail".to_string(),
+            message: "Daemon is not running or not responding".to_string(),
+            fix_suggestion: Some("Start daemon from the dashboard".to_string()),
+        });
+    }
+
+    // 2. Socket File
+    let sock_path = daemon::socket_path();
+    if sock_path.exists() {
+        checks.push(DoctorCheck {
+            name: "Socket File".to_string(),
             status: "pass".to_string(),
-            message: "Successfully connected to daemon socket".to_string(),
+            message: format!("Socket file exists at {}", sock_path.display()),
             fix_suggestion: None,
-        },
-        DoctorCheck {
-            name: "Policy File".to_string(),
-            status: "pass".to_string(),
-            message: "Policy file is valid".to_string(),
-            fix_suggestion: None,
-        },
-        DoctorCheck {
-            name: "MCP Clients".to_string(),
+        });
+    } else {
+        checks.push(DoctorCheck {
+            name: "Socket File".to_string(),
             status: "warn".to_string(),
-            message: "1 of 2 detected clients have unwrapped servers".to_string(),
-            fix_suggestion: Some("Run 'Wrap All' to protect all MCP servers".to_string()),
-        },
-    ])
+            message: "Socket file not found".to_string(),
+            fix_suggestion: Some("Start the daemon to create the socket".to_string()),
+        });
+    }
+
+    // 3. Config Directory
+    let config_dir = home.join(".config").join("clawdefender");
+    if config_dir.exists() {
+        let test_file = config_dir.join(".write_test");
+        let writable = std::fs::write(&test_file, b"").is_ok();
+        let _ = std::fs::remove_file(&test_file);
+        if writable {
+            checks.push(DoctorCheck {
+                name: "Config Directory".to_string(),
+                status: "pass".to_string(),
+                message: format!("Config directory exists and is writable at {}", config_dir.display()),
+                fix_suggestion: None,
+            });
+        } else {
+            checks.push(DoctorCheck {
+                name: "Config Directory".to_string(),
+                status: "warn".to_string(),
+                message: format!("Config directory exists but is not writable at {}", config_dir.display()),
+                fix_suggestion: Some("Check permissions on ~/.config/clawdefender".to_string()),
+            });
+        }
+    } else {
+        checks.push(DoctorCheck {
+            name: "Config Directory".to_string(),
+            status: "warn".to_string(),
+            message: "Config directory not found".to_string(),
+            fix_suggestion: Some("Create the directory: mkdir -p ~/.config/clawdefender".to_string()),
+        });
+    }
+
+    // 4. Policy File
+    let policy_path = policy_file_path();
+    if policy_path.exists() {
+        match std::fs::read_to_string(&policy_path) {
+            Ok(contents) => match contents.parse::<toml::Value>() {
+                Ok(doc) => {
+                    let rules_count = doc
+                        .get("rules")
+                        .and_then(|v| v.as_table())
+                        .map(|t| t.len())
+                        .unwrap_or(0);
+                    checks.push(DoctorCheck {
+                        name: "Policy File".to_string(),
+                        status: "pass".to_string(),
+                        message: format!("Policy file is valid with {} rules", rules_count),
+                        fix_suggestion: None,
+                    });
+                }
+                Err(_) => {
+                    checks.push(DoctorCheck {
+                        name: "Policy File".to_string(),
+                        status: "fail".to_string(),
+                        message: "Policy file has syntax errors".to_string(),
+                        fix_suggestion: Some(
+                            "Edit policy.toml or reset from Settings".to_string(),
+                        ),
+                    });
+                }
+            },
+            Err(e) => {
+                checks.push(DoctorCheck {
+                    name: "Policy File".to_string(),
+                    status: "fail".to_string(),
+                    message: format!("Cannot read policy file: {}", e),
+                    fix_suggestion: Some("Check file permissions on policy.toml".to_string()),
+                });
+            }
+        }
+    } else {
+        checks.push(DoctorCheck {
+            name: "Policy File".to_string(),
+            status: "warn".to_string(),
+            message: "No policy file found — using defaults".to_string(),
+            fix_suggestion: Some(
+                "Configure a security policy from the Policy page".to_string(),
+            ),
+        });
+    }
+
+    // 5. Audit Log Directory
+    let log_dir = home.join(".local").join("share").join("clawdefender");
+    if log_dir.exists() {
+        let test_file = log_dir.join(".write_test");
+        let writable = std::fs::write(&test_file, b"").is_ok();
+        let _ = std::fs::remove_file(&test_file);
+        if writable {
+            checks.push(DoctorCheck {
+                name: "Audit Log Directory".to_string(),
+                status: "pass".to_string(),
+                message: format!("Audit log directory is writable at {}", log_dir.display()),
+                fix_suggestion: None,
+            });
+        } else {
+            checks.push(DoctorCheck {
+                name: "Audit Log Directory".to_string(),
+                status: "fail".to_string(),
+                message: format!("Audit log directory is not writable at {}", log_dir.display()),
+                fix_suggestion: Some("Check permissions: chmod u+w ~/.local/share/clawdefender".to_string()),
+            });
+        }
+    } else {
+        checks.push(DoctorCheck {
+            name: "Audit Log Directory".to_string(),
+            status: "fail".to_string(),
+            message: "Audit log directory not found".to_string(),
+            fix_suggestion: Some("Create the directory: mkdir -p ~/.local/share/clawdefender".to_string()),
+        });
+    }
+
+    // 6. Full Disk Access (heuristic)
+    let mail_path = home.join("Library/Mail");
+    let has_fda = std::fs::read_dir(&mail_path).is_ok();
+    if has_fda {
+        checks.push(DoctorCheck {
+            name: "Full Disk Access".to_string(),
+            status: "pass".to_string(),
+            message: "Full Disk Access is granted".to_string(),
+            fix_suggestion: None,
+        });
+    } else {
+        checks.push(DoctorCheck {
+            name: "Full Disk Access".to_string(),
+            status: "warn".to_string(),
+            message: "Full Disk Access may not be granted".to_string(),
+            fix_suggestion: Some(
+                "Open System Settings > Privacy & Security > Full Disk Access".to_string(),
+            ),
+        });
+    }
+
+    // 7. MCP Clients & 8. Wrapped Servers
+    match detect_mcp_clients().await {
+        Ok(clients) => {
+            let detected: Vec<&McpClient> = clients.iter().filter(|c| c.detected).collect();
+            let total_servers: u32 = detected.iter().map(|c| c.servers_count).sum();
+
+            if detected.is_empty() {
+                checks.push(DoctorCheck {
+                    name: "MCP Clients".to_string(),
+                    status: "warn".to_string(),
+                    message: "No MCP clients detected".to_string(),
+                    fix_suggestion: None,
+                });
+            } else {
+                checks.push(DoctorCheck {
+                    name: "MCP Clients".to_string(),
+                    status: "pass".to_string(),
+                    message: format!(
+                        "{} clients detected with {} servers",
+                        detected.len(),
+                        total_servers
+                    ),
+                    fix_suggestion: None,
+                });
+            }
+
+            // Count wrapped servers across all detected clients
+            let mut total_count = 0u32;
+            let mut wrapped_count = 0u32;
+            for client in &detected {
+                if let Ok(servers) = list_mcp_servers(client.name.clone()).await {
+                    for srv in &servers {
+                        total_count += 1;
+                        if srv.wrapped {
+                            wrapped_count += 1;
+                        }
+                    }
+                }
+            }
+
+            if total_count == 0 {
+                checks.push(DoctorCheck {
+                    name: "Wrapped Servers".to_string(),
+                    status: "warn".to_string(),
+                    message: "No MCP servers found to wrap".to_string(),
+                    fix_suggestion: None,
+                });
+            } else if wrapped_count == total_count {
+                checks.push(DoctorCheck {
+                    name: "Wrapped Servers".to_string(),
+                    status: "pass".to_string(),
+                    message: format!("All {} servers are wrapped", total_count),
+                    fix_suggestion: None,
+                });
+            } else {
+                checks.push(DoctorCheck {
+                    name: "Wrapped Servers".to_string(),
+                    status: "warn".to_string(),
+                    message: format!(
+                        "{} of {} servers are unwrapped",
+                        total_count - wrapped_count,
+                        total_count
+                    ),
+                    fix_suggestion: Some(
+                        "Wrap all servers from the dashboard".to_string(),
+                    ),
+                });
+            }
+        }
+        Err(_) => {
+            checks.push(DoctorCheck {
+                name: "MCP Clients".to_string(),
+                status: "warn".to_string(),
+                message: "Could not detect MCP clients".to_string(),
+                fix_suggestion: None,
+            });
+        }
+    }
+
+    Ok(checks)
 }
 
 #[tauri::command]
-pub async fn get_system_info() -> Result<SystemInfo, String> {
+pub async fn get_system_info(
+    state: tauri::State<'_, AppState>,
+) -> Result<SystemInfo, String> {
     let home = dirs::home_dir().unwrap_or_default();
+
+    // Real macOS version via sw_vers
+    let os_version = std::process::Command::new("sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    // Daemon version from IPC or sidecar
+    let daemon_version = if state.ipc_client.check_connection() {
+        // Use the monitor's known version or query
+        Some("0.10.0".to_string()) // TODO: get from actual IPC response when available
+    } else {
+        // Try running clawdefender --version
+        let bin = resolve_clawdefender_path();
+        std::process::Command::new(&bin)
+            .arg("--version")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+    };
+
     Ok(SystemInfo {
         os: "macOS".to_string(),
-        os_version: "14.0".to_string(),
+        os_version,
         arch: std::env::consts::ARCH.to_string(),
-        daemon_version: Some("0.10.0".to_string()),
-        app_version: "0.10.0".to_string(),
-        config_dir: home.join(".clawdefender").to_string_lossy().to_string(),
-        log_dir: home.join(".clawdefender/logs").to_string_lossy().to_string(),
+        daemon_version,
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        config_dir: home.join(".config/clawdefender").to_string_lossy().to_string(),
+        log_dir: home.join(".local/share/clawdefender").to_string_lossy().to_string(),
     })
 }
 
@@ -1524,117 +2015,699 @@ pub async fn update_settings(
     Ok(())
 }
 
+// --- Settings Export / Import ---
+
+fn policy_toml_path() -> std::path::PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".config/clawdefender/policy.toml")
+}
+
+/// Strip sensitive keys (API keys, tokens, secrets) from a TOML string before export.
+fn strip_secrets(content: &str) -> String {
+    let mut filtered_lines = Vec::new();
+    for line in content.lines() {
+        let lower = line.to_lowercase();
+        let is_secret = ["api_key", "api_token", "secret", "password", "token"]
+            .iter()
+            .any(|k| lower.contains(k) && lower.contains('='));
+        if !is_secret {
+            filtered_lines.push(line);
+        }
+    }
+    filtered_lines.join("\n")
+}
+
+#[tauri::command]
+pub async fn export_settings() -> Result<String, String> {
+    let config_path = config_toml_path();
+    let policy_path = policy_toml_path();
+
+    let config = if config_path.exists() {
+        strip_secrets(
+            &std::fs::read_to_string(&config_path)
+                .map_err(|e| format!("Failed to read config.toml: {}", e))?,
+        )
+    } else {
+        String::new()
+    };
+
+    let policy = if policy_path.exists() {
+        std::fs::read_to_string(&policy_path)
+            .map_err(|e| format!("Failed to read policy.toml: {}", e))?
+    } else {
+        String::new()
+    };
+
+    let export = serde_json::json!({
+        "version": "1.0",
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "config": config,
+        "policy": policy,
+    });
+
+    let home = std::env::var("HOME").unwrap_or_default();
+    let export_path = format!("{}/Desktop/clawdefender-settings.json", home);
+    std::fs::write(
+        &export_path,
+        serde_json::to_string_pretty(&export).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("Failed to write export file: {}", e))?;
+
+    tracing::info!("Settings exported to {}", export_path);
+    Ok(export_path)
+}
+
+#[tauri::command]
+pub async fn import_settings_from_content(content: String) -> Result<String, String> {
+    // Size check: reject files > 1MB
+    if content.len() > 1_048_576 {
+        return Err("Import file is too large (max 1MB)".to_string());
+    }
+
+    // Parse and validate structure
+    let parsed: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid JSON: {}", e))?;
+
+    let version = parsed
+        .get("version")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'version' field")?;
+    if version != "1.0" {
+        return Err(format!("Unsupported export version: {}", version));
+    }
+
+    let config_content = parsed
+        .get("config")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'config' field")?;
+    let policy_content = parsed
+        .get("policy")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'policy' field")?;
+
+    // Validate config is valid TOML (if non-empty)
+    if !config_content.is_empty() {
+        config_content
+            .parse::<toml::Value>()
+            .map_err(|e| format!("Invalid config TOML: {}", e))?;
+    }
+    if !policy_content.is_empty() {
+        policy_content
+            .parse::<toml::Value>()
+            .map_err(|e| format!("Invalid policy TOML: {}", e))?;
+    }
+
+    let config_path = config_toml_path();
+    let policy_path = policy_toml_path();
+
+    // Ensure config directory exists
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+
+    // Back up existing files
+    if config_path.exists() {
+        let backup = config_path.with_extension("toml.bak");
+        let _ = std::fs::copy(&config_path, &backup);
+    }
+    if policy_path.exists() {
+        let backup = policy_path.with_extension("toml.bak");
+        let _ = std::fs::copy(&policy_path, &backup);
+    }
+
+    // Write new config files
+    if !config_content.is_empty() {
+        std::fs::write(&config_path, config_content)
+            .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+    }
+    if !policy_content.is_empty() {
+        std::fs::write(&policy_path, policy_content)
+            .map_err(|e| format!("Failed to write policy.toml: {}", e))?;
+    }
+
+    tracing::info!("Settings imported successfully");
+    Ok("Settings imported successfully".to_string())
+}
+
 // --- Threat Intelligence ---
+
+fn threat_intel_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    std::path::PathBuf::from(home).join(".local/share/clawdefender/threat-intel")
+}
+
+/// Collect all MCP server names from detected client configs.
+fn collect_mcp_server_names() -> Vec<String> {
+    let home = match std::env::var("HOME") {
+        Ok(h) => std::path::PathBuf::from(h),
+        Err(_) => return vec![],
+    };
+
+    let config_paths = vec![
+        home.join("Library/Application Support/Claude/config.json"),
+        home.join("Library/Application Support/Claude/claude_desktop_config.json"),
+        home.join(".cursor/mcp.json"),
+        home.join(".vscode/mcp.json"),
+        home.join(".codeium/windsurf/mcp_config.json"),
+    ];
+
+    let mut names = Vec::new();
+    for path in config_paths {
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            if let Ok(config) = serde_json::from_str::<serde_json::Value>(&contents) {
+                let key = detect_servers_key(&config);
+                if let Some(obj) = config.get(key).and_then(|v| v.as_object()) {
+                    for server_name in obj.keys() {
+                        names.push(server_name.clone());
+                    }
+                }
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Validate a rule pack ID: alphanumeric + hyphens only, no path traversal.
+fn validate_rule_pack_id(id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("Rule pack ID cannot be empty".to_string());
+    }
+    if id.len() > 128 {
+        return Err("Rule pack ID is too long".to_string());
+    }
+    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("Rule pack ID must contain only alphanumeric characters and hyphens".to_string());
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn get_feed_status() -> Result<FeedStatus, String> {
+    let manifest_path = threat_intel_dir().join("manifest.json");
+
+    if !manifest_path.exists() {
+        return Ok(FeedStatus {
+            version: "not configured".to_string(),
+            last_updated: "never".to_string(),
+            next_check: "run clawdefender feed update to initialize".to_string(),
+            entries_count: 0,
+        });
+    }
+
+    let content = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("Failed to read manifest.json: {}", e))?;
+    let manifest: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
+
+    let version = manifest.get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let last_updated = manifest.get("last_updated")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Calculate next_check as last_updated + 6 hours
+    let next_check = if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&last_updated) {
+        (dt + chrono::Duration::hours(6)).to_rfc3339()
+    } else {
+        "unknown".to_string()
+    };
+
+    // Count entries across IoC files
+    let ioc_dir = threat_intel_dir().join("ioc");
+    let mut entries_count: u32 = 0;
+    if ioc_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&ioc_dir) {
+            for entry in entries.take(1000).flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                    if let Ok(data) = std::fs::read_to_string(&path) {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&data) {
+                            if let Some(indicators) = parsed.get("indicators").and_then(|v| v.as_array()) {
+                                entries_count += indicators.len() as u32;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(FeedStatus {
-        version: "1.0.0".to_string(),
-        last_updated: chrono::Utc::now().to_rfc3339(),
-        next_check: (chrono::Utc::now() + chrono::Duration::hours(6)).to_rfc3339(),
-        entries_count: 247,
+        version,
+        last_updated,
+        next_check,
+        entries_count,
     })
 }
 
 #[tauri::command]
 pub async fn force_feed_update() -> Result<String, String> {
-    tracing::info!("Force feed update (mock)");
-    Ok("Feed updated to v1.0.1".to_string())
+    let bin = resolve_clawdefender_path();
+    tracing::info!("Running feed update via: {}", bin);
+
+    let output = std::process::Command::new(&bin)
+        .args(["feed", "update"])
+        .output()
+        .map_err(|e| format!("Failed to run clawdefender: {}. Is the CLI installed?", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(if stdout.trim().is_empty() {
+            "Feed update completed successfully".to_string()
+        } else {
+            stdout.trim().to_string()
+        })
+    } else {
+        Err(format!(
+            "Feed update failed (exit {}): {}{}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim(),
+            if !stdout.trim().is_empty() { format!("\n{}", stdout.trim()) } else { String::new() }
+        ))
+    }
 }
 
 #[tauri::command]
 pub async fn get_blocklist_matches() -> Result<Vec<BlocklistAlert>, String> {
-    Ok(vec![])
+    let blocklist_path = threat_intel_dir().join("blocklist.json");
+
+    if !blocklist_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let content = std::fs::read_to_string(&blocklist_path)
+        .map_err(|e| format!("Failed to read blocklist.json: {}", e))?;
+    let blocklist: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse blocklist.json: {}", e))?;
+
+    let entries = match blocklist.get("entries").and_then(|v| v.as_array()) {
+        Some(arr) => arr,
+        None => return Ok(vec![]),
+    };
+
+    let server_names = collect_mcp_server_names();
+    if server_names.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut alerts = Vec::new();
+    for entry in entries.iter().take(10000) {
+        let entry_name = match entry.get("name").and_then(|v| v.as_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        let entry_name_lower = entry_name.to_lowercase();
+
+        for server_name in &server_names {
+            if server_name.to_lowercase() == entry_name_lower {
+                alerts.push(BlocklistAlert {
+                    entry_id: entry.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    server_name: server_name.clone(),
+                    severity: entry.get("severity").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                    description: entry.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(alerts)
 }
 
 #[tauri::command]
 pub async fn get_rule_packs() -> Result<Vec<RulePackInfo>, String> {
-    Ok(vec![
-        RulePackInfo {
-            id: "filesystem-safety".to_string(),
-            name: "Filesystem Safety".to_string(),
+    let rules_dir = threat_intel_dir().join("rules");
+
+    if !rules_dir.is_dir() {
+        return Ok(vec![]);
+    }
+
+    let mut packs = Vec::new();
+    let entries = std::fs::read_dir(&rules_dir)
+        .map_err(|e| format!("Failed to read rules directory: {}", e))?;
+
+    for entry in entries.take(500).flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let data = match std::fs::read_to_string(&path) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(&data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let rule_count = parsed.get("rules")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len() as u32)
+            .unwrap_or(0);
+
+        packs.push(RulePackInfo {
+            id: parsed.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: parsed.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             installed: true,
-            version: "1.2.0".to_string(),
-            rule_count: 8,
-            description: "Rules for safe filesystem operations".to_string(),
-        },
-        RulePackInfo {
-            id: "network-security".to_string(),
-            name: "Network Security".to_string(),
-            installed: false,
-            version: "1.0.0".to_string(),
-            rule_count: 12,
-            description: "Rules for network access control".to_string(),
-        },
-        RulePackInfo {
-            id: "data-exfiltration".to_string(),
-            name: "Data Exfiltration Prevention".to_string(),
-            installed: true,
-            version: "1.1.0".to_string(),
-            rule_count: 6,
-            description: "Prevents unauthorized data transfer".to_string(),
-        },
-    ])
+            version: parsed.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string(),
+            rule_count,
+            description: parsed.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        });
+    }
+
+    Ok(packs)
 }
 
 #[tauri::command]
 pub async fn install_rule_pack(id: String) -> Result<(), String> {
-    tracing::info!("Installing rule pack {} (mock)", id);
-    Ok(())
+    validate_rule_pack_id(&id)?;
+
+    let bin = resolve_clawdefender_path();
+    tracing::info!("Installing rule pack {} via: {}", id, bin);
+
+    let output = std::process::Command::new(&bin)
+        .args(["rules", "install", &id])
+        .output()
+        .map_err(|e| format!("Failed to run clawdefender: {}. Is the CLI installed?", e))?;
+
+    if output.status.success() {
+        tracing::info!("Rule pack {} installed successfully", id);
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Failed to install rule pack {}: {}", id, stderr.trim()))
+    }
 }
 
 #[tauri::command]
 pub async fn uninstall_rule_pack(id: String) -> Result<(), String> {
-    tracing::info!("Uninstalling rule pack {} (mock)", id);
-    Ok(())
+    validate_rule_pack_id(&id)?;
+
+    let rules_dir = threat_intel_dir().join("rules");
+    let pack_file = rules_dir.join(format!("{}.json", id));
+
+    // Ensure the resolved path is within the rules directory
+    let canonical_rules = rules_dir.canonicalize()
+        .map_err(|e| format!("Rules directory not found: {}", e))?;
+    if let Ok(canonical_pack) = pack_file.canonicalize() {
+        if !canonical_pack.starts_with(&canonical_rules) {
+            return Err("Invalid rule pack path".to_string());
+        }
+        std::fs::remove_file(&canonical_pack)
+            .map_err(|e| format!("Failed to remove rule pack {}: {}", id, e))?;
+        tracing::info!("Rule pack {} uninstalled", id);
+        Ok(())
+    } else {
+        Err(format!("Rule pack {} is not installed", id))
+    }
 }
 
 #[tauri::command]
 pub async fn get_ioc_stats() -> Result<IoCStats, String> {
+    let ioc_dir = threat_intel_dir().join("ioc");
+
+    if !ioc_dir.is_dir() {
+        return Ok(IoCStats {
+            network: 0,
+            file: 0,
+            behavioral: 0,
+            total: 0,
+            last_updated: "never".to_string(),
+        });
+    }
+
+    let mut network: u32 = 0;
+    let mut file: u32 = 0;
+    let mut behavioral: u32 = 0;
+    let mut latest_modified: Option<std::time::SystemTime> = None;
+
+    let entries = std::fs::read_dir(&ioc_dir)
+        .map_err(|e| format!("Failed to read IoC directory: {}", e))?;
+
+    for entry in entries.take(1000).flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        // Track latest modification time
+        if let Ok(meta) = path.metadata() {
+            if let Ok(modified) = meta.modified() {
+                if latest_modified.is_none_or(|prev| modified > prev) {
+                    latest_modified = Some(modified);
+                }
+            }
+        }
+
+        let data = match std::fs::read_to_string(&path) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(&data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        if let Some(indicators) = parsed.get("indicators").and_then(|v| v.as_array()) {
+            for indicator in indicators.iter().take(100_000) {
+                let itype = indicator.get("indicator_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                if itype.starts_with("MaliciousIP")
+                    || itype.starts_with("MaliciousDomain")
+                    || itype.starts_with("MaliciousURL")
+                {
+                    network += 1;
+                } else if itype.starts_with("MaliciousFileHash")
+                    || itype.starts_with("SuspiciousFilePath")
+                {
+                    file += 1;
+                } else if itype.starts_with("SuspiciousProcessName")
+                    || itype.starts_with("SuspiciousCommandLine")
+                    || itype.starts_with("SuspiciousToolSequence")
+                    || itype.starts_with("SuspiciousArgPattern")
+                {
+                    behavioral += 1;
+                } else {
+                    // Count unknown types into behavioral as catch-all
+                    behavioral += 1;
+                }
+            }
+        }
+    }
+
+    let total = network + file + behavioral;
+    let last_updated = match latest_modified {
+        Some(t) => {
+            let datetime: chrono::DateTime<chrono::Utc> = t.into();
+            datetime.to_rfc3339()
+        }
+        None => "never".to_string(),
+    };
+
     Ok(IoCStats {
-        network: 45,
-        file: 128,
-        behavioral: 34,
-        total: 207,
-        last_updated: chrono::Utc::now().to_rfc3339(),
+        network,
+        file,
+        behavioral,
+        total,
+        last_updated,
     })
 }
 
 #[tauri::command]
 pub async fn get_telemetry_status() -> Result<TelemetryStatus, String> {
+    let path = config_toml_path();
+
+    if !path.exists() {
+        return Ok(TelemetryStatus {
+            enabled: false,
+            last_report: None,
+            installation_id: None,
+        });
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read config.toml: {}", e))?;
+    let table: toml::Value = content.parse()
+        .unwrap_or(toml::Value::Table(Default::default()));
+
+    let telemetry = table.get("telemetry");
+    let enabled = telemetry
+        .and_then(|t| t.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let last_report = telemetry
+        .and_then(|t| t.get("last_report"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let installation_id = telemetry
+        .and_then(|t| t.get("installation_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     Ok(TelemetryStatus {
-        enabled: false,
-        last_report: None,
-        installation_id: None,
+        enabled,
+        last_report,
+        installation_id,
     })
 }
 
 #[tauri::command]
 pub async fn toggle_telemetry(enabled: bool) -> Result<(), String> {
-    tracing::info!("Telemetry toggled to {} (mock)", enabled);
+    let path = config_toml_path();
+
+    let mut table: toml::Value = if path.exists() {
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read config.toml: {}", e))?;
+        content.parse().unwrap_or(toml::Value::Table(Default::default()))
+    } else {
+        toml::Value::Table(Default::default())
+    };
+
+    // Ensure [telemetry] section exists
+    if table.get("telemetry").is_none() {
+        table
+            .as_table_mut()
+            .ok_or("Config is not a TOML table")?
+            .insert("telemetry".to_string(), toml::Value::Table(Default::default()));
+    }
+    let telemetry = table
+        .get_mut("telemetry")
+        .and_then(|v| v.as_table_mut())
+        .ok_or("Failed to access [telemetry] section")?;
+
+    telemetry.insert("enabled".to_string(), toml::Value::Boolean(enabled));
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+
+    let output = toml::to_string_pretty(&table)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    std::fs::write(&path, output)
+        .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+
+    tracing::info!("Telemetry toggled to {}", enabled);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn get_telemetry_preview() -> Result<TelemetryPreview, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let audit_path = std::path::PathBuf::from(home).join(".local/share/clawdefender/audit.jsonl");
+
+    let mut categories = Vec::new();
+
+    if audit_path.exists() {
+        // Read only the last 256KB of the audit log to avoid unbounded memory use
+        let (lines_vec, _) = event_stream::read_last_n_lines(&audit_path, 1000);
+        let lines: Vec<&str> = lines_vec.iter().map(|s| s.as_str()).collect();
+
+        let mut proxy_count: u32 = 0;
+        let mut network_count: u32 = 0;
+        let mut guard_count: u32 = 0;
+        let mut allow_count: u32 = 0;
+        let mut deny_count: u32 = 0;
+
+        for line in &lines {
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
+                let event_type = event.get("event_type")
+                    .or_else(|| event.get("type"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let action = event.get("action")
+                    .or_else(|| event.get("decision"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                if event_type.contains("proxy") { proxy_count += 1; }
+                else if event_type.contains("network") { network_count += 1; }
+                else if event_type.contains("guard") { guard_count += 1; }
+
+                if action.contains("allow") || action.contains("pass") { allow_count += 1; }
+                else if action.contains("deny") || action.contains("block") { deny_count += 1; }
+            }
+        }
+
+        let total = lines.len();
+        categories.push(format!("Proxy events: {} (anonymized)", proxy_count));
+        categories.push(format!("Network events: {} (anonymized)", network_count));
+        categories.push(format!("Guard events: {} (anonymized)", guard_count));
+        categories.push(format!("Decisions: {} allowed, {} denied", allow_count, deny_count));
+        categories.push(format!("Total events analyzed: {}", total));
+    } else {
+        categories.push("No audit data available yet".to_string());
+        categories.push("Events will appear once the daemon processes requests".to_string());
+    }
+
     Ok(TelemetryPreview {
-        categories: vec![
-            "Blocklist match counts".to_string(),
-            "Anomaly score distributions".to_string(),
-            "IoC match rates by category".to_string(),
-            "Kill chain detection triggers".to_string(),
-            "Scanner finding categories".to_string(),
-        ],
+        categories,
         description: "All data is anonymous and aggregated. No file paths, server names, API keys, or personal information is collected.".to_string(),
     })
 }
 
 #[tauri::command]
 pub async fn check_server_reputation(name: String) -> Result<ReputationResult, String> {
+    let blocklist_path = threat_intel_dir().join("blocklist.json");
+
+    if !blocklist_path.exists() {
+        return Ok(ReputationResult {
+            server_name: name,
+            clean: true,
+            matches: vec![],
+        });
+    }
+
+    let content = std::fs::read_to_string(&blocklist_path)
+        .map_err(|e| format!("Failed to read blocklist.json: {}", e))?;
+    let blocklist: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse blocklist.json: {}", e))?;
+
+    let entries = match blocklist.get("entries").and_then(|v| v.as_array()) {
+        Some(arr) => arr,
+        None => {
+            return Ok(ReputationResult {
+                server_name: name,
+                clean: true,
+                matches: vec![],
+            });
+        }
+    };
+
+    let name_lower = name.to_lowercase();
+    let mut reputation_matches = Vec::new();
+
+    for entry in entries.iter().take(10000) {
+        let entry_name = match entry.get("name").and_then(|v| v.as_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        if entry_name.to_lowercase() == name_lower {
+            reputation_matches.push(ReputationMatch {
+                entry_id: entry.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                severity: entry.get("severity").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                description: entry.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            });
+        }
+    }
+
+    let clean = reputation_matches.is_empty();
     Ok(ReputationResult {
         server_name: name,
-        clean: true,
-        matches: vec![],
+        clean,
+        matches: reputation_matches,
     })
 }
 
@@ -1642,200 +2715,428 @@ pub async fn check_server_reputation(name: String) -> Result<ReputationResult, S
 
 #[tauri::command]
 pub async fn get_network_extension_status() -> Result<NetworkExtensionStatus, String> {
+    // The macOS Network Extension is not installed — return honest state.
     Ok(NetworkExtensionStatus {
-        loaded: true,
-        filter_active: true,
-        dns_active: true,
-        filtering_count: 847,
+        loaded: false,
+        filter_active: false,
+        dns_active: false,
+        filtering_count: 0,
         mock_mode: true,
     })
 }
 
 #[tauri::command]
 pub async fn activate_network_extension() -> Result<String, String> {
-    tracing::info!("Activating network extension (mock)");
-    Ok("Network extension activated successfully (mock mode)".to_string())
+    Err("Network Extension is not installed. The macOS Network Extension requires a signed system extension with special entitlements.".to_string())
 }
 
 #[tauri::command]
 pub async fn deactivate_network_extension() -> Result<String, String> {
-    tracing::info!("Deactivating network extension (mock)");
-    Ok("Network extension deactivated".to_string())
+    Err("Network Extension is not installed. The macOS Network Extension requires a signed system extension with special entitlements.".to_string())
 }
 
 #[tauri::command]
 pub async fn get_network_settings() -> Result<NetworkSettings, String> {
+    let path = config_toml_path();
+    let table: toml::Value = if path.exists() {
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            format!("Failed to read config.toml: {}", e)
+        })?;
+        content
+            .parse()
+            .unwrap_or(toml::Value::Table(Default::default()))
+    } else {
+        toml::Value::Table(Default::default())
+    };
+
     Ok(NetworkSettings {
-        filter_enabled: true,
-        dns_enabled: true,
-        filter_all_processes: false,
-        default_action: "prompt".to_string(),
-        prompt_timeout: 30,
-        block_private_ranges: false,
-        block_doh: true,
-        log_dns: true,
+        filter_enabled: get_bool(&table, "network_policy", "enabled", false),
+        dns_enabled: get_bool(&table, "network_policy", "dns_enabled", false),
+        filter_all_processes: get_bool(&table, "network_policy", "filter_all_processes", false),
+        default_action: get_str(&table, "network_policy", "default_agent_action", "prompt"),
+        prompt_timeout: get_u32(&table, "network_policy", "prompt_timeout_seconds", 15),
+        block_private_ranges: get_bool(&table, "network_policy", "block_private_ranges", false),
+        block_doh: get_bool(&table, "network_policy", "block_doh", true),
+        log_dns: get_bool(&table, "network_policy", "log_all_dns", true),
     })
 }
 
 #[tauri::command]
 pub async fn update_network_settings(settings: NetworkSettings) -> Result<(), String> {
-    tracing::info!("Updating network settings: filter_enabled={}, dns_enabled={} (mock)", settings.filter_enabled, settings.dns_enabled);
+    let path = config_toml_path();
+
+    // Read existing config to preserve other sections
+    let mut table: toml::Value = if path.exists() {
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            format!("Failed to read config.toml: {}", e)
+        })?;
+        content
+            .parse()
+            .unwrap_or(toml::Value::Table(Default::default()))
+    } else {
+        toml::Value::Table(Default::default())
+    };
+
+    // Ensure [network_policy] section exists
+    if table.get("network_policy").is_none() {
+        table
+            .as_table_mut()
+            .ok_or("Config is not a TOML table")?
+            .insert("network_policy".to_string(), toml::Value::Table(Default::default()));
+    }
+    let net = table
+        .get_mut("network_policy")
+        .and_then(|v| v.as_table_mut())
+        .ok_or("Failed to access [network_policy] section")?;
+
+    net.insert("enabled".to_string(), toml::Value::Boolean(settings.filter_enabled));
+    net.insert("dns_enabled".to_string(), toml::Value::Boolean(settings.dns_enabled));
+    net.insert("filter_all_processes".to_string(), toml::Value::Boolean(settings.filter_all_processes));
+    net.insert("default_agent_action".to_string(), toml::Value::String(settings.default_action));
+    net.insert("prompt_timeout_seconds".to_string(), toml::Value::Integer(settings.prompt_timeout as i64));
+    net.insert("block_private_ranges".to_string(), toml::Value::Boolean(settings.block_private_ranges));
+    net.insert("block_doh".to_string(), toml::Value::Boolean(settings.block_doh));
+    net.insert("log_all_dns".to_string(), toml::Value::Boolean(settings.log_dns));
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!("Failed to create config directory: {}", e)
+        })?;
+    }
+
+    let output = toml::to_string_pretty(&table).map_err(|e| {
+        format!("Failed to serialize config: {}", e)
+    })?;
+    std::fs::write(&path, output).map_err(|e| {
+        format!("Failed to write config.toml: {}", e)
+    })?;
+
+    tracing::info!("Network settings saved to {}", path.display());
     Ok(())
 }
 
 // --- Network Connection Log ---
 
+/// Read network events from audit.jsonl, bounded to the last 256KB.
+fn read_network_audit_records() -> Vec<event_stream::DaemonAuditRecord> {
+    let path = event_stream::audit_log_path();
+    if !path.exists() || !event_stream::is_safe_audit_path(&path) {
+        return Vec::new();
+    }
+
+    const CHUNK_SIZE: u64 = 256 * 1024;
+
+    let file = match std::fs::File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+
+    let file_len = match file.metadata() {
+        Ok(m) => m.len(),
+        Err(_) => return Vec::new(),
+    };
+
+    let read_from = file_len.saturating_sub(CHUNK_SIZE);
+
+    let mut reader = std::io::BufReader::new(&file);
+    if read_from > 0 {
+        use std::io::{Seek, SeekFrom};
+        if reader.seek(SeekFrom::Start(read_from)).is_err() {
+            return Vec::new();
+        }
+        // Skip partial line after seeking
+        let mut partial = String::new();
+        use std::io::BufRead;
+        let _ = reader.read_line(&mut partial);
+    }
+
+    let mut records = Vec::new();
+    use std::io::BufRead;
+    for line_result in reader.lines() {
+        let line = match line_result {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<event_stream::DaemonAuditRecord>(&line) {
+            Ok(record) => {
+                if record.source.contains("network") {
+                    records.push(record);
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+    records
+}
+
+/// Normalize action strings to canonical form.
+fn normalize_action(action: &str) -> &'static str {
+    match action.to_lowercase().as_str() {
+        "allowed" | "allow" => "allowed",
+        "blocked" | "block" | "denied" | "deny" => "blocked",
+        "prompted" | "prompt" => "prompted",
+        _ => "allowed",
+    }
+}
+
+/// Try to extract a destination string from an audit record.
+fn extract_destination(record: &event_stream::DaemonAuditRecord) -> Option<String> {
+    if let Some(ref details) = record.event_details {
+        if let Some(obj) = details.as_object() {
+            for key in &["destination", "host", "domain", "destination_domain", "dest"] {
+                if let Some(val) = obj.get(*key) {
+                    if let Some(s) = val.as_str() {
+                        if !s.is_empty() {
+                            return Some(s.to_string());
+                        }
+                    }
+                }
+            }
+            if let Some(ip) = obj.get("destination_ip").and_then(|v| v.as_str()) {
+                if !ip.is_empty() {
+                    return Some(ip.to_string());
+                }
+            }
+        }
+    }
+    record.server_name.clone()
+}
+
 #[tauri::command]
 pub async fn get_network_connections(limit: u32) -> Result<Vec<NetworkConnectionEvent>, String> {
-    let now = chrono::Utc::now();
-    let mock_connections: Vec<NetworkConnectionEvent> = (0..limit.min(20))
-        .map(|i| {
-            let (action, reason) = match i % 5 {
-                0 => ("blocked", "IoC match: known C2 domain"),
-                1 => ("prompted", "Destination unknown to server profile"),
-                _ => ("allowed", "Rule 'allow_https': HTTPS traffic allowed"),
+    let records = read_network_audit_records();
+    let limit = limit.min(500) as usize;
+
+    // Take the last `limit` records (most recent)
+    let start = if records.len() > limit { records.len() - limit } else { 0 };
+    let events: Vec<NetworkConnectionEvent> = records[start..]
+        .iter()
+        .enumerate()
+        .map(|(i, record)| {
+            let action = normalize_action(&record.action_taken);
+            let details_obj = record.event_details.as_ref().and_then(|v| v.as_object());
+
+            let destination_ip = details_obj
+                .and_then(|o| o.get("destination_ip").and_then(|v| v.as_str()))
+                .unwrap_or("0.0.0.0")
+                .to_string();
+
+            let destination_port = details_obj
+                .and_then(|o| o.get("destination_port").and_then(|v| v.as_u64()))
+                .unwrap_or(0) as u16;
+
+            let destination_domain = details_obj
+                .and_then(|o| o.get("destination_domain").or_else(|| o.get("domain")).or_else(|| o.get("host")))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            let protocol = details_obj
+                .and_then(|o| o.get("protocol").and_then(|v| v.as_str()))
+                .unwrap_or("tcp")
+                .to_string();
+
+            let tls = destination_port == 443;
+
+            let pid = details_obj
+                .and_then(|o| o.get("pid").and_then(|v| v.as_u64()))
+                .unwrap_or(0) as u32;
+
+            let process_name = record.server_name.clone().unwrap_or_else(|| "unknown".to_string());
+
+            let reason = if !record.event_summary.is_empty() {
+                record.event_summary.clone()
+            } else {
+                record.policy_action.clone().unwrap_or_default()
             };
-            let (dest_ip, dest_domain, port, protocol, tls) = match i % 4 {
-                0 => ("93.184.216.34", Some("example.com"), 443u16, "tcp", true),
-                1 => ("140.82.121.4", Some("api.github.com"), 443, "tcp", true),
-                2 => ("8.8.8.8", None, 53, "udp", false),
-                _ => ("172.217.14.206", Some("googleapis.com"), 443, "tcp", true),
-            };
-            let server = match i % 3 {
-                0 => Some("filesystem"),
-                1 => Some("github"),
-                _ => Some("everything"),
-            };
+
+            let ioc_match = record.classification.as_deref()
+                .map(|c| c.contains("malicious") || c.contains("ioc"))
+                .unwrap_or(false);
+
+            let rule = details_obj
+                .and_then(|o| o.get("rule_matched").and_then(|v| v.as_str()))
+                .map(|s| s.to_string());
+
             NetworkConnectionEvent {
-                id: format!("net-{}", 2000 + i),
-                timestamp: (now - chrono::Duration::seconds(i as i64 * 45))
-                    .to_rfc3339(),
-                pid: 10000 + (i % 5),
-                process_name: server.unwrap_or("unknown").to_string(),
-                server_name: server.map(|s| s.to_string()),
-                destination_ip: dest_ip.to_string(),
-                destination_port: port,
-                destination_domain: dest_domain.map(|d| d.to_string()),
-                protocol: protocol.to_string(),
+                id: format!("net-{}", start + i),
+                timestamp: record.timestamp.clone(),
+                pid,
+                process_name,
+                server_name: record.server_name.clone(),
+                destination_ip,
+                destination_port,
+                destination_domain,
+                protocol,
                 tls,
                 action: action.to_string(),
-                reason: reason.to_string(),
-                rule: if action == "allowed" {
-                    Some("allow_https".to_string())
-                } else {
-                    None
-                },
-                ioc_match: action == "blocked",
-                anomaly_score: if i % 5 == 1 { Some(0.72) } else { None },
-                behavioral: if i % 5 == 1 {
-                    Some("Server has never networked before".to_string())
-                } else {
-                    None
-                },
-                kill_chain: if action == "blocked" {
-                    Some("C2 Communication".to_string())
-                } else {
-                    None
-                },
-                bytes_sent: (i as u64 + 1) * 256,
-                bytes_received: (i as u64 + 1) * 1024,
-                duration_ms: (i as u64 + 1) * 50,
+                reason,
+                rule,
+                ioc_match,
+                anomaly_score: None,
+                behavioral: None,
+                kill_chain: None,
+                bytes_sent: 0,
+                bytes_received: 0,
+                duration_ms: 0,
             }
         })
         .collect();
-    Ok(mock_connections)
+
+    Ok(events)
 }
 
 #[tauri::command]
 pub async fn get_network_summary() -> Result<NetworkSummaryData, String> {
+    let records = read_network_audit_records();
+
+    let mut total_allowed: u64 = 0;
+    let mut total_blocked: u64 = 0;
+    let mut total_prompted: u64 = 0;
+    let mut dest_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+
+    for record in &records {
+        match normalize_action(&record.action_taken) {
+            "allowed" => total_allowed += 1,
+            "blocked" => total_blocked += 1,
+            "prompted" => total_prompted += 1,
+            _ => total_allowed += 1,
+        }
+        if let Some(dest) = extract_destination(record) {
+            *dest_counts.entry(dest).or_insert(0) += 1;
+        }
+    }
+
+    let mut dest_vec: Vec<(String, u64)> = dest_counts.into_iter().collect();
+    dest_vec.sort_by(|a, b| b.1.cmp(&a.1));
+    let top_destinations: Vec<DestinationCount> = dest_vec
+        .into_iter()
+        .take(5)
+        .map(|(destination, count)| DestinationCount { destination, count })
+        .collect();
+
     Ok(NetworkSummaryData {
-        total_allowed: 47,
-        total_blocked: 2,
-        total_prompted: 1,
-        top_destinations: vec![
-            DestinationCount {
-                destination: "api.github.com".to_string(),
-                count: 18,
-            },
-            DestinationCount {
-                destination: "googleapis.com".to_string(),
-                count: 12,
-            },
-            DestinationCount {
-                destination: "example.com".to_string(),
-                count: 8,
-            },
-            DestinationCount {
-                destination: "cdn.jsdelivr.net".to_string(),
-                count: 5,
-            },
-            DestinationCount {
-                destination: "registry.npmjs.org".to_string(),
-                count: 4,
-            },
-        ],
+        total_allowed,
+        total_blocked,
+        total_prompted,
+        top_destinations,
         period: "last_24h".to_string(),
     })
 }
 
 #[tauri::command]
 pub async fn get_network_traffic_by_server() -> Result<Vec<ServerTrafficData>, String> {
-    Ok(vec![
-        ServerTrafficData {
-            server_name: "filesystem".to_string(),
-            total_connections: 15,
-            connections_allowed: 14,
-            connections_blocked: 1,
-            connections_prompted: 0,
-            bytes_sent: 4096,
-            bytes_received: 32768,
-            unique_destinations: 3,
-            period: "last_24h".to_string(),
-        },
-        ServerTrafficData {
-            server_name: "github".to_string(),
-            total_connections: 28,
-            connections_allowed: 27,
-            connections_blocked: 0,
-            connections_prompted: 1,
-            bytes_sent: 12288,
-            bytes_received: 98304,
-            unique_destinations: 5,
-            period: "last_24h".to_string(),
-        },
-        ServerTrafficData {
-            server_name: "everything".to_string(),
-            total_connections: 7,
-            connections_allowed: 6,
-            connections_blocked: 1,
-            connections_prompted: 0,
-            bytes_sent: 2048,
-            bytes_received: 8192,
-            unique_destinations: 4,
-            period: "last_24h".to_string(),
-        },
-    ])
+    let records = read_network_audit_records();
+
+    let mut server_map: std::collections::HashMap<String, (u64, u64, u64, std::collections::HashSet<String>)> =
+        std::collections::HashMap::new();
+
+    for record in &records {
+        let server = record.server_name.clone().unwrap_or_else(|| "unknown".to_string());
+        let entry = server_map.entry(server).or_insert_with(|| (0, 0, 0, std::collections::HashSet::new()));
+        match normalize_action(&record.action_taken) {
+            "allowed" => entry.0 += 1,
+            "blocked" => entry.1 += 1,
+            "prompted" => entry.2 += 1,
+            _ => entry.0 += 1,
+        }
+        if let Some(dest) = extract_destination(record) {
+            entry.3.insert(dest);
+        }
+    }
+
+    let mut results: Vec<ServerTrafficData> = server_map
+        .into_iter()
+        .map(|(server_name, (allowed, blocked, prompted, dests))| {
+            ServerTrafficData {
+                server_name,
+                total_connections: allowed + blocked + prompted,
+                connections_allowed: allowed,
+                connections_blocked: blocked,
+                connections_prompted: prompted,
+                bytes_sent: 0,
+                bytes_received: 0,
+                unique_destinations: dests.len() as u32,
+                period: "last_24h".to_string(),
+            }
+        })
+        .collect();
+
+    results.sort_by(|a, b| b.total_connections.cmp(&a.total_connections));
+
+    Ok(results)
 }
 
 #[tauri::command]
 pub async fn export_network_log(format: String, range: String) -> Result<String, String> {
-    let home = dirs::home_dir().unwrap_or_default();
-    let filename = format!(
-        "clawdefender-network-log-{}.{}",
-        range,
-        if format == "csv" { "csv" } else { "json" }
-    );
-    let path = home.join(".clawdefender/exports").join(&filename);
-    tracing::info!(
-        "Exporting network log as {} for range {} (mock) -> {}",
-        format,
-        range,
-        path.display()
-    );
+    // Validate range to prevent path traversal
+    let safe_range: String = range.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .take(64)
+        .collect();
+    if safe_range.is_empty() {
+        return Err("Invalid range parameter".to_string());
+    }
+
+    let records = read_network_audit_records();
+
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+    let export_dir = home.join(".clawdefender/exports");
+    std::fs::create_dir_all(&export_dir).map_err(|e| {
+        format!("Failed to create exports directory: {}", e)
+    })?;
+
+    let ext = if format == "csv" { "csv" } else { "json" };
+    let filename = format!("clawdefender-network-log-{}.{}", safe_range, ext);
+    let path = export_dir.join(&filename);
+
+    // Verify the resolved path is still within exports dir
+    let canonical_dir = export_dir.canonicalize().map_err(|e| {
+        format!("Failed to resolve exports directory: {}", e)
+    })?;
+    if let Some(parent) = path.parent() {
+        let canonical_parent = parent.canonicalize().map_err(|e| {
+            format!("Failed to resolve export path: {}", e)
+        })?;
+        if !canonical_parent.starts_with(&canonical_dir) {
+            return Err("Invalid export path".to_string());
+        }
+    }
+
+    if format == "csv" {
+        let mut output = String::from("timestamp,source,server_name,action_taken,event_summary,classification\n");
+        for record in &records {
+            let ts = record.timestamp.replace('"', "\"\"");
+            let src = record.source.replace('"', "\"\"");
+            let srv = record.server_name.as_deref().unwrap_or("").replace('"', "\"\"");
+            let act = record.action_taken.replace('"', "\"\"");
+            let summ = record.event_summary.replace('"', "\"\"");
+            let cls = record.classification.as_deref().unwrap_or("").replace('"', "\"\"");
+            output.push_str(&format!(
+                "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                ts, src, srv, act, summ, cls
+            ));
+        }
+        std::fs::write(&path, output).map_err(|e| {
+            format!("Failed to write CSV export: {}", e)
+        })?;
+    } else {
+        let json = serde_json::to_string_pretty(&records).map_err(|e| {
+            format!("Failed to serialize network events: {}", e)
+        })?;
+        std::fs::write(&path, json).map_err(|e| {
+            format!("Failed to write JSON export: {}", e)
+        })?;
+    }
+
+    tracing::info!("Exported {} network events to {}", records.len(), path.display());
     Ok(path.to_string_lossy().to_string())
 }
 
 // --- Kill process ---
+
 
 #[tauri::command]
 pub async fn kill_agent_process(pid: u32) -> Result<String, String> {
@@ -1978,6 +3279,26 @@ fn detect_servers_key(config: &serde_json::Value) -> &str {
     } else {
         "mcpServers" // default
     }
+}
+
+// --- Autostart management ---
+
+#[tauri::command]
+pub fn enable_autostart(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().enable().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn disable_autostart(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().disable().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
 }
 
 mod dirs {
@@ -2205,5 +3526,331 @@ mod tests {
     fn test_detect_servers_key_default() {
         let config = serde_json::json!({"other": "stuff"});
         assert_eq!(detect_servers_key(&config), "mcpServers");
+    }
+
+    // --- Phase 4: New tests for real implementations ---
+
+    #[test]
+    fn test_get_behavioral_status_no_db() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        // No profiles.db exists — should return empty
+        let result = read_profiles_from_db();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_get_profiles_no_db() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let profiles = read_profiles_from_db().unwrap();
+        assert!(profiles.is_empty());
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_validate_server_command_accepts_valid() {
+        assert!(validate_server_command("npx server").is_ok());
+        assert!(validate_server_command("node /path/to/server.js").is_ok());
+        assert!(validate_server_command("python3 -m my_server").is_ok());
+        assert!(validate_server_command("/usr/local/bin/my-mcp-server").is_ok());
+    }
+
+    #[test]
+    fn test_validate_server_command_rejects_metacharacters() {
+        assert!(validate_server_command("cmd ; rm -rf /").is_err());
+        assert!(validate_server_command("cmd | cat /etc/passwd").is_err());
+        assert!(validate_server_command("cmd & bg").is_err());
+        assert!(validate_server_command("cmd $(whoami)").is_err());
+        assert!(validate_server_command("cmd `id`").is_err());
+        assert!(validate_server_command("cmd > /tmp/out").is_err());
+        assert!(validate_server_command("cmd < /tmp/in").is_err());
+        assert!(validate_server_command("").is_err());
+        assert!(validate_server_command("   ").is_err());
+    }
+
+    #[test]
+    fn test_get_feed_status_no_manifest() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        // No manifest.json — threat_intel_dir() won't have it
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(get_feed_status());
+        assert!(result.is_ok());
+        let status = result.unwrap();
+        assert_eq!(status.version, "not configured");
+        assert_eq!(status.entries_count, 0);
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_get_rule_packs_empty() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        // Create the rules dir but leave it empty
+        let rules_dir = tmp
+            .path()
+            .join(".local/share/clawdefender/threat-intel/rules");
+        std::fs::create_dir_all(&rules_dir).unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(get_rule_packs());
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_get_ioc_stats_no_data() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(get_ioc_stats());
+        assert!(result.is_ok());
+        let stats = result.unwrap();
+        assert_eq!(stats.network, 0);
+        assert_eq!(stats.file, 0);
+        assert_eq!(stats.behavioral, 0);
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.last_updated, "never");
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_validate_rule_pack_id_valid() {
+        assert!(validate_rule_pack_id("filesystem-safety").is_ok());
+        assert!(validate_rule_pack_id("pack123").is_ok());
+        assert!(validate_rule_pack_id("a-b-c").is_ok());
+    }
+
+    #[test]
+    fn test_validate_rule_pack_id_rejects_traversal() {
+        assert!(validate_rule_pack_id("../etc/passwd").is_err());
+        assert!(validate_rule_pack_id("../../foo").is_err());
+        assert!(validate_rule_pack_id("name with spaces").is_err());
+        assert!(validate_rule_pack_id("").is_err());
+        assert!(validate_rule_pack_id("foo/bar").is_err());
+        assert!(validate_rule_pack_id("a".repeat(200).as_str()).is_err());
+    }
+
+    #[test]
+    fn test_export_network_log_creates_file() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        // Create audit.jsonl with a network event
+        let audit_dir = tmp.path().join(".local/share/clawdefender");
+        std::fs::create_dir_all(&audit_dir).unwrap();
+        let record = serde_json::json!({
+            "timestamp": "2025-01-15T10:30:00Z",
+            "source": "network",
+            "event_summary": "Network connection",
+            "action_taken": "allowed",
+            "server_name": "test-server"
+        });
+        let mut file = std::fs::File::create(audit_dir.join("audit.jsonl")).unwrap();
+        writeln!(file, "{}", record).unwrap();
+        file.flush().unwrap();
+
+        // Create the exports directory parent so canonical check works
+        let export_dir = tmp.path().join(".clawdefender/exports");
+        std::fs::create_dir_all(&export_dir).unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(export_network_log("json".to_string(), "last24h".to_string()));
+        assert!(result.is_ok(), "export_network_log failed: {:?}", result);
+
+        let path = result.unwrap();
+        assert!(std::path::Path::new(&path).exists(), "Exported file should exist at {}", path);
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_network_extension_status_honest() {
+        let result = get_network_extension_status().await;
+        assert!(result.is_ok());
+        let status = result.unwrap();
+        assert!(!status.loaded);
+        assert!(status.mock_mode);
+        assert!(!status.filter_active);
+        assert!(!status.dns_active);
+    }
+
+    #[test]
+    fn test_toggle_telemetry_persists() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        // Create config dir
+        let config_dir = tmp.path().join(".config/clawdefender");
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        // Toggle telemetry on
+        let result = rt.block_on(toggle_telemetry(true));
+        assert!(result.is_ok());
+
+        // Read config.toml and verify
+        let content = std::fs::read_to_string(config_dir.join("config.toml")).unwrap();
+        let table: toml::Value = content.parse().unwrap();
+        let enabled = table
+            .get("telemetry")
+            .and_then(|t| t.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap();
+        assert!(enabled);
+
+        // Toggle off and verify
+        let result = rt.block_on(toggle_telemetry(false));
+        assert!(result.is_ok());
+        let content = std::fs::read_to_string(config_dir.join("config.toml")).unwrap();
+        let table: toml::Value = content.parse().unwrap();
+        let enabled = table
+            .get("telemetry")
+            .and_then(|t| t.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap();
+        assert!(!enabled);
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_get_system_info_real_version() {
+        // The app_version should come from CARGO_PKG_VERSION
+        let expected = env!("CARGO_PKG_VERSION");
+        assert!(!expected.is_empty());
+        // We can't call get_system_info directly (needs State), but we can verify
+        // the version constant is accessible and matches Cargo.toml
+        assert!(expected.contains('.'), "Version should contain dots: {}", expected);
+    }
+
+    #[test]
+    fn test_parse_scan_findings_count() {
+        // With summary.total
+        let json = r#"{"summary":{"total":5},"findings":[]}"#;
+        assert_eq!(parse_scan_findings_count(json), 5);
+
+        // With findings array
+        let json = r#"{"findings":[{"id":"f1"},{"id":"f2"},{"id":"f3"}]}"#;
+        assert_eq!(parse_scan_findings_count(json), 3);
+
+        // Invalid JSON
+        assert_eq!(parse_scan_findings_count("not json"), 0);
+
+        // Empty
+        assert_eq!(parse_scan_findings_count("{}"), 0);
+    }
+
+    #[test]
+    fn test_normalize_action() {
+        assert_eq!(normalize_action("allowed"), "allowed");
+        assert_eq!(normalize_action("allow"), "allowed");
+        assert_eq!(normalize_action("blocked"), "blocked");
+        assert_eq!(normalize_action("block"), "blocked");
+        assert_eq!(normalize_action("denied"), "blocked");
+        assert_eq!(normalize_action("deny"), "blocked");
+        assert_eq!(normalize_action("prompted"), "prompted");
+        assert_eq!(normalize_action("prompt"), "prompted");
+        assert_eq!(normalize_action("unknown"), "allowed");
+    }
+
+    #[test]
+    fn test_get_network_connections_no_events() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        // No audit.jsonl — should return empty
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(get_network_connections(100));
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_get_telemetry_status_no_config() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(get_telemetry_status());
+        assert!(result.is_ok());
+        let status = result.unwrap();
+        assert!(!status.enabled);
+        assert!(status.last_report.is_none());
+        assert!(status.installation_id.is_none());
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
+    }
+
+    #[test]
+    fn test_get_network_settings_defaults() {
+        let _lock = HOME_MUTEX.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(get_network_settings());
+        assert!(result.is_ok());
+        let settings = result.unwrap();
+        assert!(!settings.filter_enabled);
+        assert_eq!(settings.default_action, "prompt");
+
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        }
     }
 }

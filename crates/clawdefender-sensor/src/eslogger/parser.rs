@@ -7,7 +7,16 @@ use super::types::EsloggerEvent;
 
 /// Known event types that we can handle.
 const KNOWN_EVENT_TYPES: &[&str] = &[
-    "exec", "open", "close", "rename", "unlink", "connect", "fork", "exit", "pty_grant", "setmode",
+    "exec",
+    "open",
+    "close",
+    "rename",
+    "unlink",
+    "connect",
+    "fork",
+    "exit",
+    "pty_grant",
+    "setmode",
 ];
 
 /// Maximum JSON line length we will attempt to parse (1 MB).
@@ -24,7 +33,11 @@ pub fn parse_event(json_line: &str) -> Result<EsloggerEvent> {
             max = MAX_JSON_LINE_LENGTH,
             "rejecting oversized eslogger JSON line"
         );
-        anyhow::bail!("eslogger JSON line exceeds maximum length ({} > {})", json_line.len(), MAX_JSON_LINE_LENGTH);
+        anyhow::bail!(
+            "eslogger JSON line exceeds maximum length ({} > {})",
+            json_line.len(),
+            MAX_JSON_LINE_LENGTH
+        );
     }
 
     let event: EsloggerEvent =
@@ -121,7 +134,10 @@ mod tests {
         let event = parse_event(open_event_json()).expect("should parse open event");
         assert_eq!(event.event_type, "open");
         assert_eq!(event.process.pid, 9999);
-        assert_eq!(event.process.signing_id.as_deref(), Some("com.apple.python3"));
+        assert_eq!(
+            event.process.signing_id.as_deref(),
+            Some("com.apple.python3")
+        );
     }
 
     #[test]

@@ -226,8 +226,7 @@ fn write_if_not_exists(path: &PathBuf, content: &str) -> Result<()> {
     if path.exists() {
         println!("  [skip] {} already exists", path.display());
     } else {
-        fs::write(path, content)
-            .with_context(|| format!("writing {}", path.display()))?;
+        fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
         println!("  [create] {}", path.display());
     }
     Ok(())
@@ -266,7 +265,8 @@ mod tests {
     /// Verify the default policy is valid TOML that parses correctly.
     #[test]
     fn test_default_policy_parses() {
-        let rules = clawdefender_core::policy::rule::parse_policy_toml(super::DEFAULT_POLICY).unwrap();
+        let rules =
+            clawdefender_core::policy::rule::parse_policy_toml(super::DEFAULT_POLICY).unwrap();
         assert!(rules.len() >= 4);
     }
 
@@ -292,7 +292,10 @@ mod tests {
         // Calling again should skip (not overwrite).
         std::fs::write(&config_path, "custom content").unwrap();
         super::write_if_not_exists(&config_path, super::DEFAULT_CONFIG).unwrap();
-        assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "custom content");
+        assert_eq!(
+            std::fs::read_to_string(&config_path).unwrap(),
+            "custom content"
+        );
     }
 
     #[test]

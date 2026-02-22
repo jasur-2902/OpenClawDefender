@@ -154,7 +154,10 @@ pub enum ActionResult {
     /// Action is blocked with the given reason.
     Block(String),
     /// Action is monitored (Monitor mode) — would have been blocked.
-    Monitored { would_block: bool, reason: Option<String> },
+    Monitored {
+        would_block: bool,
+        reason: Option<String>,
+    },
 }
 
 /// Suggested permissions based on Monitor mode observations.

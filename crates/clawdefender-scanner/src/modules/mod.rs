@@ -9,12 +9,12 @@ use crate::evidence::EvidenceCollector;
 use crate::finding::{Finding, ModuleCategory};
 use crate::sandbox::Sandbox;
 
-pub mod path_traversal;
-pub mod prompt_injection;
-pub mod exfiltration;
 pub mod capability_escalation;
 pub mod dependency_audit;
+pub mod exfiltration;
 pub mod fuzzing;
+pub mod path_traversal;
+pub mod prompt_injection;
 
 /// Context provided to each scan module.
 pub struct ScanContext {

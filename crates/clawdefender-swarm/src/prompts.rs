@@ -249,13 +249,19 @@ fn build_user_prompt(event: &SwarmEventData, nonce: &str, specialty_label: &str)
     if let Some(ref args) = event.arguments {
         let args_str = serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string());
         let sanitized = sanitize_untrusted(&args_str);
-        parts.push(format!("\nTool Arguments:\n{}", wrap_untrusted(&sanitized, nonce)));
+        parts.push(format!(
+            "\nTool Arguments:\n{}",
+            wrap_untrusted(&sanitized, nonce)
+        ));
     }
 
     // Untrusted data: resource URI
     if let Some(ref uri) = event.resource_uri {
         let sanitized = sanitize_untrusted(uri);
-        parts.push(format!("\nResource URI:\n{}", wrap_untrusted(&sanitized, nonce)));
+        parts.push(format!(
+            "\nResource URI:\n{}",
+            wrap_untrusted(&sanitized, nonce)
+        ));
     }
 
     // Untrusted data: sampling content
@@ -313,19 +319,13 @@ fn sanitize_untrusted(raw: &str) -> String {
     let joined = filtered.join("\n");
 
     // 4. Escape special delimiters
-    joined
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    joined.replace('<', "&lt;").replace('>', "&gt;")
 }
 
 /// Light sanitization for trusted fields (server name, tool name, etc.).
 /// Only truncates and removes newlines.
 fn sanitize_trusted(s: &str) -> String {
-    let truncated = if s.len() > 200 {
-        &s[..200]
-    } else {
-        s
-    };
+    let truncated = if s.len() > 200 { &s[..200] } else { s };
     truncated.replace(['\n', '\r'], " ")
 }
 
@@ -475,7 +475,9 @@ mod tests {
         assert!(prompt.user_prompt.contains("test-server"));
         assert!(prompt.user_prompt.contains("run_command"));
         assert!(prompt.user_prompt.contains("network security"));
-        assert!(prompt.user_prompt.contains(&format!("UNTRUSTED_INPUT_{}", prompt.nonce)));
+        assert!(prompt
+            .user_prompt
+            .contains(&format!("UNTRUSTED_INPUT_{}", prompt.nonce)));
     }
 
     #[test]
@@ -483,7 +485,9 @@ mod tests {
         let prompt = build_hawk_prompt(&resource_event());
         assert!(prompt.user_prompt.contains("Resource read"));
         assert!(prompt.user_prompt.contains("file-server"));
-        assert!(prompt.user_prompt.contains(&format!("UNTRUSTED_INPUT_{}", prompt.nonce)));
+        assert!(prompt
+            .user_prompt
+            .contains(&format!("UNTRUSTED_INPUT_{}", prompt.nonce)));
     }
 
     #[test]
@@ -576,7 +580,10 @@ mod tests {
             "cmd": "ls -la"
         }));
         let prompt = build_hawk_prompt(&event);
-        assert!(!prompt.user_prompt.to_lowercase().contains("ignore all previous"));
+        assert!(!prompt
+            .user_prompt
+            .to_lowercase()
+            .contains("ignore all previous"));
         assert!(prompt.user_prompt.contains("ls -la"));
     }
 
@@ -703,7 +710,11 @@ FINDINGS:
         event.sampling_content = Some("x".repeat(500));
         event.recent_events = vec!["event summary".to_string(); 5];
 
-        for builder in [build_hawk_prompt, build_forensics_prompt, build_internal_affairs_prompt] {
+        for builder in [
+            build_hawk_prompt,
+            build_forensics_prompt,
+            build_internal_affairs_prompt,
+        ] {
             let prompt = builder(&event);
             let total = prompt.system_prompt.len() + prompt.user_prompt.len();
             assert!(

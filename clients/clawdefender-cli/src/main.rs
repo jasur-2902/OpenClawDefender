@@ -472,7 +472,11 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Init => commands::init::run(&config)?,
 
-        Commands::Wrap { server_name, client, all } => {
+        Commands::Wrap {
+            server_name,
+            client,
+            all,
+        } => {
             if all {
                 commands::wrap::run_all(&client)?;
             } else if let Some(name) = server_name {
@@ -482,7 +486,10 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        Commands::Unwrap { server_name, client } => {
+        Commands::Unwrap {
+            server_name,
+            client,
+        } => {
             commands::unwrap::run(&server_name, &client)?;
         }
 
@@ -632,9 +639,7 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Rules { action } => match action {
             RulesAction::List => commands::threat_intel::rules_list(&config)?,
-            RulesAction::Install { pack } => {
-                commands::threat_intel::rules_install(&config, &pack)?
-            }
+            RulesAction::Install { pack } => commands::threat_intel::rules_install(&config, &pack)?,
             RulesAction::Uninstall { pack } => {
                 commands::threat_intel::rules_uninstall(&config, &pack)?
             }
@@ -668,11 +673,7 @@ async fn main() -> anyhow::Result<()> {
             let keystore = clawdefender_swarm::keychain::default_keystore();
             match action {
                 ConfigAction::SetApiKey { provider, key } => {
-                    commands::config::set_api_key(
-                        keystore.as_ref(),
-                        &provider,
-                        key.as_deref(),
-                    )?;
+                    commands::config::set_api_key(keystore.as_ref(), &provider, key.as_deref())?;
                 }
                 ConfigAction::GetApiKey { provider } => {
                     commands::config::get_api_key(keystore.as_ref(), &provider)?;

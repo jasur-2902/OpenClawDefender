@@ -156,7 +156,12 @@ async fn perf_registry_lookup_with_many_guards() {
             max_network_requests_per_minute: None,
         };
         let (id, _) = registry
-            .register(format!("agent-{i}"), i as u32 + 1000, perms, GuardMode::Enforce)
+            .register(
+                format!("agent-{i}"),
+                i as u32 + 1000,
+                perms,
+                GuardMode::Enforce,
+            )
             .await;
         guard_ids.push(id);
     }

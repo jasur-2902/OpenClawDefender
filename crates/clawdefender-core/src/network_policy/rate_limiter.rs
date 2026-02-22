@@ -98,9 +98,7 @@ impl ConnectionRateLimiter {
 
         // Prune entries older than 60 seconds.
         let one_minute_ago = now - chrono::Duration::seconds(60);
-        window
-            .connection_times
-            .retain(|t| *t >= one_minute_ago);
+        window.connection_times.retain(|t| *t >= one_minute_ago);
 
         // Prune destination entries older than 10 seconds.
         let ten_seconds_ago = now - chrono::Duration::seconds(10);

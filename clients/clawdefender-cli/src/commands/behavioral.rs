@@ -2,9 +2,7 @@
 
 use anyhow::Result;
 use clawdefender_core::audit::AuditLogger;
-use clawdefender_core::behavioral::{
-    DecisionEngine, ProfileStore,
-};
+use clawdefender_core::behavioral::{DecisionEngine, ProfileStore};
 use clawdefender_core::config::settings::ClawConfig;
 
 /// Show behavioral engine status.
@@ -94,23 +92,28 @@ pub fn calibrate(config: &ClawConfig) -> Result<()> {
     let scores: Vec<(f64, String)> = records
         .iter()
         .filter_map(|r| {
-            r.behavioral.as_ref().map(|b| {
-                (b.anomaly_score, r.event_summary.clone())
-            })
+            r.behavioral
+                .as_ref()
+                .map(|b| (b.anomaly_score, r.event_summary.clone()))
         })
         .filter(|(score, _)| *score > 0.0)
         .collect();
 
     if scores.is_empty() {
         println!("No behavioral scores found in audit log.");
-        println!("The behavioral engine may still be in learning mode or has not yet processed events.");
+        println!(
+            "The behavioral engine may still be in learning mode or has not yet processed events."
+        );
         return Ok(());
     }
 
     let result = DecisionEngine::calibrate(&scores);
     println!("Calibration Analysis");
     println!("====================");
-    println!("  Total events with behavioral scores: {}", result.total_events);
+    println!(
+        "  Total events with behavioral scores: {}",
+        result.total_events
+    );
     println!();
 
     for tr in &result.results_by_threshold {
@@ -153,7 +156,8 @@ pub fn stats(config: &ClawConfig) -> Result<()> {
     let mut total_auto_blocks: u64 = 0;
     let mut total_with_behavioral: u64 = 0;
     let mut high_score_count: u64 = 0;
-    let mut dimension_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut dimension_counts: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
 
     for record in &records {
         if let Some(ref b) = record.behavioral {

@@ -146,10 +146,7 @@ async fn correlation_end_to_end_tool_call_to_exec_and_connect() {
     let tree = make_process_tree(server_pid, child_pid);
 
     // MCP ToolCall for run_command("curl http://example.com")
-    let mcp = make_tool_call(
-        "run_command",
-        json!({"command": "curl http://example.com"}),
-    );
+    let mcp = make_tool_call("run_command", json!({"command": "curl http://example.com"}));
     engine.process_mcp_event(mcp, &tree);
 
     // Matching eslogger exec event for /usr/bin/curl from agent child
@@ -310,12 +307,16 @@ async fn multi_server_correlation_no_cross_contamination() {
     engine2.tick();
 
     // Server 1: should have matched event
-    let ev1 = rx1.try_recv().expect("server1 should have correlated event");
+    let ev1 = rx1
+        .try_recv()
+        .expect("server1 should have correlated event");
     assert_eq!(ev1.status, CorrelationStatus::Matched);
     assert!(ev1.mcp_event.is_some());
 
     // Server 2: should have matched event
-    let ev2 = rx2.try_recv().expect("server2 should have correlated event");
+    let ev2 = rx2
+        .try_recv()
+        .expect("server2 should have correlated event");
     assert_eq!(ev2.status, CorrelationStatus::Matched);
     assert!(ev2.mcp_event.is_some());
 }
@@ -478,10 +479,7 @@ fn agent_grandchild_events_correlate() {
     let (tx, _rx) = mpsc::channel::<CorrelatedEvent>(100);
     let mut engine = CorrelationEngine::new(test_config(server_pid), tx);
 
-    let mcp = make_tool_call(
-        "run_command",
-        json!({"command": "curl http://example.com"}),
-    );
+    let mcp = make_tool_call("run_command", json!({"command": "curl http://example.com"}));
     engine.process_mcp_event(mcp, &tree);
 
     let os = make_os_exec(
@@ -561,10 +559,7 @@ async fn correlation_engine_run_loop_matches_and_shuts_down() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Shutdown
-    input_tx
-        .send(CorrelationInput::Shutdown)
-        .await
-        .unwrap();
+    input_tx.send(CorrelationInput::Shutdown).await.unwrap();
     handle.await.unwrap();
 
     // Should have received at least one correlated event

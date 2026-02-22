@@ -51,7 +51,10 @@ impl ConsentMode {
 
     /// Returns true if installation is authorized without user prompt.
     pub fn is_authorized(&self) -> bool {
-        matches!(self, ConsentMode::PreAuthorized | ConsentMode::HeadlessEnvVar)
+        matches!(
+            self,
+            ConsentMode::PreAuthorized | ConsentMode::HeadlessEnvVar
+        )
     }
 }
 
@@ -157,7 +160,10 @@ impl AutoInstaller {
 
         match status {
             InstallationStatus::Installed { path, version } => {
-                info!("ClawDefender already installed at {:?} (v{})", path, version);
+                info!(
+                    "ClawDefender already installed at {:?} (v{})",
+                    path, version
+                );
                 return Ok(InstallResult::AlreadyInstalled { path, version });
             }
             InstallationStatus::Outdated {
@@ -165,7 +171,10 @@ impl AutoInstaller {
                 current,
                 latest,
             } => {
-                info!("ClawDefender outdated at {:?} (v{} -> v{})", path, current, latest);
+                info!(
+                    "ClawDefender outdated at {:?} (v{} -> v{})",
+                    path, current, latest
+                );
                 // Continue to upgrade flow
                 return self.upgrade(&path, &current, &latest).await;
             }
@@ -265,8 +274,7 @@ impl AutoInstaller {
         let bin_dir = bin_path
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Invalid bin path"))?;
-        std::fs::create_dir_all(bin_dir)
-            .context("Failed to create installation directory")?;
+        std::fs::create_dir_all(bin_dir).context("Failed to create installation directory")?;
         *created_dirs = true;
 
         // Download binary
@@ -285,10 +293,9 @@ impl AutoInstaller {
             .download(&checksum_url)
             .await
             .context("Failed to download checksum")?;
-        let checksum_str = String::from_utf8(checksum_data)
-            .context("Invalid checksum file encoding")?;
-        verify_checksum(&binary_data, &checksum_str)
-            .context("Checksum verification failed")?;
+        let checksum_str =
+            String::from_utf8(checksum_data).context("Invalid checksum file encoding")?;
+        verify_checksum(&binary_data, &checksum_str).context("Checksum verification failed")?;
 
         // Write binary
         std::fs::write(bin_path, &binary_data).context("Failed to write binary")?;
@@ -320,9 +327,7 @@ impl AutoInstaller {
     /// Add ClawDefender bin directory to PATH via shell config.
     fn add_to_path(&self) -> Result<()> {
         let shell_config = self.shell_config();
-        let path_line = format!(
-            "export PATH=\"$HOME/.clawdefender/bin:$PATH\" {PATH_MARKER}"
-        );
+        let path_line = format!("export PATH=\"$HOME/.clawdefender/bin:$PATH\" {PATH_MARKER}");
 
         // Check if already present
         if shell_config.exists() {

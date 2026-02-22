@@ -74,7 +74,10 @@ impl Event for CorrelatedEvent {
                 mcp.to_audit_record().event_summary,
                 self.os_events.len()
             ),
-            None => format!("correlated: {} uncorrelated os events", self.os_events.len()),
+            None => format!(
+                "correlated: {} uncorrelated os events",
+                self.os_events.len()
+            ),
         };
         AuditRecord {
             timestamp: self.timestamp(),

@@ -66,7 +66,11 @@ impl RulePackManager {
         self.catalog.add_installed(installed)?;
         self.active_rules
             .insert(pack_id.to_string(), pack.rules.clone());
-        info!(pack_id, rules = pack.rules.len(), "installed community rule pack");
+        info!(
+            pack_id,
+            rules = pack.rules.len(),
+            "installed community rule pack"
+        );
         Ok(())
     }
 
@@ -132,10 +136,7 @@ impl RulePackManager {
 
     /// Get the active community rules for a specific installed pack.
     pub fn get_installed_rules(&self, pack_id: &str) -> Vec<CommunityRule> {
-        self.active_rules
-            .get(pack_id)
-            .cloned()
-            .unwrap_or_default()
+        self.active_rules.get(pack_id).cloned().unwrap_or_default()
     }
 
     /// Get all active community rules across all installed packs.

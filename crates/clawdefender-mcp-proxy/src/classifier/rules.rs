@@ -112,12 +112,18 @@ mod tests {
 
     #[test]
     fn classify_initialize() {
-        assert_eq!(classify(&make_request("initialize", None)), Classification::Pass);
+        assert_eq!(
+            classify(&make_request("initialize", None)),
+            Classification::Pass
+        );
     }
 
     #[test]
     fn classify_initialized() {
-        assert_eq!(classify(&make_notification("initialized")), Classification::Pass);
+        assert_eq!(
+            classify(&make_notification("initialized")),
+            Classification::Pass
+        );
     }
 
     #[test]

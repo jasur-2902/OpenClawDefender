@@ -164,7 +164,11 @@ impl IoCDatabase {
 
         let removed = before - self.indicators.len();
         if removed > 0 {
-            info!(removed, remaining = self.indicators.len(), "Expired IoC indicators");
+            info!(
+                removed,
+                remaining = self.indicators.len(),
+                "Expired IoC indicators"
+            );
             self.rebuild_engine();
         }
         removed
@@ -174,10 +178,7 @@ impl IoCDatabase {
     pub fn rebuild_engine(&mut self) {
         let engine = IoCEngine::build(self.indicators.clone());
         self.engine = Arc::new(engine);
-        debug!(
-            count = self.indicators.len(),
-            "Rebuilt IoC matching engine"
-        );
+        debug!(count = self.indicators.len(), "Rebuilt IoC matching engine");
     }
 
     /// Get a thread-safe reference to the current matching engine.

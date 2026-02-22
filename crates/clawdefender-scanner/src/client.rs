@@ -45,10 +45,7 @@ pub struct ScanClient {
 }
 
 impl ScanClient {
-    pub async fn start(
-        command: &[String],
-        env_overrides: HashMap<String, String>,
-    ) -> Result<Self> {
+    pub async fn start(command: &[String], env_overrides: HashMap<String, String>) -> Result<Self> {
         if command.is_empty() {
             anyhow::bail!("Server command must not be empty");
         }
@@ -128,7 +125,10 @@ impl ScanClient {
         self.request_timeout = dur;
     }
 
-    pub fn set_sampling_handler(&mut self, handler: impl Fn(Value) -> Value + Send + Sync + 'static) {
+    pub fn set_sampling_handler(
+        &mut self,
+        handler: impl Fn(Value) -> Value + Send + Sync + 'static,
+    ) {
         self.sampling_handler = Some(Box::new(handler));
     }
 
@@ -180,8 +180,7 @@ impl ScanClient {
                                     let mut resp_bytes = resp_str.into_bytes();
                                     resp_bytes.push(b'\n');
                                     self.stdin_tx.send(resp_bytes).await.ok();
-                                    self.message_history
-                                        .push((Direction::Sent, response));
+                                    self.message_history.push((Direction::Sent, response));
                                 }
                                 continue;
                             }
@@ -231,12 +230,10 @@ impl ScanClient {
         bytes.push(b'\n');
         self.stdin_tx.send(bytes).await.ok();
 
-        resp.get("result")
-            .cloned()
-            .ok_or_else(|| {
-                let err = resp.get("error").cloned().unwrap_or(Value::Null);
-                anyhow::anyhow!("Initialize failed: {err}")
-            })
+        resp.get("result").cloned().ok_or_else(|| {
+            let err = resp.get("error").cloned().unwrap_or(Value::Null);
+            anyhow::anyhow!("Initialize failed: {err}")
+        })
     }
 
     pub async fn call_tool_raw(&mut self, name: &str, args: Value) -> Result<Value> {
@@ -266,10 +263,7 @@ impl ScanClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
-                input_schema: tool
-                    .get("inputSchema")
-                    .cloned()
-                    .unwrap_or(Value::Null),
+                input_schema: tool.get("inputSchema").cloned().unwrap_or(Value::Null),
             });
         }
         Ok(result)

@@ -104,7 +104,10 @@ fn handle_request(req: &JsonRpcRequest) -> JsonRpcResponse {
 
         "tools/call" => {
             let params = req.params.clone().unwrap_or(json!({}));
-            let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let tool_name = params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
             JsonRpcResponse {
@@ -142,7 +145,10 @@ fn handle_request(req: &JsonRpcRequest) -> JsonRpcResponse {
 
         "resources/read" => {
             let params = req.params.clone().unwrap_or(json!({}));
-            let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let uri = params
+                .get("uri")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
 
             JsonRpcResponse {
                 jsonrpc: "2.0".into(),

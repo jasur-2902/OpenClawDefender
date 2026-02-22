@@ -369,9 +369,7 @@ async fn run_loop(
 // ── Headless mode ───────────────────────────────────────────────
 
 /// Run in headless mode (no TTY). Auto-denies all prompted requests.
-pub async fn run_headless(
-    mut prompt_rx: tokio::sync::mpsc::Receiver<PendingPrompt>,
-) -> Result<()> {
+pub async fn run_headless(mut prompt_rx: tokio::sync::mpsc::Receiver<PendingPrompt>) -> Result<()> {
     tracing::warn!("No TTY available, auto-denying prompted requests");
 
     while let Some(mut prompt) = prompt_rx.recv().await {
@@ -404,10 +402,10 @@ fn draw_ui(frame: &mut ratatui::Frame, state: &TuiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),              // status bar
-            Constraint::Length(prompt_height),   // pending prompts
-            Constraint::Min(5),                 // event log
-            Constraint::Length(1),              // footer
+            Constraint::Length(1),             // status bar
+            Constraint::Length(prompt_height), // pending prompts
+            Constraint::Min(5),                // event log
+            Constraint::Length(1),             // footer
         ])
         .split(area);
 
@@ -426,39 +424,48 @@ fn draw_status_bar(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
     let servers = state.stats.active_servers.len();
 
     let slm_span = match &state.stats.slm_status {
-        Some(status) if status.enabled => {
-            Span::styled(
-                format!(
-                    " | SLM: {} ({:.0}ms avg)",
-                    status.model_name, status.avg_latency_ms
-                ),
-                Style::default().fg(Color::Green),
-            )
-        }
+        Some(status) if status.enabled => Span::styled(
+            format!(
+                " | SLM: {} ({:.0}ms avg)",
+                status.model_name, status.avg_latency_ms
+            ),
+            Style::default().fg(Color::Green),
+        ),
         _ => Span::styled(" | SLM: disabled", Style::default().fg(Color::DarkGray)),
     };
 
     let swarm_span = match &state.stats.swarm_status {
-        Some(status) if status.enabled => {
-            Span::styled(
-                " | Swarm: \u{25cf} active",
-                Style::default().fg(Color::Green),
-            )
-        }
-        _ => Span::styled(" | Swarm: \u{25cb} disabled", Style::default().fg(Color::DarkGray)),
+        Some(status) if status.enabled => Span::styled(
+            " | Swarm: \u{25cf} active",
+            Style::default().fg(Color::Green),
+        ),
+        _ => Span::styled(
+            " | Swarm: \u{25cb} disabled",
+            Style::default().fg(Color::DarkGray),
+        ),
     };
 
     let text = Line::from(vec![
-        Span::styled(" ClawDefender ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " ClawDefender ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("| "),
         Span::styled("Active", Style::default().fg(Color::Green)),
-        Span::raw(format!(" | Up: {uptime} | {total} events, {blocked} blocked | {servers} server(s)")),
+        Span::raw(format!(
+            " | Up: {uptime} | {total} events, {blocked} blocked | {servers} server(s)"
+        )),
         slm_span,
         swarm_span,
         Span::raw(" "),
     ]);
 
-    frame.render_widget(Paragraph::new(text).style(Style::default().bg(Color::DarkGray)), area);
+    frame.render_widget(
+        Paragraph::new(text).style(Style::default().bg(Color::DarkGray)),
+        area,
+    );
 }
 
 fn draw_prompts(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
@@ -478,20 +485,23 @@ fn draw_prompts(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
         let is_selected = i == state.selected_prompt;
         let marker = if is_selected { ">" } else { " " };
 
-        let tool_display = prompt
-            .tool_name
-            .as_deref()
-            .unwrap_or(&prompt.method);
+        let tool_display = prompt.tool_name.as_deref().unwrap_or(&prompt.method);
 
         let header_style = if is_selected {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::Yellow)
         };
 
         lines.push(Line::from(vec![
             Span::styled(
-                format!(" {marker} {server} -> {tool}", server = prompt.server_name, tool = tool_display),
+                format!(
+                    " {marker} {server} -> {tool}",
+                    server = prompt.server_name,
+                    tool = tool_display
+                ),
                 header_style,
             ),
             Span::styled(
@@ -528,7 +538,11 @@ fn draw_prompts(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
                 Span::raw("   SLM: "),
                 Span::styled(risk_label, risk_style),
                 Span::styled(
-                    format!(" ({:.0}%) {}", enrichment.confidence * 100.0, enrichment.explanation),
+                    format!(
+                        " ({:.0}%) {}",
+                        enrichment.confidence * 100.0,
+                        enrichment.explanation
+                    ),
                     Style::default().fg(Color::DarkGray),
                 ),
             ]));
@@ -553,7 +567,10 @@ fn draw_prompts(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
                 Span::raw("   Swarm: "),
                 Span::styled(risk_label, risk_style),
                 Span::styled(
-                    format!(" [{}] {}", enrichment.recommended_action, enrichment.explanation),
+                    format!(
+                        " [{}] {}",
+                        enrichment.recommended_action, enrichment.explanation
+                    ),
                     Style::default().fg(Color::DarkGray),
                 ),
             ]));
@@ -562,15 +579,38 @@ fn draw_prompts(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
         if is_selected && focused {
             lines.push(Line::from(vec![
                 Span::raw("   "),
-                Span::styled("[A]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "[A]",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("llow once  "),
-                Span::styled("[S]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "[S]",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("ession  "),
-                Span::styled("[P]", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "[P]",
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("olicy  "),
-                Span::styled("[D]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "[D]",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("eny  "),
-                Span::styled("[C]", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "[C]",
+                    Style::default()
+                        .fg(Color::Blue)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("hat"),
             ]));
         } else {
@@ -607,7 +647,11 @@ fn draw_event_log(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
     let lines: Vec<Line> = state
         .recent_events
         .iter()
-        .skip(state.scroll_offset.saturating_sub(inner_height.saturating_sub(1)))
+        .skip(
+            state
+                .scroll_offset
+                .saturating_sub(inner_height.saturating_sub(1)),
+        )
         .take(inner_height)
         .map(|e| {
             let time = e.timestamp.format("%H:%M:%S").to_string();
@@ -664,9 +708,7 @@ fn risk_level_style(level: &str) -> (Style, String) {
         "MEDIUM" => (Style::default().fg(Color::Yellow), "MEDIUM".to_string()),
         "HIGH" => (Style::default().fg(Color::Red), "HIGH".to_string()),
         "CRITICAL" => (
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             "CRITICAL".to_string(),
         ),
         other => (Style::default().fg(Color::DarkGray), other.to_uppercase()),
@@ -715,7 +757,10 @@ mod tests {
         }
     }
 
-    fn make_test_prompt(id: &str, timeout: Duration) -> (PendingPrompt, tokio::sync::oneshot::Receiver<UserDecision>) {
+    fn make_test_prompt(
+        id: &str,
+        timeout: Duration,
+    ) -> (PendingPrompt, tokio::sync::oneshot::Receiver<UserDecision>) {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let prompt = PendingPrompt {
             id: id.to_string(),
@@ -1027,11 +1072,14 @@ mod tests {
         state.add_prompt(p);
         assert!(state.pending_prompts[0].slm_enrichment.is_none());
 
-        state.apply_slm_enrichment("p1", SlmEnrichment {
-            risk_level: "HIGH".to_string(),
-            explanation: "Suspicious file access".to_string(),
-            confidence: 0.88,
-        });
+        state.apply_slm_enrichment(
+            "p1",
+            SlmEnrichment {
+                risk_level: "HIGH".to_string(),
+                explanation: "Suspicious file access".to_string(),
+                confidence: 0.88,
+            },
+        );
 
         let enrichment = state.pending_prompts[0].slm_enrichment.as_ref().unwrap();
         assert_eq!(enrichment.risk_level, "HIGH");
@@ -1042,11 +1090,14 @@ mod tests {
     fn test_apply_slm_enrichment_nonexistent_prompt() {
         let mut state = TuiState::default();
         // Should not panic when applying to a missing prompt.
-        state.apply_slm_enrichment("nonexistent", SlmEnrichment {
-            risk_level: "LOW".to_string(),
-            explanation: "Safe".to_string(),
-            confidence: 0.95,
-        });
+        state.apply_slm_enrichment(
+            "nonexistent",
+            SlmEnrichment {
+                risk_level: "LOW".to_string(),
+                explanation: "Safe".to_string(),
+                confidence: 0.95,
+            },
+        );
     }
 
     #[test]
@@ -1102,7 +1153,10 @@ mod tests {
             summary: "blocked shell access".to_string(),
             risk_level: Some("CRITICAL".to_string()),
         });
-        assert_eq!(state.recent_events.back().unwrap().risk_level.as_deref(), Some("CRITICAL"));
+        assert_eq!(
+            state.recent_events.back().unwrap().risk_level.as_deref(),
+            Some("CRITICAL")
+        );
     }
 
     #[test]

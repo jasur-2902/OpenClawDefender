@@ -236,7 +236,9 @@ impl FileAuditLogger {
             network_connection: None,
         };
         // Use the channel to write session-start.
-        let _ = logger.sender.send(WriterCommand::Write(Box::new(start_record)));
+        let _ = logger
+            .sender
+            .send(WriterCommand::Write(Box::new(start_record)));
         // Flush to ensure session-start is persisted.
         let _ = logger.sender.send(WriterCommand::Flush);
 
@@ -980,7 +982,11 @@ mod tests {
         let lines: Vec<&str> = contents.lines().filter(|l| !l.trim().is_empty()).collect();
 
         // Should have: session-start, our record, session-end
-        assert!(lines.len() >= 3, "expected at least 3 lines, got {}", lines.len());
+        assert!(
+            lines.len() >= 3,
+            "expected at least 3 lines, got {}",
+            lines.len()
+        );
 
         let first: AuditRecord = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(first.event_summary, "session-start");

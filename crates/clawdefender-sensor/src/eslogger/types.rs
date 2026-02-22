@@ -190,10 +190,7 @@ fn logical_canonicalize(path: &str) -> String {
 
 impl From<EsloggerEvent> for OsEvent {
     fn from(ev: EsloggerEvent) -> Self {
-        let timestamp: DateTime<Utc> = ev
-            .timestamp
-            .parse()
-            .unwrap_or_else(|_| Utc::now());
+        let timestamp: DateTime<Utc> = ev.timestamp.parse().unwrap_or_else(|_| Utc::now());
 
         let kind = match ev.event_type.as_str() {
             "exec" => {
@@ -261,17 +258,15 @@ impl From<EsloggerEvent> for OsEvent {
                 }
             }
             "fork" => {
-                let data: ForkEventData =
-                    serde_json::from_value(ev.event.clone()).unwrap_or(ForkEventData {
-                        child_pid: 0,
-                    });
+                let data: ForkEventData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(ForkEventData { child_pid: 0 });
                 OsEventKind::Fork {
                     child_pid: data.child_pid,
                 }
             }
             "exit" => {
-                let data: ExitEventData =
-                    serde_json::from_value(ev.event.clone()).unwrap_or(ExitEventData { status: -1 });
+                let data: ExitEventData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(ExitEventData { status: -1 });
                 OsEventKind::Exit {
                     status: data.status,
                 }

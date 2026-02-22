@@ -490,12 +490,7 @@ fn test_e2e_audit_data_learning_mode() {
     let mut profile = build_active_profile();
     profile.learning_mode = true;
 
-    let decision = engine.decide(
-        &PolicyAction::Prompt("check".into()),
-        &profile,
-        None,
-        None,
-    );
+    let decision = engine.decide(&PolicyAction::Prompt("check".into()), &profile, None, None);
     let audit = engine.build_audit_data(&decision, &profile);
 
     assert!(!audit.auto_blocked);

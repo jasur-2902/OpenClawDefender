@@ -124,9 +124,7 @@ impl ScanProgress {
                 ModuleStatus::Pending => {
                     ("\u{25CB}".to_string(), "pending".to_string(), "\x1b[90m") // gray
                 }
-                ModuleStatus::Running => {
-                    ("\u{25CF}".to_string(), "running...".to_string(), YELLOW)
-                }
+                ModuleStatus::Running => ("\u{25CF}".to_string(), "running...".to_string(), YELLOW),
                 ModuleStatus::Complete { findings } => {
                     if findings.is_empty() {
                         ("\u{2713}".to_string(), "no findings".to_string(), GREEN)

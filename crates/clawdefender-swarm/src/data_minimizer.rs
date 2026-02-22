@@ -15,9 +15,8 @@ const MAX_ARG_LEN: usize = 200;
 // ---------------------------------------------------------------------------
 
 /// Matches home directory paths like /Users/username/ or /home/username/
-static HOME_DIR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"/(Users|home)/[A-Za-z0-9._-]+/").expect("home dir regex")
-});
+static HOME_DIR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"/(Users|home)/[A-Za-z0-9._-]+/").expect("home dir regex"));
 
 /// Matches RFC-1918 private IPv4 addresses.
 static PRIVATE_IP_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -39,10 +38,8 @@ static SECRET_LIKE_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Matches environment variable assignments that may contain secrets.
 static ENV_SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTH|CREDENTIAL|PRIVATE_KEY)\s*=\s*\S+",
-    )
-    .expect("env secret regex")
+    Regex::new(r"(?i)(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTH|CREDENTIAL|PRIVATE_KEY)\s*=\s*\S+")
+        .expect("env secret regex")
 });
 
 /// Input event data to be minimized.

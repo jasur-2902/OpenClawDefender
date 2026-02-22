@@ -280,12 +280,7 @@ fn audit_record_never_contains_api_key() {
 
 #[test]
 fn data_min_private_ips_redacted() {
-    let cases = [
-        "10.0.0.1",
-        "172.16.0.1",
-        "172.31.255.255",
-        "192.168.1.100",
-    ];
+    let cases = ["10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.100"];
 
     for ip in &cases {
         let e = event(&format!("curl {}:8080/api", ip));
@@ -325,10 +320,7 @@ fn output_san_clean_response_passes() {
 #[test]
 fn output_san_multiple_flags_combined() {
     // This response has a URL AND is over 500 chars
-    let response = format!(
-        "Visit https://evil.com for details. {}",
-        "x".repeat(500)
-    );
+    let response = format!("Visit https://evil.com for details. {}", "x".repeat(500));
 
     match OutputSanitizer::sanitize(&response, "nonce") {
         SanitizedOutput::Flagged { reasons, .. } => {

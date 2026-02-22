@@ -129,11 +129,7 @@ impl AnomalyScorer {
 
     /// Score an event against the profile. Returns `None` if the profile is
     /// still in learning mode.
-    pub fn score(
-        &self,
-        event: &BehavioralEvent,
-        profile: &ServerProfile,
-    ) -> Option<AnomalyScore> {
+    pub fn score(&self, event: &BehavioralEvent, profile: &ServerProfile) -> Option<AnomalyScore> {
         if profile.learning_mode {
             return None;
         }
@@ -354,12 +350,14 @@ impl AnomalyScorer {
                 let diff = event.timestamp.signed_duration_since(last);
                 diff.num_milliseconds() as f64
             }
-            None => return AnomalyComponent {
-                dimension: AnomalyDimension::AbnormalRate,
-                score: 0.0,
-                weight: 0.2,
-                explanation: "No previous event for rate comparison".to_string(),
-            },
+            None => {
+                return AnomalyComponent {
+                    dimension: AnomalyDimension::AbnormalRate,
+                    score: 0.0,
+                    weight: 0.2,
+                    explanation: "No previous event for rate comparison".to_string(),
+                }
+            }
         };
 
         // A very small gap means very rapid requests — high rate.
@@ -423,11 +421,7 @@ impl AnomalyScorer {
             explanation: if score > 0.0 {
                 format!(
                     "Tool sequence '{} -> {}' has never been observed",
-                    profile
-                        .tool_profile
-                        .last_tool
-                        .as_deref()
-                        .unwrap_or("?"),
+                    profile.tool_profile.last_tool.as_deref().unwrap_or("?"),
                     tool_name
                 )
             } else {
@@ -523,7 +517,9 @@ impl AnomalyScorer {
     // -----------------------------------------------------------------------
 
     fn is_sensitive_path(&self, path: &str) -> bool {
-        self.sensitive_paths.iter().any(|sp| path.contains(sp.as_str()))
+        self.sensitive_paths
+            .iter()
+            .any(|sp| path.contains(sp.as_str()))
     }
 
     fn compute_total(components: &[AnomalyComponent]) -> f64 {
@@ -540,7 +536,9 @@ impl AnomalyScorer {
         let mut total = weighted_sum / weight_sum;
 
         // Floor rule: any dimension at 1.0 → total at least 0.7.
-        let any_max = components.iter().any(|c| (c.score - 1.0).abs() < f64::EPSILON);
+        let any_max = components
+            .iter()
+            .any(|c| (c.score - 1.0).abs() < f64::EPSILON);
         if any_max && total < 0.7 {
             total = 0.7;
         }
@@ -554,10 +552,7 @@ impl AnomalyScorer {
         event: &BehavioralEvent,
         profile: &ServerProfile,
     ) -> String {
-        let mut top: Vec<&AnomalyComponent> = components
-            .iter()
-            .filter(|c| c.score > 0.0)
-            .collect();
+        let mut top: Vec<&AnomalyComponent> = components.iter().filter(|c| c.score > 0.0).collect();
         top.sort_by(|a, b| {
             (b.score * b.weight)
                 .partial_cmp(&(a.score * a.weight))
@@ -704,7 +699,10 @@ mod tests {
         BehavioralEvent {
             event_type: BehavioralEventType::ToolCall {
                 tool_name: tool_name.to_string(),
-                arguments: args.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+                arguments: args
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
             },
             server_name: "filesystem-server".to_string(),
             timestamp: Utc::now(),
@@ -741,7 +739,11 @@ mod tests {
         let profile = established_profile();
         let event = make_tool_event("evil_exploit", vec![]);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownTool).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownTool)
+            .unwrap();
         assert!((comp.score - 1.0).abs() < f64::EPSILON);
     }
 
@@ -749,10 +751,17 @@ mod tests {
     fn test_unknown_tool_rarely_seen() {
         let scorer = AnomalyScorer::new();
         let mut profile = established_profile();
-        profile.tool_profile.tool_counts.insert("rare_tool".to_string(), 3);
+        profile
+            .tool_profile
+            .tool_counts
+            .insert("rare_tool".to_string(), 3);
         let event = make_tool_event("rare_tool", vec![]);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownTool).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownTool)
+            .unwrap();
         assert!((comp.score - 0.5).abs() < f64::EPSILON);
     }
 
@@ -762,7 +771,11 @@ mod tests {
         let profile = established_profile();
         let event = make_tool_event("read_file", vec![("path", "/home/user/Projects/foo.rs")]);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownTool).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownTool)
+            .unwrap();
         assert!(comp.score.abs() < f64::EPSILON);
     }
 
@@ -774,7 +787,11 @@ mod tests {
         let profile = established_profile();
         let event = make_file_event("/home/user/Projects/src/main.rs", false);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownPath).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownPath)
+            .unwrap();
         assert!(comp.score.abs() < f64::EPSILON);
     }
 
@@ -785,7 +802,11 @@ mod tests {
         // /home/user/Downloads is a sibling of /home/user/Projects/
         let event = make_file_event("/home/user/Downloads/file.txt", false);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownPath).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownPath)
+            .unwrap();
         assert!((comp.score - 0.3).abs() < f64::EPSILON);
     }
 
@@ -795,7 +816,11 @@ mod tests {
         let profile = established_profile();
         let event = make_file_event("/etc/passwd", false);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownPath).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownPath)
+            .unwrap();
         assert!((comp.score - 0.7).abs() < f64::EPSILON);
     }
 
@@ -805,7 +830,11 @@ mod tests {
         let profile = established_profile();
         let event = make_file_event("/home/user/.ssh/id_rsa", false);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownPath).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownPath)
+            .unwrap();
         assert!((comp.score - 1.0).abs() < f64::EPSILON);
     }
 
@@ -817,7 +846,11 @@ mod tests {
         let profile = established_profile();
         let event = make_network_event("api.example.com", 443);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownNetwork).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownNetwork)
+            .unwrap();
         assert!(comp.score.abs() < f64::EPSILON);
     }
 
@@ -827,7 +860,11 @@ mod tests {
         let profile = established_profile();
         let event = make_network_event("evil.example.com", 8080);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownNetwork).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownNetwork)
+            .unwrap();
         assert!((comp.score - 0.5).abs() < f64::EPSILON);
     }
 
@@ -839,10 +876,18 @@ mod tests {
         let result = scorer.score(&event, &profile).unwrap();
 
         // Both UnknownNetwork and FirstNetworkAccess should fire.
-        let unknown = result.components.iter().find(|c| c.dimension == AnomalyDimension::UnknownNetwork).unwrap();
+        let unknown = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::UnknownNetwork)
+            .unwrap();
         assert!((unknown.score - 1.0).abs() < f64::EPSILON);
 
-        let first = result.components.iter().find(|c| c.dimension == AnomalyDimension::FirstNetworkAccess).unwrap();
+        let first = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::FirstNetworkAccess)
+            .unwrap();
         assert!((first.score - 1.0).abs() < f64::EPSILON);
     }
 
@@ -855,7 +900,11 @@ mod tests {
         // Gap of ~500ms matches the mean.
         let event = make_tool_event("read_file", vec![("path", "/home/user/Projects/f.rs")]);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::AbnormalRate).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::AbnormalRate)
+            .unwrap();
         assert!(comp.score.abs() < f64::EPSILON);
     }
 
@@ -868,7 +917,11 @@ mod tests {
             Some(Utc::now() - chrono::Duration::milliseconds(50));
         let event = make_tool_event("read_file", vec![("path", "/home/user/Projects/f.rs")]);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::AbnormalRate).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::AbnormalRate)
+            .unwrap();
         assert!((comp.score - 0.8).abs() < f64::EPSILON);
     }
 
@@ -879,9 +932,16 @@ mod tests {
         let scorer = AnomalyScorer::new();
         let profile = established_profile();
         // last_tool is read_file, calling write_file → known bigram.
-        let event = make_tool_event("write_file", vec![("path", "/home/user/Projects/f.rs"), ("content", "hello")]);
+        let event = make_tool_event(
+            "write_file",
+            vec![("path", "/home/user/Projects/f.rs"), ("content", "hello")],
+        );
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::AbnormalSequence).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::AbnormalSequence)
+            .unwrap();
         assert!(comp.score.abs() < f64::EPSILON);
     }
 
@@ -892,7 +952,11 @@ mod tests {
         // last_tool is read_file, calling list_dir → not in bigrams.
         let event = make_tool_event("list_dir", vec![]);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::AbnormalSequence).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::AbnormalSequence)
+            .unwrap();
         assert!((comp.score - 0.5).abs() < f64::EPSILON);
     }
 
@@ -904,7 +968,11 @@ mod tests {
         let profile = established_profile();
         let event = make_tool_event("read_file", vec![("path", "/home/user/Projects/f.rs")]);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::AbnormalArguments).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::AbnormalArguments)
+            .unwrap();
         assert!(comp.score.abs() < f64::EPSILON);
     }
 
@@ -912,9 +980,16 @@ mod tests {
     fn test_abnormal_arguments() {
         let scorer = AnomalyScorer::new();
         let profile = established_profile();
-        let event = make_tool_event("read_file", vec![("path", "/etc/passwd"), ("encoding", "binary")]);
+        let event = make_tool_event(
+            "read_file",
+            vec![("path", "/etc/passwd"), ("encoding", "binary")],
+        );
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::AbnormalArguments).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::AbnormalArguments)
+            .unwrap();
         assert!((comp.score - 0.6).abs() < f64::EPSILON);
     }
 
@@ -926,7 +1001,11 @@ mod tests {
         let profile = established_profile();
         let event = make_file_event("/home/user/.ssh/id_rsa", false);
         let result = scorer.score(&event, &profile).unwrap();
-        let comp = result.components.iter().find(|c| c.dimension == AnomalyDimension::SensitiveTarget).unwrap();
+        let comp = result
+            .components
+            .iter()
+            .find(|c| c.dimension == AnomalyDimension::SensitiveTarget)
+            .unwrap();
         assert!((comp.score - 1.0).abs() < f64::EPSILON);
     }
 
@@ -936,7 +1015,10 @@ mod tests {
         let profile = established_profile();
         let event = make_file_event("/home/user/.aws/credentials", false);
         let result = scorer.score(&event, &profile).unwrap();
-        assert!(result.components.iter().any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
+        assert!(result
+            .components
+            .iter()
+            .any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
     }
 
     #[test]
@@ -945,7 +1027,10 @@ mod tests {
         let profile = established_profile();
         let event = make_file_event("/home/user/.gnupg/secring.gpg", false);
         let result = scorer.score(&event, &profile).unwrap();
-        assert!(result.components.iter().any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
+        assert!(result
+            .components
+            .iter()
+            .any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
     }
 
     #[test]
@@ -954,7 +1039,10 @@ mod tests {
         let profile = established_profile();
         let event = make_file_event("/home/user/.kube/config", false);
         let result = scorer.score(&event, &profile).unwrap();
-        assert!(result.components.iter().any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
+        assert!(result
+            .components
+            .iter()
+            .any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
     }
 
     // -- Floor rule tests --
@@ -1002,10 +1090,13 @@ mod tests {
         let scorer = AnomalyScorer::new();
         let profile = established_profile();
         // Normal tool, normal path arg, known sequence.
-        let event = make_tool_event("write_file", vec![
-            ("path", "/home/user/Projects/src/main.rs"),
-            ("content", "fn main() {}"),
-        ]);
+        let event = make_tool_event(
+            "write_file",
+            vec![
+                ("path", "/home/user/Projects/src/main.rs"),
+                ("content", "fn main() {}"),
+            ],
+        );
         let result = scorer.score(&event, &profile).unwrap();
         assert!(
             result.total < 0.3,
@@ -1050,8 +1141,14 @@ mod tests {
             result.total
         );
         // Should have both UnknownPath and SensitiveTarget components.
-        assert!(result.components.iter().any(|c| c.dimension == AnomalyDimension::UnknownPath));
-        assert!(result.components.iter().any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
+        assert!(result
+            .components
+            .iter()
+            .any(|c| c.dimension == AnomalyDimension::UnknownPath));
+        assert!(result
+            .components
+            .iter()
+            .any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
     }
 
     #[test]
@@ -1082,7 +1179,9 @@ mod tests {
     fn test_honeypot_path_is_sensitive() {
         let scorer = AnomalyScorer::new();
         assert!(scorer.is_sensitive_path("/Users/test/.config/clawdefender/honeypot/ssh/id_rsa"));
-        assert!(scorer.is_sensitive_path("/home/user/.config/clawdefender/honeypot/aws/credentials"));
+        assert!(
+            scorer.is_sensitive_path("/home/user/.config/clawdefender/honeypot/aws/credentials")
+        );
         assert!(scorer.is_sensitive_path("/Users/test/.config/clawdefender/honeypot/env"));
     }
 
@@ -1097,7 +1196,10 @@ mod tests {
             "Honeypot access should score high, got {}",
             result.total
         );
-        assert!(result.components.iter().any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
+        assert!(result
+            .components
+            .iter()
+            .any(|c| c.dimension == AnomalyDimension::SensitiveTarget));
     }
 
     #[test]

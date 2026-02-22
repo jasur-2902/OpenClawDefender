@@ -52,7 +52,10 @@ mod tests {
         assert_eq!(parts[4].len(), 12);
 
         // Version nibble should be '4'
-        assert!(parts[2].starts_with('4'), "UUID v4 version nibble must be 4");
+        assert!(
+            parts[2].starts_with('4'),
+            "UUID v4 version nibble must be 4"
+        );
     }
 
     #[test]
@@ -118,7 +121,11 @@ mod tests {
             agg.record_ioc_match(ioc_type);
         }
         for i in 0..10 {
-            let cat = if i % 2 == 0 { "path_traversal" } else { "injection" };
+            let cat = if i % 2 == 0 {
+                "path_traversal"
+            } else {
+                "injection"
+            };
             let sev = if i % 3 == 0 { "HIGH" } else { "MEDIUM" };
             agg.record_scan_finding(cat, sev);
         }
@@ -136,8 +143,12 @@ mod tests {
         assert_eq!(report.ioc_match_rates.behavioral_matches, 5);
 
         let scanner = report.scanner_summary.as_ref().unwrap();
-        assert!(scanner.finding_categories.contains(&"path_traversal".to_string()));
-        assert!(scanner.finding_categories.contains(&"injection".to_string()));
+        assert!(scanner
+            .finding_categories
+            .contains(&"path_traversal".to_string()));
+        assert!(scanner
+            .finding_categories
+            .contains(&"injection".to_string()));
 
         // Schema version
         assert_eq!(report.report_version, REPORT_SCHEMA_VERSION);
@@ -155,7 +166,10 @@ mod tests {
 
         // Preview and report should have the same data (both use "preview" as ID)
         assert_eq!(preview.installation_id, report.installation_id);
-        assert_eq!(preview.blocklist_matches.len(), report.blocklist_matches.len());
+        assert_eq!(
+            preview.blocklist_matches.len(),
+            report.blocklist_matches.len()
+        );
         assert_eq!(
             preview.ioc_match_rates.total_matches,
             report.ioc_match_rates.total_matches
@@ -279,19 +293,23 @@ mod tests {
         for val in &values {
             assert!(
                 !val.contains('/') && !val.contains('\\'),
-                "value '{}' contains path separator", val
+                "value '{}' contains path separator",
+                val
             );
             assert!(
                 !val.contains('@'),
-                "value '{}' contains '@' (email-like)", val
+                "value '{}' contains '@' (email-like)",
+                val
             );
             assert!(
                 !val.contains("password"),
-                "value '{}' contains 'password'", val
+                "value '{}' contains 'password'",
+                val
             );
             assert!(
                 !val.contains("/home/") && !val.contains("/Users/"),
-                "value '{}' contains home directory path", val
+                "value '{}' contains home directory path",
+                val
             );
         }
     }

@@ -416,11 +416,7 @@ async fn test_report_action_rate_limit() {
     // Send 1010 reportAction calls to exceed the 1000/minute limit.
     let mut blocked_count = 0;
     for i in 0..1010 {
-        let msg = make_report_action_msg(
-            i + 1,
-            &format!("action {i}"),
-            "/tmp/test.txt",
-        );
+        let msg = make_report_action_msg(i + 1, &format!("action {i}"), "/tmp/test.txt");
         let resp_str = protocol::handle_message(&server, &msg).await.unwrap();
         let resp: Value = serde_json::from_str(&resp_str).unwrap();
 
@@ -476,6 +472,12 @@ fn test_validation_payload_size_exceeded() {
 
 #[test]
 fn test_resource_path_exact_rejects_wildcards() {
-    assert!(clawdefender_mcp_server::validation::validate_resource_path_exact("/home/user/.ssh/*").is_err());
-    assert!(clawdefender_mcp_server::validation::validate_resource_path_exact("/home/user/.ssh/config").is_ok());
+    assert!(
+        clawdefender_mcp_server::validation::validate_resource_path_exact("/home/user/.ssh/*")
+            .is_err()
+    );
+    assert!(
+        clawdefender_mcp_server::validation::validate_resource_path_exact("/home/user/.ssh/config")
+            .is_ok()
+    );
 }

@@ -96,10 +96,7 @@ pub fn validate_resource_path_exact(path: &str) -> Result<()> {
 
     // Ensure the path doesn't contain glob metacharacters
     if path.contains('*') || path.contains('?') || path.contains('[') {
-        bail!(
-            "Resource path must be exact (no wildcards): '{}'",
-            path
-        );
+        bail!("Resource path must be exact (no wildcards): '{}'", path);
     }
 
     Ok(())

@@ -320,7 +320,10 @@ fn test_path_obfuscation_double_slashes() {
         .components
         .iter()
         .any(|c| c.dimension == AnomalyDimension::SensitiveTarget);
-    assert!(direct_sensitive, "Direct path should trigger SensitiveTarget");
+    assert!(
+        direct_sensitive,
+        "Direct path should trigger SensitiveTarget"
+    );
     assert!(
         dslash_sensitive,
         "Double-slash path should trigger SensitiveTarget"
@@ -1062,8 +1065,7 @@ fn test_combined_multi_dimensional_anomaly() {
     let scorer = AnomalyScorer::new();
     let mut profile = established_profile();
     // Make the last event very recent so rate is abnormal
-    profile.temporal_profile.last_event_time =
-        Some(Utc::now() - Duration::milliseconds(10));
+    profile.temporal_profile.last_event_time = Some(Utc::now() - Duration::milliseconds(10));
 
     // Unknown tool + abnormal rate
     let event = make_tool_event("never_seen_evil_tool", vec![("evil_arg", "evil_val")]);

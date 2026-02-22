@@ -15,13 +15,17 @@ const SENSITIVE_PATHS: &[&str] = &[
 
 /// Shell-related tool names.
 const SHELL_TOOLS: &[&str] = &[
-    "run_command", "execute", "shell", "bash", "exec", "terminal", "sh",
+    "run_command",
+    "execute",
+    "shell",
+    "bash",
+    "exec",
+    "terminal",
+    "sh",
 ];
 
 /// Network-related tool names.
-const NETWORK_TOOLS: &[&str] = &[
-    "fetch", "http_request", "curl", "wget", "http", "request",
-];
+const NETWORK_TOOLS: &[&str] = &["fetch", "http_request", "curl", "wget", "http", "request"];
 
 /// File-read tool names.
 const READ_TOOLS: &[&str] = &["read_file", "file_read", "Read"];
@@ -48,9 +52,7 @@ impl FallbackEngine {
     pub fn check_action(&self, tool: &str, target: &str) -> ActionResult {
         // 1. Always block sensitive paths.
         if is_sensitive_path(target) {
-            return ActionResult::Block(
-                "Access to sensitive paths is always blocked".to_string(),
-            );
+            return ActionResult::Block("Access to sensitive paths is always blocked".to_string());
         }
 
         // 2. Check tool-specific permissions.
@@ -118,9 +120,7 @@ impl FallbackEngine {
                 if commands.iter().any(|c| c == "*" || c == _tool) {
                     ActionResult::Allow
                 } else {
-                    ActionResult::Block(
-                        "Shell command not in allow list".to_string(),
-                    )
+                    ActionResult::Block("Shell command not in allow list".to_string())
                 }
             }
             ShellPolicy::AllowWithApproval => {
@@ -134,23 +134,17 @@ impl FallbackEngine {
 
     fn check_network(&self, target: &str) -> ActionResult {
         if self.permissions.network.deny_all {
-            return ActionResult::Block(
-                "Network access is denied by guard policy".to_string(),
-            );
+            return ActionResult::Block("Network access is denied by guard policy".to_string());
         }
 
         if self.permissions.network.allowed_hosts.is_empty() {
-            return ActionResult::Block(
-                "No network hosts declared in guard policy".to_string(),
-            );
+            return ActionResult::Block("No network hosts declared in guard policy".to_string());
         }
 
         if host_matches_any(target, &self.permissions.network.allowed_hosts) {
             ActionResult::Allow
         } else {
-            ActionResult::Block(format!(
-                "Network access to {target} not in declared hosts"
-            ))
+            ActionResult::Block(format!("Network access to {target} not in declared hosts"))
         }
     }
 }

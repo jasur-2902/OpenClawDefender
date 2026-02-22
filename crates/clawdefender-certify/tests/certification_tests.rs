@@ -125,7 +125,10 @@ version = "1.0.0"
 max_risk = "{level}"
 "#
         );
-        assert!(Manifest::parse(&toml).is_ok(), "risk level '{level}' should be accepted");
+        assert!(
+            Manifest::parse(&toml).is_ok(),
+            "risk level '{level}' should be accepted"
+        );
     }
 }
 
@@ -230,8 +233,16 @@ fn level_result_all_pass() {
     let report = LevelReport::from_tests(
         "Test",
         vec![
-            TestResult { name: "A".into(), passed: true, message: String::new() },
-            TestResult { name: "B".into(), passed: true, message: String::new() },
+            TestResult {
+                name: "A".into(),
+                passed: true,
+                message: String::new(),
+            },
+            TestResult {
+                name: "B".into(),
+                passed: true,
+                message: String::new(),
+            },
         ],
     );
     assert_eq!(report.result, LevelResult::Pass);
@@ -242,8 +253,16 @@ fn level_result_all_fail() {
     let report = LevelReport::from_tests(
         "Test",
         vec![
-            TestResult { name: "A".into(), passed: false, message: "fail".into() },
-            TestResult { name: "B".into(), passed: false, message: "fail".into() },
+            TestResult {
+                name: "A".into(),
+                passed: false,
+                message: "fail".into(),
+            },
+            TestResult {
+                name: "B".into(),
+                passed: false,
+                message: "fail".into(),
+            },
         ],
     );
     assert_eq!(report.result, LevelResult::Fail);
@@ -254,9 +273,21 @@ fn level_result_partial() {
     let report = LevelReport::from_tests(
         "Test",
         vec![
-            TestResult { name: "A".into(), passed: true, message: String::new() },
-            TestResult { name: "B".into(), passed: false, message: "fail".into() },
-            TestResult { name: "C".into(), passed: true, message: String::new() },
+            TestResult {
+                name: "A".into(),
+                passed: true,
+                message: String::new(),
+            },
+            TestResult {
+                name: "B".into(),
+                passed: false,
+                message: "fail".into(),
+            },
+            TestResult {
+                name: "C".into(),
+                passed: true,
+                message: String::new(),
+            },
         ],
     );
     assert_eq!(report.result, LevelResult::Partial);
@@ -286,8 +317,7 @@ mod mock_server_tests {
             "target/debug/mock-mcp-server",
         ];
         for path in &possible_paths {
-            let full = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(path);
+            let full = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
             if full.exists() {
                 return Some(vec![full.to_string_lossy().to_string()]);
             }
@@ -317,7 +347,11 @@ mod mock_server_tests {
             report.result,
             LevelResult::Pass,
             "Mock server should pass Level 1. Failures: {:?}",
-            report.tests.iter().filter(|t| !t.passed).collect::<Vec<_>>()
+            report
+                .tests
+                .iter()
+                .filter(|t| !t.passed)
+                .collect::<Vec<_>>()
         );
     }
 

@@ -87,8 +87,7 @@ impl ConflictDetector {
         // Contradicts: one blocks, the other allows (or vice versa).
         let contradicts = matches!(
             (community_action, user_action),
-            (RuleAction::Block, UserAction::Allow)
-                | (RuleAction::Allow, UserAction::Block)
+            (RuleAction::Block, UserAction::Allow) | (RuleAction::Allow, UserAction::Block)
         );
 
         if contradicts {

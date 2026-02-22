@@ -38,7 +38,10 @@ fn test_platform_string_format() {
     let info = PlatformInfo::detect();
     let ps = info.platform_string();
     // Should be "os-arch" format
-    assert!(ps.contains('-'), "Platform string should contain a dash: {ps}");
+    assert!(
+        ps.contains('-'),
+        "Platform string should contain a dash: {ps}"
+    );
     assert!(!ps.is_empty());
 }
 
@@ -109,10 +112,14 @@ fn test_checksum_valid() {
 #[test]
 fn test_checksum_invalid() {
     let data = b"clawdefender binary content";
-    let bad_checksum = "0000000000000000000000000000000000000000000000000000000000000000  clawdefender\n";
+    let bad_checksum =
+        "0000000000000000000000000000000000000000000000000000000000000000  clawdefender\n";
     let result = verify_checksum(data, bad_checksum);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Checksum mismatch"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Checksum mismatch"));
 }
 
 #[test]
@@ -314,11 +321,7 @@ async fn test_install_already_installed() {
     std::fs::write(bin_dir.join("clawdefender"), b"fake binary").unwrap();
 
     // Create metadata indicating current version
-    let meta = InstallMetadata::new(
-        "0.1.0",
-        &bin_dir.join("clawdefender"),
-        "macos-arm64",
-    );
+    let meta = InstallMetadata::new("0.1.0", &bin_dir.join("clawdefender"), "macos-arm64");
     meta.write_to(&base_dir.join("install.json")).unwrap();
 
     let downloader = MockDownloader::new(b"new-binary".to_vec(), "0.1.0");

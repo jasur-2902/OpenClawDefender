@@ -2,7 +2,7 @@
 
 use std::net::SocketAddr;
 
-use clawdefender_guard::api::{ApiConfig, run_api_server};
+use clawdefender_guard::api::{run_api_server, ApiConfig};
 use clawdefender_guard::registry::{GuardMode, GuardRegistry, PermissionSet};
 use clawdefender_guard::webhooks;
 
@@ -117,7 +117,8 @@ fn test_permissions_json() -> String {
 #[tokio::test]
 async fn test_auth_missing_token_returns_401() {
     let (base_url, _registry) = start_server().await;
-    let (status, body) = http_request("GET", &format!("{}/api/v1/guards", base_url), None, None).await;
+    let (status, body) =
+        http_request("GET", &format!("{}/api/v1/guards", base_url), None, None).await;
     assert_eq!(status, 401);
     assert!(body.contains("error"));
 }
@@ -125,16 +126,26 @@ async fn test_auth_missing_token_returns_401() {
 #[tokio::test]
 async fn test_auth_wrong_token_returns_401() {
     let (base_url, _registry) = start_server().await;
-    let (status, _body) =
-        http_request("GET", &format!("{}/api/v1/guards", base_url), None, Some("wrong-token")).await;
+    let (status, _body) = http_request(
+        "GET",
+        &format!("{}/api/v1/guards", base_url),
+        None,
+        Some("wrong-token"),
+    )
+    .await;
     assert_eq!(status, 401);
 }
 
 #[tokio::test]
 async fn test_auth_valid_token() {
     let (base_url, _registry) = start_server().await;
-    let (status, _body) =
-        http_request("GET", &format!("{}/api/v1/guards", base_url), None, Some(TEST_TOKEN)).await;
+    let (status, _body) = http_request(
+        "GET",
+        &format!("{}/api/v1/guards", base_url),
+        None,
+        Some(TEST_TOKEN),
+    )
+    .await;
     assert_eq!(status, 200);
 }
 
@@ -144,8 +155,13 @@ async fn test_auth_valid_token() {
 async fn test_create_guard() {
     let (base_url, _registry) = start_server().await;
     let body = test_permissions_json();
-    let (status, resp) =
-        http_request("POST", &format!("{}/api/v1/guard", base_url), Some(&body), Some(TEST_TOKEN)).await;
+    let (status, resp) = http_request(
+        "POST",
+        &format!("{}/api/v1/guard", base_url),
+        Some(&body),
+        Some(TEST_TOKEN),
+    )
+    .await;
     assert_eq!(status, 201);
     let json: serde_json::Value = serde_json::from_str(&resp).unwrap();
     assert_eq!(json["status"], "active");
@@ -244,8 +260,13 @@ async fn test_guard_lifecycle_create_check_stats_delete() {
 
     // Create
     let body = test_permissions_json();
-    let (status, resp) =
-        http_request("POST", &format!("{}/api/v1/guard", base_url), Some(&body), Some(TEST_TOKEN)).await;
+    let (status, resp) = http_request(
+        "POST",
+        &format!("{}/api/v1/guard", base_url),
+        Some(&body),
+        Some(TEST_TOKEN),
+    )
+    .await;
     assert_eq!(status, 201);
     let json: serde_json::Value = serde_json::from_str(&resp).unwrap();
     let guard_id = json["guard_id"].as_str().unwrap().to_string();
@@ -400,8 +421,13 @@ async fn test_list_guards() {
         .register("agent-2".into(), 2, perms, GuardMode::Monitor)
         .await;
 
-    let (status, resp) =
-        http_request("GET", &format!("{}/api/v1/guards", base_url), None, Some(TEST_TOKEN)).await;
+    let (status, resp) = http_request(
+        "GET",
+        &format!("{}/api/v1/guards", base_url),
+        None,
+        Some(TEST_TOKEN),
+    )
+    .await;
     assert_eq!(status, 200);
     let json: serde_json::Value = serde_json::from_str(&resp).unwrap();
     let guards = json["guards"].as_array().unwrap();
@@ -529,7 +555,9 @@ async fn test_create_guard_invalid_json() {
 #[tokio::test]
 async fn test_registry_check_action_nonexistent() {
     let registry = GuardRegistry::new();
-    let result = registry.check_action("nonexistent", "file_read", "/tmp/test").await;
+    let result = registry
+        .check_action("nonexistent", "file_read", "/tmp/test")
+        .await;
     assert!(result.is_none());
 }
 

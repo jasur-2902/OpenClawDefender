@@ -143,9 +143,9 @@ impl FeedCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use std::collections::HashMap;
     use chrono::Utc;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
 
     fn test_cache() -> (FeedCache, TempDir) {
         let dir = TempDir::new().unwrap();
@@ -180,7 +180,9 @@ mod tests {
     fn test_write_and_read_file() {
         let (cache, _dir) = test_cache();
         cache.ensure_dir().unwrap();
-        cache.write_file("blocklist.json", b"{\"servers\":[]}").unwrap();
+        cache
+            .write_file("blocklist.json", b"{\"servers\":[]}")
+            .unwrap();
         let data = cache.read_file("blocklist.json").unwrap().unwrap();
         assert_eq!(data, b"{\"servers\":[]}");
     }

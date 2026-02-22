@@ -424,9 +424,7 @@ impl KillChainDetector {
             None => return,
         };
 
-        let modified = fs::metadata(&path)
-            .ok()
-            .and_then(|m| m.modified().ok());
+        let modified = fs::metadata(&path).ok().and_then(|m| m.modified().ok());
 
         if modified != self.last_config_modified {
             // Rebuild patterns: start with built-in, then append custom.
@@ -441,23 +439,22 @@ impl KillChainDetector {
                 self.patterns.extend(file.pattern);
             }
         }
-        self.last_config_modified = fs::metadata(path)
-            .ok()
-            .and_then(|m| m.modified().ok());
+        self.last_config_modified = fs::metadata(path).ok().and_then(|m| m.modified().ok());
     }
 
     /// Ingest a new event and return any kill-chain matches.
-    pub fn ingest(&mut self, event: KillChainEvent, timestamp: DateTime<Utc>) -> Vec<KillChainMatch> {
+    pub fn ingest(
+        &mut self,
+        event: KillChainEvent,
+        timestamp: DateTime<Utc>,
+    ) -> Vec<KillChainMatch> {
         let server = event.server_name.clone();
 
         // Mutate the window in a block so the mutable borrow is released.
         {
             let window = self.event_windows.entry(server.clone()).or_default();
 
-            window.push_back(TimestampedEvent {
-                timestamp,
-                event,
-            });
+            window.push_back(TimestampedEvent { timestamp, event });
 
             // Trim: remove events older than 5 minutes.
             let cutoff = timestamp - Duration::seconds(WINDOW_DURATION_SECS);
@@ -635,7 +632,10 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         let path = format!("{}/.aws/credentials", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
         let r = det.ingest(
             make_event(StepEventType::NetworkConnect, None, Some("10.0.0.1"), "srv"),
             ts(now, 5),
@@ -650,10 +650,21 @@ mod tests {
         let now = Utc::now();
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
-        let path = format!("{}/.config/gcloud/application_default_credentials.json", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        let path = format!(
+            "{}/.config/gcloud/application_default_credentials.json",
+            home
+        );
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
         let r = det.ingest(
-            make_event(StepEventType::NetworkConnect, None, Some("attacker.io"), "srv"),
+            make_event(
+                StepEventType::NetworkConnect,
+                None,
+                Some("attacker.io"),
+                "srv",
+            ),
             ts(now, 30),
         );
         assert!(!r.is_empty());
@@ -666,7 +677,10 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         let path = format!("{}/.kube/config", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
         let r = det.ingest(
             make_event(StepEventType::NetworkConnect, None, Some("8.8.8.8"), "srv"),
             ts(now, 55),
@@ -681,15 +695,25 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         let path = format!("{}/.ssh/id_rsa", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
 
         // localhost should be excluded by the negation pattern
         let r = det.ingest(
-            make_event(StepEventType::NetworkConnect, None, Some("localhost"), "srv"),
+            make_event(
+                StepEventType::NetworkConnect,
+                None,
+                Some("localhost"),
+                "srv",
+            ),
             ts(now, 5),
         );
         // Should NOT match credential_theft_exfiltration specifically
-        let cred_match = r.iter().find(|m| m.pattern.name == "credential_theft_exfiltration");
+        let cred_match = r
+            .iter()
+            .find(|m| m.pattern.name == "credential_theft_exfiltration");
         assert!(cred_match.is_none());
     }
 
@@ -700,14 +724,19 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         let path = format!("{}/.ssh/id_rsa", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
 
         // 61 seconds later — outside the 60s window
         let r = det.ingest(
             make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
             ts(now, 61),
         );
-        let cred_match = r.iter().find(|m| m.pattern.name == "credential_theft_exfiltration");
+        let cred_match = r
+            .iter()
+            .find(|m| m.pattern.name == "credential_theft_exfiltration");
         assert!(cred_match.is_none());
     }
 
@@ -718,14 +747,19 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         let path = format!("{}/.ssh/id_rsa", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
 
         // Only a file write, no network
         let r = det.ingest(
             make_event(StepEventType::FileWrite, Some("/tmp/out"), None, "srv"),
             ts(now, 5),
         );
-        let cred_match = r.iter().find(|m| m.pattern.name == "credential_theft_exfiltration");
+        let cred_match = r
+            .iter()
+            .find(|m| m.pattern.name == "credential_theft_exfiltration");
         assert!(cred_match.is_none());
     }
 
@@ -739,17 +773,29 @@ mod tests {
 
         // Step 1: broad directory listing
         det.ingest(
-            make_event(StepEventType::FileList, Some(&format!("{}/", home)), None, "srv"),
+            make_event(
+                StepEventType::FileList,
+                Some(&format!("{}/", home)),
+                None,
+                "srv",
+            ),
             now,
         );
 
         // Step 2: read credential file
         let r = det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.ssh/id_rsa", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.ssh/id_rsa", home)),
+                None,
+                "srv",
+            ),
             ts(now, 30),
         );
         assert!(!r.is_empty());
-        let m = r.iter().find(|m| m.pattern.name == "recon_credential_access");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "recon_credential_access");
         assert!(m.is_some());
     }
 
@@ -760,16 +806,28 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         det.ingest(
-            make_event(StepEventType::FileList, Some(&format!("{}/", home)), None, "srv"),
+            make_event(
+                StepEventType::FileList,
+                Some(&format!("{}/", home)),
+                None,
+                "srv",
+            ),
             now,
         );
 
         // 121 seconds — outside 120s window
         let r = det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.ssh/id_rsa", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.ssh/id_rsa", home)),
+                None,
+                "srv",
+            ),
             ts(now, 121),
         );
-        let m = r.iter().find(|m| m.pattern.name == "recon_credential_access");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "recon_credential_access");
         assert!(m.is_none());
     }
 
@@ -795,7 +853,9 @@ mod tests {
             make_event(StepEventType::ShellExec, None, None, "srv"),
             ts(now, 5),
         );
-        let m = r.iter().find(|m| m.pattern.name == "persistence_installation");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "persistence_installation");
         assert!(m.is_some());
         assert_eq!(m.unwrap().severity, Severity::Critical);
     }
@@ -807,7 +867,12 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         det.ingest(
-            make_event(StepEventType::FileWrite, Some(&format!("{}/.bashrc", home)), None, "srv"),
+            make_event(
+                StepEventType::FileWrite,
+                Some(&format!("{}/.bashrc", home)),
+                None,
+                "srv",
+            ),
             now,
         );
 
@@ -815,7 +880,9 @@ mod tests {
             make_event(StepEventType::ShellExec, None, None, "srv"),
             ts(now, 10),
         );
-        let m = r.iter().find(|m| m.pattern.name == "persistence_installation");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "persistence_installation");
         assert!(m.is_some());
     }
 
@@ -826,7 +893,12 @@ mod tests {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         det.ingest(
-            make_event(StepEventType::FileWrite, Some(&format!("{}/.zshrc", home)), None, "srv"),
+            make_event(
+                StepEventType::FileWrite,
+                Some(&format!("{}/.zshrc", home)),
+                None,
+                "srv",
+            ),
             now,
         );
 
@@ -834,7 +906,9 @@ mod tests {
             make_event(StepEventType::ShellExec, None, None, "srv"),
             ts(now, 5),
         );
-        let m = r.iter().find(|m| m.pattern.name == "persistence_installation");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "persistence_installation");
         assert!(m.is_some());
     }
 
@@ -858,7 +932,9 @@ mod tests {
             make_event(StepEventType::ShellExec, None, None, "srv"),
             ts(now, 31),
         );
-        let m = r.iter().find(|m| m.pattern.name == "persistence_installation");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "persistence_installation");
         assert!(m.is_none());
     }
 
@@ -872,21 +948,41 @@ mod tests {
 
         // 3 credential file reads
         det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.ssh/id_rsa", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.ssh/id_rsa", home)),
+                None,
+                "srv",
+            ),
             now,
         );
         det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.aws/credentials", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.aws/credentials", home)),
+                None,
+                "srv",
+            ),
             ts(now, 2),
         );
         det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.gnupg/pubring.kbx", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.gnupg/pubring.kbx", home)),
+                None,
+                "srv",
+            ),
             ts(now, 4),
         );
 
         // Write to /tmp
         det.ingest(
-            make_event(StepEventType::FileWrite, Some("/tmp/exfil.tar.gz"), None, "srv"),
+            make_event(
+                StepEventType::FileWrite,
+                Some("/tmp/exfil.tar.gz"),
+                None,
+                "srv",
+            ),
             ts(now, 10),
         );
 
@@ -895,7 +991,9 @@ mod tests {
             make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
             ts(now, 15),
         );
-        let m = r.iter().find(|m| m.pattern.name == "data_staging_exfiltration");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "data_staging_exfiltration");
         assert!(m.is_some());
         assert_eq!(m.unwrap().severity, Severity::Critical);
     }
@@ -908,11 +1006,21 @@ mod tests {
 
         // Only 2 reads (need 3)
         det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.ssh/id_rsa", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.ssh/id_rsa", home)),
+                None,
+                "srv",
+            ),
             now,
         );
         det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.aws/credentials", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.aws/credentials", home)),
+                None,
+                "srv",
+            ),
             ts(now, 2),
         );
 
@@ -925,7 +1033,9 @@ mod tests {
             make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
             ts(now, 15),
         );
-        let m = r.iter().find(|m| m.pattern.name == "data_staging_exfiltration");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "data_staging_exfiltration");
         assert!(m.is_none());
     }
 
@@ -985,7 +1095,9 @@ mod tests {
             make_event(StepEventType::ShellExec, None, None, "srv"),
             ts(now, 10),
         );
-        let m = r.iter().find(|m| m.pattern.name == "prompt_injection_followthrough");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "prompt_injection_followthrough");
         assert!(m.is_some());
         assert_eq!(m.unwrap().severity, Severity::High);
     }
@@ -1004,7 +1116,9 @@ mod tests {
             make_event(StepEventType::ShellExec, None, None, "srv"),
             ts(now, 31),
         );
-        let m = r.iter().find(|m| m.pattern.name == "prompt_injection_followthrough");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "prompt_injection_followthrough");
         assert!(m.is_none());
     }
 
@@ -1018,16 +1132,28 @@ mod tests {
 
         // Server A: reads credentials
         det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.ssh/id_rsa", home)), None, "server_a"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.ssh/id_rsa", home)),
+                None,
+                "server_a",
+            ),
             now,
         );
 
         // Server B: makes network connection
         let r = det.ingest(
-            make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "server_b"),
+            make_event(
+                StepEventType::NetworkConnect,
+                None,
+                Some("evil.com"),
+                "server_b",
+            ),
             ts(now, 5),
         );
-        let cred_match = r.iter().find(|m| m.pattern.name == "credential_theft_exfiltration");
+        let cred_match = r
+            .iter()
+            .find(|m| m.pattern.name == "credential_theft_exfiltration");
         assert!(cred_match.is_none());
     }
 
@@ -1173,7 +1299,12 @@ event_type = "shell_exec"
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         det.ingest(
-            make_event(StepEventType::FileRead, Some(&format!("{}/.ssh/id_rsa", home)), None, "srv"),
+            make_event(
+                StepEventType::FileRead,
+                Some(&format!("{}/.ssh/id_rsa", home)),
+                None,
+                "srv",
+            ),
             now,
         );
         // Exactly at 60 seconds
@@ -1181,7 +1312,9 @@ event_type = "shell_exec"
             make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
             ts(now, 60),
         );
-        let m = r.iter().find(|m| m.pattern.name == "credential_theft_exfiltration");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "credential_theft_exfiltration");
         assert!(m.is_some()); // 60 <= 60, should match
     }
 
@@ -1247,7 +1380,10 @@ event_type = "shell_exec"
         assert!(simple_glob_match("/tmp/*", "/tmp/bar/baz"));
         assert!(!simple_glob_match("/tmp/*", "/var/tmp/foo"));
         assert!(simple_glob_match("*", "anything"));
-        assert!(simple_glob_match("/home/*/.ssh/*", "/home/user/.ssh/id_rsa"));
+        assert!(simple_glob_match(
+            "/home/*/.ssh/*",
+            "/home/user/.ssh/id_rsa"
+        ));
     }
 
     #[test]
@@ -1265,7 +1401,10 @@ event_type = "shell_exec"
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         let path = format!("{}/.gnupg/secring.gpg", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
         let r = det.ingest(
             make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
             ts(now, 5),
@@ -1304,7 +1443,10 @@ event_type = "shell_exec"
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         let path = format!("{}/.config/clawdefender/honeypot/aws/credentials", home);
-        det.ingest(make_event(StepEventType::FileRead, Some(&path), None, "srv"), now);
+        det.ingest(
+            make_event(StepEventType::FileRead, Some(&path), None, "srv"),
+            now,
+        );
         let r = det.ingest(
             make_event(StepEventType::NetworkConnect, None, Some("evil.com"), "srv"),
             ts(now, 10),
@@ -1321,7 +1463,12 @@ event_type = "shell_exec"
 
         // Step 1: broad directory listing
         det.ingest(
-            make_event(StepEventType::FileList, Some(&format!("{}/", home)), None, "srv"),
+            make_event(
+                StepEventType::FileList,
+                Some(&format!("{}/", home)),
+                None,
+                "srv",
+            ),
             now,
         );
 
@@ -1331,7 +1478,9 @@ event_type = "shell_exec"
             make_event(StepEventType::FileRead, Some(&path), None, "srv"),
             ts(now, 30),
         );
-        let m = r.iter().find(|m| m.pattern.name == "recon_credential_access");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "recon_credential_access");
         assert!(m.is_some());
     }
 
@@ -1344,7 +1493,10 @@ event_type = "shell_exec"
         det.ingest(
             make_event(
                 StepEventType::FileWrite,
-                Some(&format!("{}/Library/Application Scripts/com.evil.app/script.sh", home)),
+                Some(&format!(
+                    "{}/Library/Application Scripts/com.evil.app/script.sh",
+                    home
+                )),
                 None,
                 "srv",
             ),
@@ -1354,7 +1506,9 @@ event_type = "shell_exec"
             make_event(StepEventType::ShellExec, None, None, "srv"),
             ts(now, 5),
         );
-        let m = r.iter().find(|m| m.pattern.name == "persistence_installation");
+        let m = r
+            .iter()
+            .find(|m| m.pattern.name == "persistence_installation");
         assert!(m.is_some());
     }
 }

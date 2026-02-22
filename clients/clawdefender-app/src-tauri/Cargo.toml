@@ -1,6 +1,6 @@
 [package]
 name = "clawdefender-app"
-version = "0.10.0"
+version = "0.3.0"
 description = "ClawDefender - MCP Security Monitor"
 authors = ["ClawDefender Team"]
 edition = "2021"
@@ -27,6 +27,7 @@ anyhow = "1"
 tracing = "0.1"
 toml = "0.8"
 libc = "0.2"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"

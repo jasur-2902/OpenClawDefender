@@ -169,7 +169,8 @@ mod platform {
         ignore_processes: &[String],
         ignore_paths: &[String],
     ) {
-        let mut backoff = ExponentialBackoff::new(INITIAL_BACKOFF, MAX_BACKOFF, BACKOFF_RESET_AFTER);
+        let mut backoff =
+            ExponentialBackoff::new(INITIAL_BACKOFF, MAX_BACKOFF, BACKOFF_RESET_AFTER);
 
         loop {
             if shutdown.load(Ordering::SeqCst) {
@@ -216,7 +217,10 @@ mod platform {
             }
 
             let delay = backoff.next_delay();
-            warn!(delay_secs = delay.as_secs(), "restarting eslogger after delay");
+            warn!(
+                delay_secs = delay.as_secs(),
+                "restarting eslogger after delay"
+            );
             tokio::time::sleep(delay).await;
         }
     }
@@ -493,7 +497,10 @@ mod platform {
             _channel_capacity: Option<usize>,
             _ignore_processes: &[String],
             _ignore_paths: &[String],
-        ) -> Result<(Self, tokio::sync::mpsc::Receiver<clawdefender_core::event::os::OsEvent>)> {
+        ) -> Result<(
+            Self,
+            tokio::sync::mpsc::Receiver<clawdefender_core::event::os::OsEvent>,
+        )> {
             let _ = events;
             anyhow::bail!("eslogger is only available on macOS with Endpoint Security entitlements")
         }

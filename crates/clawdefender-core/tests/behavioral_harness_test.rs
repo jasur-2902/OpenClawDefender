@@ -232,10 +232,7 @@ fn test_harness_full_simulation() {
     }
 
     // Network connections after credential reads
-    let network_targets = vec![
-        ("c2.attacker.com", 4444u16),
-        ("evil.example.org", 8080u16),
-    ];
+    let network_targets = vec![("c2.attacker.com", 4444u16), ("evil.example.org", 8080u16)];
 
     for (j, (host, port)) in network_targets.iter().enumerate() {
         let i = compromise_start_idx + sensitive_paths.len() as u64 + j as u64;
@@ -457,10 +454,7 @@ fn test_kill_chain_credential_theft_full_scenario() {
         cred_theft.is_some(),
         "Should detect credential theft exfiltration pattern"
     );
-    assert_eq!(
-        cred_theft.unwrap().severity,
-        killchain::Severity::Critical
-    );
+    assert_eq!(cred_theft.unwrap().severity, killchain::Severity::Critical);
 }
 
 // ---------------------------------------------------------------------------
@@ -546,7 +540,10 @@ fn test_profile_evolution_through_phases() {
     }
 
     let profile = engine.get_profile(server).unwrap();
-    assert!(profile.learning_mode, "Should still be in learning mode at 50 events");
+    assert!(
+        profile.learning_mode,
+        "Should still be in learning mode at 50 events"
+    );
 
     let test_event = BehavioralEvent {
         event_type: BehavioralEventType::FileAccess {

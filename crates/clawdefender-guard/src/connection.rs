@@ -28,14 +28,9 @@ pub enum GuardRequest {
         policy_toml: String,
     },
     /// Deregister a guard from the daemon.
-    GuardDeregister {
-        agent_name: String,
-        pid: u32,
-    },
+    GuardDeregister { agent_name: String, pid: u32 },
     /// Query guard stats from the daemon.
-    GuardStatsQuery {
-        agent_name: String,
-    },
+    GuardStatsQuery { agent_name: String },
     /// Health check request.
     GuardHealthCheck,
 }
@@ -44,23 +39,15 @@ pub enum GuardRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GuardResponse {
     /// Guard successfully registered.
-    GuardRegistered {
-        guard_id: String,
-    },
+    GuardRegistered { guard_id: String },
     /// Guard successfully deregistered.
     GuardDeregistered,
     /// Guard stats response.
-    GuardStatsResponse {
-        stats: GuardStats,
-    },
+    GuardStatsResponse { stats: GuardStats },
     /// Health check response.
-    GuardHealthResponse {
-        status: GuardStatus,
-    },
+    GuardHealthResponse { status: GuardStatus },
     /// Error response.
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 /// Event sent from the daemon to the guard.

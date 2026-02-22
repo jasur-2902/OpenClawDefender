@@ -74,7 +74,8 @@ async fn e2e_low_risk_event_produces_allow_verdict() {
     let mock = mock_with(&response);
 
     let (dir, db_path) = temp_db();
-    let tracker = CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
+    let tracker =
+        CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
     let tracker = Arc::new(Mutex::new(tracker));
 
     let commander = Commander::new(mock.clone(), Some(tracker.clone()));
@@ -291,24 +292,23 @@ async fn e2e_commander_verdict_then_chat_followup() {
     let mock = mock_with(&response);
 
     let (dir, db_path) = temp_db();
-    let tracker = CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
+    let tracker =
+        CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
     let tracker = Arc::new(Mutex::new(tracker));
 
     // Step 1: Run swarm analysis
     let commander = Commander::new(mock.clone(), Some(tracker.clone()));
-    let event = make_event("http_request", json!({"url": "https://suspicious.example.com"}));
+    let event = make_event(
+        "http_request",
+        json!({"url": "https://suspicious.example.com"}),
+    );
     let verdict = commander.analyze(&event).await.unwrap();
     assert_eq!(verdict.risk_level, "HIGH");
 
     // Step 2: Start a chat session about the event
     let chat_db = dir.path().join("chat.db");
     let chat_client = commander.llm_client();
-    let chat_manager = ChatManager::new(
-        &chat_db,
-        chat_client,
-        Some(tracker.clone()),
-    )
-    .unwrap();
+    let chat_manager = ChatManager::new(&chat_db, chat_client, Some(tracker.clone())).unwrap();
 
     let session_id = chat_manager
         .start_session(
@@ -383,7 +383,8 @@ async fn e2e_multiple_analyses_accumulate_costs() {
     let mock = mock_with(&response);
 
     let (dir, db_path) = temp_db();
-    let tracker = CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
+    let tracker =
+        CostTracker::new(&db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
     let tracker = Arc::new(Mutex::new(tracker));
 
     let commander = Commander::new(mock, Some(tracker.clone()));

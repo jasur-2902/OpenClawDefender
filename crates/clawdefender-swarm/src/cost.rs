@@ -102,8 +102,7 @@ impl PricingTable {
         match self.models.get(model) {
             Some(pricing) => {
                 let input_cost = (input_tokens as f64 / 1_000_000.0) * pricing.input_per_million;
-                let output_cost =
-                    (output_tokens as f64 / 1_000_000.0) * pricing.output_per_million;
+                let output_cost = (output_tokens as f64 / 1_000_000.0) * pricing.output_per_million;
                 input_cost + output_cost
             }
             None => 0.0,
@@ -501,7 +500,12 @@ mod tests {
         let now = chrono::Utc::now();
         // Record usage on different days within this month
         for day in 1..=3 {
-            let ts = format!("{}-{:02}-{:02}T12:00:00", now.format("%Y"), now.format("%m"), day);
+            let ts = format!(
+                "{}-{:02}-{:02}T12:00:00",
+                now.format("%Y"),
+                now.format("%m"),
+                day
+            );
             tracker
                 .record_usage(&UsageRecord {
                     timestamp: ts,

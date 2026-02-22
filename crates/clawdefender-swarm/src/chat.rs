@@ -120,11 +120,7 @@ impl ChatManager {
         let session = self.get_session(session_id)?;
 
         // Count user messages to enforce turn limit
-        let user_msg_count = session
-            .messages
-            .iter()
-            .filter(|m| m.role == "user")
-            .count();
+        let user_msg_count = session.messages.iter().filter(|m| m.role == "user").count();
         if user_msg_count >= MAX_TURNS {
             bail!(
                 "Conversation limit reached ({} turns). Please start a new session.",
@@ -161,13 +157,13 @@ impl ChatManager {
         // Record cost
         if let Some(ref tracker) = self.cost_tracker {
             let t = tracker.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
-            let cost = t
-                .pricing()
-                .estimate_cost(&response.model, response.input_tokens, response.output_tokens);
+            let cost = t.pricing().estimate_cost(
+                &response.model,
+                response.input_tokens,
+                response.output_tokens,
+            );
             t.record_usage(&UsageRecord {
-                timestamp: chrono::Utc::now()
-                    .format("%Y-%m-%dT%H:%M:%S")
-                    .to_string(),
+                timestamp: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                 provider: "anthropic".to_string(),
                 model: response.model.clone(),
                 input_tokens: response.input_tokens,
@@ -361,13 +357,13 @@ mod tests {
         db_path: &std::path::Path,
         cost_db_path: &std::path::Path,
     ) -> ChatManager {
-        let tracker = CostTracker::new(cost_db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
-        ChatManager::new(
-            db_path,
-            mock_client(),
-            Some(Arc::new(Mutex::new(tracker))),
+        let tracker = CostTracker::new(
+            cost_db_path,
+            PricingTable::default(),
+            BudgetConfig::default(),
         )
-        .unwrap()
+        .unwrap();
+        ChatManager::new(db_path, mock_client(), Some(Arc::new(Mutex::new(tracker)))).unwrap()
     }
 
     #[test]
@@ -376,7 +372,12 @@ mod tests {
         let mgr = make_manager(&db_path);
 
         let session_id = mgr
-            .start_session("evt-001", "File access to /etc/passwd", "HIGH risk", "Hawk: HIGH\nForensics: MEDIUM")
+            .start_session(
+                "evt-001",
+                "File access to /etc/passwd",
+                "HIGH risk",
+                "Hawk: HIGH\nForensics: MEDIUM",
+            )
             .unwrap();
 
         assert!(session_id.starts_with("chat-"));
@@ -394,7 +395,12 @@ mod tests {
         let mgr = make_manager(&db_path);
 
         let session_id = mgr
-            .start_session("evt-002", "Suspicious curl command", "CRITICAL", "Reports here")
+            .start_session(
+                "evt-002",
+                "Suspicious curl command",
+                "CRITICAL",
+                "Reports here",
+            )
             .unwrap();
 
         let response = mgr
@@ -419,8 +425,12 @@ mod tests {
             .start_session("evt-003", "Test event", "LOW", "No issues")
             .unwrap();
 
-        mgr.send_message(&session_id, "First question").await.unwrap();
-        mgr.send_message(&session_id, "Second question").await.unwrap();
+        mgr.send_message(&session_id, "First question")
+            .await
+            .unwrap();
+        mgr.send_message(&session_id, "Second question")
+            .await
+            .unwrap();
 
         let session = mgr.get_session(&session_id).unwrap();
         assert_eq!(session.messages.len(), 4); // 2 user + 2 assistant
@@ -443,9 +453,7 @@ mod tests {
         }
 
         // The 11th should fail
-        let result = mgr
-            .send_message(&session_id, "One more question")
-            .await;
+        let result = mgr.send_message(&session_id, "One more question").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("limit reached"));
     }
@@ -460,10 +468,17 @@ mod tests {
         let session_id = mgr
             .start_session("evt-005", "Test", "LOW", "Reports")
             .unwrap();
-        mgr.send_message(&session_id, "Test question").await.unwrap();
+        mgr.send_message(&session_id, "Test question")
+            .await
+            .unwrap();
 
         // Verify cost was recorded
-        let tracker = CostTracker::new(&cost_db_path, PricingTable::default(), BudgetConfig::default()).unwrap();
+        let tracker = CostTracker::new(
+            &cost_db_path,
+            PricingTable::default(),
+            BudgetConfig::default(),
+        )
+        .unwrap();
         let summary = tracker.get_summary();
         assert!(summary.total_calls > 0);
         assert!(summary.total_cost > 0.0);

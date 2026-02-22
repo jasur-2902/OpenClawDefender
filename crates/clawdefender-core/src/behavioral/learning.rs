@@ -100,8 +100,7 @@ impl LearningEngine {
 
                 // Extract argument keys for pattern tracking
                 if let Some(obj) = tc.arguments.as_object() {
-                    let keys: std::collections::HashSet<String> =
-                        obj.keys().cloned().collect();
+                    let keys: std::collections::HashSet<String> = obj.keys().cloned().collect();
                     profile
                         .tool_profile
                         .argument_patterns
@@ -167,10 +166,11 @@ impl LearningEngine {
                 update_file_profile(profile, source, false);
                 update_file_profile(profile, dest, false);
             }
-            OsEventKind::Connect {
-                address, port, ..
-            } => {
-                profile.network_profile.observed_hosts.insert(address.clone());
+            OsEventKind::Connect { address, port, .. } => {
+                profile
+                    .network_profile
+                    .observed_hosts
+                    .insert(address.clone());
                 profile.network_profile.observed_ports.insert(*port);
                 profile.network_profile.has_networked = true;
             }
@@ -194,11 +194,9 @@ impl LearningEngine {
             return false;
         }
 
-        let events_met =
-            profile.observation_count >= self.config.learning_event_threshold;
+        let events_met = profile.observation_count >= self.config.learning_event_threshold;
         let elapsed = profile.last_updated - profile.first_seen;
-        let minutes_met =
-            elapsed.num_minutes() >= self.config.learning_time_minutes as i64;
+        let minutes_met = elapsed.num_minutes() >= self.config.learning_time_minutes as i64;
 
         if events_met && minutes_met {
             profile.learning_mode = false;
@@ -353,11 +351,7 @@ mod tests {
         }
     }
 
-    fn make_os_connect_event(
-        address: &str,
-        port: u16,
-        timestamp: DateTime<Utc>,
-    ) -> OsEvent {
+    fn make_os_connect_event(address: &str, port: u16, timestamp: DateTime<Utc>) -> OsEvent {
         OsEvent {
             timestamp,
             pid: 1234,
@@ -441,11 +435,7 @@ mod tests {
         let mut engine = LearningEngine::new(test_config());
         let ts = Utc::now();
 
-        engine.observe_mcp_event(
-            "srv",
-            "cli",
-            &make_tool_call_event("read_file", ts),
-        );
+        engine.observe_mcp_event("srv", "cli", &make_tool_call_event("read_file", ts));
         engine.observe_mcp_event(
             "srv",
             "cli",
@@ -472,7 +462,11 @@ mod tests {
         engine.observe_os_event(
             "srv",
             "cli",
-            &make_os_open_event("/home/user/project/src/lib.rs", 1, ts + Duration::seconds(1)),
+            &make_os_open_event(
+                "/home/user/project/src/lib.rs",
+                1,
+                ts + Duration::seconds(1),
+            ),
         );
 
         let profile = engine.get_profile("srv").unwrap();
@@ -498,7 +492,10 @@ mod tests {
 
         let profile = engine.get_profile("srv").unwrap();
         assert!(profile.network_profile.has_networked);
-        assert!(profile.network_profile.observed_hosts.contains("api.example.com"));
+        assert!(profile
+            .network_profile
+            .observed_hosts
+            .contains("api.example.com"));
         assert!(profile.network_profile.observed_ports.contains(&443));
     }
 
@@ -507,11 +504,7 @@ mod tests {
         let mut engine = LearningEngine::new(test_config());
         let ts = Utc::now();
 
-        engine.observe_mcp_event(
-            "srv",
-            "cli",
-            &make_tool_call_event("a", ts),
-        );
+        engine.observe_mcp_event("srv", "cli", &make_tool_call_event("a", ts));
         engine.observe_mcp_event(
             "srv",
             "cli",
@@ -533,11 +526,7 @@ mod tests {
         let mut engine = LearningEngine::new(test_config());
         let ts = Utc::now();
 
-        engine.observe_mcp_event(
-            "srv",
-            "cli",
-            &make_tool_call_event("read_file", ts),
-        );
+        engine.observe_mcp_event("srv", "cli", &make_tool_call_event("read_file", ts));
 
         let profile = engine.get_profile("srv").unwrap();
         assert_eq!(profile.observation_count, 1);

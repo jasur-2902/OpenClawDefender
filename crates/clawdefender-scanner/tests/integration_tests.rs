@@ -249,15 +249,13 @@ fn test_compute_delta_new_findings_only() {
 #[test]
 fn test_compute_delta_empty_baseline() {
     let baseline = make_report(vec![]);
-    let current = make_report(vec![
-        make_finding(
-            "F1",
-            "Issue A",
-            Severity::High,
-            ModuleCategory::PathTraversal,
-            Some("read_file"),
-        ),
-    ]);
+    let current = make_report(vec![make_finding(
+        "F1",
+        "Issue A",
+        Severity::High,
+        ModuleCategory::PathTraversal,
+        Some("read_file"),
+    )]);
     let delta = compute_delta(&current, &baseline);
     assert_eq!(delta.len(), 1);
 }
@@ -394,11 +392,7 @@ fn test_fix_suggestions_exist_for_all_categories() {
 
     for cat in &categories {
         let suggestion = fix_suggestion(*cat, "test");
-        assert!(
-            suggestion.is_some(),
-            "Missing fix suggestion for {:?}",
-            cat
-        );
+        assert!(suggestion.is_some(), "Missing fix suggestion for {:?}", cat);
         let text = suggestion.unwrap();
         assert!(!text.is_empty(), "Empty fix suggestion for {:?}", cat);
     }

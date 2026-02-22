@@ -34,7 +34,11 @@ pub fn validate_localhost_url(url: &str) -> Result<(), String> {
     // Handle IPv6 bracket notation: [::1]:port
     let host = if host_port.starts_with('[') {
         // Extract the bracketed host including brackets
-        host_port.split(']').next().map(|h| format!("{}]", h)).unwrap_or_default()
+        host_port
+            .split(']')
+            .next()
+            .map(|h| format!("{}]", h))
+            .unwrap_or_default()
     } else {
         host_port.split(':').next().unwrap_or(host_port).to_string()
     };
@@ -98,10 +102,7 @@ pub async fn check_reachable(url: &str) -> bool {
 }
 
 /// Dispatch a webhook event to all registered webhooks for a guard.
-pub async fn dispatch_event(
-    webhooks: &[WebhookRegistration],
-    event: &WebhookEvent,
-) {
+pub async fn dispatch_event(webhooks: &[WebhookRegistration], event: &WebhookEvent) {
     let payload = match serde_json::to_string(event) {
         Ok(p) => p,
         Err(e) => {

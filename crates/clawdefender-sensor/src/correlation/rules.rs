@@ -85,7 +85,11 @@ pub fn try_match(
                     target_path, args, ..
                 } = &os.kind
                 {
-                    let args_str = format!("{} {}", serde_json::to_string(&tc.arguments).unwrap_or_default(), tc.arguments);
+                    let args_str = format!(
+                        "{} {}",
+                        serde_json::to_string(&tc.arguments).unwrap_or_default(),
+                        tc.arguments
+                    );
                     let binary_name = target_path.rsplit('/').next().unwrap_or(target_path);
 
                     if args_str.contains(target_path) {

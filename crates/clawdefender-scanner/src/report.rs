@@ -22,7 +22,10 @@ pub fn render_terminal(report: &ScanReport) -> String {
         BOLD, RESET
     ));
     out.push_str(&format!("Target: {}\n", report.target));
-    out.push_str(&format!("Date:   {}\n", report.scan_date.format("%Y-%m-%d %H:%M:%S UTC")));
+    out.push_str(&format!(
+        "Date:   {}\n",
+        report.scan_date.format("%Y-%m-%d %H:%M:%S UTC")
+    ));
     out.push_str(&format!("Duration: {:.1}s\n", report.duration_secs));
     out.push_str(&"=".repeat(60));
     out.push('\n');
@@ -112,14 +115,19 @@ pub fn render_html(report: &ScanReport) -> String {
     html.push_str(".medium { background: #ffc107; color: black; }\n");
     html.push_str(".low { background: #17a2b8; color: white; }\n");
     html.push_str(".info { background: #6c757d; color: white; }\n");
-    html.push_str(".finding { border: 1px solid #333; border-radius: 8px; padding: 1em; margin: 1em 0; }\n");
+    html.push_str(
+        ".finding { border: 1px solid #333; border-radius: 8px; padding: 1em; margin: 1em 0; }\n",
+    );
     html.push_str(".finding-header { cursor: pointer; }\n");
     html.push_str(".evidence { display: none; margin-top: 1em; padding: 1em; background: #0d0d1a; border-radius: 4px; }\n");
     html.push_str("details[open] .evidence { display: block; }\n");
     html.push_str("</style></head><body>\n");
 
     html.push_str("<h1>ClawDefender Security Scan Report</h1>\n");
-    html.push_str(&format!("<p>Target: <code>{}</code></p>\n", html_escape(&report.target)));
+    html.push_str(&format!(
+        "<p>Target: <code>{}</code></p>\n",
+        html_escape(&report.target)
+    ));
     html.push_str(&format!(
         "<p>Date: {} | Duration: {:.1}s</p>\n",
         report.scan_date.format("%Y-%m-%d %H:%M:%S UTC"),
@@ -185,7 +193,9 @@ pub fn render_html(report: &ScanReport) -> String {
             html.push_str("<div class=\"evidence\">\n");
             html.push_str("<h4>Evidence</h4>\n");
             if finding.evidence.canary_detected {
-                html.push_str("<p style=\"color:#dc3545\"><strong>Canary data detected!</strong></p>\n");
+                html.push_str(
+                    "<p style=\"color:#dc3545\"><strong>Canary data detected!</strong></p>\n",
+                );
             }
             if !finding.evidence.files_modified.is_empty() {
                 html.push_str("<p>Files modified:</p><ul>\n");

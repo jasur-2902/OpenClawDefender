@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Create or show the main dashboard window
+#[allow(dead_code)]
 pub fn create_main_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         window.show().map_err(|e| e.to_string())?;
@@ -21,6 +22,7 @@ pub fn create_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 /// Create the prompt window (floating, always-on-top)
+#[allow(dead_code)]
 pub fn create_prompt_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("prompt") {
         window.show().map_err(|e| e.to_string())?;
@@ -41,6 +43,7 @@ pub fn create_prompt_window(app: &AppHandle) -> Result<(), String> {
 }
 
 /// Create the alert window (floating, always-on-top)
+#[allow(dead_code)]
 pub fn create_alert_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("alert") {
         window.show().map_err(|e| e.to_string())?;

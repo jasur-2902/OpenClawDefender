@@ -165,7 +165,8 @@ mod tests {
 
     #[test]
     fn conflict_detection_block_vs_allow() {
-        let pack: CommunityRulePack = serde_json::from_str(&sample_pack_json("cp", "1.0.0")).unwrap();
+        let pack: CommunityRulePack =
+            serde_json::from_str(&sample_pack_json("cp", "1.0.0")).unwrap();
 
         let user_rules = vec![UserPolicyRule {
             name: "allow_ssh".to_string(),

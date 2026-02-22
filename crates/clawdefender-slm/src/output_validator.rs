@@ -33,17 +33,19 @@ static OUTPUT_INJECTION_PATTERNS: LazyLock<Vec<(&str, Regex)>> = LazyLock::new(|
             "role assumption",
             r"(?i)(i am|you are|acting as)\s+(now\s+)?(a|an|the)\s+",
         ),
-        (
-            "prompt echo",
-            r"(?i)UNTRUSTED_INPUT_",
-        ),
+        ("prompt echo", r"(?i)UNTRUSTED_INPUT_"),
         (
             "system prompt leak",
             r"(?i)VERIFICATION:\s+Include\s+the\s+token",
         ),
     ]
     .iter()
-    .map(|(name, pat)| (*name, Regex::new(pat).expect("invalid output injection regex")))
+    .map(|(name, pat)| {
+        (
+            *name,
+            Regex::new(pat).expect("invalid output injection regex"),
+        )
+    })
     .collect()
 });
 
@@ -110,9 +112,11 @@ pub fn validate_slm_output(raw: &str, nonce: &str) -> ValidatedOutput {
             "MEDIUM" => RiskLevel::Medium,
             "HIGH" => RiskLevel::High,
             "CRITICAL" => RiskLevel::Critical,
-            _ => return ValidatedOutput::ParseError {
-                fallback: safe_fallback(),
-            },
+            _ => {
+                return ValidatedOutput::ParseError {
+                    fallback: safe_fallback(),
+                }
+            }
         },
         None => {
             return ValidatedOutput::ParseError {
@@ -175,9 +179,7 @@ mod tests {
     #[test]
     fn test_echo_detection() {
         let nonce = "deadbeef12345678";
-        let raw = format!(
-            "RISK: LOW\nEXPLANATION: safe\nCONFIDENCE: 0.9\nUNTRUSTED_INPUT_{nonce}"
-        );
+        let raw = format!("RISK: LOW\nEXPLANATION: safe\nCONFIDENCE: 0.9\nUNTRUSTED_INPUT_{nonce}");
         match validate_slm_output(&raw, nonce) {
             ValidatedOutput::Suspicious { reason, .. } => {
                 assert!(reason.contains("nonce"));

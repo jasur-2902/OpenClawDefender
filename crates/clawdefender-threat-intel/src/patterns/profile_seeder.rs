@@ -197,7 +197,10 @@ mod tests {
         let pre_seeded = seeder.get_profile("filesystem-server").unwrap();
         let profile = ProfileSeeder::to_server_profile(pre_seeded, "my-fs-server");
 
-        assert!(profile.learning_mode, "Seeded profile should have learning_mode=true");
+        assert!(
+            profile.learning_mode,
+            "Seeded profile should have learning_mode=true"
+        );
         assert_eq!(profile.server_name, "my-fs-server");
         assert!(profile.tool_counts.contains_key("read_file"));
         assert!(profile.directory_prefixes.contains("/home"));

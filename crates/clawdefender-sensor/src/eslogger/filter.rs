@@ -296,10 +296,7 @@ mod tests {
                 signing_id: None,
                 team_id: None,
             };
-            assert!(
-                !filter.should_pass(&ev),
-                "{name} should be dropped"
-            );
+            assert!(!filter.should_pass(&ev), "{name} should be dropped");
         }
     }
 
@@ -369,11 +366,19 @@ mod tests {
         assert!(filter.should_pass(&ev));
 
         // Read-only open on ~/.ssh/id_rsa must NOT be dropped
-        let ev2 = make_event(500, "/usr/local/bin/node", open_kind("/Users/dev/.ssh/id_rsa", 0));
+        let ev2 = make_event(
+            500,
+            "/usr/local/bin/node",
+            open_kind("/Users/dev/.ssh/id_rsa", 0),
+        );
         assert!(filter.should_pass(&ev2));
 
         // Read-only open on ~/.aws/credentials must NOT be dropped
-        let ev3 = make_event(500, "/usr/local/bin/node", open_kind("/Users/dev/.aws/credentials", 0));
+        let ev3 = make_event(
+            500,
+            "/usr/local/bin/node",
+            open_kind("/Users/dev/.aws/credentials", 0),
+        );
         assert!(filter.should_pass(&ev3));
     }
 

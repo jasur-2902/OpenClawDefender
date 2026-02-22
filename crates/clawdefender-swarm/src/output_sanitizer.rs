@@ -68,18 +68,23 @@ impl OutputSanitizer {
         // 1. Nonce echo detection
         if !nonce.is_empty() && raw.contains(nonce) {
             reasons.push(
-                "Response contains untrusted-data nonce; possible echo/injection attack".to_string()
+                "Response contains untrusted-data nonce; possible echo/injection attack"
+                    .to_string(),
             );
         }
 
         // 2. URL detection
         if URL_RE.is_match(raw) {
-            reasons.push("Response contains URL(s); specialists should not suggest visiting URLs".into());
+            reasons.push(
+                "Response contains URL(s); specialists should not suggest visiting URLs".into(),
+            );
         }
 
         // 3. Code block detection
         if CODE_BLOCK_RE.is_match(raw) {
-            reasons.push("Response contains code block(s); specialists should explain in prose".into());
+            reasons.push(
+                "Response contains code block(s); specialists should explain in prose".into(),
+            );
         }
 
         // 4. Injection artifact detection

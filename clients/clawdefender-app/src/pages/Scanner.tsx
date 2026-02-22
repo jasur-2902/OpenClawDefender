@@ -10,10 +10,12 @@ interface ScanHistoryEntry {
 }
 
 const MODULES = [
-  { id: "tool-poisoning", label: "Tool Poisoning" },
-  { id: "sampling-abuse", label: "Sampling Abuse" },
-  { id: "resource-injection", label: "Resource Injection" },
+  { id: "path-traversal", label: "Path Traversal" },
+  { id: "prompt-injection", label: "Prompt Injection" },
   { id: "exfiltration", label: "Exfiltration" },
+  { id: "capability-escalation", label: "Capability Escalation" },
+  { id: "dependency-audit", label: "Dependency Audit" },
+  { id: "fuzzing", label: "Fuzzing" },
 ] as const;
 
 export function Scanner() {

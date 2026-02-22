@@ -221,10 +221,7 @@ pub fn malformed_jsonrpc_messages() -> Vec<(String, &'static str)> {
 
     // Invalid JSON
     messages.push(("{not json}\n".to_string(), "Invalid JSON (not json)"));
-    messages.push((
-        "{\"jsonrpc\":\"2.0\",\n".to_string(),
-        "Truncated JSON",
-    ));
+    messages.push(("{\"jsonrpc\":\"2.0\",\n".to_string(), "Truncated JSON"));
 
     // Valid JSON, invalid JSON-RPC
     messages.push((
@@ -265,10 +262,8 @@ pub fn malformed_jsonrpc_messages() -> Vec<(String, &'static str)> {
         "Null id",
     ));
     messages.push((
-        serde_json::to_string(
-            &json!({"jsonrpc": "2.0", "id": u64::MAX, "method": "ping"}),
-        )
-        .unwrap()
+        serde_json::to_string(&json!({"jsonrpc": "2.0", "id": u64::MAX, "method": "ping"}))
+            .unwrap()
             + "\n",
         "Very large id (u64::MAX)",
     ));
@@ -288,16 +283,13 @@ pub fn malformed_jsonrpc_messages() -> Vec<(String, &'static str)> {
         "Boolean id",
     ));
     messages.push((
-        serde_json::to_string(&json!({"jsonrpc": "2.0", "id": [1, 2], "method": "ping"}))
-            .unwrap()
+        serde_json::to_string(&json!({"jsonrpc": "2.0", "id": [1, 2], "method": "ping"})).unwrap()
             + "\n",
         "Array id",
     ));
     messages.push((
-        serde_json::to_string(
-            &json!({"jsonrpc": "2.0", "id": {"nested": true}, "method": "ping"}),
-        )
-        .unwrap()
+        serde_json::to_string(&json!({"jsonrpc": "2.0", "id": {"nested": true}, "method": "ping"}))
+            .unwrap()
             + "\n",
         "Object id",
     ));
@@ -321,7 +313,10 @@ fn make_finding(
         category: ModuleCategory::Fuzzing,
         description: description.to_string(),
         reproduction: Some(Reproduction {
-            method: format!("Send the following fuzzed input: {}", truncate_for_display(input_repr, 500)),
+            method: format!(
+                "Send the following fuzzed input: {}",
+                truncate_for_display(input_repr, 500)
+            ),
             tool: None,
             arguments: None,
         }),
@@ -472,8 +467,7 @@ impl ScanModule for FuzzingModule {
 
                     let result = tokio::time::timeout(
                         timeout_dur,
-                        ctx.client
-                            .call_tool_raw(&tool.name, fuzzed_args.clone()),
+                        ctx.client.call_tool_raw(&tool.name, fuzzed_args.clone()),
                     )
                     .await;
 
@@ -582,10 +576,8 @@ impl ScanModule for FuzzingModule {
                 let large_arg = "X".repeat(LARGE_PAYLOAD_SIZE);
                 let result = tokio::time::timeout(
                     Duration::from_secs(15),
-                    ctx.client.call_tool_raw(
-                        &first_tool,
-                        json!({"data": large_arg}),
-                    ),
+                    ctx.client
+                        .call_tool_raw(&first_tool, json!({"data": large_arg})),
                 )
                 .await;
 
@@ -604,7 +596,10 @@ impl ScanModule for FuzzingModule {
                                     LARGE_PAYLOAD_SIZE / (1024 * 1024),
                                     first_tool
                                 ),
-                                &format!("{}MB string argument", LARGE_PAYLOAD_SIZE / (1024 * 1024)),
+                                &format!(
+                                    "{}MB string argument",
+                                    LARGE_PAYLOAD_SIZE / (1024 * 1024)
+                                ),
                                 None,
                             ));
                         }
@@ -621,7 +616,10 @@ impl ScanModule for FuzzingModule {
                                     LARGE_PAYLOAD_SIZE / (1024 * 1024),
                                     first_tool
                                 ),
-                                &format!("{}MB string argument", LARGE_PAYLOAD_SIZE / (1024 * 1024)),
+                                &format!(
+                                    "{}MB string argument",
+                                    LARGE_PAYLOAD_SIZE / (1024 * 1024)
+                                ),
                                 stderr,
                             ));
                         }
@@ -797,7 +795,10 @@ mod tests {
     #[test]
     fn test_crash_classification_severity() {
         assert_eq!(CrashClass::ReproducibleCrash.severity(), Severity::High);
-        assert_eq!(CrashClass::NonDeterministicCrash.severity(), Severity::Medium);
+        assert_eq!(
+            CrashClass::NonDeterministicCrash.severity(),
+            Severity::Medium
+        );
         assert_eq!(CrashClass::Hang.severity(), Severity::Medium);
         assert_eq!(CrashClass::CrashUnderLoad.severity(), Severity::Medium);
         assert_eq!(CrashClass::MemoryExhaustion.severity(), Severity::Medium);
@@ -829,7 +830,7 @@ mod tests {
         assert!(s.contains('\u{202E}')); // RTL override
         assert!(s.contains('\u{FEFF}')); // BOM
         assert!(s.contains('\u{200B}')); // zero-width space
-        // Verify it round-trips through JSON
+                                         // Verify it round-trips through JSON
         let json_val = serde_json::to_string(&s).unwrap();
         let parsed: String = serde_json::from_str(&json_val).unwrap();
         // Note: null byte gets escaped in JSON, so compare after re-parsing

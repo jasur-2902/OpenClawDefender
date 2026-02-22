@@ -20,6 +20,10 @@ use tracing::{error, info, warn};
 
 use clawdefender_core::audit::logger::FileAuditLogger;
 use clawdefender_core::audit::{AuditLogger, AuditRecord};
+use clawdefender_core::behavioral::{
+    AnomalyScorer, DecisionEngine, InjectionDetector, InjectionDetectorConfig, KillChainDetector,
+    LearningEngine, ProfileStore,
+};
 use clawdefender_core::config::settings::{ClawConfig, SensorConfig};
 use clawdefender_core::dns::cache::DnsCache;
 use clawdefender_core::dns::filter::DnsFilter;
@@ -27,35 +31,29 @@ use clawdefender_core::event::correlation::CorrelatedEvent;
 use clawdefender_core::network_policy::engine::NetworkPolicyEngine;
 use clawdefender_core::policy::engine::DefaultPolicyEngine;
 use clawdefender_core::policy::PolicyEngine;
+use clawdefender_guard::registry::GuardRegistry;
 use clawdefender_mcp_proxy::{ProxyConfig, StdioProxy, UiBridge};
+use clawdefender_mcp_server::McpServer;
 use clawdefender_sensor::correlation::engine::{
     CorrelationConfig as EngineCorrelationConfig, CorrelationEngine, CorrelationInput,
 };
-use clawdefender_sensor::{
-    default_watch_paths, EnhancedFsWatcher, EsloggerManager, ProcessTree,
-};
+use clawdefender_sensor::{default_watch_paths, EnhancedFsWatcher, EsloggerManager, ProcessTree};
 use clawdefender_slm::context::ContextTracker;
 use clawdefender_slm::engine::SlmConfig as SlmEngineConfig;
 use clawdefender_slm::noise_filter::NoiseFilter;
 use clawdefender_slm::SlmService;
-use clawdefender_mcp_server::McpServer;
 use clawdefender_swarm::chat::ChatManager;
 use clawdefender_swarm::chat_server::ChatServer;
 use clawdefender_swarm::commander::Commander;
 use clawdefender_swarm::cost::{BudgetConfig, CostTracker, PricingTable};
 use clawdefender_swarm::keychain::{self, KeyStore, Provider};
 use clawdefender_swarm::llm_client::{HttpLlmClient, LlmClient};
-use clawdefender_tui::{EventRecord, PendingPrompt};
-use clawdefender_core::behavioral::{
-    AnomalyScorer, DecisionEngine, InjectionDetector, InjectionDetectorConfig,
-    KillChainDetector, LearningEngine, ProfileStore,
-};
-use clawdefender_guard::registry::GuardRegistry;
 use clawdefender_threat_intel::blocklist::BlocklistMatcher;
 use clawdefender_threat_intel::ioc::IoCDatabase;
 use clawdefender_threat_intel::rules::manager::RulePackManager;
 use clawdefender_threat_intel::telemetry::TelemetryAggregator;
 use clawdefender_threat_intel::{FeedCache, FeedClient, FeedVerifier};
+use clawdefender_tui::{EventRecord, PendingPrompt};
 
 use event_router::{EventRouter, EventRouterConfig};
 
@@ -116,18 +114,15 @@ impl Daemon {
         };
 
         // Load sensor configuration.
-        let sensor_config = SensorConfig::load(&config.sensor_config_path)
-            .unwrap_or_else(|e| {
-                warn!(error = %e, "failed to load sensor config, using defaults");
-                SensorConfig::default()
-            });
+        let sensor_config = SensorConfig::load(&config.sensor_config_path).unwrap_or_else(|e| {
+            warn!(error = %e, "failed to load sensor config, using defaults");
+            SensorConfig::default()
+        });
 
         // Create audit logger.
-        let audit_logger = FileAuditLogger::new(
-            config.audit_log_path.clone(),
-            config.log_rotation.clone(),
-        )
-        .context("creating audit logger")?;
+        let audit_logger =
+            FileAuditLogger::new(config.audit_log_path.clone(), config.log_rotation.clone())
+                .context("creating audit logger")?;
 
         info!(
             audit_path = %config.audit_log_path.display(),
@@ -135,67 +130,79 @@ impl Daemon {
         );
 
         // --- Behavioral engine initialization ---
-        let (behavioral_engine, anomaly_scorer, killchain_detector, decision_engine, injection_detector, profile_store) =
-            if config.behavioral.enabled {
-                // Open profile store
-                let store = match ProfileStore::open(&ProfileStore::default_path()) {
-                    Ok(s) => {
-                        info!("Behavioral: profile store opened");
-                        s
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "Behavioral: failed to open profile store, using in-memory");
-                        ProfileStore::open_in_memory().expect("in-memory profile store")
-                    }
-                };
-                #[allow(clippy::arc_with_non_send_sync)]
-                let store = Arc::new(store);
-
-                // Load existing profiles into learning engine
-                let mut learning = LearningEngine::new(config.behavioral.clone());
-                match store.load_all_profiles() {
-                    Ok(profiles) => {
-                        let count = profiles.len();
-                        learning.load_profiles(profiles);
-                        info!(count, "Behavioral: loaded {} profiles", count);
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "Behavioral: failed to load profiles");
-                    }
+        let (
+            behavioral_engine,
+            anomaly_scorer,
+            killchain_detector,
+            decision_engine,
+            injection_detector,
+            profile_store,
+        ) = if config.behavioral.enabled {
+            // Open profile store
+            let store = match ProfileStore::open(&ProfileStore::default_path()) {
+                Ok(s) => {
+                    info!("Behavioral: profile store opened");
+                    s
                 }
-
-                let scorer = AnomalyScorer::new();
-                let kc_detector = KillChainDetector::new();
-                let dec_engine = DecisionEngine::from_config(
-                    config.behavioral.anomaly_threshold,
-                    config.behavioral.auto_block_threshold,
-                    config.behavioral.auto_block_enabled,
-                );
-
-                // Initialize injection detector
-                let inj_config = InjectionDetectorConfig {
-                    enabled: config.injection_detector.enabled,
-                    threshold: config.injection_detector.threshold,
-                    patterns_path: config.injection_detector.patterns_path.clone(),
-                    auto_block: config.injection_detector.auto_block,
-                };
-                let inj_detector = InjectionDetector::new(inj_config);
-
-                info!("Behavioral engine: enabled (auto_block={})", config.behavioral.auto_block_enabled);
-                info!("Injection detector: enabled (threshold={:.2})", config.injection_detector.threshold);
-
-                (
-                    Some(Arc::new(RwLock::new(learning))),
-                    Some(Arc::new(scorer)),
-                    Some(Arc::new(RwLock::new(kc_detector))),
-                    Some(Arc::new(RwLock::new(dec_engine))),
-                    Some(Arc::new(RwLock::new(inj_detector))),
-                    Some(store),
-                )
-            } else {
-                info!("Behavioral engine: disabled in config");
-                (None, None, None, None, None, None)
+                Err(e) => {
+                    warn!(error = %e, "Behavioral: failed to open profile store, using in-memory");
+                    ProfileStore::open_in_memory().expect("in-memory profile store")
+                }
             };
+            #[allow(clippy::arc_with_non_send_sync)]
+            let store = Arc::new(store);
+
+            // Load existing profiles into learning engine
+            let mut learning = LearningEngine::new(config.behavioral.clone());
+            match store.load_all_profiles() {
+                Ok(profiles) => {
+                    let count = profiles.len();
+                    learning.load_profiles(profiles);
+                    info!(count, "Behavioral: loaded {} profiles", count);
+                }
+                Err(e) => {
+                    warn!(error = %e, "Behavioral: failed to load profiles");
+                }
+            }
+
+            let scorer = AnomalyScorer::new();
+            let kc_detector = KillChainDetector::new();
+            let dec_engine = DecisionEngine::from_config(
+                config.behavioral.anomaly_threshold,
+                config.behavioral.auto_block_threshold,
+                config.behavioral.auto_block_enabled,
+            );
+
+            // Initialize injection detector
+            let inj_config = InjectionDetectorConfig {
+                enabled: config.injection_detector.enabled,
+                threshold: config.injection_detector.threshold,
+                patterns_path: config.injection_detector.patterns_path.clone(),
+                auto_block: config.injection_detector.auto_block,
+            };
+            let inj_detector = InjectionDetector::new(inj_config);
+
+            info!(
+                "Behavioral engine: enabled (auto_block={})",
+                config.behavioral.auto_block_enabled
+            );
+            info!(
+                "Injection detector: enabled (threshold={:.2})",
+                config.injection_detector.threshold
+            );
+
+            (
+                Some(Arc::new(RwLock::new(learning))),
+                Some(Arc::new(scorer)),
+                Some(Arc::new(RwLock::new(kc_detector))),
+                Some(Arc::new(RwLock::new(dec_engine))),
+                Some(Arc::new(RwLock::new(inj_detector))),
+                Some(store),
+            )
+        } else {
+            info!("Behavioral engine: disabled in config");
+            (None, None, None, None, None, None)
+        };
 
         // --- Threat intelligence initialization ---
         let (ioc_database, blocklist_matcher, rule_pack_manager, telemetry_aggregator, feed_client) =
@@ -209,7 +216,9 @@ impl Daemon {
                 // Initialize feed cache and populate from baseline if empty.
                 let cache = FeedCache::new(data_dir.clone());
                 if !cache.is_populated() {
-                    if let Err(e) = clawdefender_threat_intel::baseline::populate_cache_from_baseline(&cache) {
+                    if let Err(e) =
+                        clawdefender_threat_intel::baseline::populate_cache_from_baseline(&cache)
+                    {
                         warn!(error = %e, "Threat intel: failed to populate baseline cache");
                     }
                 }
@@ -237,11 +246,12 @@ impl Daemon {
                 // Load community rules.
                 let rules_dir = data_dir.join("rules");
                 std::fs::create_dir_all(&rules_dir).ok();
-                let catalog = clawdefender_threat_intel::rules::catalog::RuleCatalog::new(&rules_dir)
-                    .unwrap_or_else(|e| {
-                        warn!(error = %e, "Threat intel: failed to load rule catalog");
-                        clawdefender_threat_intel::rules::catalog::RuleCatalog::in_memory()
-                    });
+                let catalog =
+                    clawdefender_threat_intel::rules::catalog::RuleCatalog::new(&rules_dir)
+                        .unwrap_or_else(|e| {
+                            warn!(error = %e, "Threat intel: failed to load rule catalog");
+                            clawdefender_threat_intel::rules::catalog::RuleCatalog::in_memory()
+                        });
                 let rule_manager = RulePackManager::new(catalog, FeedCache::new(data_dir.clone()));
                 let rules_count = rule_manager.catalog().list_installed().len();
 
@@ -271,12 +281,8 @@ impl Daemon {
                     notify_on_update: config.threat_intel.notify_on_update,
                 };
 
-                let feed_client_instance = FeedClient::new(
-                    ti_config,
-                    FeedCache::new(data_dir),
-                    verifier,
-                )
-                .ok();
+                let feed_client_instance =
+                    FeedClient::new(ti_config, FeedCache::new(data_dir), verifier).ok();
 
                 info!(
                     ioc_count,
@@ -299,34 +305,38 @@ impl Daemon {
             };
 
         // --- Network policy engine initialization ---
-        let (network_policy_engine, dns_filter, dns_cache, mock_network_ext) =
-            if config.network_policy.enabled {
-                use clawdefender_core::network_policy::rate_limiter::RateLimitConfig;
-                use clawdefender_core::network_policy::rules::NetworkAction;
+        let (network_policy_engine, dns_filter, dns_cache, mock_network_ext) = if config
+            .network_policy
+            .enabled
+        {
+            use clawdefender_core::network_policy::rate_limiter::RateLimitConfig;
+            use clawdefender_core::network_policy::rules::NetworkAction;
 
-                // Parse default action from config string.
-                let default_action = match config.network_policy.default_agent_action.as_str() {
-                    "allow" => NetworkAction::Allow,
-                    "block" => NetworkAction::Block,
-                    "log" => NetworkAction::Log,
-                    _ => NetworkAction::Prompt,
-                };
+            // Parse default action from config string.
+            let default_action = match config.network_policy.default_agent_action.as_str() {
+                "allow" => NetworkAction::Allow,
+                "block" => NetworkAction::Block,
+                "log" => NetworkAction::Log,
+                _ => NetworkAction::Prompt,
+            };
 
-                let rate_config = RateLimitConfig {
-                    max_connections_per_minute: config.network_policy.rate_limit_connections_per_min,
-                    max_unique_destinations_per_10s: config.network_policy.rate_limit_unique_dest_per_10s,
-                    ..RateLimitConfig::default()
-                };
+            let rate_config = RateLimitConfig {
+                max_connections_per_minute: config.network_policy.rate_limit_connections_per_min,
+                max_unique_destinations_per_10s: config
+                    .network_policy
+                    .rate_limit_unique_dest_per_10s,
+                ..RateLimitConfig::default()
+            };
 
-                let engine = NetworkPolicyEngine::new(Vec::new(), default_action, rate_config);
-                let rules_count = engine.rules().len();
+            let engine = NetworkPolicyEngine::new(Vec::new(), default_action, rate_config);
+            let rules_count = engine.rules().len();
 
-                // Create DNS filter, optionally populating from IoC data.
-                let mut filter = DnsFilter::new();
-                if let Some(ref ioc_db) = ioc_database {
-                    if let Ok(db) = ioc_db.try_read() {
-                        // Extract domain IoCs for DNS filter.
-                        let domain_iocs: Vec<String> = db
+            // Create DNS filter, optionally populating from IoC data.
+            let mut filter = DnsFilter::new();
+            if let Some(ref ioc_db) = ioc_database {
+                if let Ok(db) = ioc_db.try_read() {
+                    // Extract domain IoCs for DNS filter.
+                    let domain_iocs: Vec<String> = db
                             .indicators()
                             .iter()
                             .filter_map(|entry| {
@@ -337,45 +347,49 @@ impl Daemon {
                                 }
                             })
                             .collect();
-                        if !domain_iocs.is_empty() {
-                            filter.refresh_ioc_domains(&domain_iocs);
-                            info!(count = domain_iocs.len(), "DNS filter: loaded {} IoC domains", domain_iocs.len());
-                        }
+                    if !domain_iocs.is_empty() {
+                        filter.refresh_ioc_domains(&domain_iocs);
+                        info!(
+                            count = domain_iocs.len(),
+                            "DNS filter: loaded {} IoC domains",
+                            domain_iocs.len()
+                        );
                     }
                 }
+            }
 
-                let cache = DnsCache::default();
+            let cache = DnsCache::default();
 
-                // Create mock network extension if configured.
-                let mock_ext = {
-                    let mock_config = mock_network_extension::MockNetworkExtensionConfig {
-                        enabled: true,
-                        ..Default::default()
-                    };
-                    Some(Arc::new(RwLock::new(
-                        mock_network_extension::MockNetworkExtension::new(mock_config),
-                    )))
+            // Create mock network extension if configured.
+            let mock_ext = {
+                let mock_config = mock_network_extension::MockNetworkExtensionConfig {
+                    enabled: true,
+                    ..Default::default()
                 };
-
-                let mock_mode = mock_ext.is_some();
-                info!(
-                    rules_count,
-                    mock_mode,
-                    "Network policy engine: active ({} rules, mock mode: {})",
-                    rules_count,
-                    if mock_mode { "yes" } else { "no" }
-                );
-
-                (
-                    Some(Arc::new(RwLock::new(engine))),
-                    Some(Arc::new(RwLock::new(filter))),
-                    Some(Arc::new(RwLock::new(cache))),
-                    mock_ext,
-                )
-            } else {
-                info!("Network policy engine: disabled in config");
-                (None, None, None, None)
+                Some(Arc::new(RwLock::new(
+                    mock_network_extension::MockNetworkExtension::new(mock_config),
+                )))
             };
+
+            let mock_mode = mock_ext.is_some();
+            info!(
+                rules_count,
+                mock_mode,
+                "Network policy engine: active ({} rules, mock mode: {})",
+                rules_count,
+                if mock_mode { "yes" } else { "no" }
+            );
+
+            (
+                Some(Arc::new(RwLock::new(engine))),
+                Some(Arc::new(RwLock::new(filter))),
+                Some(Arc::new(RwLock::new(cache))),
+                mock_ext,
+            )
+        } else {
+            info!("Network policy engine: disabled in config");
+            (None, None, None, None)
+        };
 
         Ok(Self {
             config,
@@ -464,11 +478,7 @@ impl Daemon {
 
         // --- Step 3: Event router ---
         {
-            let router = EventRouter::new(
-                EventRouterConfig::default(),
-                audit_tx,
-                ui_event_tx,
-            );
+            let router = EventRouter::new(EventRouterConfig::default(), audit_tx, ui_event_tx);
             let handle = router.run(correlated_rx);
             handles.push(handle);
         }
@@ -495,11 +505,7 @@ impl Daemon {
                         let corr_tx = correlation_input_tx.clone();
                         let handle = tokio::spawn(async move {
                             while let Some(os_event) = eslogger_rx.recv().await {
-                                if corr_tx
-                                    .send(CorrelationInput::Os(os_event))
-                                    .await
-                                    .is_err()
-                                {
+                                if corr_tx.send(CorrelationInput::Os(os_event)).await.is_err() {
                                     break;
                                 }
                             }
@@ -539,11 +545,7 @@ impl Daemon {
                                 while let Some(fs_event) = fs_rx.recv().await {
                                     let os_event =
                                         clawdefender_core::event::os::OsEvent::from(fs_event);
-                                    if corr_tx
-                                        .send(CorrelationInput::Os(os_event))
-                                        .await
-                                        .is_err()
-                                    {
+                                    if corr_tx.send(CorrelationInput::Os(os_event)).await.is_err() {
                                         break;
                                     }
                                 }
@@ -579,6 +581,253 @@ impl Daemon {
         handles
     }
 
+    /// Run the daemon in standalone mode (no MCP proxy).
+    ///
+    /// Starts IPC server, sensor subsystem, audit writer, MCP server,
+    /// and signal handlers, then runs until a signal is received.
+    pub async fn run(self) -> Result<()> {
+        info!("ClawDefender daemon starting (standalone mode)");
+
+        // Write PID file.
+        let pid_path = pid_file_path();
+        write_pid_file(&pid_path)?;
+
+        // Ensure parent directories exist for required paths.
+        if let Some(parent) = self.config.audit_log_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        if let Some(parent) = self.config.daemon_socket_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
+        // --- Channels ---
+        let (_prompt_tx, prompt_rx) = mpsc::channel::<PendingPrompt>(64);
+        let (_event_tx, event_rx) = mpsc::channel::<EventRecord>(256);
+        let (audit_tx, mut audit_rx) = mpsc::channel::<AuditRecord>(1024);
+
+        // Channel for correlated events to be forwarded to UIs.
+        let (_ui_correlated_tx, _ui_correlated_rx) = mpsc::channel::<CorrelatedEvent>(256);
+
+        // --- Policy engine status ---
+        info!("Policy engine: loaded");
+
+        // --- MCP server (cooperative security endpoint) ---
+        let mcp_server_handle = if self.config.mcp_server.enabled {
+            let policy_snapshot = if self.config.policy_path.exists() {
+                DefaultPolicyEngine::load(&self.config.policy_path)
+                    .unwrap_or_else(|_| DefaultPolicyEngine::empty())
+            } else {
+                DefaultPolicyEngine::empty()
+            };
+            let mcp_audit = Arc::clone(&self.audit_logger);
+            let mcp_server = Arc::new(McpServer::new(Box::new(policy_snapshot), mcp_audit));
+            let mcp_port = self.config.mcp_server.http_port;
+            let handle = tokio::spawn(async move {
+                if let Err(e) = mcp_server.run_http(mcp_port).await {
+                    warn!(error = %e, "MCP server exited");
+                }
+            });
+            info!(
+                port = mcp_port,
+                "MCP server: listening on HTTP port {}", mcp_port
+            );
+            Some(handle)
+        } else {
+            info!("MCP server: disabled in config");
+            None
+        };
+
+        // --- Guard PID cleanup task ---
+        let guard_registry_cleanup = Arc::clone(&self.guard_registry);
+        let guard_cleanup_handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                guard_registry_cleanup.cleanup_dead_pids().await;
+            }
+        });
+
+        // --- Guard REST API server ---
+        let guard_api_handle = if self.config.guard_api.enabled {
+            let registry_for_api = (*self.guard_registry).clone();
+            let api_config = clawdefender_guard::api::ApiConfig {
+                bind_addr: format!("127.0.0.1:{}", self.config.guard_api.port)
+                    .parse()
+                    .unwrap(),
+                token: String::new(),
+            };
+            let handle = tokio::spawn(async move {
+                if let Err(e) =
+                    clawdefender_guard::api::run_api_server(api_config, registry_for_api).await
+                {
+                    warn!(error = %e, "Guard API server exited");
+                }
+            });
+            info!(
+                port = self.config.guard_api.port,
+                "Guard API server: listening on port {}", self.config.guard_api.port
+            );
+            Some(handle)
+        } else {
+            info!("Guard API server: disabled in config");
+            None
+        };
+
+        // --- Audit writer task ---
+        let audit_logger = Arc::clone(&self.audit_logger);
+        let audit_writer_handle = tokio::spawn(async move {
+            while let Some(record) = audit_rx.recv().await {
+                if let Err(e) = audit_logger.log(&record) {
+                    error!(error = %e, "failed to write audit record");
+                }
+            }
+            info!("audit writer task finished");
+        });
+
+        // --- Sensor subsystem (process tree, eslogger, FSEvents, correlation) ---
+        let process_tree = Arc::new(RwLock::new(ProcessTree::new()));
+        let sensor_handles = self
+            .start_sensor_subsystem(
+                Arc::clone(&process_tree),
+                audit_tx.clone(),
+                _ui_correlated_tx,
+            )
+            .await;
+
+        // --- Policy hot-reload via notify ---
+        let policy_path = self.config.policy_path.clone();
+        let policy_engine_for_reload = Arc::clone(&self.policy_engine);
+        let _reload_handle = if policy_path.exists() {
+            Some(spawn_policy_watcher(policy_path, policy_engine_for_reload))
+        } else {
+            None
+        };
+
+        // --- IPC server ---
+        let socket_path = self.config.daemon_socket_path.clone();
+        info!(path = %socket_path.display(), "IPC: listening on {}", socket_path.display());
+        let metrics = Arc::new(clawdefender_mcp_proxy::ProxyMetrics::new());
+        let policy_for_ipc = Arc::clone(&self.policy_engine);
+        let guard_registry_for_ipc = Arc::clone(&self.guard_registry);
+        let ipc_handle = tokio::spawn(async move {
+            if let Err(e) =
+                ipc::run_ipc_server(socket_path, metrics, policy_for_ipc, guard_registry_for_ipc)
+                    .await
+            {
+                warn!(error = %e, "IPC server exited");
+            }
+        });
+
+        // --- TUI or headless ---
+        let ui_mode = if self.enable_tui && std::io::stdout().is_terminal() {
+            "TUI mode"
+        } else {
+            "headless"
+        };
+        info!(mode = ui_mode, "UI: {}", ui_mode);
+
+        let tui_handle = if self.enable_tui && std::io::stdout().is_terminal() {
+            Some(tokio::task::spawn_blocking(move || {
+                let rt = tokio::runtime::Handle::current();
+                if let Err(e) = rt.block_on(clawdefender_tui::run(prompt_rx, event_rx)) {
+                    error!(error = %e, "TUI exited with error");
+                }
+            }))
+        } else {
+            Some(tokio::spawn(async move {
+                if let Err(e) = clawdefender_tui::run_headless(prompt_rx).await {
+                    error!(error = %e, "headless prompt handler exited with error");
+                }
+                drop(event_rx);
+            }))
+        };
+
+        // --- Signal handlers ---
+        #[cfg(unix)]
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        #[cfg(unix)]
+        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+
+        info!(
+            pid = std::process::id(),
+            ipc = %self.config.daemon_socket_path.display(),
+            behavioral = self.config.behavioral.enabled,
+            threat_intel = self.config.threat_intel.enabled,
+            network_policy = self.config.network_policy.enabled,
+            "daemon: ready (standalone mode, pid={}, ipc={})",
+            std::process::id(),
+            self.config.daemon_socket_path.display(),
+        );
+
+        #[cfg(unix)]
+        {
+            tokio::select! {
+                _ = sigterm.recv() => {
+                    info!("SIGTERM received, shutting down");
+                }
+                _ = sigint.recv() => {
+                    info!("SIGINT received, shutting down");
+                }
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            tokio::signal::ctrl_c().await?;
+            info!("Ctrl-C received, shutting down");
+        }
+
+        // --- Cleanup ---
+        // Abort spawned tasks first so their cloned senders are dropped.
+        for handle in sensor_handles {
+            handle.abort();
+        }
+        guard_cleanup_handle.abort();
+        if let Some(handle) = guard_api_handle {
+            handle.abort();
+            info!("guard API server stopped");
+        }
+        ipc_handle.abort();
+        if let Some(handle) = mcp_server_handle {
+            handle.abort();
+            info!("MCP server stopped");
+        }
+
+        // Now drop the remaining senders so receivers can finish.
+        drop(audit_tx);
+        drop(_prompt_tx);
+        drop(_event_tx);
+
+        // Wait for audit writer to flush remaining records.
+        let _ = tokio::time::timeout(Duration::from_secs(3), audit_writer_handle).await;
+        self.audit_logger.shutdown();
+
+        // Wait for TUI/headless to exit.
+        if let Some(handle) = tui_handle {
+            match tokio::time::timeout(Duration::from_secs(3), handle).await {
+                Ok(_) => {}
+                Err(_) => {
+                    warn!("TUI task did not finish in time, aborting");
+                }
+            }
+        }
+
+        // Remove socket and PID files.
+        let socket_path = self.config.daemon_socket_path.clone();
+        if socket_path.exists() {
+            if let Err(e) = std::fs::remove_file(&socket_path) {
+                warn!(error = %e, "failed to remove IPC socket");
+            } else {
+                info!(path = %socket_path.display(), "removed IPC socket");
+            }
+        }
+        remove_pid_file(&pid_path);
+
+        info!("daemon shut down cleanly");
+        Ok(())
+    }
+
     /// Main entry point for `clawdefender proxy -- <command> [args...]`.
     ///
     /// Spawns the MCP proxy, sensor subsystem, audit writer, TUI (or headless),
@@ -590,6 +839,14 @@ impl Daemon {
         let pid_path = pid_file_path();
         write_pid_file(&pid_path)?;
 
+        // Ensure parent directories exist for required paths.
+        if let Some(parent) = self.config.audit_log_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        if let Some(parent) = self.config.daemon_socket_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
         // --- Channels ---
         let (_prompt_tx, prompt_rx) = mpsc::channel::<PendingPrompt>(64);
         let (_event_tx, event_rx) = mpsc::channel::<EventRecord>(256);
@@ -599,25 +856,18 @@ impl Daemon {
         let (_ui_correlated_tx, _ui_correlated_rx) = mpsc::channel::<CorrelatedEvent>(256);
 
         // --- UiBridge (connects proxy prompts to TUI) ---
-        let (ui_req_tx, _ui_req_rx) =
-            mpsc::channel::<(
-                clawdefender_core::ipc::protocol::UiRequest,
-                tokio::sync::oneshot::Sender<clawdefender_core::ipc::protocol::UiResponse>,
-            )>(64);
+        let (ui_req_tx, _ui_req_rx) = mpsc::channel::<(
+            clawdefender_core::ipc::protocol::UiRequest,
+            tokio::sync::oneshot::Sender<clawdefender_core::ipc::protocol::UiResponse>,
+        )>(64);
         let ui_bridge = Arc::new(UiBridge::new(ui_req_tx));
 
         // --- Policy engine status ---
         info!("Policy engine: loaded");
 
-
         // --- SLM service (advisory only, graceful failure -> disabled mode) ---
         let slm_engine_config = SlmEngineConfig {
-            model_path: self
-                .config
-                .slm
-                .model_path
-                .clone()
-                .unwrap_or_default(),
+            model_path: self.config.slm.model_path.clone().unwrap_or_default(),
             context_size: self.config.slm.context_size,
             max_output_tokens: self.config.slm.max_output_tokens,
             temperature: self.config.slm.temperature,
@@ -625,10 +875,7 @@ impl Daemon {
             threads: self.config.slm.threads.unwrap_or(4),
             ..SlmEngineConfig::default()
         };
-        let slm_service = Arc::new(SlmService::new(
-            slm_engine_config,
-            self.config.slm.enabled,
-        ));
+        let slm_service = Arc::new(SlmService::new(slm_engine_config, self.config.slm.enabled));
         if slm_service.is_enabled() {
             info!("SLM: enabled");
         } else {
@@ -729,7 +976,10 @@ impl Daemon {
                     warn!(error = %e, "MCP server exited");
                 }
             });
-            info!(port = mcp_port, "MCP server: listening on HTTP port {}", mcp_port);
+            info!(
+                port = mcp_port,
+                "MCP server: listening on HTTP port {}", mcp_port
+            );
             Some(handle)
         } else {
             info!("MCP server: disabled in config");
@@ -879,8 +1129,13 @@ impl Daemon {
         let policy_for_ipc = Arc::clone(&self.policy_engine);
         let guard_registry_for_ipc = Arc::clone(&self.guard_registry);
         let ipc_handle = tokio::spawn(async move {
-            if let Err(e) =
-                ipc::run_ipc_server(socket_path, metrics_for_ipc, policy_for_ipc, guard_registry_for_ipc).await
+            if let Err(e) = ipc::run_ipc_server(
+                socket_path,
+                metrics_for_ipc,
+                policy_for_ipc,
+                guard_registry_for_ipc,
+            )
+            .await
             {
                 warn!(error = %e, "IPC server exited");
             }
@@ -888,7 +1143,8 @@ impl Daemon {
 
         // --- Signal handlers ---
         #[cfg(unix)]
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
         #[cfg(unix)]
         let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
 
@@ -931,49 +1187,56 @@ impl Daemon {
         }
 
         // --- Cleanup ---
-        // Drop audit sender to signal the writer to finish.
-        drop(audit_tx);
-        let _ = audit_writer_handle.await;
-
-        // Shut down audit logger (flushes + session-end record).
-        self.audit_logger.shutdown();
-
-        // Abort sensor tasks.
+        // Abort spawned tasks first so their cloned senders are dropped.
         for handle in sensor_handles {
             handle.abort();
         }
-
-        // Abort guard tasks.
         guard_cleanup_handle.abort();
         if let Some(handle) = guard_api_handle {
             handle.abort();
             info!("guard API server stopped");
         }
-
-        // Abort IPC server.
         ipc_handle.abort();
-
-        // Abort chat server.
         if let Some(handle) = chat_server_handle {
             handle.abort();
             info!("chat server stopped");
         }
-
-        // Abort MCP server.
         if let Some(handle) = mcp_server_handle {
             handle.abort();
             info!("MCP server stopped");
         }
 
-        // Wait for TUI.
+        // Now drop the remaining senders so receivers can finish.
+        drop(audit_tx);
+        drop(_prompt_tx);
+        drop(_event_tx);
+
+        // Wait for audit writer to flush remaining records.
+        let _ = tokio::time::timeout(Duration::from_secs(3), audit_writer_handle).await;
+        self.audit_logger.shutdown();
+
+        // Wait for TUI/headless to exit.
         if let Some(handle) = tui_handle {
-            let _ = handle.await;
+            match tokio::time::timeout(Duration::from_secs(3), handle).await {
+                Ok(_) => {}
+                Err(_) => {
+                    warn!("TUI task did not finish in time, aborting");
+                }
+            }
         }
 
-        // Remove PID file.
+        // Remove socket and PID files.
+        let socket_path = self.config.daemon_socket_path.clone();
+        if socket_path.exists() {
+            if let Err(e) = std::fs::remove_file(&socket_path) {
+                warn!(error = %e, "failed to remove IPC socket");
+            } else {
+                info!(path = %socket_path.display(), "removed IPC socket");
+            }
+        }
         remove_pid_file(&pid_path);
 
-        info!("daemon shut down");
+        info!("daemon shut down cleanly");
         Ok(())
     }
 }
@@ -989,22 +1252,20 @@ fn spawn_policy_watcher(
         let (tx, mut rx) = mpsc::channel::<()>(4);
 
         let watch_path = policy_path.clone();
-        let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                if matches!(
-                    event.kind,
-                    EventKind::Modify(_) | EventKind::Create(_)
-                ) {
-                    let _ = tx.try_send(());
+        let mut watcher =
+            match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                        let _ = tx.try_send(());
+                    }
                 }
-            }
-        }) {
-            Ok(w) => w,
-            Err(e) => {
-                warn!(error = %e, "failed to create file watcher for policy reload");
-                return;
-            }
-        };
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    warn!(error = %e, "failed to create file watcher for policy reload");
+                    return;
+                }
+            };
 
         let watch_dir = watch_path
             .parent()
@@ -1034,32 +1295,27 @@ fn spawn_policy_watcher(
 }
 
 /// Spawn a generic file watcher that logs reload events (for sensor.toml etc.).
-fn spawn_file_watcher(
-    file_path: PathBuf,
-    label: &'static str,
-) -> tokio::task::JoinHandle<()> {
+fn spawn_file_watcher(file_path: PathBuf, label: &'static str) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         use notify::{Event, EventKind, RecursiveMode, Watcher};
 
         let (tx, mut rx) = mpsc::channel::<()>(4);
 
         let watch_path = file_path.clone();
-        let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                if matches!(
-                    event.kind,
-                    EventKind::Modify(_) | EventKind::Create(_)
-                ) {
-                    let _ = tx.try_send(());
+        let mut watcher =
+            match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                        let _ = tx.try_send(());
+                    }
                 }
-            }
-        }) {
-            Ok(w) => w,
-            Err(e) => {
-                warn!(error = %e, label = label, "failed to create file watcher");
-                return;
-            }
-        };
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    warn!(error = %e, label = label, "failed to create file watcher");
+                    return;
+                }
+            };
 
         let watch_dir = watch_path
             .parent()
@@ -1503,10 +1759,7 @@ refresh_interval_secs = 3
         let json = serde_json::to_string(&req).unwrap();
         let parsed: DaemonRequest = serde_json::from_str(&json).unwrap();
         match parsed {
-            DaemonRequest::PromptResponse {
-                event_id,
-                decision,
-            } => {
+            DaemonRequest::PromptResponse { event_id, decision } => {
                 assert_eq!(event_id, "evt-123");
                 assert_eq!(decision, UserDecision::AllowOnce);
             }
@@ -1593,7 +1846,10 @@ refresh_interval_secs = 3
     #[test]
     fn config_has_sensor_config_path_default() {
         let config = ClawConfig::default();
-        assert!(config.sensor_config_path.to_string_lossy().contains("sensor.toml"));
+        assert!(config
+            .sensor_config_path
+            .to_string_lossy()
+            .contains("sensor.toml"));
     }
 
     #[test]
@@ -1984,11 +2240,11 @@ auto_block = false
     #[test]
     fn threat_intel_full_pipeline_concept() {
         // Test the full pipeline: add IoC -> check event -> build audit record with match.
+        use clawdefender_core::audit::{IoCMatchRecord, ThreatIntelAuditData};
         use clawdefender_threat_intel::ioc::types::{
             EventData, Indicator, IndicatorEntry, Severity,
         };
         use clawdefender_threat_intel::ioc::IoCDatabase;
-        use clawdefender_core::audit::{IoCMatchRecord, ThreatIntelAuditData};
 
         // 1. Create IoC database and add an indicator.
         let mut db = IoCDatabase::new();
@@ -2063,7 +2319,9 @@ auto_block = false
         let ti = parsed.threat_intel.as_ref().unwrap();
         assert_eq!(ti.ioc_matches.len(), 1);
         assert_eq!(ti.ioc_matches[0].threat_id, "TI-PROC-001");
-        assert!(ti.ioc_matches[0].indicator_type.contains("SuspiciousProcessName"));
+        assert!(ti.ioc_matches[0]
+            .indicator_type
+            .contains("SuspiciousProcessName"));
         assert!(ti.ioc_matches[0].severity.contains("High"));
 
         // 6. Verify it can be written to audit log and queried back.
@@ -2080,7 +2338,10 @@ auto_block = false
             ..Default::default()
         };
         let results = logger.query(&filter).unwrap();
-        assert!(!results.is_empty(), "audit log should have at least one record");
+        assert!(
+            !results.is_empty(),
+            "audit log should have at least one record"
+        );
         let matching = results
             .iter()
             .find(|r| r.threat_intel.is_some())
@@ -2116,8 +2377,8 @@ notify_on_update = true
 
     #[test]
     fn threat_intel_blocklist_matcher_creation() {
-        use clawdefender_threat_intel::blocklist::BlocklistMatcher;
         use clawdefender_threat_intel::blocklist::types::Blocklist;
+        use clawdefender_threat_intel::blocklist::BlocklistMatcher;
 
         let blocklist = Blocklist {
             version: 1,
@@ -2126,7 +2387,10 @@ notify_on_update = true
         };
         let matcher = BlocklistMatcher::new(blocklist);
         let matches = matcher.check_server("some-server", None, None);
-        assert!(matches.is_empty(), "empty blocklist should not match anything");
+        assert!(
+            matches.is_empty(),
+            "empty blocklist should not match anything"
+        );
     }
 
     // --- Network policy engine integration tests ---
@@ -2209,7 +2473,7 @@ log_all_dns = false
 
     #[test]
     fn dns_filter_allow_and_block() {
-        use clawdefender_core::dns::filter::{DnsFilter, DnsQuery, DnsQueryType, DnsAction};
+        use clawdefender_core::dns::filter::{DnsAction, DnsFilter, DnsQuery, DnsQueryType};
 
         let mut filter = DnsFilter::new();
         filter.add_allow("safe.example.com");

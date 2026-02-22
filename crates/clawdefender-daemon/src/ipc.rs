@@ -121,6 +121,21 @@ async fn handle_client(
             writer.write_all(response.as_bytes()).await?;
             writer.write_all(b"\n").await?;
             writer.flush().await?;
+        } else if trimmed == "\"shutdown\"" || trimmed == "shutdown" {
+            info!("Shutdown requested via IPC");
+            let response = serde_json::json!({"ok": true, "message": "shutting down"});
+            let response = serde_json::to_string(&response)?;
+            writer.write_all(response.as_bytes()).await?;
+            writer.write_all(b"\n").await?;
+            writer.flush().await?;
+            // Send SIGTERM to self to trigger the signal handler in run(),
+            // which performs graceful cleanup of PID file, socket, and subsystems.
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(std::process::id() as i32, libc::SIGTERM);
+            }
+            #[cfg(not(unix))]
+            std::process::exit(0);
         } else {
             warn!(line = trimmed, "unknown IPC command");
             let response = serde_json::json!({"error": "unknown command"});
@@ -135,10 +150,7 @@ async fn handle_client(
 }
 
 /// Handle a GuardRequest message and return a GuardResponse.
-async fn handle_guard_request(
-    request: GuardRequest,
-    registry: &GuardRegistry,
-) -> GuardResponse {
+async fn handle_guard_request(request: GuardRequest, registry: &GuardRegistry) -> GuardResponse {
     match request {
         GuardRequest::GuardRegister {
             agent_name,
@@ -198,7 +210,10 @@ async fn handle_guard_request(
                 GuardResponse::GuardDeregistered
             } else {
                 GuardResponse::Error {
-                    message: format!("guard not found for agent '{}' with pid {}", agent_name, pid),
+                    message: format!(
+                        "guard not found for agent '{}' with pid {}",
+                        agent_name, pid
+                    ),
                 }
             }
         }

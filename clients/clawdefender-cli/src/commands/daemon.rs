@@ -27,15 +27,39 @@ pub fn start(_config: &ClawConfig) -> Result<()> {
 
     let config_path = default_config_path();
 
-    let child = std::process::Command::new(&daemon_bin)
+    let mut child = std::process::Command::new(&daemon_bin)
         .args(["--config", &config_path.to_string_lossy()])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .with_context(|| format!("failed to start daemon: {}", daemon_bin.display()))?;
 
-    println!("Daemon started (PID {})", child.id());
+    // Brief wait to catch immediate startup failures.
+    std::thread::sleep(Duration::from_millis(200));
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            // Process exited immediately — capture stderr.
+            let mut stderr = String::new();
+            if let Some(mut err) = child.stderr.take() {
+                use std::io::Read;
+                err.read_to_string(&mut stderr).ok();
+            }
+            anyhow::bail!(
+                "Daemon exited immediately with {}: {}",
+                status,
+                stderr.trim()
+            );
+        }
+        Ok(None) => {
+            // Still running — good.
+            println!("Daemon started (PID {})", child.id());
+        }
+        Err(e) => {
+            anyhow::bail!("Failed to check daemon status: {}", e);
+        }
+    }
+
     Ok(())
 }
 
@@ -109,10 +133,30 @@ pub fn status(config: &ClawConfig) -> Result<()> {
             if reader.read_line(&mut response).is_ok() && !response.is_empty() {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response) {
                     println!("  IPC: connected");
-                    println!("  Messages total:    {}", json.get("messages_total").and_then(|v| v.as_u64()).unwrap_or(0));
-                    println!("  Messages allowed:  {}", json.get("messages_allowed").and_then(|v| v.as_u64()).unwrap_or(0));
-                    println!("  Messages blocked:  {}", json.get("messages_blocked").and_then(|v| v.as_u64()).unwrap_or(0));
-                    println!("  Messages prompted: {}", json.get("messages_prompted").and_then(|v| v.as_u64()).unwrap_or(0));
+                    println!(
+                        "  Messages total:    {}",
+                        json.get("messages_total")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                    );
+                    println!(
+                        "  Messages allowed:  {}",
+                        json.get("messages_allowed")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                    );
+                    println!(
+                        "  Messages blocked:  {}",
+                        json.get("messages_blocked")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                    );
+                    println!(
+                        "  Messages prompted: {}",
+                        json.get("messages_prompted")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                    );
                 } else {
                     println!("  IPC: connected (unexpected response)");
                 }
@@ -160,11 +204,7 @@ fn default_config_path() -> PathBuf {
 }
 
 fn read_pid(path: &PathBuf) -> Option<u32> {
-    std::fs::read_to_string(path)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
+    std::fs::read_to_string(path).ok()?.trim().parse().ok()
 }
 
 fn is_process_alive(pid: u32) -> bool {
@@ -181,12 +221,45 @@ fn is_process_alive(pid: u32) -> bool {
 }
 
 fn find_daemon_binary() -> Result<PathBuf> {
-    // Check next to the current binary first.
+    // Check next to the current binary first (works in dev + production).
     if let Ok(current) = std::env::current_exe() {
         if let Some(dir) = current.parent() {
             let candidate = dir.join("clawdefender-daemon");
             if candidate.exists() {
                 return Ok(candidate);
+            }
+        }
+    }
+
+    // Check common install locations.
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        for candidate in [
+            PathBuf::from("/usr/local/bin/clawdefender-daemon"),
+            home.join(".cargo/bin/clawdefender-daemon"),
+        ] {
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    // Walk up from current exe to find workspace target directories.
+    if let Ok(current) = std::env::current_exe() {
+        let mut search = current.as_path();
+        for _ in 0..10 {
+            if let Some(parent) = search.parent() {
+                let debug_bin = parent.join("target/debug/clawdefender-daemon");
+                let release_bin = parent.join("target/release/clawdefender-daemon");
+                if debug_bin.exists() {
+                    return Ok(debug_bin);
+                }
+                if release_bin.exists() {
+                    return Ok(release_bin);
+                }
+                search = parent;
+            } else {
+                break;
             }
         }
     }
@@ -206,6 +279,6 @@ fn find_daemon_binary() -> Result<PathBuf> {
 
     anyhow::bail!(
         "Could not find clawdefender-daemon binary.\n\
-         Make sure it is installed and in your PATH."
+         Make sure it is built with `cargo build -p clawdefender-daemon` or installed to /usr/local/bin."
     )
 }

@@ -1,6 +1,6 @@
 //! Ed25519 signature verification for feed manifests.
 
-use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use tracing::{debug, warn};
 
 use crate::error::{Result, ThreatIntelError};
@@ -92,9 +92,8 @@ impl FeedVerifier {
 
 /// Parse a hex-encoded 32-byte Ed25519 public key.
 fn parse_hex_key(hex: &str) -> Result<VerifyingKey> {
-    let bytes = hex_decode(hex).map_err(|e| {
-        ThreatIntelError::SignatureInvalid(format!("invalid hex key: {e}"))
-    })?;
+    let bytes = hex_decode(hex)
+        .map_err(|e| ThreatIntelError::SignatureInvalid(format!("invalid hex key: {e}")))?;
     if bytes.len() != 32 {
         return Err(ThreatIntelError::SignatureInvalid(format!(
             "key must be 32 bytes, got {}",
@@ -103,9 +102,8 @@ fn parse_hex_key(hex: &str) -> Result<VerifyingKey> {
     }
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(&bytes);
-    VerifyingKey::from_bytes(&key_bytes).map_err(|e| {
-        ThreatIntelError::SignatureInvalid(format!("invalid Ed25519 public key: {e}"))
-    })
+    VerifyingKey::from_bytes(&key_bytes)
+        .map_err(|e| ThreatIntelError::SignatureInvalid(format!("invalid Ed25519 public key: {e}")))
 }
 
 /// Simple hex decoder (no external dependency needed).
@@ -130,7 +128,7 @@ pub fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{SigningKey, Signer};
+    use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
 
     fn generate_keypair() -> (SigningKey, VerifyingKey) {

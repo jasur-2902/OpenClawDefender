@@ -181,7 +181,10 @@ impl MockNetworkExtension {
                 dest = %event.destination_host,
                 "MockNetExt: ALLOW (not agent)"
             );
-            return (MockNetworkDecision::Allow, "not an agent process".to_string());
+            return (
+                MockNetworkDecision::Allow,
+                "not an agent process".to_string(),
+            );
         }
 
         let host = event.destination_host.to_lowercase();
@@ -194,13 +197,17 @@ impl MockNetworkExtension {
                 dest = %host,
                 "MockNetExt: ALLOW (localhost)"
             );
-            return (MockNetworkDecision::Allow, "localhost always allowed".to_string());
+            return (
+                MockNetworkDecision::Allow,
+                "localhost always allowed".to_string(),
+            );
         }
 
         // Step 3: Check IoC blocklist.
-        let is_blocked = self.blocked_hosts.iter().any(|blocked| {
-            host == *blocked || host.ends_with(&format!(".{}", blocked))
-        });
+        let is_blocked = self
+            .blocked_hosts
+            .iter()
+            .any(|blocked| host == *blocked || host.ends_with(&format!(".{}", blocked)));
         if is_blocked {
             self.stats.flows_blocked += 1;
             let reason = format!("host {} on IoC blocklist", host);

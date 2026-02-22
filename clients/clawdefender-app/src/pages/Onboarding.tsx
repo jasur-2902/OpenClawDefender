@@ -431,6 +431,17 @@ function CompleteStep({
   const [showInMenuBar, setShowInMenuBar] = useState(true);
 
   const handleFinish = async () => {
+    // Apply autostart preference from onboarding
+    try {
+      if (startAtLogin) {
+        await invoke("enable_autostart");
+      } else {
+        await invoke("disable_autostart");
+      }
+    } catch {
+      // Autostart toggle non-fatal during onboarding
+    }
+
     try {
       await invoke("complete_onboarding");
     } catch {

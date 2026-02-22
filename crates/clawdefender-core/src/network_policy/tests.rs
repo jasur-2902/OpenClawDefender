@@ -117,12 +117,7 @@ fn test_guard_restriction_blocks_non_allowlisted() {
 #[test]
 fn test_guard_allows_allowlisted_destination() {
     let mut engine = NetworkPolicyEngine::with_defaults();
-    let request = make_agent_request(
-        None,
-        Some("api.anthropic.com"),
-        443,
-        Some("fetch-server"),
-    );
+    let request = make_agent_request(None, Some("api.anthropic.com"), 443, Some("fetch-server"));
     let signals = ExternalSignals {
         guard_network_allowlist: Some(vec!["api.anthropic.com".to_string()]),
         ..Default::default()
@@ -179,14 +174,12 @@ fn test_static_rule_cidr_match() {
         RateLimitConfig::default(),
     );
 
-    let request =
-        make_agent_request(Some(ip4(10, 1, 2, 3)), None, 80, Some("srv"));
+    let request = make_agent_request(Some(ip4(10, 1, 2, 3)), None, 80, Some("srv"));
     let decision = engine.evaluate(&request, &no_signals());
     assert_eq!(decision.action, NetworkAction::Block);
 
     // IP outside the range should not match.
-    let request2 =
-        make_agent_request(Some(ip4(192, 168, 1, 1)), None, 80, Some("srv"));
+    let request2 = make_agent_request(Some(ip4(192, 168, 1, 1)), None, 80, Some("srv"));
     let decision2 = engine.evaluate(&request2, &no_signals());
     assert_ne!(decision2.action, NetworkAction::Block);
 }
@@ -196,9 +189,7 @@ fn test_static_rule_domain_match() {
     let allow_rule = NetworkRule {
         name: "allow_api".to_string(),
         action: NetworkAction::Allow,
-        destinations: vec![DestinationPattern::Exact(
-            "api.anthropic.com".to_string(),
-        )],
+        destinations: vec![DestinationPattern::Exact("api.anthropic.com".to_string())],
         not_destinations: vec![],
         source: RuleSource::User,
         only_agents: true,
@@ -211,12 +202,7 @@ fn test_static_rule_domain_match() {
         RateLimitConfig::default(),
     );
 
-    let request = make_agent_request(
-        None,
-        Some("api.anthropic.com"),
-        443,
-        Some("fetch-server"),
-    );
+    let request = make_agent_request(None, Some("api.anthropic.com"), 443, Some("fetch-server"));
     let decision = engine.evaluate(&request, &no_signals());
     assert_eq!(decision.action, NetworkAction::Allow);
 }
@@ -226,9 +212,7 @@ fn test_static_rule_wildcard_match() {
     let allow_rule = NetworkRule {
         name: "allow_google".to_string(),
         action: NetworkAction::Allow,
-        destinations: vec![DestinationPattern::Wildcard(
-            "*.googleapis.com".to_string(),
-        )],
+        destinations: vec![DestinationPattern::Wildcard("*.googleapis.com".to_string())],
         not_destinations: vec![],
         source: RuleSource::User,
         only_agents: true,
@@ -251,12 +235,7 @@ fn test_static_rule_wildcard_match() {
     assert_eq!(decision.action, NetworkAction::Allow);
 
     // Should NOT match the bare domain.
-    let request2 = make_agent_request(
-        None,
-        Some("googleapis.com"),
-        443,
-        Some("fetch-server"),
-    );
+    let request2 = make_agent_request(None, Some("googleapis.com"), 443, Some("fetch-server"));
     let decision2 = engine.evaluate(&request2, &no_signals());
     assert_ne!(decision2.rule_name.as_deref(), Some("allow_google"));
 }
@@ -276,9 +255,7 @@ fn test_rule_priority_ordering() {
     let allow_rule = NetworkRule {
         name: "allow_api".to_string(),
         action: NetworkAction::Allow,
-        destinations: vec![DestinationPattern::Exact(
-            "api.anthropic.com".to_string(),
-        )],
+        destinations: vec![DestinationPattern::Exact("api.anthropic.com".to_string())],
         not_destinations: vec![],
         source: RuleSource::User,
         only_agents: true,
@@ -291,12 +268,7 @@ fn test_rule_priority_ordering() {
         RateLimitConfig::default(),
     );
 
-    let request = make_agent_request(
-        None,
-        Some("api.anthropic.com"),
-        443,
-        Some("srv"),
-    );
+    let request = make_agent_request(None, Some("api.anthropic.com"), 443, Some("srv"));
     let decision = engine.evaluate(&request, &no_signals());
     // allow_api has lower priority number, so it wins.
     assert_eq!(decision.action, NetworkAction::Allow);
@@ -386,11 +358,8 @@ fn test_rate_limiter_no_alert_on_normal_rate() {
     let now = Utc::now();
 
     for i in 0..5 {
-        let alerts = limiter.record_connection(
-            100,
-            "example.com",
-            now + chrono::Duration::seconds(i * 15),
-        );
+        let alerts =
+            limiter.record_connection(100, "example.com", now + chrono::Duration::seconds(i * 15));
         assert!(alerts.is_empty(), "No alerts expected for normal rate");
     }
 }
@@ -409,11 +378,8 @@ fn test_rate_limiter_unique_destinations() {
     let dests = ["a.com", "b.com", "c.com", "d.com"];
     let mut got_alert = false;
     for (i, dest) in dests.iter().enumerate() {
-        let alerts = limiter.record_connection(
-            100,
-            dest,
-            now + chrono::Duration::seconds(i as i64),
-        );
+        let alerts =
+            limiter.record_connection(100, dest, now + chrono::Duration::seconds(i as i64));
         if alerts
             .iter()
             .any(|a| a.alert_type == RateLimitAlertType::UniqueDestinationsPer10s)
@@ -443,24 +409,14 @@ fn test_localhost_always_allowed() {
     let mut engine = NetworkPolicyEngine::with_defaults();
 
     // 127.0.0.1
-    let request1 = make_agent_request(
-        Some(ip4(127, 0, 0, 1)),
-        None,
-        3000,
-        Some("srv"),
-    );
+    let request1 = make_agent_request(Some(ip4(127, 0, 0, 1)), None, 3000, Some("srv"));
     assert_eq!(
         engine.evaluate(&request1, &no_signals()).action,
         NetworkAction::Allow
     );
 
     // localhost domain
-    let request2 = make_agent_request(
-        None,
-        Some("localhost"),
-        3000,
-        Some("srv"),
-    );
+    let request2 = make_agent_request(None, Some("localhost"), 3000, Some("srv"));
     assert_eq!(
         engine.evaluate(&request2, &no_signals()).action,
         NetworkAction::Allow
@@ -701,11 +657,8 @@ fn test_security_dns_filter_allows_all_when_empty() {
 fn test_security_engine_allows_non_agents_when_default_is_block() {
     // Even when the engine's default action is Block, non-agent traffic
     // must still be allowed — fail-open for non-agent processes.
-    let mut engine = NetworkPolicyEngine::new(
-        Vec::new(),
-        NetworkAction::Block,
-        RateLimitConfig::default(),
-    );
+    let mut engine =
+        NetworkPolicyEngine::new(Vec::new(), NetworkAction::Block, RateLimitConfig::default());
     let request = make_non_agent_request(ip4(8, 8, 8, 8), 53);
     let decision = engine.evaluate(&request, &no_signals());
     assert_eq!(decision.action, NetworkAction::Allow);

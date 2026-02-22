@@ -424,7 +424,11 @@ fn stats_accurate_after_mixed_operations() {
     assert_eq!(stats.blocked_details.len(), 4);
 
     // Verify blocked details content.
-    let tools: Vec<&str> = stats.blocked_details.iter().map(|b| b.tool.as_str()).collect();
+    let tools: Vec<&str> = stats
+        .blocked_details
+        .iter()
+        .map(|b| b.tool.as_str())
+        .collect();
     assert!(tools.contains(&"read_file"));
     assert!(tools.contains(&"write_file"));
     assert!(tools.contains(&"bash"));
@@ -511,7 +515,10 @@ fn shell_allowlist_specific_command() {
         shell_execute: ShellPolicy::AllowList(vec!["*".to_string()]),
         ..Default::default()
     });
-    assert_eq!(engine.check_action("bash", "git status"), ActionResult::Allow);
+    assert_eq!(
+        engine.check_action("bash", "git status"),
+        ActionResult::Allow
+    );
 }
 
 #[test]
@@ -591,7 +598,11 @@ async fn registry_full_flow() {
     // Check allowed action.
     let home = std::env::var("HOME").unwrap_or_default();
     let check = registry
-        .check_action(&guard_id, "file_read", &format!("{home}/workspace/file.txt"))
+        .check_action(
+            &guard_id,
+            "file_read",
+            &format!("{home}/workspace/file.txt"),
+        )
         .await
         .unwrap();
     assert!(check.allowed);
@@ -739,8 +750,14 @@ fn all_tool_types_enforce_correctly() {
     ));
 
     // Shell: all blocked.
-    assert!(matches!(guard.check_action("bash", "ls"), ActionResult::Block(_)));
-    assert!(matches!(guard.check_action("sh", "ls"), ActionResult::Block(_)));
+    assert!(matches!(
+        guard.check_action("bash", "ls"),
+        ActionResult::Block(_)
+    ));
+    assert!(matches!(
+        guard.check_action("sh", "ls"),
+        ActionResult::Block(_)
+    ));
     assert!(matches!(
         guard.check_action("run_command", "ls"),
         ActionResult::Block(_)
@@ -757,10 +774,7 @@ fn all_tool_types_enforce_correctly() {
     ));
 
     // Custom tool: allowed and blocked.
-    assert_eq!(
-        guard.check_action("search", "query"),
-        ActionResult::Allow
-    );
+    assert_eq!(guard.check_action("search", "query"), ActionResult::Allow);
     assert!(matches!(
         guard.check_action("undeclared", "target"),
         ActionResult::Block(_)
