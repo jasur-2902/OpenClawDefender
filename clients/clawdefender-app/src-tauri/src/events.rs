@@ -1,13 +1,14 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::state::{AuditEvent, PendingPrompt};
+use crate::state::{ActiveModelInfo, AuditEvent, PendingPrompt};
 
 pub const EVENT_AUDIT: &str = "clawdefender://event";
 pub const EVENT_PROMPT: &str = "clawdefender://prompt";
 pub const EVENT_ALERT: &str = "clawdefender://alert";
 pub const EVENT_AUTO_BLOCK: &str = "clawdefender://auto-block";
 pub const EVENT_STATUS_CHANGE: &str = "clawdefender://status-change";
+pub const EVENT_MODEL_CHANGED: &str = "clawdefender://model-changed";
 
 /// A suspicious event entry shown inside the AlertWindow.
 #[derive(Debug, Clone, Serialize)]
@@ -72,5 +73,12 @@ pub fn emit_status_change(app: &AppHandle, daemon_running: bool) {
     let payload = StatusChangePayload { daemon_running };
     if let Err(e) = app.emit(EVENT_STATUS_CHANGE, &payload) {
         tracing::error!("Failed to emit status change: {}", e);
+    }
+}
+
+/// Emit a model-changed event so the frontend can update without polling.
+pub fn emit_model_changed(app: &AppHandle, model_info: Option<&ActiveModelInfo>) {
+    if let Err(e) = app.emit(EVENT_MODEL_CHANGED, &model_info) {
+        tracing::error!("Failed to emit model-changed event: {}", e);
     }
 }

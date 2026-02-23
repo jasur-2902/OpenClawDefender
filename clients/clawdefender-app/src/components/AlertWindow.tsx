@@ -10,6 +10,7 @@ interface AlertData {
   details: string;
   events: SuspiciousEvent[];
   kill_chain?: string;
+  pid?: number;
 }
 
 interface AlertWindowProps {

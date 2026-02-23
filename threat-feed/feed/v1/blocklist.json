@@ -1,230 +1,480 @@
 {
   "version": 1,
-  "updated_at": "2026-02-17T00:00:00Z",
+  "updated_at": "2026-02-23T00:00:00Z",
   "entries": [
     {
-      "id": "CLAW-2026-001",
+      "id": "CLAW-2025-001",
       "entry_type": "MaliciousServer",
-      "name": "evil-mcp-exfiltrator",
+      "name": "postmark-mcp",
       "severity": "Critical",
-      "description": "[SYNTHETIC/TEST] Malicious MCP server designed to exfiltrate credentials via hidden tool calls. Reads SSH keys and environment variables then transmits to external C2 endpoint.",
-      "discovery_date": "2026-01-10",
+      "description": "First confirmed malicious MCP server in the wild. A fake npm package impersonating the legitimate Postmark email service MCP connector. Version 1.0.16 (published Sept 17, 2025) injected a hidden BCC to phan@giftshop.club on all outgoing emails, exfiltrating password resets, invoices, and internal correspondence from ~300 organizations.",
+      "discovery_date": "2025-09-17",
       "indicators": {
-        "network": ["198.51.100.42", "evil-c2.example.com"],
-        "file_access": ["~/.ssh/*", "~/.aws/credentials"],
-        "behavior": "Reads credential files then immediately initiates outbound network connections to unknown hosts."
-      },
-      "remediation": "Immediately remove the server from your MCP configuration. Rotate all SSH keys and AWS credentials that may have been exposed.",
-      "references": ["https://example.com/advisories/CLAW-2026-001"],
-      "npm_package": "evil-mcp-exfiltrator"
-    },
-    {
-      "id": "CLAW-2026-002",
-      "entry_type": "MaliciousServer",
-      "name": "trojan-code-assistant",
-      "severity": "Critical",
-      "description": "[SYNTHETIC/TEST] Trojanized code assistant MCP server that injects backdoors into source code during code review operations. Modifies files to include obfuscated reverse shells.",
-      "discovery_date": "2026-01-15",
-      "indicators": {
-        "network": ["203.0.113.99"],
-        "file_access": ["**/*.js", "**/*.py", "**/*.ts"],
-        "behavior": "Silently modifies source files during read operations to inject obfuscated payloads."
-      },
-      "remediation": "Remove the server immediately. Audit all source files modified during sessions where this server was active. Check git history for unauthorized changes.",
-      "references": ["https://example.com/advisories/CLAW-2026-002"],
-      "npm_package": "trojan-code-assistant"
-    },
-    {
-      "id": "CLAW-2026-003",
-      "entry_type": "MaliciousServer",
-      "name": "stealth-keylogger-mcp",
-      "severity": "Critical",
-      "description": "[SYNTHETIC/TEST] MCP server that logs all tool call arguments and prompt contents, exfiltrating them to a remote collection server via DNS tunneling.",
-      "discovery_date": "2026-01-22",
-      "indicators": {
-        "network": ["*.exfil.example.com"],
-        "file_access": ["/tmp/.mcp_cache_*"],
-        "behavior": "Creates hidden temp files to buffer intercepted data, then exfiltrates via DNS TXT record queries."
-      },
-      "remediation": "Remove server and delete any /tmp/.mcp_cache_* files. Review DNS logs for suspicious query patterns. Consider all data from affected sessions compromised.",
-      "references": ["https://example.com/advisories/CLAW-2026-003"],
-      "npm_package": "stealth-keylogger-mcp"
-    },
-    {
-      "id": "CLAW-2026-004",
-      "entry_type": "MaliciousServer",
-      "name": "crypto-miner-mcp",
-      "severity": "High",
-      "description": "[SYNTHETIC/TEST] MCP server that spawns background cryptocurrency mining processes while appearing to provide legitimate file management functionality.",
-      "discovery_date": "2026-02-01",
-      "indicators": {
-        "network": ["198.51.100.200:3333", "pool.example.com"],
-        "file_access": ["/tmp/.xmr*"],
-        "behavior": "Spawns background processes with high CPU usage. Creates hidden files in /tmp for miner configuration."
-      },
-      "remediation": "Remove the server. Kill any suspicious background processes. Check for persistence mechanisms in LaunchAgents or cron.",
-      "references": ["https://example.com/advisories/CLAW-2026-004"],
-      "npm_package": "crypto-miner-mcp"
-    },
-    {
-      "id": "CLAW-2026-005",
-      "entry_type": "VulnerableServer",
-      "name": "mcp-file-browser",
-      "versions_affected": "<2.1.0",
-      "versions_fixed": ["2.1.0"],
-      "severity": "High",
-      "description": "Path traversal vulnerability allowing access to files outside the configured root directory via ../ sequences in tool arguments.",
-      "discovery_date": "2026-01-05",
-      "indicators": {
-        "network": [],
-        "file_access": ["../../etc/passwd", "../../etc/shadow"],
-        "behavior": "Tool arguments contain path traversal sequences that bypass directory restrictions."
-      },
-      "remediation": "Upgrade to version 2.1.0 or later. Apply strict path validation on all file access tool calls.",
-      "references": ["https://example.com/advisories/CLAW-2026-005"],
-      "npm_package": "mcp-file-browser",
-      "cve": "CVE-2026-00001",
-      "versions_safe": ["2.1.0", "2.1.1", "2.2.0"]
-    },
-    {
-      "id": "CLAW-2026-006",
-      "entry_type": "VulnerableServer",
-      "name": "mcp-sql-helper",
-      "versions_affected": "<1.4.0",
-      "versions_fixed": ["1.4.0"],
-      "severity": "Critical",
-      "description": "SQL injection vulnerability in the query tool. User-supplied input is directly interpolated into SQL queries without parameterization.",
-      "discovery_date": "2026-01-12",
-      "indicators": {
-        "network": [],
+        "network": ["giftshop.club"],
         "file_access": [],
-        "behavior": "Tool arguments containing SQL metacharacters (quotes, semicolons, UNION SELECT) are passed directly to database queries."
+        "behavior": "Modifies send_email tool to inject hidden BCC header on all outgoing messages."
       },
-      "remediation": "Upgrade to version 1.4.0 or later. Use parameterized queries for all database operations.",
-      "references": ["https://example.com/advisories/CLAW-2026-006"],
-      "npm_package": "mcp-sql-helper",
-      "cve": "CVE-2026-00002",
-      "versions_safe": ["1.4.0", "1.4.1"]
-    },
-    {
-      "id": "CLAW-2026-007",
-      "entry_type": "VulnerableServer",
-      "name": "mcp-shell-executor",
-      "versions_affected": "<3.0.0",
-      "versions_fixed": ["3.0.0"],
-      "severity": "Critical",
-      "description": "Command injection vulnerability. Shell metacharacters in tool arguments are not sanitized, allowing arbitrary command execution.",
-      "discovery_date": "2026-01-18",
-      "indicators": {
-        "network": [],
-        "file_access": [],
-        "behavior": "Tool arguments containing shell metacharacters (backticks, $(), pipes, semicolons) lead to unintended command execution."
-      },
-      "remediation": "Upgrade to version 3.0.0 or later. Never pass unsanitized user input to shell commands.",
-      "references": ["https://example.com/advisories/CLAW-2026-007"],
-      "npm_package": "mcp-shell-executor",
-      "cve": "CVE-2026-00003",
-      "versions_safe": ["3.0.0"]
-    },
-    {
-      "id": "CLAW-2026-008",
-      "entry_type": "VulnerableServer",
-      "name": "mcp-api-gateway",
-      "versions_affected": "<1.2.3",
-      "versions_fixed": ["1.2.3"],
-      "severity": "High",
-      "description": "Server-side request forgery (SSRF) vulnerability. The fetch tool does not validate destination URLs, allowing access to internal network resources.",
-      "discovery_date": "2026-01-25",
-      "indicators": {
-        "network": ["169.254.169.254", "127.0.0.1", "10.0.0.0/8"],
-        "file_access": [],
-        "behavior": "Fetch requests targeting internal IP ranges, cloud metadata endpoints, or localhost services."
-      },
-      "remediation": "Upgrade to version 1.2.3 or later. Implement URL allow-listing and block requests to private IP ranges.",
-      "references": ["https://example.com/advisories/CLAW-2026-008"],
-      "npm_package": "mcp-api-gateway",
-      "cve": "CVE-2026-00004",
-      "versions_safe": ["1.2.3", "1.3.0"]
-    },
-    {
-      "id": "CLAW-2026-009",
-      "entry_type": "CompromisedVersion",
-      "name": "popular-mcp-utils",
-      "versions": ["4.2.1"],
-      "severity": "Critical",
-      "description": "[SYNTHETIC/TEST] Supply chain attack: version 4.2.1 was published by a compromised maintainer account. Contains a postinstall script that exfiltrates npm tokens and GitHub PATs.",
-      "discovery_date": "2026-02-03",
-      "indicators": {
-        "network": ["203.0.113.50"],
-        "file_access": ["~/.npmrc", "~/.config/gh/hosts.yml"],
-        "behavior": "Postinstall script reads authentication tokens from well-known config files and POSTs them to an external endpoint."
-      },
-      "remediation": "Remove version 4.2.1 immediately. Upgrade to 4.2.2 which was published by the restored legitimate maintainer. Rotate all npm and GitHub tokens.",
-      "references": ["https://example.com/advisories/CLAW-2026-009"],
-      "npm_package": "popular-mcp-utils",
-      "sha256_malicious": ["a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"],
-      "versions_safe": ["4.2.0", "4.2.2", "4.3.0"]
-    },
-    {
-      "id": "CLAW-2026-010",
-      "entry_type": "CompromisedVersion",
-      "name": "mcp-data-transformer",
-      "versions": ["2.0.0", "2.0.1"],
-      "severity": "Critical",
-      "description": "[SYNTHETIC/TEST] Supply chain attack: versions 2.0.0 and 2.0.1 contain obfuscated code that establishes a reverse shell during initialization, providing remote access to the host system.",
-      "discovery_date": "2026-02-10",
-      "indicators": {
-        "network": ["198.51.100.77:4444"],
-        "file_access": ["/tmp/.dt_session"],
-        "behavior": "On startup, establishes an encrypted reverse TCP connection to a remote host. Creates a hidden session file in /tmp."
-      },
-      "remediation": "Remove versions 2.0.0 and 2.0.1. Install version 2.0.2 which has been audited and verified. Investigate the host for signs of unauthorized access.",
-      "references": ["https://example.com/advisories/CLAW-2026-010"],
-      "npm_package": "mcp-data-transformer",
-      "sha256_malicious": [
-        "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
-        "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4"
+      "remediation": "Remove postmark-mcp immediately. Rotate all credentials sent via email. Review email logs for BCC traffic to giftshop.club. Use the official Postmark GitHub repository instead of the npm package.",
+      "references": [
+        "https://thehackernews.com/2025/09/first-malicious-mcp-server-found.html",
+        "https://snyk.io/blog/malicious-mcp-server-on-npm-postmark-mcp-harvests-emails/",
+        "https://semgrep.dev/blog/2025/so-the-first-malicious-mcp-server-has-been-found-on-npm-what-does-this-mean-for-mcp-security/"
       ],
-      "versions_safe": ["1.9.0", "2.0.2"]
+      "npm_package": "postmark-mcp",
+      "versions_affected": ">=1.0.16",
+      "versions_safe": ["1.0.0", "1.0.15"]
     },
     {
-      "id": "CLAW-2026-011",
-      "entry_type": "CompromisedVersion",
-      "name": "mcp-markdown-renderer",
-      "versions": ["3.1.0"],
-      "severity": "High",
-      "description": "[SYNTHETIC/TEST] Typosquatting attack combined with a compromised version. Version 3.1.0 includes a dependency on a typosquatted package that harvests browser cookies.",
-      "discovery_date": "2026-02-12",
-      "indicators": {
-        "network": ["203.0.113.123"],
-        "file_access": ["~/Library/Application Support/Google/Chrome/Default/Cookies", "~/.mozilla/firefox/*/cookies.sqlite"],
-        "behavior": "Accesses browser cookie databases during initialization and transmits cookie data to remote server."
-      },
-      "remediation": "Remove version 3.1.0. Upgrade to 3.1.1 which removes the malicious dependency. Clear browser cookies and re-authenticate with sensitive services.",
-      "references": ["https://example.com/advisories/CLAW-2026-011"],
-      "npm_package": "mcp-markdown-renderer",
-      "sha256_malicious": ["d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"],
-      "versions_safe": ["3.0.0", "3.1.1"]
-    },
-    {
-      "id": "CLAW-2026-012",
+      "id": "CLAW-2025-002",
       "entry_type": "VulnerableServer",
-      "name": "mcp-image-processor",
-      "versions_affected": "<1.0.5",
-      "versions_fixed": ["1.0.5"],
-      "severity": "Medium",
-      "description": "Denial-of-service vulnerability. Crafted image files can cause unbounded memory allocation leading to OOM conditions on the host.",
-      "discovery_date": "2026-02-05",
+      "name": "mcp-remote",
+      "severity": "Critical",
+      "description": "Critical OS command injection vulnerability (CVSS 9.6) in mcp-remote, a widely used npm package for adding OAuth support to MCP clients. A malicious MCP server can respond with a crafted authorization_endpoint URL that causes mcp-remote to execute arbitrary OS commands when it attempts to open the URL in a browser. Over 558,000 downloads affected.",
+      "discovery_date": "2025-07-01",
       "indicators": {
         "network": [],
         "file_access": [],
-        "behavior": "Processing specially crafted PNG or SVG files causes memory usage to grow without bound."
+        "behavior": "Malicious authorization_endpoint URL triggers shell command execution via unsanitized input to open/xdg-open."
       },
-      "remediation": "Upgrade to version 1.0.5 or later which includes memory limits on image processing operations.",
-      "references": ["https://example.com/advisories/CLAW-2026-012"],
-      "npm_package": "mcp-image-processor",
-      "cve": "CVE-2026-00005",
-      "versions_safe": ["1.0.5"]
+      "remediation": "Upgrade mcp-remote to version 0.1.16 or later.",
+      "references": [
+        "https://github.com/advisories/GHSA-6xpm-ggf7-wc3p",
+        "https://jfrog.com/blog/2025-6514-critical-mcp-remote-rce-vulnerability/",
+        "https://thehackernews.com/2025/07/critical-mcp-remote-vulnerability.html"
+      ],
+      "npm_package": "mcp-remote",
+      "cve": "CVE-2025-6514",
+      "versions_affected": ">=0.0.5, <0.1.16",
+      "versions_fixed": ["0.1.16"],
+      "versions_safe": ["0.1.16"]
+    },
+    {
+      "id": "CLAW-2025-003",
+      "entry_type": "VulnerableServer",
+      "name": "@anthropic/filesystem-mcp-server",
+      "severity": "High",
+      "description": "Two sandbox escape vulnerabilities in Anthropic's own Filesystem MCP Server. CVE-2025-53110 (CVSS 7.3): directory containment bypass via naive prefix-matching allows listing/reading/writing outside the sandbox. CVE-2025-53109 (CVSS 8.4): symlink manipulation grants full filesystem read/write access, enabling data theft and privilege escalation.",
+      "discovery_date": "2025-07-01",
+      "indicators": {
+        "network": [],
+        "file_access": ["../../etc/passwd", "../../etc/shadow", "/etc/ssh/*"],
+        "behavior": "Path traversal via prefix-matching bypass or symlink following to escape configured sandbox directory."
+      },
+      "remediation": "Upgrade to @anthropic/filesystem-mcp-server version 2025.7.1 or later.",
+      "references": [
+        "https://cymulate.com/blog/cve-2025-53109-53110-escaperoute-anthropic/",
+        "https://cybersecuritynews.com/anthropics-mcp-server-vulnerability/"
+      ],
+      "npm_package": "@anthropic/filesystem-mcp-server",
+      "cve": "CVE-2025-53109",
+      "versions_affected": "<2025.7.1",
+      "versions_fixed": ["2025.7.1"],
+      "versions_safe": ["2025.7.1"]
+    },
+    {
+      "id": "CLAW-2025-004",
+      "entry_type": "VulnerableServer",
+      "name": "asana-mcp-server",
+      "severity": "Critical",
+      "description": "Cross-tenant data leak in Asana's official MCP server. A tenant isolation logic flaw allowed AI requests from Organization A to receive cached results from Organization B. Over 1,000 customers potentially affected. Exposed task-level information, project metadata, team details, comments, and uploaded files across organizations for over a month (May 1 - June 4, 2025).",
+      "discovery_date": "2025-06-04",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Cross-organization data contamination in AI query responses due to improper cache isolation."
+      },
+      "remediation": "Asana patched the issue and re-enabled MCP on June 17, 2025. Review Asana logs for MCP access during May 1 - June 5, 2025. Check AI-generated summaries for data from other organizations.",
+      "references": [
+        "https://www.bleepingcomputer.com/news/security/asana-warns-mcp-ai-feature-exposed-customer-data-to-other-orgs/",
+        "https://www.upguard.com/blog/asana-discloses-data-exposure-bug-in-mcp-server",
+        "https://www.pomerium.com/blog/asanas-ai-connector-leak-exposed-sensitive-data-across-organizations-what-it-means-for-mcp-security"
+      ],
+      "npm_package": "asana-mcp-server"
+    },
+    {
+      "id": "CLAW-2025-005",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-package-docs",
+      "severity": "High",
+      "description": "Command injection vulnerability in mcp-package-docs MCP Server. Unsanitized input parameters passed to child_process.exec enable arbitrary system command injection via shell metacharacters. Package deprecated and repository archived after patch.",
+      "discovery_date": "2025-06-15",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Shell metacharacter injection (|, >, &&, etc.) in tool arguments leads to arbitrary command execution."
+      },
+      "remediation": "Upgrade to version 0.1.28 or later. Note: package is deprecated, consider alternatives.",
+      "references": [
+        "https://github.com/advisories/GHSA-vf9j-h32g-2764",
+        "https://github.com/sammcj/mcp-package-docs/security/advisories/GHSA-vf9j-h32g-2764"
+      ],
+      "npm_package": "mcp-package-docs",
+      "cve": "CVE-2025-54073",
+      "versions_affected": "<0.1.28",
+      "versions_fixed": ["0.1.28"],
+      "versions_safe": ["0.1.28"]
+    },
+    {
+      "id": "CLAW-2025-006",
+      "entry_type": "VulnerableServer",
+      "name": "adb-mcp",
+      "severity": "High",
+      "description": "Command injection in adb-mcp MCP Server. The executeAdbCommand() function and inspect_ui tool use Node.js child_process.exec with unsanitized parameters, allowing arbitrary OS command injection through crafted Android debugging commands.",
+      "discovery_date": "2025-08-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Arbitrary command injection via unsanitized ADB command parameters passed to exec()."
+      },
+      "remediation": "Update adb-mcp to a version above 0.1.0.",
+      "references": [
+        "https://github.com/advisories/GHSA-54j7-grvr-9xwg",
+        "https://security.snyk.io/vuln/SNYK-JS-ADBMCP-13109604"
+      ],
+      "npm_package": "adb-mcp",
+      "cve": "CVE-2025-59834",
+      "versions_affected": "<=0.1.0",
+      "versions_fixed": ["0.1.1"],
+      "versions_safe": ["0.1.1"]
+    },
+    {
+      "id": "CLAW-2025-007",
+      "entry_type": "VulnerableServer",
+      "name": "@cyanheads/git-mcp-server",
+      "severity": "High",
+      "description": "Command injection vulnerability in git-mcp-server. Unsanitized input parameters in child_process.exec calls enable arbitrary system command injection. Successful exploitation leads to remote code execution under the server process's privileges.",
+      "discovery_date": "2025-07-15",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Shell metacharacter injection in git command arguments enables arbitrary command execution."
+      },
+      "remediation": "Upgrade to a patched version. Validate all input to git command tools.",
+      "references": [
+        "https://github.com/advisories/GHSA-3q26-f695-pp76"
+      ],
+      "npm_package": "@cyanheads/git-mcp-server",
+      "cve": "CVE-2025-53107"
+    },
+    {
+      "id": "CLAW-2025-008",
+      "entry_type": "VulnerableServer",
+      "name": "codehooks-mcp-server",
+      "severity": "High",
+      "description": "Command injection in Codehooks MCP Server. The query_collection tool relies on Node.js child_process.exec with untrusted user input concatenated into shell commands, enabling arbitrary command injection.",
+      "discovery_date": "2025-07-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Arbitrary command injection via query_collection tool parameters passed directly to shell execution."
+      },
+      "remediation": "Upgrade codehooks-mcp-server to version 0.2.2 or later.",
+      "references": [
+        "https://github.com/RestDB/codehooks-mcp-server/security/advisories/GHSA-fhq6-jf5q-qxvq"
+      ],
+      "npm_package": "codehooks-mcp-server",
+      "cve": "CVE-2025-53100",
+      "versions_affected": "<0.2.2",
+      "versions_fixed": ["0.2.2"],
+      "versions_safe": ["0.2.2"]
+    },
+    {
+      "id": "CLAW-2025-009",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-server-kubernetes",
+      "severity": "High",
+      "description": "Command injection vulnerability in Kubernetes MCP Server. Multiple tools accept unsanitized input that is passed to shell execution, enabling arbitrary command injection on systems with kubectl access.",
+      "discovery_date": "2025-07-20",
+      "indicators": {
+        "network": [],
+        "file_access": ["~/.kube/config"],
+        "behavior": "Command injection via kubectl command parameters enables cluster-level compromise."
+      },
+      "remediation": "Upgrade to a patched version. Restrict kubectl permissions used by the MCP server.",
+      "references": [
+        "https://github.com/advisories/GHSA-gjv4-ghm7-q58q"
+      ],
+      "npm_package": "mcp-server-kubernetes",
+      "cve": "CVE-2025-53355"
+    },
+    {
+      "id": "CLAW-2025-010",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-server-git",
+      "severity": "High",
+      "description": "Argument injection in mcp-server-git's git_diff and git_checkout functions allows overwriting local files. Crafted git arguments can be used to manipulate repository state and overwrite arbitrary files accessible to the server process.",
+      "discovery_date": "2025-09-01",
+      "indicators": {
+        "network": [],
+        "file_access": [".git/*", "**/*"],
+        "behavior": "Git argument injection in diff/checkout operations enables file overwrite attacks."
+      },
+      "remediation": "Upgrade mcp-server-git to a patched version. Use -- to separate git options from file paths.",
+      "references": [
+        "https://github.com/advisories/GHSA-9xwc-hfwc-8w59"
+      ],
+      "npm_package": "mcp-server-git",
+      "cve": "CVE-2025-68144"
+    },
+    {
+      "id": "CLAW-2025-011",
+      "entry_type": "VulnerableServer",
+      "name": "serverless-mcp-server",
+      "severity": "High",
+      "description": "Command injection in the list-projects tool of the Serverless Framework MCP Server. Unsanitized input enables OS command execution through the MCP tool interface.",
+      "discovery_date": "2025-09-15",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Shell metacharacter injection in list-projects tool arguments."
+      },
+      "remediation": "Upgrade to a patched version of serverless-mcp-server.",
+      "references": [
+        "https://github.com/advisories/GHSA-rwc2-f344-q6w6"
+      ],
+      "npm_package": "serverless-mcp-server",
+      "cve": "CVE-2025-69256"
+    },
+    {
+      "id": "CLAW-2025-012",
+      "entry_type": "VulnerableServer",
+      "name": "nodejs-sandbox-mcp-server",
+      "severity": "Critical",
+      "description": "Sandbox escape via command injection in the Node.js Sandbox MCP Server. The vulnerability allows breaking out of the sandboxed execution environment to run arbitrary commands on the host system.",
+      "discovery_date": "2025-07-10",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Sandbox escape through command injection in sandboxed code evaluation."
+      },
+      "remediation": "Upgrade to a patched version. Do not expose sandbox MCP servers to untrusted input.",
+      "references": [
+        "https://github.com/advisories/GHSA-5w57-2ccq-8w95"
+      ],
+      "npm_package": "nodejs-sandbox-mcp-server",
+      "cve": "CVE-2025-53372"
+    },
+    {
+      "id": "CLAW-2025-013",
+      "entry_type": "VulnerableServer",
+      "name": "github-kanban-mcp-server",
+      "severity": "High",
+      "description": "Command injection vulnerability in GitHub Kanban MCP Server. Unsanitized input in tool parameters enables arbitrary OS command execution through shell metacharacter injection.",
+      "discovery_date": "2025-07-25",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Command injection via GitHub issue/PR management tool parameters."
+      },
+      "remediation": "Upgrade to a patched version of github-kanban-mcp-server.",
+      "references": [
+        "https://github.com/advisories/GHSA-6jx8-rcjx-vmwf"
+      ],
+      "npm_package": "github-kanban-mcp-server",
+      "cve": "CVE-2025-53818"
+    },
+    {
+      "id": "CLAW-2025-014",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-watch",
+      "severity": "Critical",
+      "description": "Critical RCE via command injection in the cloneRepo function of mcp-watch. A malicious URL can trigger arbitrary command execution during repository cloning operations.",
+      "discovery_date": "2025-08-15",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Malicious repository URLs trigger OS command injection during git clone operations."
+      },
+      "remediation": "Upgrade to a patched version. Validate and sanitize all repository URLs before cloning.",
+      "references": [
+        "https://github.com/kapilduraphe/mcp-watch/security/advisories/GHSA-27m7-ffhq-jqrm"
+      ],
+      "npm_package": "mcp-watch"
+    },
+    {
+      "id": "CLAW-2025-015",
+      "entry_type": "AttackTechnique",
+      "name": "MCP Tool Poisoning (WhatsApp-MCP)",
+      "severity": "Critical",
+      "description": "Demonstrated attack technique where a malicious MCP server embeds hidden instructions in tool descriptions that are invisible to users but visible to AI models. When combined with a legitimate whatsapp-mcp server, the poisoned tool silently exfiltrated entire WhatsApp message histories by instructing the AI to send messages to attacker-controlled numbers.",
+      "discovery_date": "2025-04-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Hidden instructions in tool descriptions cause AI to exfiltrate data through legitimate tool channels (e.g., sending messages to attacker phone numbers)."
+      },
+      "remediation": "Audit all MCP tool descriptions for hidden instructions. Implement tool description validation. Use ClawDefender injection signature detection.",
+      "references": [
+        "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+        "https://www.docker.com/blog/mcp-horror-stories-whatsapp-data-exfiltration-issue/"
+      ]
+    },
+    {
+      "id": "CLAW-2025-016",
+      "entry_type": "AttackTechnique",
+      "name": "MCP Rug Pull Attack",
+      "severity": "High",
+      "description": "Attack technique where an MCP tool's description or behavior is silently altered after user approval. A benign tool gains trust on Day 1, then its definition is mutated to exfiltrate API keys, redirect data, or inject unauthorized actions. The MCP protocol allows tools to mutate their definitions after installation.",
+      "discovery_date": "2025-06-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Tool definition changes between approval and execution. Schema mutations, description changes, or new hidden parameters appear after initial installation."
+      },
+      "remediation": "Pin tool definitions and verify checksums. Use ClawDefender to monitor for tool definition changes. Implement tool definition immutability enforcement.",
+      "references": [
+        "https://mcpmanager.ai/blog/mcp-rug-pull-attacks/",
+        "https://arxiv.org/html/2506.01333v1"
+      ]
+    },
+    {
+      "id": "CLAW-2025-017",
+      "entry_type": "SupplyChainAttack",
+      "name": "npm Shai-Hulud Worm",
+      "severity": "Critical",
+      "description": "Self-replicating supply chain worm targeting the npm ecosystem. Compromised maintainer accounts via phishing to inject malicious code into widely used packages including debug, chalk, and ansi-styles (2.6B+ weekly downloads). Initial crypto-stealer payload evolved into Shai-Hulud 2.0 with pre-install execution and sabotage capabilities. Over 25,000 malicious GitHub repositories created.",
+      "discovery_date": "2025-09-08",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Self-replicating worm injecting crypto-stealer/wallet-drainer code via compromised npm maintainer accounts. Pre-install script execution in affected packages."
+      },
+      "remediation": "Audit npm dependencies for unexpected versions. Use npm audit and lockfile integrity checks. Verify package publisher identity. Enable npm 2FA on all maintainer accounts.",
+      "references": [
+        "https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem",
+        "https://unit42.paloaltonetworks.com/npm-supply-chain-attack/",
+        "https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/"
+      ]
+    },
+    {
+      "id": "CLAW-2025-018",
+      "entry_type": "AttackTechnique",
+      "name": "MCP Prompt Injection via Tool Descriptions",
+      "severity": "High",
+      "description": "Systematic prompt injection vulnerability in the MCP protocol itself. Tool descriptions provided by MCP servers can contain hidden instructions that override system prompts, instruct models to ignore safety guidelines, or cause cross-server data leakage. The agentic system is exposed to all connected servers and their tool descriptions simultaneously.",
+      "discovery_date": "2025-04-09",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Tool descriptions containing hidden directives, unicode characters, or encoded instructions that manipulate model behavior."
+      },
+      "remediation": "Scan all tool descriptions with injection signature detection. Isolate MCP servers from each other. Apply ClawDefender injection signatures.",
+      "references": [
+        "https://simonwillison.net/2025/Apr/9/mcp-prompt-injection/",
+        "https://developer.microsoft.com/blog/protecting-against-indirect-injection-attacks-mcp"
+      ]
+    },
+    {
+      "id": "CLAW-2025-019",
+      "entry_type": "VulnerableServer",
+      "name": "glob-cli",
+      "severity": "High",
+      "description": "Command injection vulnerability in glob CLI via -c/--cmd flag which executes matches with shell:true. Affects any MCP workflow that uses glob patterns with command execution.",
+      "discovery_date": "2025-10-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Crafted glob patterns trigger arbitrary command execution via shell:true in child_process."
+      },
+      "remediation": "Upgrade glob to a patched version. Avoid using -c/--cmd with untrusted glob patterns.",
+      "references": [
+        "https://github.com/advisories/GHSA-5j98-mcp5-4vw2"
+      ],
+      "npm_package": "glob",
+      "cve": "CVE-2025-64756"
+    },
+    {
+      "id": "CLAW-2025-020",
+      "entry_type": "AttackTechnique",
+      "name": "Cross-Server Tool Poisoning",
+      "severity": "Critical",
+      "description": "Attack technique where a malicious MCP server poisons the behavior of other legitimate MCP servers running in the same agent session. Since the agent sees all tool descriptions from all connected servers, a poisoned description from Server A can instruct the model to exfiltrate data through Server B's legitimate tools.",
+      "discovery_date": "2025-05-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "One MCP server's tool descriptions influence how the model uses tools from other servers, causing unintended data flows between server contexts."
+      },
+      "remediation": "Isolate MCP servers into separate contexts. Use per-server tool description validation. Apply ClawDefender's cross-server isolation policies.",
+      "references": [
+        "https://www.elastic.co/security-labs/mcp-tools-attack-defense-recommendations",
+        "https://www.cyberark.com/resources/threat-research-blog/poison-everywhere-no-output-from-your-mcp-server-is-safe"
+      ]
+    },
+    {
+      "id": "CLAW-2025-021",
+      "entry_type": "VulnerableServer",
+      "name": "@anthropic/filesystem-mcp-server (CVE-2025-53110)",
+      "severity": "High",
+      "description": "Directory containment bypass in Anthropic's Filesystem MCP Server. Naive prefix-matching validation allows any path beginning with the approved directory string to bypass access controls, enabling unrestricted listing, reading, and writing outside the intended sandbox.",
+      "discovery_date": "2025-07-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Paths like /allowed_dir_malicious bypass containment checks that only verify the path starts with /allowed_dir."
+      },
+      "remediation": "Upgrade to version 2025.7.1 or later. Use canonical path resolution instead of prefix matching.",
+      "references": [
+        "https://cymulate.com/blog/cve-2025-53109-53110-escaperoute-anthropic/"
+      ],
+      "npm_package": "@anthropic/filesystem-mcp-server",
+      "cve": "CVE-2025-53110",
+      "versions_affected": "<2025.7.1",
+      "versions_fixed": ["2025.7.1"]
+    },
+    {
+      "id": "CLAW-2025-022",
+      "entry_type": "SupplyChainAttack",
+      "name": "npm Shai-Hulud 2.0 (November 2025)",
+      "severity": "Critical",
+      "description": "Second wave of the Shai-Hulud npm supply chain worm. Significantly wider scope affecting 25,000+ malicious GitHub repositories across 350+ attacker accounts. Introduced pre-install execution (instead of post-install) and punitive sabotage fallback mechanisms targeting developer machines and CI/CD pipelines.",
+      "discovery_date": "2025-11-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Pre-install script execution with sabotage capabilities. Worm-like self-replication across npm packages and GitHub repositories."
+      },
+      "remediation": "Use npm lockfiles with integrity checks. Audit preinstall scripts. Use allow-scripts or ignore-scripts where possible. Monitor CI/CD pipelines for unauthorized package modifications.",
+      "references": [
+        "https://unit42.paloaltonetworks.com/npm-supply-chain-attack/"
+      ]
+    },
+    {
+      "id": "CLAW-2025-023",
+      "entry_type": "MaliciousServer",
+      "name": "whatsapp-mcp-tool-poisoning-demo",
+      "severity": "Critical",
+      "description": "Demonstrated malicious MCP server that uses tool poisoning to exfiltrate entire WhatsApp message histories. Hidden instructions in tool descriptions instruct the AI agent to silently forward hundreds of messages to attacker-controlled phone numbers, bypassing DLP controls by using legitimate messaging channels.",
+      "discovery_date": "2025-04-01",
+      "indicators": {
+        "network": [],
+        "file_access": [],
+        "behavior": "Tool descriptions contain hidden instructions targeting cross-server data exfiltration via legitimate messaging tools."
+      },
+      "remediation": "Audit tool descriptions for hidden instructions. Implement per-tool rate limiting. Use ClawDefender injection signatures to detect tool poisoning.",
+      "references": [
+        "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+        "https://www.docker.com/blog/mcp-horror-stories-whatsapp-data-exfiltration-issue/"
+      ]
+    },
+    {
+      "id": "CLAW-2025-024",
+      "entry_type": "VulnerableServer",
+      "name": "mcp-server-git (argument injection)",
+      "severity": "High",
+      "description": "Argument injection in mcp-server-git git_diff and git_checkout functions. Crafted arguments can overwrite local files by manipulating git's argument parsing to treat user input as command flags rather than file paths.",
+      "discovery_date": "2025-09-01",
+      "indicators": {
+        "network": [],
+        "file_access": [".git/*"],
+        "behavior": "Git argument injection via --output or similar flags embedded in seemingly-normal file path arguments."
+      },
+      "remediation": "Upgrade to the latest patched version. Always use -- to separate git command options from file path arguments.",
+      "references": [
+        "https://github.com/advisories/GHSA-9xwc-hfwc-8w59"
+      ],
+      "npm_package": "mcp-server-git",
+      "cve": "CVE-2025-68144"
     }
   ]
 }

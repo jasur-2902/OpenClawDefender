@@ -5,6 +5,7 @@ import {
   useRef,
   useMemo,
 } from "react";
+import { useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
 import { useTauriEvent } from "../hooks/useTauriEvent";
@@ -305,11 +306,14 @@ function tryFormatJson(str: string): string {
 }
 
 export function Timeline() {
+  const location = useLocation();
+  const navState = location.state as { filterMessage?: string } | null;
+
   const events = useEventStore((s) => s.events);
   const setEvents = useEventStore((s) => s.setEvents);
   const addEvent = useEventStore((s) => s.addEvent);
 
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(navState?.filterMessage ?? "");
   const [serverFilter, setServerFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [onlyBlocks, setOnlyBlocks] = useState(false);

@@ -41,6 +41,7 @@ pub struct DownloadProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum DownloadStatus {
     Pending,
     Downloading,
@@ -94,8 +95,10 @@ impl DownloadManager {
         });
 
         let client = Client::builder()
-            .user_agent("ClawDefender/0.1")
+            .user_agent("ClawDefender/0.5.0-beta")
             .redirect(redirect_policy)
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(3600)) // 1 hour max for large models
             .build()
             .unwrap_or_else(|_| Client::new());
 
@@ -112,6 +115,13 @@ impl DownloadManager {
             .ok_or_else(|| anyhow::anyhow!("model not found in catalog: {}", model_id))?;
 
         let task_id = Uuid::new_v4().to_string();
+        info!(
+            task_id = %task_id,
+            model_id = %model_id,
+            url = %model.download_url,
+            dest_dir = %models_dir.display(),
+            "starting model download"
+        );
         let dest = models_dir.join(&model.filename);
 
         // Already downloaded?
@@ -347,10 +357,43 @@ async fn run_download(
         request = request.header("Range", format!("bytes={}-", resume_from));
     }
 
-    // Send request
-    let resp = request.send().await.context("HTTP request failed")?;
+    // Update status to Connecting so frontend sees we're doing something
+    let _ = tx.send(DownloadProgress {
+        task_id: task_id.to_string(),
+        status: DownloadStatus::Downloading,
+        bytes_downloaded: resume_from,
+        bytes_total: expected_size,
+        speed_bytes_per_sec: 0.0,
+        eta_seconds: 0.0,
+        percent: if expected_size > 0 {
+            (resume_from as f64 / expected_size as f64) * 100.0
+        } else {
+            0.0
+        },
+    });
+
+    // Send request — wrap in select! so cancellation works during connect
+    let resp = tokio::select! {
+        _ = cancel_token.cancelled() => {
+            let _ = tx.send(DownloadProgress {
+                task_id: task_id.to_string(),
+                status: DownloadStatus::Cancelled,
+                bytes_downloaded: resume_from,
+                bytes_total: expected_size,
+                speed_bytes_per_sec: 0.0,
+                eta_seconds: 0.0,
+                percent: 0.0,
+            });
+            info!(task_id, "download cancelled during connect");
+            return Ok(());
+        }
+        result = request.send() => {
+            result.context("HTTP request failed")?
+        }
+    };
 
     let status = resp.status();
+    info!(task_id, http_status = %status, "HTTP response received");
     if !status.is_success() && status.as_u16() != 206 {
         bail!("download failed: HTTP {}", status);
     }
@@ -498,9 +541,11 @@ async fn run_download(
 
         let computed = hash_file(&part_path).await?;
         if computed != sha256 {
+            // Delete the corrupted/tampered file so it doesn't linger on disk
             tokio::fs::remove_file(&part_path).await.ok();
             bail!(
-                "SHA-256 mismatch: expected {}, got {}",
+                "Download verification failed: SHA-256 mismatch (expected {}, got {}). \
+                 The file may have been corrupted during transfer. Please try downloading again.",
                 sha256,
                 computed
             );
@@ -776,6 +821,34 @@ mod tests {
     #[test]
     fn validate_download_url_rejects_no_hostname() {
         assert!(validate_download_url("https:///path").is_err());
+    }
+
+    #[test]
+    fn download_status_serializes_as_snake_case() {
+        // The frontend checks for these exact lowercase string values
+        assert_eq!(
+            serde_json::to_string(&DownloadStatus::Pending).unwrap(),
+            "\"pending\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadStatus::Downloading).unwrap(),
+            "\"downloading\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadStatus::Verifying).unwrap(),
+            "\"verifying\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadStatus::Completed).unwrap(),
+            "\"completed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadStatus::Cancelled).unwrap(),
+            "\"cancelled\""
+        );
+        // Failed variant serializes as an object with snake_case key
+        let failed_json = serde_json::to_string(&DownloadStatus::Failed("oops".into())).unwrap();
+        assert!(failed_json.contains("\"failed\""));
     }
 
     #[test]

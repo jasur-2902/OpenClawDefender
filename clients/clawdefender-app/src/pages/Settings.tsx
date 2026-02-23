@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-shell";
 import type { AppSettings, NetworkExtensionStatus, NetworkSettings } from "../types";
 
 interface SlmStatus {
@@ -12,15 +14,22 @@ interface SlmStatus {
 
 interface CatalogModel {
   id: string;
-  name: string;
+  display_name: string;
+  family: string;
+  quantization: string;
   description: string;
   filename: string;
   size_bytes: number;
+  download_url: string;
+  sha256: string;
+  min_ram_gb: number;
   ram_required_bytes: number;
   quality_rating: number;
   tokens_per_sec_apple: number;
   tokens_per_sec_intel: number;
-  url: string;
+  is_default: boolean;
+  author: string;
+  model_page_url: string;
 }
 
 interface SystemCapabilities {
@@ -31,16 +40,15 @@ interface SystemCapabilities {
 }
 
 interface InstalledModelInfo {
-  model_id: string | null;
   filename: string;
-  path: string;
   size_bytes: number;
-  is_catalog: boolean;
+  catalog_id: string | null;
+  display_name: string | null;
 }
 
 interface DownloadProgress {
   task_id: string;
-  status: string;
+  status: string | { failed: string };
   bytes_downloaded: number;
   bytes_total: number;
   speed_bytes_per_sec: number;
@@ -49,10 +57,15 @@ interface DownloadProgress {
 }
 
 interface ActiveModelInfo {
-  id: string;
-  name: string;
   model_type: string;
-  size_bytes?: number;
+  model_id: string | null;
+  model_name: string;
+  file_path: string | null;
+  provider: string | null;
+  size_bytes: number | null;
+  using_gpu: boolean;
+  total_inferences: number;
+  avg_latency_ms: number;
 }
 
 interface CloudProvider {
@@ -88,6 +101,18 @@ interface CloudUsageStats {
 
 // --- Helper functions ---
 
+/** Extract the status type string from DownloadStatus.
+ *  Rust's serde serializes unit variants as strings ("downloading")
+ *  but Failed(String) as an object: {"failed":"msg"}.  */
+function getStatusType(status: string | { failed: string } | unknown): string {
+  if (typeof status === "string") return status;
+  if (typeof status === "object" && status !== null) {
+    const keys = Object.keys(status);
+    if (keys.length > 0) return keys[0];
+  }
+  return "unknown";
+}
+
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
@@ -114,6 +139,10 @@ const defaultSettings: AppSettings = {
   log_level: "info",
   prompt_timeout_seconds: 30,
   event_retention_days: 30,
+  behavioral_auto_block: false,
+  behavioral_threshold: 75,
+  analysis_frequency: "all",
+  security_level: "balanced",
 };
 
 const defaultNetworkSettings: NetworkSettings = {
@@ -128,9 +157,9 @@ const defaultNetworkSettings: NetworkSettings = {
 };
 
 export function Settings() {
+  const location = useLocation();
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
-  const [securityLevel, setSecurityLevel] = useState("balanced");
   const [netStatus, setNetStatus] = useState<NetworkExtensionStatus | null>(null);
   const [netSettings, setNetSettings] = useState<NetworkSettings>(defaultNetworkSettings);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -144,12 +173,12 @@ export function Settings() {
   const [systemCaps, setSystemCaps] = useState<SystemCapabilities | null>(null);
   const [downloads, setDownloads] = useState<Record<string, string>>({}); // modelId -> taskId
   const [downloadProgress, setDownloadProgress] = useState<Record<string, DownloadProgress>>({});
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
   const [deletingModel, setDeletingModel] = useState<string | null>(null);
   const [customModelPath, setCustomModelPath] = useState("");
   const [customModelError, setCustomModelError] = useState<string | null>(null);
   const [customModelActivating, setCustomModelActivating] = useState(false);
-  const [analysisFrequency, setAnalysisFrequency] = useState("all");
 
   // Cloud API state
   const [cloudExpanded, setCloudExpanded] = useState(false);
@@ -164,6 +193,7 @@ export function Settings() {
   const [cloudUsage, setCloudUsage] = useState<CloudUsageStats | null>(null);
 
   const downloadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollFailCountRef = useRef<Record<string, number>>({});
 
   const loadSlmStatus = useCallback(async () => {
     try {
@@ -243,6 +273,17 @@ export function Settings() {
       .catch(() => {});
   }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData]);
 
+  // Scroll to a section if navigated with scrollTo state (e.g. from Dashboard)
+  useEffect(() => {
+    if (!loading && location.state && (location.state as { scrollTo?: string }).scrollTo) {
+      const id = (location.state as { scrollTo: string }).scrollTo;
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  }, [loading, location.state]);
+
   // Poll download progress when downloads are active
   useEffect(() => {
     const activeDownloadIds = Object.values(downloads);
@@ -256,27 +297,55 @@ export function Settings() {
 
     downloadPollRef.current = setInterval(async () => {
       const newProgress: Record<string, DownloadProgress> = {};
+      const newErrors: Record<string, string> = {};
       let anyCompleted = false;
       for (const [modelId, taskId] of Object.entries(downloads)) {
         try {
           const prog = await invoke<DownloadProgress>("get_download_progress", { taskId });
           newProgress[modelId] = prog;
-          if (prog.status === "completed" || prog.status === "failed" || prog.status === "cancelled") {
+          pollFailCountRef.current[modelId] = 0; // reset on success
+          const st = getStatusType(prog.status);
+          if (st === "completed" || st === "failed" || st === "cancelled") {
             anyCompleted = true;
           }
-        } catch {
-          // Progress fetch failed
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error("Progress fetch failed for task", taskId, errMsg);
+          const count = (pollFailCountRef.current[modelId] || 0) + 1;
+          pollFailCountRef.current[modelId] = count;
+          // After 10 consecutive failures (5 seconds), surface error and stop
+          if (count >= 10) {
+            newErrors[modelId] = `Connection lost: ${errMsg}`;
+            anyCompleted = true; // trigger cleanup
+          }
         }
       }
       setDownloadProgress(newProgress);
+      if (Object.keys(newErrors).length > 0) {
+        setDownloadErrors((prev) => ({ ...prev, ...newErrors }));
+      }
 
       if (anyCompleted) {
-        // Clean up completed downloads
+        // Capture error messages from failed downloads before cleanup
+        for (const modelId of Object.keys(newProgress)) {
+          const prog = newProgress[modelId];
+          const st = prog ? getStatusType(prog.status) : null;
+          if (st === "failed") {
+            const failedMsg = typeof prog.status === "object" && prog.status !== null
+              ? (prog.status as { failed: string }).failed
+              : "Download failed";
+            setDownloadErrors((prev) => ({ ...prev, [modelId]: failedMsg }));
+          } else if (st === "cancelled") {
+            setDownloadErrors((prev) => ({ ...prev, [modelId]: "Download cancelled" }));
+          }
+        }
+        // Clean up completed/failed/cancelled downloads from active tracking
         setDownloads((prev) => {
           const next = { ...prev };
           for (const modelId of Object.keys(next)) {
             const prog = newProgress[modelId];
-            if (prog && (prog.status === "completed" || prog.status === "failed" || prog.status === "cancelled")) {
+            const st = prog ? getStatusType(prog.status) : null;
+            if (prog && (st === "completed" || st === "failed" || st === "cancelled")) {
               delete next[modelId];
             }
           }
@@ -285,7 +354,7 @@ export function Settings() {
         // Refresh installed models
         loadModelData();
       }
-    }, 1000);
+    }, 500);
 
     return () => {
       if (downloadPollRef.current) {
@@ -305,11 +374,19 @@ export function Settings() {
   }, [selectedProvider]);
 
   async function handleDownloadModel(modelId: string) {
+    // Clear any previous error
+    setDownloadErrors((prev) => {
+      const next = { ...prev };
+      delete next[modelId];
+      return next;
+    });
     try {
       const taskId = await invoke<string>("download_model", { modelId });
       setDownloads((prev) => ({ ...prev, [modelId]: taskId }));
     } catch (err) {
-      console.error("Download failed:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("Download failed:", errMsg);
+      setDownloadErrors((prev) => ({ ...prev, [modelId]: errMsg }));
     }
   }
 
@@ -318,8 +395,8 @@ export function Settings() {
     if (taskId) {
       try {
         await invoke("cancel_download", { taskId });
-      } catch {
-        // Cancel may fail if already complete
+      } catch (err) {
+        console.error("Cancel download failed:", err);
       }
       setDownloads((prev) => {
         const next = { ...prev };
@@ -443,9 +520,9 @@ export function Settings() {
   }
 
   function getModelStatus(modelId: string): "active" | "downloaded" | "not_downloaded" | "downloading" {
-    if (activeModel?.id === modelId) return "active";
+    if (activeModel?.model_id === modelId) return "active";
     if (downloads[modelId]) return "downloading";
-    if (installedModels.some((m) => m.model_id === modelId)) return "downloaded";
+    if (installedModels.some((m) => m.catalog_id === modelId)) return "downloaded";
     return "not_downloaded";
   }
 
@@ -576,16 +653,25 @@ export function Settings() {
               <p className="text-xs text-[var(--color-text-secondary)]">Current protection template</p>
             </div>
             <select
-              value={securityLevel}
+              value={settings.security_level}
               onChange={(e) => {
-                setSecurityLevel(e.target.value);
-                invoke("apply_template", { name: e.target.value }).catch(() => {});
+                const level = e.target.value;
+                setSettings((s) => ({ ...s, security_level: level }));
+                // Apply the template (maps monitor-only to permissive for backend)
+                const templateName = level === "monitor-only" ? "permissive" : level;
+                invoke("apply_template", { name: templateName }).then(() => {
+                  // Reload settings to get the inferred security level
+                  invoke<AppSettings>("get_settings").then((s) => setSettings(s)).catch(() => {});
+                }).catch(() => {});
               }}
               className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
             >
               <option value="monitor-only">Monitor Only</option>
               <option value="balanced">Balanced</option>
               <option value="strict">Strict</option>
+              {settings.security_level === "custom" && (
+                <option value="custom">Custom</option>
+              )}
             </select>
           </div>
 
@@ -640,10 +726,15 @@ export function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-success)]" />
-                  <p className="text-sm font-medium">{activeModel.name}</p>
+                  <p className="text-sm font-medium">{activeModel.model_name}</p>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)]">
                     Active
                   </span>
+                  {activeModel.using_gpu && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)]">
+                      GPU
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={handleDeactivateModel}
@@ -652,12 +743,12 @@ export function Settings() {
                   Change Model
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
                   <span className="text-[var(--color-text-secondary)] text-xs">Type</span>
                   <p className="text-[var(--color-text-primary)] text-xs font-medium capitalize">{activeModel.model_type}</p>
                 </div>
-                {activeModel.size_bytes && (
+                {activeModel.size_bytes != null && (
                   <div>
                     <span className="text-[var(--color-text-secondary)] text-xs">Size</span>
                     <p className="text-[var(--color-text-primary)] text-xs font-medium">{formatBytes(activeModel.size_bytes)}</p>
@@ -667,6 +758,18 @@ export function Settings() {
                   <div>
                     <span className="text-[var(--color-text-secondary)] text-xs">Backend</span>
                     <p className="text-[var(--color-text-primary)] text-xs font-medium">{slmStatus.backend}</p>
+                  </div>
+                )}
+                {activeModel.total_inferences > 0 && (
+                  <div>
+                    <span className="text-[var(--color-text-secondary)] text-xs">Inferences</span>
+                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{activeModel.total_inferences.toLocaleString()}</p>
+                  </div>
+                )}
+                {activeModel.avg_latency_ms > 0 && (
+                  <div>
+                    <span className="text-[var(--color-text-secondary)] text-xs">Avg Latency</span>
+                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{activeModel.avg_latency_ms.toFixed(0)}ms</p>
                   </div>
                 )}
               </div>
@@ -698,14 +801,30 @@ export function Settings() {
             Runs entirely on your machine. No data leaves your device.
           </p>
 
+          {/* System info banner */}
+          {systemCaps && (
+            <div className="flex items-center gap-3 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] px-3 py-2 mb-3">
+              <span className="text-xs text-[var(--color-text-secondary)]">
+                Your Mac: {systemCaps.is_apple_silicon ? "Apple Silicon" : systemCaps.arch} · {systemCaps.total_ram_gb} GB RAM
+              </span>
+            </div>
+          )}
+
           <div className="space-y-3">
             {catalog.map((model) => {
               const status = getModelStatus(model.id);
               const progress = downloadProgress[model.id];
+              const dlError = downloadErrors[model.id];
               const isActive = status === "active";
               const speedEstimate = systemCaps?.is_apple_silicon
                 ? model.tokens_per_sec_apple
                 : model.tokens_per_sec_intel;
+              const ramGb = model.min_ram_gb;
+              const isRecommended = model.is_default || (systemCaps && (
+                (systemCaps.total_ram_gb < 8 && model.id.includes("1b")) ||
+                (systemCaps.total_ram_gb >= 8 && systemCaps.total_ram_gb < 16 && model.id.includes("1.7b")) ||
+                (systemCaps.total_ram_gb >= 16 && model.id.includes("4b"))
+              ));
 
               return (
                 <div
@@ -713,31 +832,49 @@ export function Settings() {
                   className={`rounded-lg border p-3 ${
                     isActive
                       ? "border-[var(--color-success)] bg-[var(--color-success)]/5"
+                      : isRecommended
+                      ? "border-[var(--color-accent)]/50 bg-[var(--color-bg-tertiary)]"
                       : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)]">{model.name}</p>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{model.display_name}</p>
                         {isActive && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] font-medium">
                             Active
                           </span>
                         )}
-                        {status === "downloaded" && (
+                        {status === "downloaded" && !isActive && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-medium">
                             Downloaded
                           </span>
                         )}
+                        {isRecommended && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)] font-medium">
+                            Recommended for your Mac
+                          </span>
+                        )}
                       </div>
+                      <p className="text-[11px] text-[var(--color-text-secondary)] mb-1.5">
+                        {model.quantization} · by {model.author}
+                      </p>
                       <p className="text-xs text-[var(--color-text-secondary)] mb-2">{model.description}</p>
                       <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-secondary)]">
-                        <span>{formatBytes(model.size_bytes)}</span>
-                        <span>RAM: {formatBytes(model.ram_required_bytes)}</span>
+                        <span>{formatBytes(model.size_bytes)} download</span>
+                        <span>~{ramGb} GB RAM</span>
                         <QualityStars rating={model.quality_rating} />
                         {speedEstimate > 0 && <span>~{speedEstimate} tok/s</span>}
                       </div>
+                      {model.model_page_url && (
+                        <button
+                          onClick={() => open(model.model_page_url)}
+                          className="mt-2 text-[11px] text-[var(--color-accent)] hover:underline"
+                        >
+                          View on HuggingFace
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
@@ -782,23 +919,92 @@ export function Settings() {
                     </div>
                   </div>
 
-                  {/* Download progress bar */}
-                  {status === "downloading" && progress && (
-                    <div className="mt-3">
-                      <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mb-1">
-                        <span>
-                          {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.bytes_total)}
-                        </span>
-                        <span>
-                          {formatSpeed(progress.speed_bytes_per_sec)}
-                          {progress.eta_seconds > 0 && ` — ${Math.ceil(progress.eta_seconds)}s left`}
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[var(--color-bg-primary)] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-[var(--color-success)] transition-all duration-300"
-                          style={{ width: `${Math.min(progress.percent, 100)}%` }}
-                        />
+                  {/* Download progress / error feedback */}
+                  {status === "downloading" && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                      {dlError && !progress ? (
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
+                          <button
+                            onClick={() => { handleCancelDownload(model.id); handleDownloadModel(model.id); }}
+                            className="ml-3 px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 shrink-0"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : !progress ? (
+                        <p className="text-xs text-[var(--color-text-secondary)] animate-pulse">
+                          Connecting to server...
+                        </p>
+                      ) : (() => {
+                        const st = getStatusType(progress.status);
+                        const failedMsg = typeof progress.status === "object" && progress.status !== null
+                          ? (progress.status as { failed: string }).failed
+                          : null;
+                        return st === "failed" ? (
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-[var(--color-danger)] flex-1">
+                              {failedMsg || "Download failed"}
+                            </p>
+                            <button
+                              onClick={() => { handleCancelDownload(model.id); handleDownloadModel(model.id); }}
+                              className="ml-3 px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 shrink-0"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mb-1.5">
+                              <span>
+                                {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.bytes_total)}
+                              </span>
+                              <span>
+                                {st === "pending" ? "Connecting..." : (
+                                  <>
+                                    {formatSpeed(progress.speed_bytes_per_sec)}
+                                    {progress.eta_seconds > 0 && ` · ~${Math.ceil(progress.eta_seconds)}s remaining`}
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            <div className="w-full h-2.5 rounded-full bg-[var(--color-bg-primary)] overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  st === "verifying"
+                                    ? "bg-[var(--color-warning)] animate-pulse"
+                                    : "bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-success)]"
+                                }`}
+                                style={{ width: `${Math.max(Math.min(progress.percent, 100), st === "downloading" ? 1 : 0)}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-[var(--color-text-secondary)] mt-1 text-right">
+                              {st === "verifying" ? "Verifying checksum..." : `${progress.percent.toFixed(1)}%`}
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {/* Show download error with retry option */}
+                  {status !== "downloading" && dlError && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-danger)]/30">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
+                        <div className="flex items-center gap-2 ml-3 shrink-0">
+                          <button
+                            onClick={() => handleDownloadModel(model.id)}
+                            className="px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
+                          >
+                            Retry
+                          </button>
+                          <button
+                            onClick={() => setDownloadErrors((prev) => { const next = { ...prev }; delete next[model.id]; return next; })}
+                            className="px-2 py-1 rounded text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1014,8 +1220,8 @@ export function Settings() {
               <p className="text-xs text-[var(--color-text-secondary)]">When to run AI analysis on events</p>
             </div>
             <select
-              value={analysisFrequency}
-              onChange={(e) => setAnalysisFrequency(e.target.value)}
+              value={settings.analysis_frequency}
+              onChange={(e) => updateField("analysis_frequency", e.target.value)}
               className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
             >
               <option value="all">Analyze all prompted events</option>
@@ -1027,7 +1233,7 @@ export function Settings() {
       </section>
 
       {/* Network Protection */}
-      <section className="mb-8">
+      <section id="network-protection" className="mb-8">
         <div className="flex items-center gap-2 mb-3">
           <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
             Network Protection

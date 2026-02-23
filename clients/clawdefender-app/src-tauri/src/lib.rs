@@ -211,6 +211,9 @@ pub fn run() {
             commands::update_rule,
             commands::add_rule,
             commands::delete_rule,
+            commands::duplicate_rule,
+            commands::toggle_rule,
+            commands::reorder_rules,
             commands::list_templates,
             commands::apply_template,
             commands::reload_policy,
@@ -274,6 +277,7 @@ pub fn run() {
             commands::deactivate_model,
             commands::get_active_model,
             commands::list_available_models,
+            commands::get_slm_analysis_for_prompt,
             commands::get_slm_status,
         ])
         .run(tauri::generate_context!())

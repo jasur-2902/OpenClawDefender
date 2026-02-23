@@ -88,12 +88,18 @@ impl StdioProxy {
         let (audit_tx, mut audit_rx) = mpsc::channel::<AuditRecord>(1024);
 
         // Create a FileAuditLogger that writes to the same audit.jsonl the GUI watches.
+        // Pass the server name so session-start/session-end records are identifiable.
         let audit_log_path = default_audit_log_path();
         let audit_logger = Arc::new(
-            FileAuditLogger::new(audit_log_path.clone(), LogRotation::default())
-                .context("creating proxy audit logger")?,
+            FileAuditLogger::with_metadata(
+                audit_log_path.clone(),
+                LogRotation::default(),
+                derived_name.clone(),
+                Some("mcp-proxy".to_string()),
+            )
+            .context("creating proxy audit logger")?,
         );
-        info!(path = %audit_log_path.display(), "proxy audit logger initialized");
+        info!(path = %audit_log_path.display(), server_name = ?derived_name, "proxy audit logger initialized");
 
         // Spawn a background task to drain audit records into the file logger.
         tokio::spawn(async move {

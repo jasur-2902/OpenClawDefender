@@ -29,5 +29,10 @@ cloud = ["reqwest"]
 download = ["reqwest", "sha2", "futures-util", "tokio-util", "uuid", "libc"]
 gguf = ["llama_cpp"]
 
+[[test]]
+name = "download_integration_test"
+required-features = ["download"]
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }

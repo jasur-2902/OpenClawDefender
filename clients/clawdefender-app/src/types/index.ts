@@ -135,6 +135,10 @@ export interface AppSettings {
   log_level: "trace" | "debug" | "info" | "warn" | "error";
   prompt_timeout_seconds: number;
   event_retention_days: number;
+  behavioral_auto_block: boolean;
+  behavioral_threshold: number;
+  analysis_frequency: string;
+  security_level: string;
 }
 
 // --- Threat Intelligence types ---

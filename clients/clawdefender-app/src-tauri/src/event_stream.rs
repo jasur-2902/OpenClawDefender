@@ -12,6 +12,49 @@ use tracing::{debug, info, warn};
 use crate::events::{self, AlertPayload, AutoBlockPayload, SuspiciousEventPayload};
 use crate::state::{AppState, AuditEvent, PendingPrompt};
 
+// ## Event Pipeline Architecture
+//
+// Events flow through 5 stages from MCP proxy to the GUI:
+//
+// 1. MCP Client (e.g. Claude Desktop) spawns wrapped server:
+//    `clawdefender proxy -- <server-command>`
+//
+// 2. Proxy intercepts JSON-RPC messages in stdio.rs:
+//    - Classifies: Pass / Log / Review / Block
+//    - Evaluates policy engine
+//    - Creates enriched AuditRecord with: server_name, tool_name,
+//      arguments, jsonrpc_method, classification, policy_action
+//    - Writes to audit.jsonl via FileAuditLogger
+//
+// 3. FileAuditLogger writes to ~/.local/share/clawdefender/audit.jsonl:
+//    - JSON-lines format, one AuditRecord per line
+//    - Session-start/session-end records include server_name
+//    - Log rotation and retention handled automatically
+//
+// 4. This module (event_stream) watches audit.jsonl:
+//    - Polls every 500ms for new lines
+//    - Parses each line as DaemonAuditRecord
+//    - Maps to AuditEvent via to_audit_event()
+//    - Emits Tauri events to the frontend
+//
+// 5. Frontend receives events:
+//    - Timeline.tsx: virtualized list with server, tool, resource, decision
+//    - Dashboard.tsx: recent activity feed and stat cards
+//    - eventStore.ts: Zustand store for state management
+//
+// ## Field Mapping (audit.jsonl -> AuditEvent)
+//
+// | audit.jsonl field  | AuditEvent field | Notes                    |
+// |-------------------|-----------------|--------------------------|
+// | timestamp         | timestamp       | ISO 8601 string          |
+// | source            | event_type      | "mcp-proxy", "system"    |
+// | server_name       | server_name     | "unknown" if None        |
+// | tool_name         | tool_name       | Optional                 |
+// | event_summary     | action          | Human-readable label     |
+// | policy_action     | decision        | "allowed"/"blocked"/etc  |
+// | classification    | risk_level      | Normalized to low/med/hi |
+// | arguments         | resource        | Extracted path/uri/url   |
+
 /// Poll interval for checking audit.jsonl for new lines.
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -78,6 +121,20 @@ pub struct DaemonAuditRecord {
     pub event_details: Option<serde_json::Value>,
     #[serde(default)]
     pub arguments: Option<serde_json::Value>,
+    #[serde(default)]
+    pub slm_analysis: Option<SlmAnalysisField>,
+}
+
+/// SLM analysis data embedded in audit records by the event router.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlmAnalysisField {
+    pub risk_level: String,
+    pub explanation: String,
+    pub confidence: f32,
+    #[serde(default)]
+    pub latency_ms: u64,
+    #[serde(default)]
+    pub model: String,
 }
 
 /// Path to the audit.jsonl file.
@@ -135,10 +192,11 @@ fn build_human_details(record: &DaemonAuditRecord) -> String {
         }
         _ => {
             // Fallback: use event_summary if it's meaningful
-            if !record.event_summary.is_empty()
-                && record.event_summary != "session-start"
-                && record.event_summary != "session-end"
-            {
+            if record.event_summary == "session-start" {
+                format!("{server} session started")
+            } else if record.event_summary == "session-end" {
+                format!("{server} session ended")
+            } else if !record.event_summary.is_empty() {
                 if server != "unknown" {
                     format!("{server}: {}", record.event_summary)
                 } else {
@@ -167,10 +225,12 @@ pub fn to_audit_event(record: &DaemonAuditRecord, seq: u64) -> AuditEvent {
 
     // Use event_summary which now contains human-readable labels from the proxy
     // (e.g. "File Read", "Shell Command"), falling back to jsonrpc_method.
-    let action = if !record.event_summary.is_empty()
-        && record.event_summary != "session-start"
-        && record.event_summary != "session-end"
-    {
+    // Session events get human-friendly names instead of raw identifiers.
+    let action = if record.event_summary == "session-start" {
+        "Session Started".to_string()
+    } else if record.event_summary == "session-end" {
+        "Session Ended".to_string()
+    } else if !record.event_summary.is_empty() {
         record.event_summary.clone()
     } else {
         record
@@ -180,7 +240,20 @@ pub fn to_audit_event(record: &DaemonAuditRecord, seq: u64) -> AuditEvent {
             .to_string()
     };
 
-    let details = build_human_details(record);
+    // Build details: if SLM analysis is present, encode as JSON so the
+    // frontend SlmAnalysisSection can parse it.
+    let details = if let Some(ref slm) = record.slm_analysis {
+        serde_json::json!({
+            "description": build_human_details(record),
+            "slm_analysis": {
+                "risk_level": slm.risk_level,
+                "explanation": slm.explanation,
+                "confidence": slm.confidence,
+            }
+        }).to_string()
+    } else {
+        build_human_details(record)
+    };
 
     let resource = record.arguments.as_ref().and_then(|args| {
         // Try to extract a meaningful resource path from arguments

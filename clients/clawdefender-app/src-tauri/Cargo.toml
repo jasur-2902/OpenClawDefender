@@ -1,6 +1,6 @@
 [package]
 name = "clawdefender-app"
-version = "0.3.0"
+version = "0.5.0-beta"
 description = "ClawDefender - MCP Security Monitor"
 authors = ["ClawDefender Team"]
 edition = "2021"
@@ -28,7 +28,7 @@ tracing = "0.1"
 toml = "0.8"
 libc = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
-clawdefender-slm = { path = "../../../crates/clawdefender-slm", features = ["cloud", "download"] }
+clawdefender-slm = { path = "../../../crates/clawdefender-slm", features = ["cloud", "download", "gguf"] }
 dirs = "5"
 
 [dev-dependencies]

@@ -39,6 +39,35 @@ pub struct DaemonMetrics {
     pub messages_prompted: u64,
     #[serde(default)]
     pub messages_logged: u64,
+    /// Live behavioral engine status from daemon.
+    #[serde(default)]
+    pub behavioral_status: Option<DaemonBehavioralStatus>,
+}
+
+/// Behavioral engine status reported by the daemon IPC.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DaemonBehavioralStatus {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub profiles: usize,
+    #[serde(default)]
+    pub learning_servers: usize,
+    #[serde(default)]
+    pub monitoring_servers: usize,
+    #[serde(default)]
+    pub auto_block_stats: Option<DaemonAutoBlockStats>,
+}
+
+/// Auto-block statistics from the decision engine.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DaemonAutoBlockStats {
+    #[serde(default)]
+    pub total_auto_blocks: u64,
+    #[serde(default)]
+    pub total_overrides: u64,
+    #[serde(default)]
+    pub auto_block_enabled: bool,
 }
 
 /// Reload response from the daemon's `"reload"` command.

@@ -4,20 +4,20 @@
     {
       "name": "Malicious Hosts",
       "file": "malicious-hosts.json",
-      "description": "Known-malicious IP ranges and domain indicators.",
-      "count": 55
+      "description": "Known-malicious domains, IPs, and SSRF bypass indicators relevant to MCP security.",
+      "count": 33
     },
     {
       "name": "Malicious Hashes",
       "file": "malicious-hashes.json",
-      "description": "SHA-256 hashes of known-malicious files and binaries.",
-      "count": 25
+      "description": "SHA-256 hashes of known-malicious payloads from MCP and npm supply chain attacks.",
+      "count": 18
     },
     {
       "name": "Suspicious Tools",
       "file": "suspicious-tools.json",
-      "description": "Suspicious command patterns and tool sequences.",
-      "count": 35
+      "description": "Suspicious command patterns and tool sequences observed in MCP attack chains.",
+      "count": 33
     }
   ]
 }

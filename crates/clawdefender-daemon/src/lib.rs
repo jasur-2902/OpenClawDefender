@@ -55,13 +55,13 @@ use clawdefender_threat_intel::telemetry::TelemetryAggregator;
 use clawdefender_threat_intel::{FeedCache, FeedClient, FeedVerifier};
 use clawdefender_tui::{EventRecord, PendingPrompt};
 
-use event_router::{EventRouter, EventRouterConfig};
+use event_router::{BehavioralEngines, EventRouter, EventRouterConfig};
 
 /// The main daemon that orchestrates all ClawDefender subsystems.
 #[allow(dead_code)]
 pub struct Daemon {
     config: ClawConfig,
-    sensor_config: SensorConfig,
+    sensor_config: Arc<RwLock<SensorConfig>>,
     policy_engine: Arc<RwLock<DefaultPolicyEngine>>,
     audit_logger: Arc<FileAuditLogger>,
     enable_tui: bool,
@@ -259,13 +259,12 @@ impl Daemon {
                 let telemetry = TelemetryAggregator::new();
 
                 // Initialize feed client with Ed25519 verifier.
-                let verifier = FeedVerifier::from_hex(
-                    "0000000000000000000000000000000000000000000000000000000000000000",
-                )
-                .unwrap_or_else(|_| {
+                let verifier = FeedVerifier::from_embedded()
+                .unwrap_or_else(|e| {
+                    warn!(error = %e, "Threat intel: failed to load embedded public key");
                     // Fallback: create a dummy verifier (will fail signature checks but won't crash)
                     FeedVerifier::from_hex(
-                        "0000000000000000000000000000000000000000000000000000000000000000",
+                        "e9b20cb34831fe44c9fa5001b9226d75ab2805ffb576e5186a88a0645c575844",
                     )
                     .expect("hex parse")
                 });
@@ -393,7 +392,7 @@ impl Daemon {
 
         Ok(Self {
             config,
-            sensor_config,
+            sensor_config: Arc::new(RwLock::new(sensor_config)),
             policy_engine: Arc::new(RwLock::new(policy_engine)),
             audit_logger: Arc::new(audit_logger),
             enable_tui,
@@ -425,13 +424,18 @@ impl Daemon {
         process_tree: Arc<RwLock<ProcessTree>>,
         audit_tx: mpsc::Sender<AuditRecord>,
         ui_event_tx: mpsc::Sender<CorrelatedEvent>,
+        slm_service: Option<Arc<SlmService>>,
+        swarm_commander: Option<Arc<Commander>>,
     ) -> Vec<tokio::task::JoinHandle<()>> {
         let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
+
+        // Take a snapshot of sensor config for startup (avoid holding lock across awaits).
+        let sensor_cfg = self.sensor_config.read().await.clone();
 
         // --- Step 1: Process tree with refresh timer ---
         {
             let tree = Arc::clone(&process_tree);
-            let refresh_secs = self.sensor_config.process_tree.refresh_interval_secs;
+            let refresh_secs = sensor_cfg.process_tree.refresh_interval_secs;
             let tree_for_init = Arc::clone(&tree);
 
             // Initial refresh
@@ -466,7 +470,7 @@ impl Daemon {
 
         {
             let engine_config = EngineCorrelationConfig {
-                match_window: Duration::from_millis(self.sensor_config.correlation.window_ms),
+                match_window: Duration::from_millis(sensor_cfg.correlation.window_ms),
                 ..EngineCorrelationConfig::default()
             };
             let engine = CorrelationEngine::new(engine_config, correlated_tx);
@@ -478,17 +482,47 @@ impl Daemon {
 
         // --- Step 3: Event router ---
         {
-            let router = EventRouter::new(EventRouterConfig::default(), audit_tx, ui_event_tx);
+            let mut router = EventRouter::new(EventRouterConfig::default(), audit_tx, ui_event_tx);
+
+            // Attach behavioral engines if enabled
+            if let (Some(ref be), Some(ref scorer), Some(ref kc), Some(ref de)) = (
+                &self.behavioral_engine,
+                &self.anomaly_scorer,
+                &self.killchain_detector,
+                &self.decision_engine,
+            ) {
+                router = router.with_behavioral(BehavioralEngines {
+                    learning: Arc::clone(be),
+                    scorer: Arc::clone(scorer),
+                    killchain: Arc::clone(kc),
+                    decision: Arc::clone(de),
+                });
+                info!("Event router: behavioral engines attached");
+            }
+
+            // Attach SLM service for advisory escalation analysis (advisory only)
+            if let Some(ref slm) = slm_service {
+                if slm.is_enabled() {
+                    router = router.with_slm_service(Arc::clone(slm));
+                    info!("Event router: SLM escalation analysis attached (advisory only)");
+                }
+            }
+
+            // Attach swarm commander for advisory escalation analysis (advisory only)
+            if let Some(ref commander) = swarm_commander {
+                router = router.with_swarm_commander(Arc::clone(commander));
+                info!("Event router: swarm escalation analysis attached (advisory only)");
+            }
+
             let handle = router.run(correlated_rx);
             handles.push(handle);
         }
 
         // --- Step 4: eslogger (if FDA is granted) ---
-        if self.sensor_config.eslogger.enabled {
+        if sensor_cfg.eslogger.enabled {
             let fda_granted = EsloggerManager::check_fda();
             if fda_granted {
-                let events: Vec<&str> = self
-                    .sensor_config
+                let events: Vec<&str> = sensor_cfg
                     .eslogger
                     .events
                     .iter()
@@ -496,9 +530,9 @@ impl Daemon {
                     .collect();
                 match EsloggerManager::spawn(
                     &events,
-                    Some(self.sensor_config.eslogger.channel_capacity),
-                    &self.sensor_config.eslogger.ignore_processes,
-                    &self.sensor_config.eslogger.ignore_paths,
+                    Some(sensor_cfg.eslogger.channel_capacity),
+                    &sensor_cfg.eslogger.ignore_processes,
+                    &sensor_cfg.eslogger.ignore_paths,
                 ) {
                     Ok((_manager, mut eslogger_rx)) => {
                         info!("eslogger: active");
@@ -524,11 +558,11 @@ impl Daemon {
         }
 
         // --- Step 5: EnhancedFsWatcher ---
-        if self.sensor_config.fsevents.enabled {
-            let watch_paths = if self.sensor_config.fsevents.watch_paths.is_empty() {
+        if sensor_cfg.fsevents.enabled {
+            let watch_paths = if sensor_cfg.fsevents.watch_paths.is_empty() {
                 default_watch_paths()
             } else {
-                self.sensor_config.fsevents.watch_paths.clone()
+                sensor_cfg.fsevents.watch_paths.clone()
             };
 
             if !watch_paths.is_empty() {
@@ -570,7 +604,8 @@ impl Daemon {
         // --- Step 6: Sensor config hot-reload ---
         let sensor_path = self.config.sensor_config_path.clone();
         if sensor_path.exists() {
-            let handle = spawn_file_watcher(sensor_path, "sensor config");
+            let shared_sensor_config = Arc::clone(&self.sensor_config);
+            let handle = spawn_sensor_config_watcher(sensor_path, shared_sensor_config);
             handles.push(handle);
         }
 
@@ -610,6 +645,23 @@ impl Daemon {
 
         // --- Policy engine status ---
         info!("Policy engine: loaded");
+
+        // --- SLM service (advisory only, graceful failure -> disabled mode) ---
+        let slm_engine_config = SlmEngineConfig {
+            model_path: self.config.slm.model_path.clone().unwrap_or_default(),
+            context_size: self.config.slm.context_size,
+            max_output_tokens: self.config.slm.max_output_tokens,
+            temperature: self.config.slm.temperature,
+            use_gpu: self.config.slm.use_gpu,
+            threads: self.config.slm.threads.unwrap_or(4),
+            ..SlmEngineConfig::default()
+        };
+        let slm_service = Arc::new(SlmService::new(slm_engine_config, self.config.slm.enabled));
+        if slm_service.is_enabled() {
+            info!("SLM: enabled (standalone mode)");
+        } else {
+            info!("SLM: disabled (no model or disabled in config)");
+        }
 
         // --- MCP server (cooperative security endpoint) ---
         let mcp_server_handle = if self.config.mcp_server.enabled {
@@ -654,7 +706,7 @@ impl Daemon {
                 bind_addr: format!("127.0.0.1:{}", self.config.guard_api.port)
                     .parse()
                     .unwrap(),
-                token: String::new(),
+                token: load_or_generate_server_token(),
             };
             let handle = tokio::spawn(async move {
                 if let Err(e) =
@@ -691,6 +743,8 @@ impl Daemon {
                 Arc::clone(&process_tree),
                 audit_tx.clone(),
                 _ui_correlated_tx,
+                Some(Arc::clone(&slm_service)),
+                None, // No swarm commander in standalone mode (no API keys)
             )
             .await;
 
@@ -709,9 +763,17 @@ impl Daemon {
         let metrics = Arc::new(clawdefender_mcp_proxy::ProxyMetrics::new());
         let policy_for_ipc = Arc::clone(&self.policy_engine);
         let guard_registry_for_ipc = Arc::clone(&self.guard_registry);
+        let ai_ctx = ipc::AiSubsystemContext {
+            slm_service: Some(Arc::clone(&slm_service)),
+            behavioral_enabled: self.config.behavioral.enabled,
+            behavioral_profile_count: self.profile_store.as_ref().and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
+            swarm_available: false, // standalone mode does not run swarm
+            learning_engine: self.behavioral_engine.clone(),
+            decision_engine: self.decision_engine.clone(),
+        };
         let ipc_handle = tokio::spawn(async move {
             if let Err(e) =
-                ipc::run_ipc_server(socket_path, metrics, policy_for_ipc, guard_registry_for_ipc)
+                ipc::run_ipc_server_with_ai(socket_path, metrics, policy_for_ipc, guard_registry_for_ipc, ai_ctx)
                     .await
             {
                 warn!(error = %e, "IPC server exited");
@@ -1003,7 +1065,7 @@ impl Daemon {
                 bind_addr: format!("127.0.0.1:{}", self.config.guard_api.port)
                     .parse()
                     .unwrap(),
-                token: String::new(),
+                token: load_or_generate_server_token(),
             };
             let handle = tokio::spawn(async move {
                 if let Err(e) =
@@ -1040,6 +1102,8 @@ impl Daemon {
                 Arc::clone(&process_tree),
                 audit_tx.clone(),
                 _ui_correlated_tx,
+                Some(Arc::clone(&slm_service)),
+                swarm_commander.clone(),
             )
             .await;
 
@@ -1128,12 +1192,21 @@ impl Daemon {
         let metrics_for_ipc = Arc::clone(&metrics);
         let policy_for_ipc = Arc::clone(&self.policy_engine);
         let guard_registry_for_ipc = Arc::clone(&self.guard_registry);
+        let ai_ctx = ipc::AiSubsystemContext {
+            slm_service: Some(Arc::clone(&slm_service)),
+            behavioral_enabled: self.config.behavioral.enabled,
+            behavioral_profile_count: self.profile_store.as_ref().and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
+            swarm_available: swarm_commander.is_some(),
+            learning_engine: self.behavioral_engine.clone(),
+            decision_engine: self.decision_engine.clone(),
+        };
         let ipc_handle = tokio::spawn(async move {
-            if let Err(e) = ipc::run_ipc_server(
+            if let Err(e) = ipc::run_ipc_server_with_ai(
                 socket_path,
                 metrics_for_ipc,
                 policy_for_ipc,
                 guard_registry_for_ipc,
+                ai_ctx,
             )
             .await
             {
@@ -1241,6 +1314,51 @@ impl Daemon {
     }
 }
 
+/// Load the server authentication token from disk, or generate a new one if absent.
+///
+/// The token is stored at `~/.local/share/clawdefender/server-token` with 0600 permissions.
+/// Both the MCP server and Guard API share this token.
+fn load_or_generate_server_token() -> String {
+    // Try reading existing token first.
+    if let Some(token) = clawdefender_mcp_server::auth::read_token() {
+        if !token.is_empty() {
+            // Verify file permissions are correct (0600).
+            #[cfg(unix)]
+            {
+                let path = clawdefender_mcp_server::auth::token_path();
+                if let Ok(metadata) = std::fs::metadata(&path) {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = metadata.permissions().mode() & 0o777;
+                    if mode != 0o600 {
+                        warn!(
+                            mode = format!("{:o}", mode),
+                            "server-token has wrong permissions, fixing to 0600"
+                        );
+                        let _ = std::fs::set_permissions(
+                            &path,
+                            std::fs::Permissions::from_mode(0o600),
+                        );
+                    }
+                }
+            }
+            info!("loaded existing server token");
+            return token;
+        }
+    }
+
+    // Generate a new token.
+    match clawdefender_mcp_server::auth::generate_and_store_token() {
+        Ok(token) => {
+            info!("generated new server authentication token");
+            token
+        }
+        Err(e) => {
+            warn!(error = %e, "failed to generate server token, Guard API will be unauthenticated");
+            String::new()
+        }
+    }
+}
+
 /// Spawn a file watcher for policy hot-reload.
 fn spawn_policy_watcher(
     policy_path: PathBuf,
@@ -1294,7 +1412,8 @@ fn spawn_policy_watcher(
     })
 }
 
-/// Spawn a generic file watcher that logs reload events (for sensor.toml etc.).
+/// Spawn a generic file watcher that logs reload events.
+#[allow(dead_code)]
 fn spawn_file_watcher(file_path: PathBuf, label: &'static str) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         use notify::{Event, EventKind, RecursiveMode, Watcher};
@@ -1331,6 +1450,65 @@ fn spawn_file_watcher(file_path: PathBuf, label: &'static str) -> tokio::task::J
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             while rx.try_recv().is_ok() {}
             info!(label = label, "{} changed, reload pending", label);
+        }
+    })
+}
+
+/// Spawn a file watcher for sensor config hot-reload.
+///
+/// On file change, re-reads `SensorConfig` from disk and updates the shared
+/// `Arc<RwLock<SensorConfig>>`. This updates filter settings (ignore processes,
+/// ignore paths, etc.) without restarting eslogger or other sensor processes.
+fn spawn_sensor_config_watcher(
+    file_path: PathBuf,
+    sensor_config: Arc<RwLock<SensorConfig>>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use notify::{Event, EventKind, RecursiveMode, Watcher};
+
+        let (tx, mut rx) = mpsc::channel::<()>(4);
+
+        let watch_path = file_path.clone();
+        let mut watcher =
+            match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                        let _ = tx.try_send(());
+                    }
+                }
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    warn!(error = %e, "failed to create file watcher for sensor config");
+                    return;
+                }
+            };
+
+        let watch_dir = watch_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        if let Err(e) = watcher.watch(watch_dir, RecursiveMode::NonRecursive) {
+            warn!(error = %e, "failed to watch sensor config directory");
+            return;
+        }
+
+        info!(path = %file_path.display(), "watching sensor config for changes");
+
+        while rx.recv().await.is_some() {
+            // Debounce rapid writes.
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            while rx.try_recv().is_ok() {}
+
+            match SensorConfig::load(&file_path) {
+                Ok(new_config) => {
+                    let mut cfg = sensor_config.write().await;
+                    *cfg = new_config;
+                    info!("sensor config reloaded successfully");
+                }
+                Err(e) => {
+                    warn!(error = %e, "failed to reload sensor config, keeping previous");
+                }
+            }
         }
     })
 }
@@ -1399,8 +1577,9 @@ mod tests {
         // Point to a non-existent sensor config -> should use defaults.
         config.sensor_config_path = dir.path().join("nonexistent-sensor.toml");
         let daemon = Daemon::new(config, false).unwrap();
-        assert!(daemon.sensor_config.eslogger.enabled);
-        assert_eq!(daemon.sensor_config.process_tree.refresh_interval_secs, 5);
+        let sc = daemon.sensor_config.blocking_read();
+        assert!(sc.eslogger.enabled);
+        assert_eq!(sc.process_tree.refresh_interval_secs, 5);
     }
 
     #[test]
@@ -1425,9 +1604,10 @@ window_ms = 1000
         let mut config = test_config(&dir);
         config.sensor_config_path = sensor_path;
         let daemon = Daemon::new(config, false).unwrap();
-        assert!(!daemon.sensor_config.eslogger.enabled);
-        assert_eq!(daemon.sensor_config.process_tree.refresh_interval_secs, 10);
-        assert_eq!(daemon.sensor_config.correlation.window_ms, 1000);
+        let sc = daemon.sensor_config.blocking_read();
+        assert!(!sc.eslogger.enabled);
+        assert_eq!(sc.process_tree.refresh_interval_secs, 10);
+        assert_eq!(sc.correlation.window_ms, 1000);
     }
 
     #[test]

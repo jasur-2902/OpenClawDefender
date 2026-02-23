@@ -1,11 +1,11 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-17T00:00:00Z",
+  "last_updated": "2026-02-23T00:00:00Z",
   "feed_format_version": 1,
   "files": {
     "blocklist.json": {
-      "sha256": "e674b7e1635112afc45784ba37b0da12491ccdab25d3caf6d03f359dc8a842bc",
-      "size": 11832
+      "sha256": "f1e4df5102e7f5d1e6fb78fddc79760c0c07e7911c87e81acdf44583126b8812",
+      "size": 25804
     },
     "rules/index.json": {
       "sha256": "afdf5db0e7a208ad22acc82247387f3a0fb1a2a68a1779ec1dd934dbc2a075f7",
@@ -32,32 +32,32 @@
       "size": 2982
     },
     "patterns/index.json": {
-      "sha256": "200174e0968d8a1b4966a6d598f0f10e55ae576c4b052afe53600838bff3d4d7",
-      "size": 391
+      "sha256": "8c7eb9cfb80d8b497f842282b4bfe468d884c7d3abdc3d7593a2bd82a7c55c03",
+      "size": 459
     },
     "patterns/killchains.json": {
-      "sha256": "d286fe2ce2a94e7cc89ced31cd14edf683f58f473936767c9806b2276828a292",
-      "size": 2283
+      "sha256": "b4203c810ede06e3b5b7af1bd45b2ed495c0b3e22898ed3be550df26566faad9",
+      "size": 4743
     },
     "patterns/injection-signatures.json": {
-      "sha256": "174de3fdce6fef10bab80e6893b732839474a9f1da708c696e675abbf0cab7f2",
-      "size": 6340
+      "sha256": "4591e063fa880e9d4b3802a5c1605eaf73b81a20053d9a432b47c0f0eb8bb2b1",
+      "size": 7937
     },
     "iocs/index.json": {
-      "sha256": "659f2503bfcab6ffa2ff9bf3dfd2b5437fd0eb42580befff409dcb09b452fe44",
-      "size": 575
+      "sha256": "9274eef753f6345a7432afcc4a626ba0310c037bbacf5f434e15b8a36ba3c8af",
+      "size": 667
     },
     "iocs/malicious-hosts.json": {
-      "sha256": "2a5a4b722d316508661cd862b5662b40de4c4fa9547d687348d85a7be3efa62b",
-      "size": 6986
+      "sha256": "e21e4fdf4c5ca1cecb07bf4797ae29649400485ab3b0d31171215057d681dca6",
+      "size": 5126
     },
     "iocs/malicious-hashes.json": {
-      "sha256": "5bc1ddbfcf930ac28a9b97e73f4e286943873b9266cee6887ad57c2e7a3dd07c",
-      "size": 5292
+      "sha256": "c6d907e3024e88d1db792e0ebe6048742ea1f1f804c4cb7207cf01aff6a6b435",
+      "size": 3999
     },
     "iocs/suspicious-tools.json": {
-      "sha256": "c4550212adbb8be56552946803f5128fa517864ab33f5354a707b21bbc7c9541",
-      "size": 4649
+      "sha256": "8b68daf9b9096ee011d10fd88c8c58dfb1005a8b8c2a4ba71be1eaaaf7c6681a",
+      "size": 5713
     },
     "profiles/index.json": {
       "sha256": "7bfee18701d85d903300547b43bcfb8f9e9d2f853839ff16878288aa9ee7bf56",

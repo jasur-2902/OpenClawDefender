@@ -882,6 +882,140 @@ pub async fn delete_rule(
 }
 
 #[tauri::command]
+pub async fn duplicate_rule(
+    state: tauri::State<'_, AppState>,
+    rule_name: String,
+) -> Result<(), String> {
+    let path = policy_file_path();
+    if !path.exists() {
+        return Err("Policy file does not exist".to_string());
+    }
+
+    let mut doc = read_policy_file()?;
+    let key = sanitize_rule_key(&rule_name);
+
+    // Find the original rule
+    let original = doc
+        .get("rules")
+        .and_then(|v| v.as_table())
+        .and_then(|t| t.get(&key))
+        .cloned()
+        .ok_or_else(|| format!("Rule '{}' not found", key))?;
+
+    // Generate a unique copy key
+    let rules_table = doc
+        .get("rules")
+        .and_then(|v| v.as_table())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut copy_key = format!("{}-copy", key);
+    let mut suffix = 2;
+    while rules_table.contains_key(&copy_key) {
+        copy_key = format!("{}-copy-{}", key, suffix);
+        suffix += 1;
+    }
+
+    // Update the description to indicate it's a copy
+    let mut copy_value = original;
+    if let Some(table) = copy_value.as_table_mut() {
+        let orig_desc = table
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        table.insert(
+            "description".to_string(),
+            toml::Value::String(format!("{} (copy)", orig_desc)),
+        );
+    }
+
+    if let Some(rules) = doc.get_mut("rules").and_then(|v| v.as_table_mut()) {
+        rules.insert(copy_key.clone(), copy_value);
+    }
+
+    write_policy_file(&doc)?;
+    try_reload_daemon(&state);
+    tracing::info!("Duplicated policy rule '{}' as '{}'", key, copy_key);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn toggle_rule(
+    state: tauri::State<'_, AppState>,
+    rule_name: String,
+) -> Result<(), String> {
+    let path = policy_file_path();
+    if !path.exists() {
+        return Err("Policy file does not exist".to_string());
+    }
+
+    let mut doc = read_policy_file()?;
+    let key = sanitize_rule_key(&rule_name);
+
+    let current_enabled = doc
+        .get("rules")
+        .and_then(|v| v.as_table())
+        .and_then(|t| t.get(&key))
+        .and_then(|v| v.as_table())
+        .and_then(|t| t.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let rule_table = doc
+        .get_mut("rules")
+        .and_then(|v| v.as_table_mut())
+        .and_then(|t| t.get_mut(&key))
+        .and_then(|v| v.as_table_mut())
+        .ok_or_else(|| format!("Rule '{}' not found", key))?;
+
+    rule_table.insert("enabled".to_string(), toml::Value::Boolean(!current_enabled));
+
+    write_policy_file(&doc)?;
+    try_reload_daemon(&state);
+    tracing::info!(
+        "Toggled rule '{}' enabled: {} -> {}",
+        key,
+        current_enabled,
+        !current_enabled
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reorder_rules(
+    state: tauri::State<'_, AppState>,
+    rule_names: Vec<String>,
+) -> Result<(), String> {
+    let path = policy_file_path();
+    if !path.exists() {
+        return Err("Policy file does not exist".to_string());
+    }
+
+    let mut doc = read_policy_file()?;
+
+    // Assign priorities based on the order: first item gets highest priority
+    let total = rule_names.len() as i64;
+    let rules = doc
+        .get_mut("rules")
+        .and_then(|v| v.as_table_mut())
+        .ok_or_else(|| "No rules table in policy".to_string())?;
+
+    for (idx, name) in rule_names.iter().enumerate() {
+        let key = sanitize_rule_key(name);
+        if let Some(rule_table) = rules.get_mut(&key).and_then(|v| v.as_table_mut()) {
+            let priority = (total - idx as i64) * 10;
+            rule_table.insert("priority".to_string(), toml::Value::Integer(priority));
+        }
+    }
+
+    write_policy_file(&doc)?;
+    try_reload_daemon(&state);
+    tracing::info!("Reordered {} policy rules", rule_names.len());
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn reload_policy(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
@@ -979,6 +1113,48 @@ fn template_rules(name: &str) -> Result<Vec<PolicyRule>, String> {
         ]),
         _ => Err(format!("Unknown template: {}", name)),
     }
+}
+
+/// Infer the current security level by comparing policy rules against known templates.
+/// Returns "strict", "balanced", "permissive", "developer", or "custom".
+fn infer_security_level() -> String {
+    let path = policy_file_path();
+    let current_rules = match std::fs::read_to_string(&path) {
+        Ok(content) => {
+            match content.parse::<toml::Value>() {
+                Ok(table) => {
+                    // Extract rule names from the policy file
+                    if let Some(rules) = table.get("rules").and_then(|r| r.as_table()) {
+                        rules.keys().cloned().collect::<std::collections::HashSet<String>>()
+                    } else {
+                        return "custom".to_string();
+                    }
+                }
+                Err(_) => return "balanced".to_string(),
+            }
+        }
+        Err(_) => return "balanced".to_string(),
+    };
+
+    // Compare against each known template
+    for template_name in &["strict", "balanced", "permissive", "developer"] {
+        if let Ok(template_rules_vec) = template_rules(template_name) {
+            let template_names: std::collections::HashSet<String> = template_rules_vec
+                .iter()
+                .map(|r| sanitize_rule_key(&r.name))
+                .collect();
+            if current_rules == template_names {
+                // Map "permissive" to "monitor-only" for UI display
+                return if *template_name == "permissive" {
+                    "monitor-only".to_string()
+                } else {
+                    template_name.to_string()
+                };
+            }
+        }
+    }
+
+    "custom".to_string()
 }
 
 #[tauri::command]
@@ -1235,7 +1411,29 @@ pub async fn get_profiles() -> Result<Vec<ServerProfileSummary>, String> {
 }
 
 #[tauri::command]
-pub async fn get_behavioral_status() -> Result<BehavioralStatus, String> {
+pub async fn get_behavioral_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<BehavioralStatus, String> {
+    // Try live IPC query to the daemon for real-time stats.
+    if let Ok(metrics) = state.ipc_client.query_status() {
+        if let Some(bs) = metrics.behavioral_status {
+            let total_anomalies = bs
+                .auto_block_stats
+                .as_ref()
+                .map(|s| s.total_auto_blocks as u32)
+                .unwrap_or(0);
+
+            return Ok(BehavioralStatus {
+                enabled: bs.enabled,
+                profiles_count: bs.profiles as u32,
+                total_anomalies,
+                learning_servers: bs.learning_servers as u32,
+                monitoring_servers: bs.monitoring_servers as u32,
+            });
+        }
+    }
+
+    // Fall back to reading profiles from the SQLite DB.
     let profiles = tokio::task::spawn_blocking(read_profiles_from_db)
         .await
         .map_err(|e| format!("Task join error: {}", e))??;
@@ -1895,7 +2093,7 @@ pub async fn get_system_info(
     // Daemon version from IPC or sidecar
     let daemon_version = if state.ipc_client.check_connection() {
         // Use the monitor's known version or query
-        Some("0.10.0".to_string()) // TODO: get from actual IPC response when available
+        Some(env!("CARGO_PKG_VERSION").to_string())
     } else {
         // Try running clawdefender --version
         let bin = resolve_clawdefender_path();
@@ -2070,6 +2268,10 @@ fn default_settings() -> AppSettings {
         log_level: "info".to_string(),
         prompt_timeout_seconds: 15,
         event_retention_days: 30,
+        behavioral_auto_block: false,
+        behavioral_threshold: 0.7,
+        analysis_frequency: "all".to_string(),
+        security_level: "balanced".to_string(),
     }
 }
 
@@ -2099,6 +2301,14 @@ fn get_u32(table: &toml::Value, section: &str, key: &str, default: u32) -> u32 {
         .unwrap_or(default)
 }
 
+fn get_f64(table: &toml::Value, section: &str, key: &str, default: f64) -> f64 {
+    table
+        .get(section)
+        .and_then(|s| s.get(key))
+        .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
+        .unwrap_or(default)
+}
+
 #[tauri::command]
 pub async fn get_settings() -> Result<AppSettings, String> {
     let path = config_toml_path();
@@ -2115,6 +2325,10 @@ pub async fn get_settings() -> Result<AppSettings, String> {
         .unwrap_or(toml::Value::Table(Default::default()));
 
     let defaults = default_settings();
+
+    // Infer security level by comparing current policy rules against known templates
+    let security_level = infer_security_level();
+
     Ok(AppSettings {
         theme: get_str(&table, "ui", "theme", &defaults.theme),
         notifications_enabled: get_bool(&table, "ui", "notifications", defaults.notifications_enabled),
@@ -2123,6 +2337,10 @@ pub async fn get_settings() -> Result<AppSettings, String> {
         log_level: get_str(&table, "ui", "log_level", &defaults.log_level),
         prompt_timeout_seconds: get_u32(&table, "network_policy", "prompt_timeout_seconds", defaults.prompt_timeout_seconds),
         event_retention_days: get_u32(&table, "ui", "event_retention_days", defaults.event_retention_days),
+        behavioral_auto_block: get_bool(&table, "behavioral", "auto_block", defaults.behavioral_auto_block),
+        behavioral_threshold: get_f64(&table, "behavioral", "anomaly_threshold", defaults.behavioral_threshold),
+        analysis_frequency: get_str(&table, "slm", "analysis_frequency", &defaults.analysis_frequency),
+        security_level,
     })
 }
 
@@ -2131,6 +2349,11 @@ pub async fn update_settings(
     settings: AppSettings,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
+    // Validate retention days: must be at least 1 to prevent deleting all logs
+    if settings.event_retention_days == 0 {
+        return Err("Event retention days must be at least 1".to_string());
+    }
+
     let path = config_toml_path();
 
     // Read existing config to preserve unknown sections
@@ -2178,6 +2401,35 @@ pub async fn update_settings(
 
     net.insert("prompt_timeout_seconds".to_string(), toml::Value::Integer(settings.prompt_timeout_seconds as i64));
 
+    // Ensure [behavioral] section exists
+    if table.get("behavioral").is_none() {
+        table
+            .as_table_mut()
+            .ok_or("Config is not a TOML table")?
+            .insert("behavioral".to_string(), toml::Value::Table(Default::default()));
+    }
+    let behavioral = table
+        .get_mut("behavioral")
+        .and_then(|v| v.as_table_mut())
+        .ok_or("Failed to access [behavioral] section")?;
+
+    behavioral.insert("auto_block".to_string(), toml::Value::Boolean(settings.behavioral_auto_block));
+    behavioral.insert("anomaly_threshold".to_string(), toml::Value::Float(settings.behavioral_threshold));
+
+    // Ensure [slm] section exists for analysis frequency
+    if table.get("slm").is_none() {
+        table
+            .as_table_mut()
+            .ok_or("Config is not a TOML table")?
+            .insert("slm".to_string(), toml::Value::Table(Default::default()));
+    }
+    let slm = table
+        .get_mut("slm")
+        .and_then(|v| v.as_table_mut())
+        .ok_or("Failed to access [slm] section")?;
+
+    slm.insert("analysis_frequency".to_string(), toml::Value::String(settings.analysis_frequency.clone()));
+
     // Create parent directories if needed
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
@@ -2194,10 +2446,8 @@ pub async fn update_settings(
 
     tracing::info!("Settings saved to {}", path.display());
 
-    // If daemon is connected, notify about config change
-    if state.ipc_client.check_connection() {
-        tracing::info!("Daemon is connected, config reload will take effect on next query");
-    }
+    // If daemon is connected, trigger a config/policy reload
+    try_reload_daemon(&state);
 
     Ok(())
 }
@@ -2255,7 +2505,8 @@ pub async fn export_settings() -> Result<String, String> {
     });
 
     let home = std::env::var("HOME").unwrap_or_default();
-    let export_path = format!("{}/Desktop/clawdefender-settings.json", home);
+    let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let export_path = format!("{}/Desktop/clawdefender-settings-{}.json", home, timestamp);
     std::fs::write(
         &export_path,
         serde_json::to_string_pretty(&export).map_err(|e| e.to_string())?,
@@ -2268,9 +2519,14 @@ pub async fn export_settings() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn import_settings_from_content(content: String) -> Result<String, String> {
-    // Size check: reject files > 1MB
-    if content.len() > 1_048_576 {
-        return Err("Import file is too large (max 1MB)".to_string());
+    // Size check: reject files > 10KB to prevent abuse
+    if content.len() > 10_240 {
+        return Err("Import file is too large (max 10KB)".to_string());
+    }
+
+    // Reject null bytes which could cause truncation issues
+    if content.contains('\0') {
+        return Err("Import data contains invalid null bytes".to_string());
     }
 
     // Parse and validate structure
@@ -2293,6 +2549,16 @@ pub async fn import_settings_from_content(content: String) -> Result<String, Str
         .get("policy")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'policy' field")?;
+
+    // Reject content with null bytes
+    if config_content.contains('\0') || policy_content.contains('\0') {
+        return Err("Config content contains invalid null bytes".to_string());
+    }
+
+    // Reject path traversal attempts in values (e.g. "../../etc/passwd")
+    if config_content.contains("../") || policy_content.contains("../") {
+        return Err("Config content contains suspicious path traversal sequences".to_string());
+    }
 
     // Validate config is valid TOML (if non-empty)
     if !config_content.is_empty() {
@@ -3699,6 +3965,7 @@ pub struct AvailableModel {
 
 #[tauri::command]
 pub async fn activate_model(
+    app_handle: tauri::AppHandle,
     model_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<ActiveModelInfo, String> {
@@ -3748,7 +4015,22 @@ pub async fn activate_model(
         ..SlmConfig::default()
     };
 
+    // Step 1: Unload current model to free GPU memory
+    {
+        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        let old = slm_guard.take(); // Sets to None, takes ownership
+        drop(slm_guard); // Release lock first
+        drop(old); // Then drop old model to free GPU memory
+    }
+    // Brief pause for GPU memory release
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Step 2: Load new model
     let service = clawdefender_slm::SlmService::new(slm_config, true);
+    if !service.is_available() {
+        return Err("Failed to load model".to_string());
+    }
+
     let using_gpu = service
         .stats()
         .map(|s| s.using_gpu)
@@ -3770,7 +4052,7 @@ pub async fn activate_model(
         avg_latency_ms: 0.0,
     };
 
-    // Store in state (drop old model first)
+    // Step 3: Install new model
     {
         let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
         *slm_guard = Some(Arc::new(service));
@@ -3783,11 +4065,15 @@ pub async fn activate_model(
     // Persist config
     save_active_config(&config_to_save).map_err(|e| e.to_string())?;
 
+    // Notify frontend of model change
+    crate::events::emit_model_changed(&app_handle, Some(&info));
+
     Ok(info)
 }
 
 #[tauri::command]
 pub async fn activate_cloud_provider(
+    app_handle: tauri::AppHandle,
     provider: String,
     model: String,
     state: tauri::State<'_, AppState>,
@@ -3841,7 +4127,17 @@ pub async fn activate_cloud_provider(
         avg_latency_ms: 0.0,
     };
 
-    // Store in state
+    // Step 1: Unload current local model if any (free GPU memory)
+    {
+        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        let old = slm_guard.take();
+        drop(slm_guard);
+        drop(old);
+    }
+    // Brief pause for GPU memory release
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Step 2: Install cloud-backed service
     {
         let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
         *slm_guard = Some(Arc::new(service));
@@ -3858,18 +4154,25 @@ pub async fn activate_cloud_provider(
     };
     save_active_config(&config_to_save).map_err(|e| e.to_string())?;
 
+    // Notify frontend of model change
+    crate::events::emit_model_changed(&app_handle, Some(&info));
+
     Ok(info)
 }
 
 #[tauri::command]
 pub async fn deactivate_model(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     use clawdefender_slm::model_registry::{save_active_config, ActiveModelConfig};
 
+    // Take ownership and drop old model to free GPU memory
     {
         let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        *slm_guard = None;
+        let old = slm_guard.take();
+        drop(slm_guard);
+        drop(old);
     }
     {
         let mut info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
@@ -3877,6 +4180,9 @@ pub async fn deactivate_model(
     }
 
     save_active_config(&ActiveModelConfig::None).map_err(|e| e.to_string())?;
+
+    // Notify frontend of model deactivation
+    crate::events::emit_model_changed(&app_handle, None);
 
     Ok(())
 }
@@ -3977,6 +4283,62 @@ pub async fn list_available_models(
     }
 
     Ok(models)
+}
+
+#[derive(serde::Serialize)]
+pub struct PromptSlmAnalysis {
+    pub analysis: String,
+    pub recommendation: String,
+}
+
+#[tauri::command]
+pub async fn get_slm_analysis_for_prompt(
+    state: tauri::State<'_, AppState>,
+    prompt_id: String,
+) -> Result<Option<PromptSlmAnalysis>, String> {
+    // Get the active SLM service
+    let slm_opt = {
+        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    let slm = match slm_opt {
+        Some(s) if s.is_enabled() => s,
+        _ => return Ok(None),
+    };
+
+    // Find the pending prompt to build context
+    let prompt_context = {
+        let prompts = state.pending_prompts.lock().map_err(|e| e.to_string())?;
+        prompts.iter().find(|p| p.id == prompt_id).map(|p| {
+            format!(
+                "Analyze this MCP tool call for security risk:\n\
+                 Server: {}\nTool: {}\nAction: {}\nResource: {}\nRisk Level: {}\nContext: {}",
+                p.server_name, p.tool_name, p.action, p.resource, p.risk_level, p.context
+            )
+        })
+    };
+
+    let prompt_text = match prompt_context {
+        Some(ctx) => ctx,
+        None => return Ok(None),
+    };
+
+    match slm.analyze_event(&prompt_text).await {
+        Ok(response) => {
+            let recommendation = match response.risk_level {
+                clawdefender_slm::engine::RiskLevel::Critical
+                | clawdefender_slm::engine::RiskLevel::High => "Deny this request".to_string(),
+                clawdefender_slm::engine::RiskLevel::Medium => "Review carefully before allowing".to_string(),
+                clawdefender_slm::engine::RiskLevel::Low => "Likely safe to allow".to_string(),
+            };
+            Ok(Some(PromptSlmAnalysis {
+                analysis: response.explanation,
+                recommendation,
+            }))
+        }
+        Err(_) => Ok(None),
+    }
 }
 
 #[tauri::command]

@@ -11,7 +11,7 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.0</string>
+    <string>0.5.0-beta</string>
     <key>CFBundlePackageType</key>
     <string>XPC!</string>
     <key>CFBundleInfoDictionaryVersion</key>

@@ -65,14 +65,23 @@ export function Guards() {
           <div className="text-4xl mb-4 text-[var(--color-text-secondary)]">{"\u2261"}</div>
           <h2 className="text-lg font-semibold mb-2">No Active Guards</h2>
           <p className="text-[var(--color-text-secondary)] text-sm max-w-md mx-auto mb-4">
-            No agents are currently using self-protection. Guards are automatically
-            created when MCP servers register protection rules.
+            Guards provide runtime self-protection for MCP tool calls. They are
+            registered dynamically via the Guard SDK when servers connect to the
+            ClawDefender daemon.
           </p>
-          <div className="text-left max-w-sm mx-auto space-y-2 text-sm text-[var(--color-text-secondary)]">
-            <p className="font-medium text-[var(--color-text-primary)]">To get started:</p>
-            <p>1. Ensure the ClawDefender daemon is running</p>
-            <p>2. Connect MCP servers through your client</p>
-            <p>3. Guards will appear as servers register protection rules</p>
+          <div className="text-left max-w-sm mx-auto space-y-3 text-sm text-[var(--color-text-secondary)]">
+            <p className="font-medium text-[var(--color-text-primary)]">How guards work:</p>
+            <p>1. The ClawDefender daemon exposes a Guard API over IPC</p>
+            <p>2. MCP servers register guards (input, output, network, filesystem) using the SDK</p>
+            <p>3. Guards intercept tool calls in real-time and enforce protection rules</p>
+            <p>4. Active guards and their trigger counts appear here automatically</p>
+          </div>
+          <div className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] p-4 max-w-sm mx-auto">
+            <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Guard API Status</p>
+            <div className="flex items-center justify-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-success)]" />
+              <span className="text-sm text-[var(--color-text-primary)]">Ready — waiting for guard registrations</span>
+            </div>
           </div>
         </div>
       </div>

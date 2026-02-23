@@ -4,12 +4,14 @@
     {
       "name": "Kill Chain Patterns",
       "file": "killchains.json",
-      "description": "Multi-step attack pattern definitions for kill chain detection."
+      "description": "Multi-step attack patterns for MCP threat detection based on real CVEs and incidents.",
+      "count": 6
     },
     {
       "name": "Injection Signatures",
       "file": "injection-signatures.json",
-      "description": "Prompt injection and content manipulation signature patterns."
+      "description": "Multilingual prompt injection and tool poisoning detection signatures.",
+      "count": 21
     }
   ]
 }

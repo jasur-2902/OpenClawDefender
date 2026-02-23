@@ -41,8 +41,16 @@ pub struct CatalogModel {
     pub description: String,
     /// Whether this is the default recommendation.
     pub is_default: bool,
+    /// Author / organization, e.g. "Alibaba/Qwen", "Microsoft", "Google".
+    pub author: String,
+    /// HuggingFace model page URL (not the direct download URL).
+    pub model_page_url: String,
+    /// RAM requirement in bytes.
+    pub ram_required_bytes: u64,
 }
 
+/// All-zeros placeholder means "skip verification" (used only for custom downloads).
+#[allow(dead_code)]
 const PLACEHOLDER_SHA256: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -54,32 +62,38 @@ pub fn catalog() -> Vec<CatalogModel> {
             display_name: "Qwen3 1.7B".into(),
             family: "Qwen3".into(),
             quantization: "Q4_K_M".into(),
-            filename: "qwen3-1.7b-q4_k_m.gguf".into(),
-            size_bytes: 1_100_000_000,
-            download_url: "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/qwen3-1.7b-q4_k_m.gguf".into(),
-            sha256: PLACEHOLDER_SHA256.into(),
+            filename: "Qwen3-1.7B-Q4_K_M.gguf".into(),
+            size_bytes: 1_107_409_472,
+            download_url: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf".into(),
+            sha256: "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897".into(),
             min_ram_gb: 4,
             tokens_per_sec_apple: 55.0,
             tokens_per_sec_intel: 20.0,
             quality_rating: 4,
             description: "Recommended: Fast, thinking mode, works on all Macs".into(),
             is_default: true,
+            author: "Alibaba/Qwen".into(),
+            model_page_url: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF".into(),
+            ram_required_bytes: 4 * 1024 * 1024 * 1024,
         },
         CatalogModel {
             id: "qwen3-4b-q4".into(),
             display_name: "Qwen3 4B".into(),
             family: "Qwen3".into(),
             quantization: "Q4_K_M".into(),
-            filename: "qwen3-4b-q4_k_m.gguf".into(),
-            size_bytes: 2_500_000_000,
-            download_url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/qwen3-4b-q4_k_m.gguf".into(),
-            sha256: PLACEHOLDER_SHA256.into(),
+            filename: "Qwen3-4B-Q4_K_M.gguf".into(),
+            size_bytes: 2_497_280_256,
+            download_url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf".into(),
+            sha256: "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5".into(),
             min_ram_gb: 8,
             tokens_per_sec_apple: 35.0,
             tokens_per_sec_intel: 12.0,
             quality_rating: 5,
             description: "Best quality under 3GB, reasoning + thinking mode".into(),
             is_default: false,
+            author: "Alibaba/Qwen".into(),
+            model_page_url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF".into(),
+            ram_required_bytes: 8 * 1024 * 1024 * 1024,
         },
         CatalogModel {
             id: "phi4-mini-3.8b-q4".into(),
@@ -87,15 +101,18 @@ pub fn catalog() -> Vec<CatalogModel> {
             family: "Phi-4".into(),
             quantization: "Q4_K_M".into(),
             filename: "Phi-4-mini-instruct-Q4_K_M.gguf".into(),
-            size_bytes: 2_500_000_000,
+            size_bytes: 2_491_874_272,
             download_url: "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf".into(),
-            sha256: PLACEHOLDER_SHA256.into(),
+            sha256: "88c00229914083cd112853aab84ed51b87bdf6b9ce42f532d8c85c7c63b1730a".into(),
             min_ram_gb: 8,
             tokens_per_sec_apple: 32.0,
             tokens_per_sec_intel: 11.0,
             quality_rating: 4,
             description: "Strong reasoning & coding, great instruction following".into(),
             is_default: false,
+            author: "Microsoft".into(),
+            model_page_url: "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF".into(),
+            ram_required_bytes: 8 * 1024 * 1024 * 1024,
         },
         CatalogModel {
             id: "gemma3-1b-q4".into(),
@@ -103,15 +120,18 @@ pub fn catalog() -> Vec<CatalogModel> {
             family: "Gemma3".into(),
             quantization: "Q4_K_M".into(),
             filename: "gemma-3-1b-it-Q4_K_M.gguf".into(),
-            size_bytes: 800_000_000,
+            size_bytes: 806_058_240,
             download_url: "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf".into(),
-            sha256: PLACEHOLDER_SHA256.into(),
+            sha256: "8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135".into(),
             min_ram_gb: 2,
             tokens_per_sec_apple: 80.0,
             tokens_per_sec_intel: 35.0,
             quality_rating: 3,
             description: "Lightweight: Fastest, 128K context, 140+ languages".into(),
             is_default: false,
+            author: "Google".into(),
+            model_page_url: "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF".into(),
+            ram_required_bytes: 2 * 1024 * 1024 * 1024,
         },
         CatalogModel {
             id: "gemma3-4b-q4".into(),
@@ -119,15 +139,18 @@ pub fn catalog() -> Vec<CatalogModel> {
             family: "Gemma3".into(),
             quantization: "Q4_K_M".into(),
             filename: "gemma-3-4b-it-Q4_K_M.gguf".into(),
-            size_bytes: 2_500_000_000,
+            size_bytes: 2_489_757_856,
             download_url: "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf".into(),
-            sha256: PLACEHOLDER_SHA256.into(),
+            sha256: "882e8d2db44dc554fb0ea5077cb7e4bc49e7342a1f0da57901c0802ea21a0863".into(),
             min_ram_gb: 8,
             tokens_per_sec_apple: 33.0,
             tokens_per_sec_intel: 12.0,
             quality_rating: 5,
             description: "Multimodal (text+image), 128K context, excellent quality".into(),
             is_default: false,
+            author: "Google".into(),
+            model_page_url: "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF".into(),
+            ram_required_bytes: 8 * 1024 * 1024 * 1024,
         },
     ]
 }
@@ -450,6 +473,9 @@ mod tests {
             assert!(m.quality_rating >= 1 && m.quality_rating <= 5);
             assert!(m.tokens_per_sec_apple > 0.0);
             assert!(m.tokens_per_sec_intel > 0.0);
+            assert!(!m.author.is_empty());
+            assert!(m.model_page_url.starts_with("https://"));
+            assert!(m.ram_required_bytes > 0);
         }
     }
 

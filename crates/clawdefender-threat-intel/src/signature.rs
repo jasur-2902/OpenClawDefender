@@ -9,7 +9,7 @@ use crate::error::{Result, ThreatIntelError};
 /// This is the initial root-of-trust for feed verification.
 /// In production, generate a real keypair and embed the public key here.
 const EMBEDDED_PUBLIC_KEY_HEX: &str =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+    "e9b20cb34831fe44c9fa5001b9226d75ab2805ffb576e5186a88a0645c575844";
 
 /// Verifier that supports key rotation via `next_public_key` in manifests.
 #[derive(Debug, Clone)]

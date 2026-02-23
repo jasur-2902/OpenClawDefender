@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { Policy, PolicyRule } from "../types";
 import { RuleEditorModal } from "../components/RuleEditorModal";
@@ -13,6 +14,11 @@ const actionConfig: Record<PolicyRule["action"], { icon: string; color: string; 
 };
 
 export function PolicyEditor() {
+  const location = useLocation();
+  const navState = location.state as { highlightServer?: string; highlightAction?: string } | null;
+  const [highlightedRule, setHighlightedRule] = useState<string | null>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
+
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -54,6 +60,25 @@ export function PolicyEditor() {
     loadPolicy();
   }, [loadPolicy]);
 
+  // Highlight rule matching navigation state from notification Review action
+  useEffect(() => {
+    if (!navState?.highlightServer || !policy) return;
+    const match = policy.rules.find(
+      (r) =>
+        r.resource === navState.highlightServer ||
+        r.pattern.includes(navState.highlightServer!) ||
+        r.name.toLowerCase().includes(navState.highlightServer!.toLowerCase())
+    );
+    if (match) {
+      setHighlightedRule(match.name);
+      // Clear highlight after 3 seconds
+      const timer = setTimeout(() => setHighlightedRule(null), 3000);
+      // Scroll into view
+      setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [navState, policy]);
+
   function openNewRule() {
     setEditingRule(null);
     setEditorOpen(true);
@@ -78,37 +103,41 @@ export function PolicyEditor() {
     setMenuOpen(null);
   }
 
-  function handleDuplicate(rule: PolicyRule) {
-    const dup: PolicyRule = { ...rule, name: `${rule.name} (copy)` };
-    setPolicy((prev) =>
-      prev ? { ...prev, rules: [...prev.rules, dup] } : prev
-    );
+  async function handleDuplicate(rule: PolicyRule) {
     setMenuOpen(null);
+    try {
+      await invoke("duplicate_rule", { ruleName: rule.name });
+      showFeedback("success", `Rule "${rule.name}" duplicated`);
+      await loadPolicy();
+    } catch (err) {
+      showFeedback("error", `Failed to duplicate rule: ${err}`);
+    }
   }
 
-  function toggleEnabled(ruleName: string) {
-    setPolicy((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        rules: prev.rules.map((r) =>
-          r.name === ruleName ? { ...r, enabled: !r.enabled } : r
-        ),
-      };
-    });
+  async function toggleEnabled(ruleName: string) {
     setMenuOpen(null);
+    try {
+      await invoke("toggle_rule", { ruleName });
+      await loadPolicy();
+    } catch (err) {
+      showFeedback("error", `Failed to toggle rule: ${err}`);
+    }
   }
 
-  function moveRule(index: number, direction: -1 | 1) {
-    setPolicy((prev) => {
-      if (!prev) return prev;
-      const rules = [...prev.rules];
-      const target = index + direction;
-      if (target < 0 || target >= rules.length) return prev;
-      [rules[index], rules[target]] = [rules[target], rules[index]];
-      return { ...prev, rules };
-    });
+  async function moveRule(index: number, direction: -1 | 1) {
+    if (!policy) return;
+    const rules = [...policy.rules];
+    const target = index + direction;
+    if (target < 0 || target >= rules.length) return;
+    [rules[index], rules[target]] = [rules[target], rules[index]];
+    const ruleNames = rules.map((r) => r.name);
     setMenuOpen(null);
+    try {
+      await invoke("reorder_rules", { ruleNames });
+      await loadPolicy();
+    } catch (err) {
+      showFeedback("error", `Failed to reorder rules: ${err}`);
+    }
   }
 
   const currentLevel = policy?.name ?? "balanced";
@@ -197,8 +226,13 @@ export function PolicyEditor() {
           return (
             <div
               key={rule.name}
-              className={`flex items-center gap-3 p-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] transition-opacity ${
+              ref={highlightedRule === rule.name ? highlightRef : undefined}
+              className={`flex items-center gap-3 p-4 rounded-lg border bg-[var(--color-bg-secondary)] transition-all ${
                 !rule.enabled ? "opacity-50" : ""
+              } ${
+                highlightedRule === rule.name
+                  ? "border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]/30"
+                  : "border-[var(--color-border)]"
               }`}
             >
               {/* Action icon */}
@@ -225,11 +259,6 @@ export function PolicyEditor() {
               {/* Priority badge */}
               <span className="text-xs px-2 py-1 rounded bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] shrink-0">
                 P{rule.priority}
-              </span>
-
-              {/* Hit count (mock) */}
-              <span className="text-xs text-[var(--color-text-secondary)] w-16 text-right shrink-0">
-                {Math.floor(Math.random() * 100 + index * 10)} hits
               </span>
 
               {/* Edit button */}

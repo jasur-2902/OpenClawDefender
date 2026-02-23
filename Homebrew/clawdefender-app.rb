@@ -1,5 +1,5 @@
 cask "clawdefender" do
-  version "0.10.0"
+  version "0.5.0-beta"
   sha256 :no_check  # Will be set in release workflow
 
   url "https://github.com/clawdefender/clawdefender/releases/download/v#{version}/ClawDefender-#{version}-universal.dmg"

@@ -173,6 +173,10 @@ pub struct AppSettings {
     pub log_level: String,
     pub prompt_timeout_seconds: u32,
     pub event_retention_days: u32,
+    pub behavioral_auto_block: bool,
+    pub behavioral_threshold: f64,
+    pub analysis_frequency: String,
+    pub security_level: String,
 }
 
 // --- Threat Intelligence types ---

@@ -3,18 +3,18 @@
   "patterns": [
     {
       "id": "KC-FEED-001",
-      "name": "Supply Chain Injection",
+      "name": "Supply Chain Credential Theft",
       "severity": "critical",
       "window_seconds": 300,
-      "explanation": "Detects a supply chain attack pattern: a package install or dependency fetch is followed by reading credential files, then exfiltrating data over the network. This is the hallmark of a trojanized package.",
+      "explanation": "Detects the classic MCP supply chain attack pattern (postmark-mcp, Shai-Hulud): a package install or dependency fetch is followed by reading credential files (~/.ssh, ~/.aws, ~/.npmrc, ~/.config/gh), then exfiltrating data over the network. This pattern was observed in the September 2025 npm supply chain compromises.",
       "steps": [
         {
           "event_type": "shell_exec",
-          "path_pattern": "(npm|yarn|pip|cargo)\\s+install"
+          "path_pattern": "(npm|yarn|pip|cargo|npx)\\s+(install|add|i\\b)"
         },
         {
           "event_type": "file_read",
-          "path_pattern": "(~/.ssh/|~/.aws/|~/.npmrc|~/.config/gh/)"
+          "path_pattern": "(~/.ssh/|~/.aws/|~/.npmrc|~/.config/gh/|~/.docker/config)"
         },
         {
           "event_type": "network_connect",
@@ -29,7 +29,7 @@
       "name": "Data Staging and Exfiltration",
       "severity": "high",
       "window_seconds": 600,
-      "explanation": "Detects data staging: sensitive files are written to a temporary location, compressed or archived, then uploaded over the network. This pattern is common in data theft operations.",
+      "explanation": "Detects data staging: sensitive files are read, written to a temporary location, compressed or archived, then uploaded over the network. This pattern was seen in the WhatsApp-MCP tool poisoning demonstration and is common in MCP data theft operations.",
       "steps": [
         {
           "event_type": "file_write",
@@ -53,15 +53,72 @@
       "name": "Environment Variable Exfiltration",
       "severity": "high",
       "window_seconds": 120,
-      "explanation": "Detects exfiltration of environment variables: the attacker reads environment variables (which often contain API keys, tokens, and secrets) and then immediately makes a network connection to send them externally.",
+      "explanation": "Detects exfiltration of environment variables which often contain API keys, tokens, and secrets. The attacker reads env vars and immediately makes a network connection. This pattern is common in MCP command injection exploits (CVE-2025-6514, CVE-2025-54073).",
       "steps": [
         {
           "event_type": "shell_exec",
-          "path_pattern": "(env|printenv|set|export)"
+          "path_pattern": "(env|printenv|set|export)\\b"
         },
         {
           "event_type": "network_connect",
           "destination_pattern": ".*"
+        }
+      ],
+      "source": "feed",
+      "version": "1.0.0"
+    },
+    {
+      "id": "KC-FEED-004",
+      "name": "MCP Sandbox Escape to Persistence",
+      "severity": "critical",
+      "window_seconds": 600,
+      "explanation": "Detects the kill chain from MCP filesystem sandbox escape (CVE-2025-53109/53110) to persistence installation. An MCP server escapes its sandbox, accesses files outside the allowed directory, then creates persistence mechanisms via LaunchAgents, crontab, or shell profile modification.",
+      "steps": [
+        {
+          "event_type": "file_read",
+          "path_pattern": "(\\.\\./|/etc/|/private/)"
+        },
+        {
+          "event_type": "file_write",
+          "path_pattern": "(LaunchAgents/|LaunchDaemons/|\\.bashrc|\\.zshrc|\\.profile|crontab)"
+        }
+      ],
+      "source": "feed",
+      "version": "1.0.0"
+    },
+    {
+      "id": "KC-FEED-005",
+      "name": "MCP Command Injection to Reverse Shell",
+      "severity": "critical",
+      "window_seconds": 60,
+      "explanation": "Detects the command injection to reverse shell pattern observed in multiple MCP CVEs (CVE-2025-59834, CVE-2025-53107, CVE-2025-53100). Unsanitized input to child_process.exec triggers a reverse shell via bash, nc, or python.",
+      "steps": [
+        {
+          "event_type": "shell_exec",
+          "path_pattern": "(bash\\s+-i|nc\\s+-e|ncat\\s+--exec|python.*socket|socat\\s+TCP)"
+        },
+        {
+          "event_type": "network_connect",
+          "destination_pattern": ".*"
+        }
+      ],
+      "source": "feed",
+      "version": "1.0.0"
+    },
+    {
+      "id": "KC-FEED-006",
+      "name": "npm Token Theft and Worm Propagation",
+      "severity": "critical",
+      "window_seconds": 300,
+      "explanation": "Detects the Shai-Hulud worm propagation pattern: reading npm authentication tokens, then publishing packages. The worm uses stolen tokens to publish malicious versions of maintainer's packages.",
+      "steps": [
+        {
+          "event_type": "file_read",
+          "path_pattern": "(\\.npmrc|npm-token)"
+        },
+        {
+          "event_type": "shell_exec",
+          "path_pattern": "npm\\s+publish"
         }
       ],
       "source": "feed",

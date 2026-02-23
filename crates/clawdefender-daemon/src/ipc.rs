@@ -15,11 +15,26 @@ use tokio::net::UnixListener;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
+use clawdefender_core::behavioral::{DecisionEngine, LearningEngine};
 use clawdefender_core::policy::engine::DefaultPolicyEngine;
 use clawdefender_core::policy::PolicyEngine;
 use clawdefender_guard::connection::{GuardRequest, GuardResponse};
 use clawdefender_guard::registry::{GuardMode, GuardRegistry};
 use clawdefender_mcp_proxy::ProxyMetrics;
+use clawdefender_slm::SlmService;
+
+/// Optional AI subsystem references for enriched status responses.
+#[derive(Clone, Default)]
+pub struct AiSubsystemContext {
+    pub slm_service: Option<Arc<SlmService>>,
+    pub behavioral_enabled: bool,
+    pub behavioral_profile_count: Option<usize>,
+    pub swarm_available: bool,
+    /// Live reference to learning engine for real-time profile stats.
+    pub learning_engine: Option<Arc<RwLock<LearningEngine>>>,
+    /// Live reference to decision engine for auto-block stats.
+    pub decision_engine: Option<Arc<RwLock<DecisionEngine>>>,
+}
 
 /// Run the IPC server, accepting connections on the given Unix socket path.
 pub async fn run_ipc_server(
@@ -27,6 +42,24 @@ pub async fn run_ipc_server(
     metrics: Arc<ProxyMetrics>,
     policy_engine: Arc<RwLock<DefaultPolicyEngine>>,
     guard_registry: Arc<GuardRegistry>,
+) -> Result<()> {
+    run_ipc_server_with_ai(
+        socket_path,
+        metrics,
+        policy_engine,
+        guard_registry,
+        AiSubsystemContext::default(),
+    )
+    .await
+}
+
+/// Run the IPC server with AI subsystem context for enriched status.
+pub async fn run_ipc_server_with_ai(
+    socket_path: PathBuf,
+    metrics: Arc<ProxyMetrics>,
+    policy_engine: Arc<RwLock<DefaultPolicyEngine>>,
+    guard_registry: Arc<GuardRegistry>,
+    ai_ctx: AiSubsystemContext,
 ) -> Result<()> {
     // Remove stale socket if it exists.
     if socket_path.exists() {
@@ -49,9 +82,10 @@ pub async fn run_ipc_server(
                 let metrics = Arc::clone(&metrics);
                 let policy_engine = Arc::clone(&policy_engine);
                 let guard_registry = Arc::clone(&guard_registry);
+                let ai_ctx = ai_ctx.clone();
                 tokio::spawn(async move {
                     if let Err(e) =
-                        handle_client(stream, metrics, policy_engine, guard_registry).await
+                        handle_client(stream, metrics, policy_engine, guard_registry, ai_ctx).await
                     {
                         debug!(error = %e, "IPC client disconnected");
                     }
@@ -69,6 +103,7 @@ async fn handle_client(
     metrics: Arc<ProxyMetrics>,
     policy_engine: Arc<RwLock<DefaultPolicyEngine>>,
     guard_registry: Arc<GuardRegistry>,
+    ai_ctx: AiSubsystemContext,
 ) -> Result<()> {
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
@@ -94,13 +129,71 @@ async fn handle_client(
             writer.write_all(b"\n").await?;
             writer.flush().await?;
         } else if trimmed == "\"status\"" || trimmed == "status" {
-            let response = serde_json::json!({
+            let mut response = serde_json::json!({
                 "messages_total": metrics.messages_total.load(Ordering::Relaxed),
                 "messages_allowed": metrics.messages_allowed.load(Ordering::Relaxed),
                 "messages_blocked": metrics.messages_blocked.load(Ordering::Relaxed),
                 "messages_prompted": metrics.messages_prompted.load(Ordering::Relaxed),
                 "messages_logged": metrics.messages_logged.load(Ordering::Relaxed),
             });
+
+            // Enrich with AI subsystem status (additive, backwards-compatible).
+            if let Some(ref slm) = ai_ctx.slm_service {
+                let slm_status = if let Some(stats) = slm.stats() {
+                    serde_json::json!({
+                        "loaded": true,
+                        "model_name": stats.model_name,
+                        "using_gpu": stats.using_gpu,
+                        "total_inferences": stats.total_inferences,
+                    })
+                } else {
+                    serde_json::json!({
+                        "loaded": slm.is_enabled(),
+                    })
+                };
+                response["slm_status"] = slm_status;
+            }
+
+            // Query live behavioral engine stats if available.
+            let behavioral_status = if let Some(ref learning) = ai_ctx.learning_engine {
+                if let Ok(learning) = learning.try_read() {
+                    let profiles: Vec<_> = learning.all_profiles().collect();
+                    let total = profiles.len();
+                    let learning_count = profiles.iter().filter(|p| p.learning_mode).count();
+                    let monitoring_count = total - learning_count;
+
+                    let auto_block_stats = ai_ctx.decision_engine.as_ref()
+                        .and_then(|de| de.try_read().ok())
+                        .map(|de| serde_json::json!({
+                            "total_auto_blocks": de.stats.total_auto_blocks,
+                            "total_overrides": de.stats.total_overrides,
+                            "override_rate": de.stats.override_rate,
+                            "auto_block_enabled": de.auto_block_enabled,
+                        }));
+
+                    serde_json::json!({
+                        "enabled": ai_ctx.behavioral_enabled,
+                        "profiles": total,
+                        "learning_servers": learning_count,
+                        "monitoring_servers": monitoring_count,
+                        "auto_block_stats": auto_block_stats,
+                    })
+                } else {
+                    serde_json::json!({
+                        "enabled": ai_ctx.behavioral_enabled,
+                        "profiles": ai_ctx.behavioral_profile_count.unwrap_or(0),
+                    })
+                }
+            } else {
+                serde_json::json!({
+                    "enabled": ai_ctx.behavioral_enabled,
+                    "profiles": ai_ctx.behavioral_profile_count.unwrap_or(0),
+                })
+            };
+            response["behavioral_status"] = behavioral_status;
+
+            response["swarm_available"] = serde_json::json!(ai_ctx.swarm_available);
+
             let response = serde_json::to_string(&response)?;
             writer.write_all(response.as_bytes()).await?;
             writer.write_all(b"\n").await?;

@@ -1,3 +1,1 @@
-PLACEHOLDER_SIGNATURE
-This file will be replaced by the sign-feed.py tool with an Ed25519 signature
-of the manifest.json file after all content is finalized.
+084c7d57eb03b5d25758e02a237234bdd17c51ad0c3e719f65f0710d1060300822b5933b97dd0acb9fd67ed853133963a63740c082220f35439b74b8958c2005

@@ -17,7 +17,7 @@ path = "src/main.rs"
 clawdefender-core = { path = "../clawdefender-core" }
 clawdefender-mcp-proxy = { path = "../clawdefender-mcp-proxy" }
 clawdefender-sensor = { path = "../clawdefender-sensor" }
-clawdefender-slm = { path = "../clawdefender-slm" }
+clawdefender-slm = { path = "../clawdefender-slm", features = ["gguf"] }
 clawdefender-swarm = { path = "../clawdefender-swarm" }
 clawdefender-tui = { path = "../clawdefender-tui" }
 clawdefender-mcp-server = { path = "../clawdefender-mcp-server" }

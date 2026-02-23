@@ -32,7 +32,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use tracing::info;
 
-#[cfg(not(feature = "gguf"))]
+#[cfg(any(not(feature = "gguf"), test))]
 use crate::engine::MockSlmBackend;
 use crate::engine::{RiskLevel, SlmBackend, SlmConfig, SlmEngine, SlmResponse, SlmStats};
 

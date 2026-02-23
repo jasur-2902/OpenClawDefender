@@ -25,8 +25,8 @@ const DEFAULT_MAX_SIZE_BYTES: u64 = 50 * 1024 * 1024;
 const FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 /// Flush after this many records.
 const FLUSH_RECORD_COUNT: usize = 100;
-/// Retention: delete rotated files older than 30 days.
-const RETENTION_DAYS: i64 = 30;
+/// Default retention: delete rotated files older than 30 days.
+const DEFAULT_RETENTION_DAYS: i64 = 30;
 
 /// Internal command sent to the writer thread.
 enum WriterCommand {
@@ -134,14 +134,23 @@ pub struct FileAuditLogger {
     prompted_count: AtomicU64,
     /// Direct file access for reads (query/stats). Separate from writer.
     file_for_read: Mutex<()>,
+    /// Optional server name included in session-start/session-end records.
+    server_name: Option<String>,
+    /// Optional source override for session records (default: "system").
+    source_name: Option<String>,
 }
 
 impl FileAuditLogger {
-    /// Create a new logger, creating parent directories and the log file as needed.
+    /// Create a new logger with metadata for session records.
     ///
-    /// Spawns a dedicated writer thread that drains records from a channel.
-    /// On startup, logs a session-start record and cleans up old rotated files.
-    pub fn new(log_path: PathBuf, rotation: LogRotation) -> Result<Self> {
+    /// The `server_name` and `source_name` are included in session-start and
+    /// session-end records so the GUI can display which server a session belongs to.
+    pub fn with_metadata(
+        log_path: PathBuf,
+        rotation: LogRotation,
+        server_name: Option<String>,
+        source_name: Option<String>,
+    ) -> Result<Self> {
         if let Some(parent) = log_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("creating parent dirs for {}", log_path.display()))?;
@@ -203,12 +212,14 @@ impl FileAuditLogger {
             allowed_count: AtomicU64::new(0),
             prompted_count: AtomicU64::new(0),
             file_for_read: Mutex::new(()),
+            server_name: server_name.clone(),
+            source_name: source_name.clone(),
         };
 
         // Log session-start record.
         let start_record = AuditRecord {
             timestamp: Utc::now(),
-            source: "system".to_string(),
+            source: source_name.clone().unwrap_or_else(|| "system".to_string()),
             event_summary: "session-start".to_string(),
             event_details: serde_json::json!({
                 "session_id": session_id,
@@ -218,7 +229,7 @@ impl FileAuditLogger {
             response_time_ms: None,
             session_id: Some(session_id),
             direction: None,
-            server_name: None,
+            server_name,
             client_name: None,
             jsonrpc_method: None,
             tool_name: None,
@@ -245,6 +256,30 @@ impl FileAuditLogger {
         Ok(logger)
     }
 
+    /// Create a new logger, creating parent directories and the log file as needed.
+    ///
+    /// Spawns a dedicated writer thread that drains records from a channel.
+    /// On startup, logs a session-start record and cleans up old rotated files.
+    pub fn new(log_path: PathBuf, rotation: LogRotation) -> Result<Self> {
+        Self::with_metadata(log_path, rotation, None, None)
+    }
+
+    /// Create a new logger with a custom retention period (in days).
+    ///
+    /// Same as `with_metadata`, but uses the specified retention period for cleanup
+    /// instead of the default 30 days.
+    pub fn with_retention(
+        log_path: PathBuf,
+        rotation: LogRotation,
+        server_name: Option<String>,
+        source_name: Option<String>,
+        retention_days: i64,
+    ) -> Result<Self> {
+        // Run cleanup with custom retention before creating the logger
+        cleanup_old_files_with_retention(&log_path, &rotation, retention_days);
+        Self::with_metadata(log_path, rotation, server_name, source_name)
+    }
+
     /// Get the session ID for this logger instance.
     pub fn session_id(&self) -> &str {
         &self.session_id
@@ -254,7 +289,7 @@ impl FileAuditLogger {
     pub fn shutdown(&self) {
         let end_record = AuditRecord {
             timestamp: Utc::now(),
-            source: "system".to_string(),
+            source: self.source_name.clone().unwrap_or_else(|| "system".to_string()),
             event_summary: "session-end".to_string(),
             event_details: serde_json::json!({
                 "session_id": self.session_id,
@@ -268,7 +303,7 @@ impl FileAuditLogger {
             response_time_ms: None,
             session_id: Some(self.session_id.clone()),
             direction: None,
-            server_name: None,
+            server_name: self.server_name.clone(),
             client_name: None,
             jsonrpc_method: None,
             tool_name: None,
@@ -367,7 +402,7 @@ impl Drop for FileAuditLogger {
         // Log session-end and shut down writer thread.
         let end_record = AuditRecord {
             timestamp: Utc::now(),
-            source: "system".to_string(),
+            source: self.source_name.clone().unwrap_or_else(|| "system".to_string()),
             event_summary: "session-end".to_string(),
             event_details: serde_json::json!({
                 "session_id": self.session_id,
@@ -381,7 +416,7 @@ impl Drop for FileAuditLogger {
             response_time_ms: None,
             session_id: Some(self.session_id.clone()),
             direction: None,
-            server_name: None,
+            server_name: self.server_name.clone(),
             client_name: None,
             jsonrpc_method: None,
             tool_name: None,
@@ -441,9 +476,14 @@ pub(crate) fn rotated_path(base: &Path, n: u32) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// Delete rotated files older than RETENTION_DAYS.
+/// Delete rotated files older than the given retention period (in days).
 fn cleanup_old_files(log_path: &Path, rotation: &LogRotation) {
-    let cutoff = Utc::now() - chrono::Duration::days(RETENTION_DAYS);
+    cleanup_old_files_with_retention(log_path, rotation, DEFAULT_RETENTION_DAYS);
+}
+
+/// Delete rotated files older than `retention_days` days.
+fn cleanup_old_files_with_retention(log_path: &Path, rotation: &LogRotation, retention_days: i64) {
+    let cutoff = Utc::now() - chrono::Duration::days(retention_days);
 
     for i in 1..=rotation.max_files {
         let path = rotated_path(log_path, i);

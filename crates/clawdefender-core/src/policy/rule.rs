@@ -6,7 +6,7 @@ use super::matcher::{canonicalize_path, GlobMatcher};
 use anyhow::{bail, Result};
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// Context extracted from an event for matching against policy rules.
 /// This is the bridge between concrete event types and the generic matching logic.
@@ -164,6 +164,12 @@ pub(crate) struct RawRule {
     pub message: String,
     #[serde(default)]
     pub priority: Option<u32>,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 /// The `[rules.name.match]` table in TOML.
@@ -184,6 +190,12 @@ pub fn parse_policy_toml(content: &str) -> Result<Vec<PolicyRule>> {
 
     let mut rules = Vec::new();
     for (idx, (name, raw)) in file.rules.into_iter().enumerate() {
+        // Skip disabled rules so they are never evaluated by the engine.
+        if !raw.enabled {
+            debug!("skipping disabled rule '{}'", name);
+            continue;
+        }
+
         let action = parse_action(&raw.action, &raw.message)
             .map_err(|e| anyhow::anyhow!("rule '{name}': {e}"))?;
 

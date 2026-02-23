@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { BehavioralStatus, ServerProfileSummary } from "../types";
+import type { AppSettings, BehavioralStatus, ServerProfileSummary } from "../types";
 
 export function Behavioral() {
   const [status, setStatus] = useState<BehavioralStatus | null>(null);
@@ -9,6 +9,27 @@ export function Behavioral() {
   const [autoBlockEnabled, setAutoBlockEnabled] = useState(false);
   const [threshold, setThreshold] = useState(0.7);
   const [error, setError] = useState<string | null>(null);
+  const settingsRef = useRef<AppSettings | null>(null);
+
+  // Load persisted settings on mount
+  useEffect(() => {
+    invoke<AppSettings>("get_settings").then((s) => {
+      settingsRef.current = s;
+      setAutoBlockEnabled(s.behavioral_auto_block);
+      setThreshold(s.behavioral_threshold);
+    }).catch(() => {});
+  }, []);
+
+  const persistSettings = useCallback(async (autoBlock: boolean, thresh: number) => {
+    try {
+      const current = settingsRef.current ?? await invoke<AppSettings>("get_settings");
+      const updated = { ...current, behavioral_auto_block: autoBlock, behavioral_threshold: thresh };
+      await invoke("update_settings", { settings: updated });
+      settingsRef.current = updated;
+    } catch {
+      // Settings save is best-effort
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -218,7 +239,11 @@ export function Behavioral() {
             </p>
           </div>
           <button
-            onClick={() => setAutoBlockEnabled(!autoBlockEnabled)}
+            onClick={() => {
+              const next = !autoBlockEnabled;
+              setAutoBlockEnabled(next);
+              persistSettings(next, threshold);
+            }}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
               autoBlockEnabled ? "bg-[var(--color-accent)]" : "bg-[var(--color-border)]"
             }`}
@@ -243,7 +268,11 @@ export function Behavioral() {
             max="1.0"
             step="0.05"
             value={threshold}
-            onChange={(e) => setThreshold(parseFloat(e.target.value))}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              setThreshold(val);
+              persistSettings(autoBlockEnabled, val);
+            }}
             className="w-full accent-[var(--color-accent)]"
           />
           <div className="flex justify-between text-xs text-[var(--color-text-secondary)] mt-1">

@@ -1,7 +1,7 @@
 class Clawdefender < Formula
   desc "A firewall for AI agents - intercept, inspect, and control MCP tool calls"
   homepage "https://github.com/clawdefender/clawdefender"
-  version "0.1.0"
+  version "0.5.0-beta"
   license all_of: ["Apache-2.0", "MIT"]
 
   on_macos do

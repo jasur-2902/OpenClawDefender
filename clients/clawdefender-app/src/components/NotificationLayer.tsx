@@ -1,4 +1,6 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import { PromptQueue } from "./PromptQueue";
@@ -9,6 +11,7 @@ import type { AutoBlockInfo } from "./AutoBlockToast";
 import type { AlertData } from "./AlertWindow";
 
 export function NotificationLayer() {
+  const navigate = useNavigate();
   const addPrompt = useEventStore((s) => s.addPrompt);
   const [toasts, setToasts] = useState<AutoBlockInfo[]>([]);
   const [alerts, setAlerts] = useState<AlertData[]>([]);
@@ -40,28 +43,53 @@ export function NotificationLayer() {
   }, []);
 
   const handleReview = useCallback((id: string) => {
+    const toast = toasts.find((t) => t.id === id);
     setToasts((prev) => prev.filter((t) => t.id !== id));
-    // Navigate to timeline in the future
-  }, []);
+    navigate("/policy", {
+      state: { highlightServer: toast?.server_name, highlightAction: toast?.action },
+    });
+  }, [toasts, navigate]);
 
   const handleTrust = useCallback((id: string) => {
+    const toast = toasts.find((t) => t.id === id);
     setToasts((prev) => prev.filter((t) => t.id !== id));
-    // Add trust rule in the future
-  }, []);
+    if (toast) {
+      const rule = {
+        name: `Allow ${toast.server_name} - ${toast.action}`,
+        description: `Auto-created trust rule for ${toast.server_name}`,
+        action: "allow" as const,
+        resource: toast.server_name,
+        pattern: toast.action,
+        priority: 50,
+        enabled: true,
+      };
+      invoke("add_rule", { rule }).catch((err) => {
+        console.error("Failed to add trust rule:", err);
+      });
+    }
+  }, [toasts]);
 
   const dismissAlert = useCallback((id: string) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
   const handleKillProcess = useCallback((id: string) => {
+    const alert = alerts.find((a) => a.id === id);
     setAlerts((prev) => prev.filter((a) => a.id !== id));
-    // Kill process via Tauri command in the future
-  }, []);
+    if (alert?.pid != null) {
+      invoke("kill_agent_process", { pid: alert.pid }).catch((err) => {
+        console.error("Failed to kill process:", err);
+      });
+    }
+  }, [alerts]);
 
   const handleViewTimeline = useCallback((id: string) => {
+    const alert = alerts.find((a) => a.id === id);
     setAlerts((prev) => prev.filter((a) => a.id !== id));
-    // Navigate to timeline in the future
-  }, []);
+    navigate("/timeline", {
+      state: { filterMessage: alert?.message },
+    });
+  }, [alerts, navigate]);
 
   const hasPrompts = pendingPrompts.length > 0;
   const hasAlerts = alerts.length > 0;

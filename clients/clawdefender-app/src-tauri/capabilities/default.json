@@ -6,7 +6,31 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
-    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "clawdefender-daemon",
+          "cmd": "clawdefender-daemon",
+          "args": true
+        },
+        {
+          "name": "sw_vers",
+          "cmd": "sw_vers",
+          "args": true
+        },
+        {
+          "name": "system_profiler",
+          "cmd": "system_profiler",
+          "args": ["SPHardwareDataType", "SPSoftwareDataType", "SPMemoryDataType"]
+        },
+        {
+          "name": "xattr",
+          "cmd": "xattr",
+          "args": true
+        }
+      ]
+    },
     "notification:default",
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission",

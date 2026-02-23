@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
 import { useTauriEvent } from "../hooks/useTauriEvent";
@@ -141,6 +142,7 @@ export function Dashboard() {
   const [networkSummary, setNetworkSummary] = useState<NetworkSummaryData | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<{ loaded: boolean; model_name: string | null } | null>(null);
 
   const fetchDashboardData = useCallback(() => {
     invoke<DaemonStatus>("get_daemon_status")
@@ -177,6 +179,10 @@ export function Dashboard() {
 
     invoke<NetworkSummaryData>("get_network_summary")
       .then(setNetworkSummary)
+      .catch(() => {});
+
+    invoke<{ loaded: boolean; model_name: string | null }>("get_slm_status")
+      .then(setAiStatus)
       .catch(() => {});
   }, [setEvents, setDaemonRunning]);
 
@@ -236,8 +242,12 @@ export function Dashboard() {
   const config = protectionConfig[level];
   const activeGuards = guards.filter((g) => g.enabled).length;
 
-  // Sort recent events: blocks and prompts first, then by recency
-  const recentEvents = [...events]
+  // Filter and sort recent events: prioritize tool-call events over session events
+  const isSessionEvent = (e: AuditEvent) =>
+    e.action === "Session Started" || e.action === "Session Ended";
+  const toolCallEvents = events.filter((e) => !isSessionEvent(e));
+  const eventsToShow = toolCallEvents.length > 0 ? toolCallEvents : events;
+  const recentEvents = [...eventsToShow]
     .sort((a, b) => {
       const aDec = normalizeDecision(a.decision);
       const bDec = normalizeDecision(b.decision);
@@ -288,10 +298,30 @@ export function Dashboard() {
           </h1>
         </div>
         {daemonRunning ? (
-          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-            {Math.max(status?.servers_proxied ?? 0, servers.length, serverEventCounts.size)} MCP servers monitored &bull;{" "}
-            {events.length} events today &bull; {blockedCount} blocked
-          </p>
+          <div className="mt-2 space-y-1">
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              {Math.max(status?.servers_proxied ?? 0, servers.length, serverEventCounts.size)} MCP servers monitored &bull;{" "}
+              {events.length} events today &bull; {blockedCount} blocked
+            </p>
+            {aiStatus && (
+              <p className="text-sm text-[var(--color-text-secondary)] flex items-center gap-1.5">
+                {aiStatus.loaded ? (
+                  <>
+                    <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-success)]" />
+                    AI Analysis: Active — {aiStatus.model_name}
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-text-secondary)]" />
+                    AI Analysis: Not configured —{" "}
+                    <Link to="/settings" className="text-[var(--color-accent)] hover:underline">
+                      Configure in Settings
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
         ) : (
           <div className="mt-3 flex items-center gap-3">
             <p className="text-sm text-[var(--color-text-secondary)]">
@@ -399,12 +429,13 @@ export function Dashboard() {
             </div>
           )}
           {!netExtStatus?.filter_active && (
-            <a
-              href="/settings"
+            <Link
+              to="/settings"
+              state={{ scrollTo: "network-protection" }}
               className="text-[var(--color-accent)] hover:underline text-sm"
             >
               Enable in Settings
-            </a>
+            </Link>
           )}
         </div>
       </section>

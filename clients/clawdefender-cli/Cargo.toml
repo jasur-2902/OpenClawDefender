@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 clawdefender-core = { path = "../../crates/clawdefender-core" }
 clawdefender-mcp-proxy = { path = "../../crates/clawdefender-mcp-proxy" }
-clawdefender-slm = { path = "../../crates/clawdefender-slm" }
+clawdefender-slm = { path = "../../crates/clawdefender-slm", features = ["gguf"] }
 clawdefender-swarm = { path = "../../crates/clawdefender-swarm" }
 clawdefender-mcp-server = { path = "../../crates/clawdefender-mcp-server" }
 clawdefender-certify = { path = "../../crates/clawdefender-certify" }

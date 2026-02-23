@@ -72,11 +72,33 @@ fuzz-jsonrpc:
 fuzz-policy:
     cargo +nightly fuzz run fuzz_policy_engine
 
-# Bump version across all Cargo.toml files
+# Bump version across all version locations
 bump-version VERSION:
+    @echo "Bumping version to {{VERSION}} everywhere..."
+    # Workspace Cargo.toml (drives all workspace crates)
     sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' Cargo.toml
-    @echo "Version bumped to {{VERSION}} in workspace Cargo.toml"
-    @echo "Remember to update Formula/clawdefender.rb version too."
+    # Tauri app Cargo.toml (excluded from workspace)
+    sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' clients/clawdefender-app/src-tauri/Cargo.toml
+    # Test crates with own versions
+    sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' tests/mock-mcp-server/Cargo.toml
+    sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' tests/mock-eslogger/Cargo.toml
+    # tauri.conf.json
+    sed -i '' 's/"version": ".*"/"version": "{{VERSION}}"/' clients/clawdefender-app/src-tauri/tauri.conf.json
+    # package.json
+    cd clients/clawdefender-app && npm version "{{VERSION}}" --no-git-tag-version --allow-same-version
+    # Homebrew formula and cask
+    sed -i '' 's/version ".*"/version "{{VERSION}}"/' Formula/clawdefender.rb
+    sed -i '' 's/version ".*"/version "{{VERSION}}"/' Homebrew/clawdefender-app.rb
+    # Network extension Info.plist
+    sed -i '' 's|<string>[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[^<]*</string>|<string>{{VERSION}}</string>|' extensions/clawdefender-network/Info.plist
+    # SDK packages
+    cd sdks/typescript-agent && npm version "{{VERSION}}" --no-git-tag-version --allow-same-version 2>/dev/null || sed -i '' 's/"version": ".*"/"version": "{{VERSION}}"/' sdks/typescript-agent/package.json
+    sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' sdks/python-agent/pyproject.toml
+    # OpenAPI spec
+    sed -i '' 's/version: ".*"/version: "{{VERSION}}"/' crates/clawdefender-guard/src/openapi.yaml
+    # Sidebar footer
+    sed -i '' 's/v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[^ ]*/v{{VERSION}}/' clients/clawdefender-app/src/components/Sidebar.tsx
+    @echo "Version bumped to {{VERSION}} in all locations."
 
 # Build the daemon binary
 build-daemon:

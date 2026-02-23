@@ -43,12 +43,24 @@ interface CatalogModel {
 }
 
 interface DownloadProgress {
-  status: string;
+  status: string | { failed: string };
   bytes_downloaded: number;
   bytes_total: number;
   speed_bytes_per_sec: number;
   eta_seconds: number;
   percent: number;
+}
+
+/** Extract the status type string from DownloadStatus.
+ *  Rust's serde serializes unit variants as strings ("downloading")
+ *  but Failed(String) as an object: {"failed":"msg"}.  */
+function getStatusType(status: string | { failed: string } | unknown): string {
+  if (typeof status === "string") return status;
+  if (typeof status === "object" && status !== null) {
+    const keys = Object.keys(status);
+    if (keys.length > 0) return keys[0];
+  }
+  return "unknown";
 }
 
 interface InstalledModelInfo {
@@ -537,13 +549,15 @@ function AIAnalysisStep({
       onStartDownload(taskId, model.display_name);
 
       // Poll progress
+      let pollFailCount = 0;
       pollRef.current = setInterval(async () => {
         try {
           const progress = await invoke<DownloadProgress>("get_download_progress", {
             taskId,
           });
           setDownloadProgress(progress);
-          if (progress.status === "completed" || progress.status === "done") {
+          const st = getStatusType(progress.status);
+          if (st === "completed" || st === "done") {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
             setDownloadDone(true);
@@ -556,14 +570,33 @@ function AIAnalysisStep({
                 size_bytes: model.size_bytes,
               },
             ]);
-          } else if (progress.status === "error" || progress.status === "failed") {
+          } else if (st === "failed") {
+            const failedMsg = typeof progress.status === "object" && progress.status !== null
+              ? (progress.status as { failed: string }).failed
+              : "Download failed";
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
+            setError(failedMsg);
+            setDownloadingModelId(null);
+            setDownloadTaskId(null);
+          } else if (st === "error" || st === "cancelled") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            if (st === "cancelled") setError("Download was cancelled");
             setDownloadingModelId(null);
             setDownloadTaskId(null);
           }
-        } catch {
-          // Progress polling failure is transient, keep trying
+        } catch (err) {
+          // Count consecutive poll failures; give up after 10 (5 seconds)
+          pollFailCount = (pollFailCount || 0) + 1;
+          if (pollFailCount >= 10) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            const errMsg = err instanceof Error ? err.message : String(err);
+            setError(`Connection lost: ${errMsg}`);
+            setDownloadingModelId(null);
+            setDownloadTaskId(null);
+          }
         }
       }, 500);
     } catch (e) {
@@ -667,6 +700,46 @@ function AIAnalysisStep({
               className="px-4 py-2 rounded-lg bg-[var(--color-success)] hover:opacity-90 text-white font-medium text-sm transition-opacity shrink-0"
             >
               Download &amp; Enable
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Download error */}
+      {error && !downloadingModelId && (
+        <div className="mb-4 p-4 rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5">
+          <p className="text-sm text-[var(--color-danger)] mb-2">{error}</p>
+          <div className="flex items-center gap-2">
+            {recommended && (
+              <button
+                onClick={() => { setError(null); startDownload(recommended); }}
+                className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
+              >
+                Retry Download
+              </button>
+            )}
+            <button
+              onClick={() => setError(null)}
+              className="px-3 py-1.5 rounded-md text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Download connecting (no progress yet) */}
+      {downloadingModelId && !downloadProgress && !downloadDone && (
+        <div className="mb-4 p-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-[var(--color-text-primary)] animate-pulse">
+              Connecting to download server...
+            </span>
+            <button
+              onClick={handleCancel}
+              className="text-xs text-[var(--color-danger)] hover:underline"
+            >
+              Cancel
             </button>
           </div>
         </div>
@@ -823,6 +896,18 @@ function CompleteStep({
       }
     } catch {
       // Autostart toggle non-fatal during onboarding
+    }
+
+    // Persist "show in menu bar" (minimize_to_tray) preference
+    // We must read the full current settings and merge, since update_settings
+    // expects the complete AppSettings struct (partial updates would reset other fields).
+    try {
+      const current = await invoke<Record<string, unknown>>("get_settings");
+      await invoke("update_settings", {
+        settings: { ...current, minimize_to_tray: showInMenuBar },
+      });
+    } catch {
+      // Non-fatal during onboarding
     }
 
     try {
