@@ -33,6 +33,8 @@ pub struct ProxyConfig {
     pub prompt_timeout: Duration,
     /// Maximum number of prompts that can be pending simultaneously.
     pub max_pending_prompts: usize,
+    /// Human-readable name of the MCP server being proxied.
+    pub server_name: Option<String>,
 }
 
 impl Default for ProxyConfig {
@@ -43,6 +45,7 @@ impl Default for ProxyConfig {
             remote_url: None,
             prompt_timeout: Duration::from_secs(30),
             max_pending_prompts: 100,
+            server_name: None,
         }
     }
 }

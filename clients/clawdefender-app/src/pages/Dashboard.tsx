@@ -16,6 +16,40 @@ import type {
 
 type ProtectionLevel = "protected" | "warning" | "danger";
 
+const serverColors = [
+  "#3b82f6", "#8b5cf6", "#06b6d4", "#f59e0b",
+  "#ec4899", "#10b981", "#f97316", "#6366f1",
+];
+
+function getServerColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return serverColors[Math.abs(hash) % serverColors.length];
+}
+
+function truncateResource(resource: string | null, maxLen = 30): string {
+  if (!resource) return "";
+  if (resource.length <= maxLen) return resource;
+  if (resource.includes("/")) {
+    const parts = resource.split("/");
+    if (parts.length > 2) {
+      const tail = parts.slice(-2).join("/");
+      if (tail.length <= maxLen - 4) return ".../" + tail;
+    }
+  }
+  return resource.slice(0, maxLen - 3) + "...";
+}
+
+function normalizeDecision(d: string): string {
+  const lower = d.toLowerCase();
+  if (lower === "allowed" || lower === "allow") return "allowed";
+  if (lower === "blocked" || lower === "block" || lower === "denied" || lower === "deny") return "blocked";
+  if (lower === "prompted" || lower === "prompt") return "prompted";
+  return lower;
+}
+
 function getProtectionLevel(
   daemonRunning: boolean,
   blockedCount: number,
@@ -202,7 +236,18 @@ export function Dashboard() {
   const config = protectionConfig[level];
   const activeGuards = guards.filter((g) => g.enabled).length;
 
-  const recentEvents = events.slice(0, 10);
+  // Sort recent events: blocks and prompts first, then by recency
+  const recentEvents = [...events]
+    .sort((a, b) => {
+      const aDec = normalizeDecision(a.decision);
+      const bDec = normalizeDecision(b.decision);
+      const priority: Record<string, number> = { blocked: 0, prompted: 1, allowed: 2 };
+      const aPri = priority[aDec] ?? 3;
+      const bPri = priority[bDec] ?? 3;
+      if (aPri !== bPri) return aPri - bPri;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    })
+    .slice(0, 10);
   const alerts = events.filter(
     (e) => e.risk_level === "critical" || e.risk_level === "high"
   );
@@ -244,7 +289,7 @@ export function Dashboard() {
         </div>
         {daemonRunning ? (
           <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-            {status?.servers_proxied ?? 0} MCP servers monitored &bull;{" "}
+            {Math.max(status?.servers_proxied ?? 0, servers.length, serverEventCounts.size)} MCP servers monitored &bull;{" "}
             {events.length} events today &bull; {blockedCount} blocked
           </p>
         ) : (
@@ -264,13 +309,18 @@ export function Dashboard() {
       </section>
 
       {/* Quick Stats Row */}
-      <section aria-label="Quick statistics" className="grid grid-cols-4 gap-4">
+      <section aria-label="Quick statistics" className="grid grid-cols-5 gap-4">
         <StatCard label="Events Today" value={events.length} />
         <StatCard label="Blocked" value={blockedCount} color="var(--color-danger)" />
         <StatCard
           label="Pending Prompts"
           value={pendingPrompts.length}
           color="var(--color-warning)"
+        />
+        <StatCard
+          label="Servers"
+          value={Math.max(servers.length, serverEventCounts.size)}
+          color="var(--color-accent)"
         />
         <StatCard
           label="Active Guards"
@@ -421,11 +471,25 @@ export function Dashboard() {
                   <span className="text-xs text-[var(--color-text-secondary)] w-14 shrink-0 font-mono">
                     {formatTime(evt.timestamp)}
                   </span>
-                  <span className="text-xs text-[var(--color-accent)] w-24 truncate shrink-0">
+                  <span
+                    className="text-xs w-28 truncate shrink-0 font-medium"
+                    style={{ color: getServerColor(evt.server_name) }}
+                  >
                     {evt.server_name}
                   </span>
                   <span className="text-sm text-[var(--color-text-primary)] flex-1 truncate">
-                    {evt.tool_name ?? evt.event_type}
+                    {evt.tool_name ? (
+                      <>
+                        <span className="font-medium">{evt.tool_name}</span>
+                        {evt.resource && (
+                          <span className="ml-1 text-xs text-[var(--color-text-secondary)] font-mono">
+                            {truncateResource(evt.resource)}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      evt.action || evt.event_type
+                    )}
                   </span>
                   <StatusBadge decision={evt.decision} />
                 </div>

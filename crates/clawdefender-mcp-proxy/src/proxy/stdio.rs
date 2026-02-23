@@ -4,7 +4,7 @@
 //! and an MCP server spawned as a child process. Messages classified as requiring
 //! review are evaluated against the policy engine before being forwarded or blocked.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,7 +17,9 @@ use tokio::process::Command;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
-use clawdefender_core::audit::{AuditRecord, SlmAnalysisRecord, SwarmAnalysisRecord};
+use clawdefender_core::audit::logger::FileAuditLogger;
+use clawdefender_core::audit::{AuditLogger, AuditRecord, SlmAnalysisRecord, SwarmAnalysisRecord};
+use clawdefender_core::config::settings::LogRotation;
 use clawdefender_core::event::mcp::{
     McpEvent, McpEventKind, ResourceRead, SamplingRequest, ToolCall,
 };
@@ -66,6 +68,12 @@ impl StdioProxy {
     /// `server_args` -- arguments for the MCP server.
     /// `policy_path` -- path to the TOML policy file.
     pub fn new(server_cmd: String, server_args: Vec<String>, policy_path: &Path) -> Result<Self> {
+        // Derive a human-readable server name from the command path.
+        let derived_name = PathBuf::from(&server_cmd)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string());
+
         let policy_engine = if policy_path.exists() {
             DefaultPolicyEngine::load(policy_path)
                 .with_context(|| format!("failed to load policy from {}", policy_path.display()))?
@@ -77,7 +85,24 @@ impl StdioProxy {
             DefaultPolicyEngine::empty()
         };
 
-        let (audit_tx, _audit_rx) = mpsc::channel(1024);
+        let (audit_tx, mut audit_rx) = mpsc::channel::<AuditRecord>(1024);
+
+        // Create a FileAuditLogger that writes to the same audit.jsonl the GUI watches.
+        let audit_log_path = default_audit_log_path();
+        let audit_logger = Arc::new(
+            FileAuditLogger::new(audit_log_path.clone(), LogRotation::default())
+                .context("creating proxy audit logger")?,
+        );
+        info!(path = %audit_log_path.display(), "proxy audit logger initialized");
+
+        // Spawn a background task to drain audit records into the file logger.
+        tokio::spawn(async move {
+            while let Some(record) = audit_rx.recv().await {
+                if let Err(e) = audit_logger.log(&record) {
+                    warn!(error = %e, "failed to write proxy audit record");
+                }
+            }
+        });
 
         Ok(Self {
             config: ProxyConfig {
@@ -85,6 +110,7 @@ impl StdioProxy {
                 server_args,
                 prompt_timeout: Duration::from_secs(30),
                 max_pending_prompts: 100,
+                server_name: derived_name,
                 ..Default::default()
             },
             policy_engine: Arc::new(RwLock::new(policy_engine)),
@@ -253,6 +279,7 @@ impl StdioProxy {
         let prompt_timeout = self.config.prompt_timeout;
         let max_pending = self.config.max_pending_prompts;
         let session_id = self.session_id.clone();
+        let server_name_for_relay = self.config.server_name.clone();
 
         let child_tx_relay = child_tx.clone();
         let client_tx_relay = client_tx.clone();
@@ -294,6 +321,7 @@ impl StdioProxy {
                                         max_pending,
                                         &mut pending_count,
                                         &session_id,
+                                        server_name_for_relay.as_deref(),
                                     )
                                     .await
                                     {
@@ -318,6 +346,7 @@ impl StdioProxy {
         let server_audit_tx = self.audit_tx.clone();
         let server_metrics = Arc::clone(&self.metrics);
         let client_tx_server = client_tx.clone();
+        let server_name_for_server_relay = self.config.server_name.clone();
 
         let server_relay_handle = tokio::spawn(async move {
             let mut child_reader = BufReader::new(child_stdout);
@@ -339,7 +368,10 @@ impl StdioProxy {
                                 Ok(raw_msg) => {
                                     // Log server responses for audit
                                     let event = build_mcp_event(&raw_msg.parsed);
-                                    let record = build_audit_record(&event, "forward", None);
+                                    let mut record = build_audit_record(&event, "forward", None);
+                                    if record.server_name.is_none() {
+                                        record.server_name = server_name_for_server_relay.clone();
+                                    }
                                     let _ = server_audit_tx.try_send(record);
                                     server_metrics.inc_total();
 
@@ -420,6 +452,14 @@ impl StdioProxy {
         W2: AsyncWriteExt + Unpin,
     {
         let classification = classify(&msg);
+        let sn = self.config.server_name.clone();
+        let mk_rec_self = |event: &McpEvent, action: &str, rule: Option<&str>| -> AuditRecord {
+            let mut r = build_audit_record(event, action, rule);
+            if r.server_name.is_none() {
+                r.server_name = sn.clone();
+            }
+            r
+        };
 
         match classification {
             Classification::Pass => {
@@ -432,7 +472,7 @@ impl StdioProxy {
                 let event = build_mcp_event(&msg);
                 debug!(event_summary = %event_summary(&event), "logging message");
                 self.metrics.inc_logged();
-                let record = build_audit_record(&event, "log", None);
+                let record = mk_rec_self(&event, "log", None);
                 let _ = self.audit_tx.try_send(record);
                 let bytes = serialize_message(&msg);
                 child_writer.write_all(&bytes).await?;
@@ -480,7 +520,7 @@ impl StdioProxy {
                 match action {
                     PolicyAction::Allow => {
                         self.metrics.inc_allowed();
-                        let mut record = build_audit_record(&event, "allow", None);
+                        let mut record = mk_rec_self(&event, "allow", None);
                         record.threat_intel = threat_intel_data.clone();
                         let _ = self.audit_tx.try_send(record);
                         let bytes = serialize_message(&msg);
@@ -496,7 +536,7 @@ impl StdioProxy {
                             proxy_writer.write_all(&bytes).await?;
                             proxy_writer.flush().await?;
                         }
-                        let mut record = build_audit_record(&event, "block", None);
+                        let mut record = mk_rec_self(&event, "block", None);
                         record.threat_intel = threat_intel_data.clone();
                         let _ = self.audit_tx.try_send(record);
                         info!(event_summary = %event_summary(&event), "blocked by policy");
@@ -532,7 +572,7 @@ impl StdioProxy {
                                                 child_writer.write_all(&bytes).await?;
                                                 child_writer.flush().await?;
                                                 let record =
-                                                    build_audit_record(&event, "allow_once", None);
+                                                    mk_rec_self(&event, "allow_once", None);
                                                 let _ = self.audit_tx.try_send(record);
                                             }
                                             Ok(Ok(UiResponse::Decision {
@@ -546,7 +586,7 @@ impl StdioProxy {
                                                 let session_rule = build_session_allow_rule(&event);
                                                 let mut engine = self.policy_engine.write().await;
                                                 engine.add_session_rule(session_rule);
-                                                let record = build_audit_record(
+                                                let record = mk_rec_self(
                                                     &event,
                                                     "allow_session",
                                                     None,
@@ -563,7 +603,7 @@ impl StdioProxy {
                                                 let perm_rule = build_session_allow_rule(&event);
                                                 let mut engine = self.policy_engine.write().await;
                                                 let _ = engine.add_permanent_rule(perm_rule);
-                                                let record = build_audit_record(
+                                                let record = mk_rec_self(
                                                     &event,
                                                     "add_to_policy",
                                                     None,
@@ -581,7 +621,7 @@ impl StdioProxy {
                                                 proxy_writer.write_all(&bytes).await?;
                                                 proxy_writer.flush().await?;
                                                 let record =
-                                                    build_audit_record(&event, "deny", None);
+                                                    mk_rec_self(&event, "deny", None);
                                                 let _ = self.audit_tx.try_send(record);
                                             }
                                         }
@@ -615,7 +655,7 @@ impl StdioProxy {
                     PolicyAction::Log => {
                         self.metrics.inc_logged();
                         debug!(event_summary = %event_summary(&event), "policy: log and forward");
-                        let record = build_audit_record(&event, "log", None);
+                        let record = mk_rec_self(&event, "log", None);
                         let _ = self.audit_tx.try_send(record);
                         let bytes = serialize_message(&msg);
                         child_writer.write_all(&bytes).await?;
@@ -660,8 +700,19 @@ async fn handle_client_message(
     max_pending: usize,
     pending_count: &mut usize,
     _session_id: &str,
+    server_name: Option<&str>,
 ) -> Result<()> {
     let classification = classify(&raw_msg.parsed);
+    let sn = server_name.map(|s| s.to_string());
+
+    // Helper: build an audit record and set the server_name from the proxy config.
+    let mk_record = |event: &McpEvent, action: &str, rule: Option<&str>| -> AuditRecord {
+        let mut r = build_audit_record(event, action, rule);
+        if r.server_name.is_none() {
+            r.server_name = sn.clone();
+        }
+        r
+    };
 
     match classification {
         Classification::Pass => {
@@ -675,7 +726,7 @@ async fn handle_client_message(
             let event = build_mcp_event(&raw_msg.parsed);
             debug!(event_summary = %event_summary(&event), "logging message");
             metrics.inc_logged();
-            let record = build_audit_record(&event, "log", None);
+            let record = mk_record(&event, "log", None);
             let _ = audit_tx.try_send(record);
             child_tx
                 .send(raw_msg.raw_bytes_with_newline())
@@ -744,7 +795,7 @@ async fn handle_client_message(
             match action {
                 PolicyAction::Allow => {
                     metrics.inc_allowed();
-                    let mut record = build_audit_record(&event, "allow", None);
+                    let mut record = mk_record(&event, "allow", None);
                     record.threat_intel = threat_intel_data.clone();
                     let _ = audit_tx.try_send(record);
                     child_tx
@@ -763,7 +814,7 @@ async fn handle_client_message(
                             .await
                             .map_err(|_| anyhow::anyhow!("client channel closed"))?;
                     }
-                    let mut record = build_audit_record(&event, "block", None);
+                    let mut record = mk_record(&event, "block", None);
                     record.threat_intel = threat_intel_data.clone();
                     let _ = audit_tx.try_send(record);
                     info!(event_summary = %event_summary(&event), "blocked by policy");
@@ -801,11 +852,21 @@ async fn handle_client_message(
                         let metrics = Arc::clone(metrics);
                         let slm_ctx_for_spawn = slm_context.clone();
                         let swarm_ctx_for_spawn = swarm_context.clone();
+                        let sn_for_spawn = sn.clone();
                         let forward_bytes = raw_msg.raw_bytes_with_newline();
                         let msg_for_spawn = raw_msg.parsed;
 
                         tokio::spawn(async move {
                             let id = request_id(&msg_for_spawn);
+
+                            // Helper to build audit records with server name.
+                            let mk_rec = |ev: &McpEvent, act: &str, rule: Option<&str>| -> AuditRecord {
+                                let mut r = build_audit_record(ev, act, rule);
+                                if r.server_name.is_none() {
+                                    r.server_name = sn_for_spawn.clone();
+                                }
+                                r
+                            };
 
                             // SAFETY: SLM output is advisory only. It enriches the UI display
                             // but does not influence the policy decision.
@@ -863,7 +924,7 @@ async fn handle_client_message(
                                     ..
                                 }) => {
                                     let _ = child_tx.send(forward_bytes.clone()).await;
-                                    let record = build_audit_record(&event, "allow_once", None);
+                                    let record = mk_rec(&event, "allow_once", None);
                                     let _ = audit_tx.try_send(record);
                                     metrics.inc_allowed();
                                 }
@@ -875,7 +936,7 @@ async fn handle_client_message(
                                     let session_rule = build_session_allow_rule(&event);
                                     let mut engine = policy_engine.write().await;
                                     engine.add_session_rule(session_rule);
-                                    let record = build_audit_record(&event, "allow_session", None);
+                                    let record = mk_rec(&event, "allow_session", None);
                                     let _ = audit_tx.try_send(record);
                                     metrics.inc_allowed();
                                 }
@@ -887,7 +948,7 @@ async fn handle_client_message(
                                     let perm_rule = build_session_allow_rule(&event);
                                     let mut engine = policy_engine.write().await;
                                     let _ = engine.add_permanent_rule(perm_rule);
-                                    let record = build_audit_record(&event, "add_to_policy", None);
+                                    let record = mk_rec(&event, "add_to_policy", None);
                                     let _ = audit_tx.try_send(record);
                                     metrics.inc_allowed();
                                 }
@@ -902,7 +963,7 @@ async fn handle_client_message(
                                         let bytes = serialize_message(&block_resp);
                                         let _ = client_tx.send(bytes).await;
                                     }
-                                    let record = build_audit_record(&event, "deny", None);
+                                    let record = mk_rec(&event, "deny", None);
                                     let _ = audit_tx.try_send(record);
                                     metrics.inc_blocked();
                                 }
@@ -925,7 +986,7 @@ async fn handle_client_message(
                                         };
                                         // Send a supplementary audit record with SLM analysis.
                                         let mut record =
-                                            build_audit_record(&event, "slm_analysis", None);
+                                            mk_rec(&event, "slm_analysis", None);
                                         record.slm_analysis = Some(slm_record);
                                         let _ = audit_tx.try_send(record);
                                         debug!(
@@ -1036,7 +1097,7 @@ async fn handle_client_message(
                 PolicyAction::Log => {
                     metrics.inc_logged();
                     debug!(event_summary = %event_summary(&event), "policy: log and forward");
-                    let record = build_audit_record(&event, "log", None);
+                    let record = mk_record(&event, "log", None);
                     let _ = audit_tx.try_send(record);
                     child_tx
                         .send(raw_msg.raw_bytes_with_newline())
@@ -1163,26 +1224,173 @@ fn event_summary(event: &McpEvent) -> String {
     }
 }
 
-/// Build an audit record from an McpEvent.
+/// Classify the risk level of an event based on tool name and arguments.
+fn classify_risk_level(event: &McpEvent) -> String {
+    match &event.kind {
+        McpEventKind::ToolCall(tc) => {
+            let tool = tc.tool_name.to_lowercase();
+            let args_str = tc.arguments.to_string().to_lowercase();
+
+            // CRITICAL: curl|sh patterns, credential theft, shell injection
+            if args_str.contains("curl") && (args_str.contains("| sh") || args_str.contains("|sh") || args_str.contains("| bash") || args_str.contains("|bash"))
+                || args_str.contains("shell_injection")
+            {
+                return "critical".to_string();
+            }
+
+            // HIGH: accessing sensitive files
+            let sensitive_paths = [
+                ".ssh/", "id_rsa", "id_ed25519", ".aws/credentials", ".env",
+                "/etc/shadow", "/etc/passwd", "browser/cookies", "keychain",
+                ".gnupg/", "private_key", ".npmrc", ".pypirc",
+            ];
+            for path in &sensitive_paths {
+                if args_str.contains(path) {
+                    return "high".to_string();
+                }
+            }
+
+            // HIGH: shell/command execution tools
+            if tool.contains("exec") || tool.contains("run_command") || tool.contains("bash")
+                || tool.contains("shell") || tool.contains("terminal")
+            {
+                return "high".to_string();
+            }
+
+            // MEDIUM: file writes, unknown tools
+            if tool.contains("write") || tool.contains("create") || tool.contains("delete")
+                || tool.contains("remove") || tool.contains("edit") || tool.contains("patch")
+            {
+                return "medium".to_string();
+            }
+
+            // LOW: file reads, listing
+            if tool.contains("read") || tool.contains("list") || tool.contains("search")
+                || tool.contains("get") || tool.contains("view")
+            {
+                return "low".to_string();
+            }
+
+            // Default for unknown tools
+            "medium".to_string()
+        }
+        McpEventKind::ResourceRead(rr) => {
+            let uri = rr.uri.to_lowercase();
+            let sensitive = [".ssh/", "id_rsa", ".aws/", ".env", "/etc/shadow", "credentials"];
+            for s in &sensitive {
+                if uri.contains(s) {
+                    return "high".to_string();
+                }
+            }
+            "low".to_string()
+        }
+        McpEventKind::SamplingRequest(_) => "medium".to_string(),
+        McpEventKind::ListRequest => "low".to_string(),
+        _ => "low".to_string(),
+    }
+}
+
+/// Map a JSON-RPC method + tool name to a human-readable action label.
+fn human_readable_action(event: &McpEvent) -> String {
+    match &event.kind {
+        McpEventKind::ToolCall(tc) => {
+            let tool = tc.tool_name.to_lowercase();
+            if tool.contains("read_file") || tool.contains("file_read") {
+                "File Read".to_string()
+            } else if tool.contains("write_file") || tool.contains("file_write") || tool.contains("create_file") {
+                "File Write".to_string()
+            } else if tool.contains("edit") || tool.contains("patch") || tool.contains("replace") {
+                "File Edit".to_string()
+            } else if tool.contains("run_command") || tool.contains("exec") || tool.contains("bash")
+                || tool.contains("shell") || tool.contains("terminal")
+            {
+                "Shell Command".to_string()
+            } else if tool.contains("search") || tool.contains("grep") || tool.contains("find") || tool.contains("glob") {
+                "Search".to_string()
+            } else if tool.contains("list") || tool.contains("ls") || tool.contains("directory") {
+                "Directory Listing".to_string()
+            } else if tool.contains("delete") || tool.contains("remove") {
+                "File Delete".to_string()
+            } else {
+                format!("Tool Call: {}", tc.tool_name)
+            }
+        }
+        McpEventKind::ResourceRead(_) => "Resource Access".to_string(),
+        McpEventKind::SamplingRequest(_) => "AI Sampling".to_string(),
+        McpEventKind::ListRequest => "List Request".to_string(),
+        McpEventKind::Notification(n) => format!("Notification: {n}"),
+        McpEventKind::Other(m) => format!("Other: {m}"),
+    }
+}
+
+/// Build an audit record from an McpEvent with enriched fields.
 fn build_audit_record(event: &McpEvent, action: &str, rule_name: Option<&str>) -> AuditRecord {
+    build_enriched_audit_record(event, action, rule_name, None)
+}
+
+/// Build an enriched audit record from an McpEvent with an explicit server name.
+fn build_enriched_audit_record(event: &McpEvent, action: &str, rule_name: Option<&str>, server_name: Option<&str>) -> AuditRecord {
+    // Extract enriched fields from the event
+    let (tool_name, arguments, jsonrpc_method) = match &event.kind {
+        McpEventKind::ToolCall(tc) => (
+            Some(tc.tool_name.clone()),
+            Some(tc.arguments.clone()),
+            Some("tools/call".to_string()),
+        ),
+        McpEventKind::ResourceRead(rr) => (
+            None,
+            Some(json!({"uri": rr.uri})),
+            Some("resources/read".to_string()),
+        ),
+        McpEventKind::SamplingRequest(_) => (
+            None,
+            None,
+            Some("sampling/createMessage".to_string()),
+        ),
+        McpEventKind::ListRequest => (
+            None,
+            None,
+            Some("tools/list".to_string()),
+        ),
+        McpEventKind::Other(m) => (
+            None,
+            None,
+            Some(m.clone()),
+        ),
+        McpEventKind::Notification(n) => (
+            None,
+            None,
+            Some(n.clone()),
+        ),
+    };
+
+    let classification = classify_risk_level(event);
+    let policy_action_str = match action {
+        "allow" | "allow_once" | "allow_session" | "add_to_policy" => "allowed",
+        "block" | "deny" => "blocked",
+        "prompt" => "prompted",
+        "log" => "logged",
+        _ => action,
+    };
+
     AuditRecord {
         timestamp: event.timestamp,
         source: event.source.clone(),
-        event_summary: event_summary(event),
+        event_summary: human_readable_action(event),
         event_details: serde_json::to_value(event).unwrap_or_default(),
         rule_matched: rule_name.map(|s| s.to_string()),
         action_taken: action.to_string(),
         response_time_ms: None,
         session_id: None,
-        direction: None,
-        server_name: None,
+        direction: Some("client_to_server".to_string()),
+        server_name: server_name.map(|s| s.to_string()),
         client_name: None,
-        jsonrpc_method: None,
-        tool_name: None,
-        arguments: None,
-        classification: None,
-        policy_rule: None,
-        policy_action: None,
+        jsonrpc_method,
+        tool_name,
+        arguments,
+        classification: Some(classification),
+        policy_rule: rule_name.map(|s| s.to_string()),
+        policy_action: Some(policy_action_str.to_string()),
         user_decision: None,
         proxy_latency_us: None,
         slm_analysis: None,
@@ -1373,6 +1581,35 @@ fn build_audit_record_from_swarm_event(
     }
 }
 
+/// Return the default audit log path (~/.local/share/clawdefender/audit.jsonl).
+///
+/// Security: The returned path is under the user's home directory. The caller
+/// (FileAuditLogger) creates the file with O_APPEND which is safe, but we
+/// verify the path is not a symlink to prevent symlink-based redirection attacks.
+fn default_audit_log_path() -> PathBuf {
+    let path = if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home)
+            .join(".local/share/clawdefender/audit.jsonl")
+    } else {
+        PathBuf::from("/tmp/clawdefender-audit.jsonl")
+    };
+
+    // If the file already exists, verify it is not a symlink.
+    if path.exists() {
+        if let Ok(meta) = std::fs::symlink_metadata(&path) {
+            if meta.file_type().is_symlink() {
+                warn!(
+                    path = %path.display(),
+                    "audit log path is a symlink — refusing to use it, falling back to temp path"
+                );
+                return PathBuf::from("/tmp/clawdefender-audit-safe.jsonl");
+            }
+        }
+    }
+
+    path
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1526,7 +1763,12 @@ any = true
         let record = build_audit_record(&event, "allow", Some("allow_rest"));
         assert_eq!(record.action_taken, "allow");
         assert_eq!(record.rule_matched.as_deref(), Some("allow_rest"));
-        assert!(record.event_summary.contains("read_file"));
+        // Enriched summary produces "File Read" for read_file tool calls
+        assert!(
+            record.event_summary.contains("read_file") || record.event_summary.contains("File Read"),
+            "event_summary '{}' should reference the tool",
+            record.event_summary
+        );
     }
 
     #[test]
@@ -1677,8 +1919,8 @@ any = true
         assert_eq!(proxy.metrics().messages_logged.load(Ordering::Relaxed), 1);
     }
 
-    #[test]
-    fn test_new_with_missing_policy_uses_empty() {
+    #[tokio::test]
+    async fn test_new_with_missing_policy_uses_empty() {
         let proxy = StdioProxy::new("echo".into(), vec![], Path::new("/nonexistent/policy.toml"));
         assert!(proxy.is_ok(), "should fall back to empty policy");
     }

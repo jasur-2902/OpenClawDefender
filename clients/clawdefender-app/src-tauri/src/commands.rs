@@ -4,11 +4,55 @@ use crate::state::*;
 
 // --- Daemon management ---
 
+/// Count how many MCP servers are currently wrapped with ClawDefender across
+/// all detected MCP client config files.
+pub fn count_wrapped_servers() -> u32 {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return 0,
+    };
+
+    let config_paths: Vec<std::path::PathBuf> = vec![
+        home.join("Library/Application Support/Claude/claude_desktop_config.json"),
+        home.join("Library/Application Support/Claude/config.json"),
+        home.join(".cursor/mcp.json"),
+        home.join(".vscode/mcp.json"),
+        home.join(".codeium/windsurf/mcp_config.json"),
+    ];
+
+    let mut wrapped = 0u32;
+    for path in config_paths {
+        if !path.exists() {
+            continue;
+        }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let config: serde_json::Value = match serde_json::from_str(&contents) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let key = detect_servers_key(&config);
+        if let Some(servers) = config.get(key).and_then(|v| v.as_object()) {
+            for (_name, entry) in servers {
+                if entry.get("_clawdefender_original").is_some()
+                    || entry.get("_clawai_original").is_some()
+                {
+                    wrapped += 1;
+                }
+            }
+        }
+    }
+    wrapped
+}
+
 #[tauri::command]
 pub async fn get_daemon_status(
     state: tauri::State<'_, AppState>,
 ) -> Result<DaemonStatus, String> {
     let sock = daemon::socket_path().to_string_lossy().to_string();
+    let wrapped = count_wrapped_servers();
 
     // Try live IPC query first
     if let Ok(metrics) = state.ipc_client.query_status() {
@@ -18,7 +62,7 @@ pub async fn get_daemon_status(
             uptime_seconds: None,
             version: None,
             socket_path: sock,
-            servers_proxied: 0,
+            servers_proxied: wrapped,
             events_processed: metrics.messages_total,
         };
         state.update_daemon_status(true, Some(status.clone()));
@@ -39,7 +83,7 @@ pub async fn get_daemon_status(
         uptime_seconds: None,
         version: None,
         socket_path: sock,
-        servers_proxied: 0,
+        servers_proxied: wrapped,
         events_processed: 0,
     })
 }
@@ -1258,37 +1302,11 @@ fn parse_scan_findings_count(stdout: &str) -> u32 {
 #[tauri::command]
 pub async fn start_scan(
     app_handle: tauri::AppHandle,
-    server_command: String,
+    _server_command: String,
     modules: Vec<String>,
-    timeout: u32,
+    _timeout: u32,
 ) -> Result<String, String> {
     use tauri::Manager;
-
-    validate_server_command(&server_command)?;
-
-    let bin_path = resolve_clawdefender_path();
-    // Verify the binary actually exists
-    if !std::path::Path::new(&bin_path).exists() {
-        // If it's just the bare name "clawdefender", it might still be on PATH
-        if bin_path == "clawdefender" {
-            if std::process::Command::new("which")
-                .arg("clawdefender")
-                .output()
-                .map(|o| !o.status.success())
-                .unwrap_or(true)
-            {
-                return Err(
-                    "ClawDefender binary not found. Install it or place the sidecar in the binaries/ directory."
-                        .to_string(),
-                );
-            }
-        } else {
-            return Err(format!(
-                "ClawDefender binary not found at '{}'",
-                bin_path
-            ));
-        }
-    }
 
     let state = app_handle.state::<AppState>();
 
@@ -1303,18 +1321,30 @@ pub async fn start_scan(
         }
     }
 
-    // Generate scan ID using timestamp + pid-based uniqueness (no rand crate needed)
+    // Generate scan ID
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
     let scan_id = format!("scan-{}-{}", ts, std::process::id());
 
-    let modules_total = if modules.is_empty() {
-        6u32 // default: all 6 scanner modules
+    // Determine which modules to run
+    let all_modules = vec![
+        "mcp-config-audit",
+        "policy-strength",
+        "server-reputation",
+        "system-posture",
+        "behavioral-anomaly",
+    ];
+    let selected: Vec<String> = if modules.is_empty() {
+        all_modules.iter().map(|s| s.to_string()).collect()
     } else {
-        modules.len() as u32
+        modules
     };
+    let modules_total = selected.len() as u32;
+
+    // Check daemon connection for the system posture module
+    let daemon_connected = state.ipc_client.check_connection();
 
     // Store initial tracker
     {
@@ -1331,82 +1361,176 @@ pub async fn start_scan(
                 modules_total,
                 findings_count: 0,
                 current_module: Some("Initializing".to_string()),
+                result: None,
             },
         );
     }
 
     let id = scan_id.clone();
     let handle = app_handle.clone();
-    let bin = bin_path;
-    let cmd = server_command.clone();
-    let timeout_secs = if timeout == 0 { 300u32 } else { timeout };
+    let started_at = chrono::Utc::now().to_rfc3339();
 
     tokio::spawn(async move {
         let state = handle.state::<AppState>();
+        let mut module_results = Vec::new();
+        let mut completed = 0u32;
 
-        let mut command = tokio::process::Command::new(&bin);
-        command.arg("scan").arg("--json").arg(&cmd);
-
-        for m in &modules {
-            command.arg("--module").arg(m);
-        }
-
-        let timeout_duration = std::time::Duration::from_secs(timeout_secs as u64);
-        let result = tokio::time::timeout(timeout_duration, command.output()).await;
-
-        match result {
-            Ok(Ok(output)) => {
-                if output.status.success() {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let findings_count = parse_scan_findings_count(&stdout);
-                    if let Ok(mut scans) = state.active_scans.lock() {
-                        if let Some(tracker) = scans.get_mut(&id) {
-                            tracker.status = "completed".to_string();
-                            tracker.progress_percent = 100.0;
-                            tracker.modules_completed = tracker.modules_total;
-                            tracker.findings_count = findings_count;
-                            tracker.current_module = None;
-                        }
-                    }
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    tracing::error!("Scan {} failed: {}", id, stderr);
-                    if let Ok(mut scans) = state.active_scans.lock() {
-                        if let Some(tracker) = scans.get_mut(&id) {
-                            tracker.status = "failed".to_string();
-                            tracker.current_module = None;
-                        }
-                    }
+        for module_id in &selected {
+            // Update current module
+            if let Ok(mut scans) = state.active_scans.lock() {
+                if let Some(tracker) = scans.get_mut(&id) {
+                    tracker.current_module = Some(module_name_for_id(module_id));
+                    tracker.progress_percent =
+                        (completed as f64 / modules_total as f64) * 100.0;
                 }
             }
-            Ok(Err(e)) => {
-                tracing::error!("Scan {} process error: {}", id, e);
-                if let Ok(mut scans) = state.active_scans.lock() {
-                    if let Some(tracker) = scans.get_mut(&id) {
-                        tracker.status = "failed".to_string();
-                        tracker.current_module = None;
-                    }
-                }
-            }
-            Err(_) => {
-                tracing::warn!("Scan {} timed out after {}s", id, timeout_secs);
-                if let Ok(mut scans) = state.active_scans.lock() {
-                    if let Some(tracker) = scans.get_mut(&id) {
-                        tracker.status = "failed".to_string();
-                        tracker.current_module = None;
-                    }
+
+            // Small delay to let progress polling see updates
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+            let result = match module_id.as_str() {
+                "mcp-config-audit" => crate::scanner::scan_mcp_configs(),
+                "policy-strength" => crate::scanner::scan_policy_strength(),
+                "server-reputation" => crate::scanner::scan_server_reputation(),
+                "system-posture" => crate::scanner::scan_system_posture(daemon_connected),
+                "behavioral-anomaly" => crate::scanner::scan_behavioral_anomalies(),
+                other => crate::state::ScanModuleResult {
+                    module_id: other.to_string(),
+                    module_name: other.to_string(),
+                    status: "skipped".to_string(),
+                    findings: vec![],
+                    summary: format!("Unknown module: {}", other),
+                },
+            };
+
+            module_results.push(result);
+            completed += 1;
+
+            if let Ok(mut scans) = state.active_scans.lock() {
+                if let Some(tracker) = scans.get_mut(&id) {
+                    tracker.modules_completed = completed;
+                    tracker.findings_count = module_results
+                        .iter()
+                        .map(|m| m.findings.len() as u32)
+                        .sum();
                 }
             }
         }
+
+        // Build final result
+        let all_findings: Vec<&crate::state::ScanFinding> =
+            module_results.iter().flat_map(|m| &m.findings).collect();
+        let total_findings = all_findings.len() as u32;
+        let critical_count = all_findings
+            .iter()
+            .filter(|f| f.severity == "critical")
+            .count() as u32;
+        let high_count = all_findings
+            .iter()
+            .filter(|f| f.severity == "high")
+            .count() as u32;
+        let medium_count = all_findings
+            .iter()
+            .filter(|f| f.severity == "medium")
+            .count() as u32;
+        let low_count = all_findings
+            .iter()
+            .filter(|f| f.severity == "low")
+            .count() as u32;
+
+        let scan_result = crate::state::ScanResult {
+            scan_id: id.clone(),
+            status: "completed".to_string(),
+            started_at: started_at.clone(),
+            completed_at: Some(chrono::Utc::now().to_rfc3339()),
+            modules: module_results,
+            total_findings,
+            critical_count,
+            high_count,
+            medium_count,
+            low_count,
+        };
+
+        // Save scan result to disk
+        let _ = save_scan_result(&scan_result);
+
+        // Update tracker
+        if let Ok(mut scans) = state.active_scans.lock() {
+            if let Some(tracker) = scans.get_mut(&id) {
+                tracker.status = "completed".to_string();
+                tracker.progress_percent = 100.0;
+                tracker.modules_completed = modules_total;
+                tracker.findings_count = total_findings;
+                tracker.current_module = None;
+                tracker.result = Some(scan_result);
+            }
+        }
+
+        tracing::info!("Scan {} completed with {} findings", id, total_findings);
     });
 
     tracing::info!(
-        "Started scan {} for command '{}' with {} modules",
+        "Started comprehensive scan {} with {} modules",
         scan_id,
-        server_command,
         modules_total
     );
     Ok(scan_id)
+}
+
+fn module_name_for_id(id: &str) -> String {
+    match id {
+        "mcp-config-audit" => "MCP Configuration Audit".to_string(),
+        "policy-strength" => "Policy Strength Analysis".to_string(),
+        "server-reputation" => "Server Reputation Check".to_string(),
+        "system-posture" => "System Security Posture".to_string(),
+        "behavioral-anomaly" => "Behavioral Anomaly Review".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn save_scan_result(result: &crate::state::ScanResult) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("No home dir")?;
+    let scans_dir = home.join(".local/share/clawdefender/scans");
+    std::fs::create_dir_all(&scans_dir)
+        .map_err(|e| format!("Failed to create scans directory: {}", e))?;
+
+    // Sanitize scan_id to prevent path traversal (e.g. "../../../etc/passwd")
+    let safe_id: String = result
+        .scan_id
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if safe_id.is_empty() {
+        return Err("Invalid scan ID".to_string());
+    }
+
+    let file_path = scans_dir.join(format!("{}.json", safe_id));
+    let json = serde_json::to_string_pretty(result)
+        .map_err(|e| format!("Failed to serialize scan result: {}", e))?;
+
+    // Write with owner-only permissions (0600) to prevent other users from
+    // reading scan findings which may contain security-sensitive details.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&file_path)
+            .map_err(|e| format!("Failed to create scan result file: {}", e))?;
+        std::io::Write::write_all(&mut file, json.as_bytes())
+            .map_err(|e| format!("Failed to write scan result: {}", e))?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&file_path, json)
+            .map_err(|e| format!("Failed to write scan result: {}", e))?;
+    }
+
+    tracing::info!("Scan result saved to {}", file_path.display());
+    Ok(())
 }
 
 #[tauri::command]
@@ -1432,6 +1556,69 @@ pub async fn get_scan_progress(
         findings_count: tracker.findings_count,
         current_module: tracker.current_module.clone(),
     })
+}
+
+#[tauri::command]
+pub async fn get_scan_results(
+    state: tauri::State<'_, AppState>,
+    scan_id: String,
+) -> Result<crate::state::ScanResult, String> {
+    // First try in-memory
+    {
+        let scans = state
+            .active_scans
+            .lock()
+            .map_err(|e| format!("Failed to lock scan state: {}", e))?;
+        if let Some(tracker) = scans.get(&scan_id) {
+            if let Some(ref result) = tracker.result {
+                return Ok(result.clone());
+            }
+        }
+    }
+
+    // Fall back to disk
+    // Sanitize scan_id to prevent path traversal attacks
+    let safe_id: String = scan_id
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if safe_id.is_empty() || safe_id != scan_id {
+        return Err(format!("Invalid scan ID: '{}'", scan_id));
+    }
+    let home = dirs::home_dir().ok_or("No home dir")?;
+    let file_path = home.join(format!(
+        ".local/share/clawdefender/scans/{}.json",
+        safe_id
+    ));
+    if file_path.exists() {
+        let contents = std::fs::read_to_string(&file_path)
+            .map_err(|e| format!("Failed to read scan result: {}", e))?;
+        let result: crate::state::ScanResult = serde_json::from_str(&contents)
+            .map_err(|e| format!("Failed to parse scan result: {}", e))?;
+        return Ok(result);
+    }
+
+    Err(format!("Scan result '{}' not found", scan_id))
+}
+
+#[tauri::command]
+pub async fn apply_scan_fix(
+    client: String,
+    server: String,
+    action_type: String,
+) -> Result<String, String> {
+    match action_type.as_str() {
+        "wrap_server" => {
+            wrap_server(client, server).await?;
+            Ok("Server wrapped successfully".to_string())
+        }
+        "add_policy_rule" => {
+            // For policy rule additions, we return guidance - the user should
+            // use the Policy page for granular control
+            Ok("Navigate to the Policy page to add this rule".to_string())
+        }
+        other => Err(format!("Unknown fix action type: {}", other)),
+    }
 }
 
 // --- System health ---
@@ -3305,6 +3492,538 @@ mod dirs {
     use std::path::PathBuf;
     pub fn home_dir() -> Option<PathBuf> {
         std::env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+// --- Cloud API management ---
+
+#[tauri::command]
+pub async fn save_api_key(provider: String, key: String) -> Result<(), String> {
+    // Security: Validate provider name against known providers to prevent
+    // arbitrary keychain entries. Trim the API key to remove accidental whitespace.
+    let valid_providers: Vec<String> = clawdefender_slm::cloud_backend::get_cloud_providers()
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    if !valid_providers.contains(&provider) {
+        return Err(format!("unknown cloud provider: {}", provider));
+    }
+    let key = key.trim().to_string();
+    if key.is_empty() {
+        return Err("API key cannot be empty".to_string());
+    }
+    clawdefender_slm::cloud_backend::store_api_key(&provider, &key)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_api_key(provider: String) -> Result<(), String> {
+    // Security: Validate provider name to prevent arbitrary keychain deletions.
+    let valid_providers: Vec<String> = clawdefender_slm::cloud_backend::get_cloud_providers()
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    if !valid_providers.contains(&provider) {
+        return Err(format!("unknown cloud provider: {}", provider));
+    }
+    clawdefender_slm::cloud_backend::delete_api_key(&provider)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn has_cloud_api_key(provider: String) -> Result<bool, String> {
+    // Security: Validate provider name.
+    let valid_providers: Vec<String> = clawdefender_slm::cloud_backend::get_cloud_providers()
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    if !valid_providers.contains(&provider) {
+        return Err(format!("unknown cloud provider: {}", provider));
+    }
+    Ok(clawdefender_slm::cloud_backend::has_api_key(&provider))
+}
+
+#[tauri::command]
+pub async fn test_api_connection(
+    provider: String,
+    model: String,
+) -> Result<clawdefender_slm::cloud_backend::ConnectionTestResult, String> {
+    let api_key = clawdefender_slm::cloud_backend::get_api_key(&provider)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("No API key found for provider: {}", provider))?;
+
+    clawdefender_slm::cloud_backend::test_connection(&provider, &api_key, &model)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_cloud_usage() -> Result<clawdefender_slm::cloud_backend::CloudUsageStats, String> {
+    // Return zeroed stats since usage is tracked per-session in CloudBackend instances.
+    Ok(clawdefender_slm::cloud_backend::CloudUsageStats {
+        provider: String::new(),
+        model: String::new(),
+        total_requests: 0,
+        tokens_in: 0,
+        tokens_out: 0,
+        estimated_cost_usd: 0.0,
+    })
+}
+
+#[tauri::command]
+pub async fn get_cloud_providers() -> Result<Vec<clawdefender_slm::model_registry::CloudProvider>, String> {
+    Ok(clawdefender_slm::cloud_backend::get_cloud_providers())
+}
+
+// ---------------------------------------------------------------------------
+// Model download commands
+// ---------------------------------------------------------------------------
+
+fn models_dir() -> Result<std::path::PathBuf, String> {
+    let home = dirs::home_dir().ok_or("could not determine home directory")?;
+    Ok(home
+        .join(".local")
+        .join("share")
+        .join("clawdefender")
+        .join("models"))
+}
+
+#[tauri::command]
+pub async fn download_model(
+    model_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let dir = models_dir()?;
+    state
+        .download_manager
+        .start_download(&model_id, &dir)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn download_custom_model(
+    url: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let dir = models_dir()?;
+    state
+        .download_manager
+        .start_custom_download(&url, &dir)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_download_progress(
+    task_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<clawdefender_slm::downloader::DownloadProgress, String> {
+    state
+        .download_manager
+        .get_progress(&task_id)
+        .await
+        .ok_or_else(|| format!("no download task found: {}", task_id))
+}
+
+#[tauri::command]
+pub async fn cancel_download(
+    task_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    if state.download_manager.cancel(&task_id).await {
+        Ok(())
+    } else {
+        Err(format!("no active download task: {}", task_id))
+    }
+}
+
+#[tauri::command]
+pub async fn delete_model(model_id: String) -> Result<(), String> {
+    let dir = models_dir()?;
+    // Try to find filename from catalog first
+    if let Some(model) = clawdefender_slm::model_registry::find_model(&model_id) {
+        clawdefender_slm::downloader::DownloadManager::delete_model(&model.filename, &dir)
+            .map_err(|e| e.to_string())
+    } else {
+        // Security: Validate the filename to prevent path traversal attacks.
+        // The model_id could contain "../" to escape the models directory.
+        if model_id.contains("..") || model_id.contains('/') || model_id.contains('\\') {
+            return Err("invalid model filename: path traversal not allowed".to_string());
+        }
+        clawdefender_slm::downloader::DownloadManager::delete_model(&model_id, &dir)
+            .map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_model_catalog() -> Result<Vec<clawdefender_slm::model_registry::CatalogModel>, String> {
+    Ok(clawdefender_slm::model_registry::catalog())
+}
+
+#[tauri::command]
+pub async fn get_installed_models() -> Result<Vec<clawdefender_slm::downloader::InstalledModelInfo>, String> {
+    let dir = models_dir()?;
+    clawdefender_slm::downloader::list_installed_models(&dir).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_system_capabilities() -> Result<clawdefender_slm::model_registry::SystemCapabilities, String> {
+    Ok(clawdefender_slm::model_registry::detect_system_info())
+}
+
+// ---------------------------------------------------------------------------
+// Model switching commands
+// ---------------------------------------------------------------------------
+
+/// Status info for the Settings page SLM widget.
+#[derive(serde::Serialize)]
+pub struct SlmStatusInfo {
+    pub loaded: bool,
+    pub model_name: Option<String>,
+    pub model_size: Option<String>,
+    pub backend: Option<String>,
+}
+
+/// A model available for activation (catalog, custom, or cloud).
+#[derive(serde::Serialize)]
+pub struct AvailableModel {
+    pub id: String,
+    pub name: String,
+    pub model_type: String,
+    pub status: String,
+    pub size_bytes: Option<u64>,
+    pub description: Option<String>,
+    pub quality_rating: Option<u8>,
+}
+
+#[tauri::command]
+pub async fn activate_model(
+    model_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<ActiveModelInfo, String> {
+    use std::sync::Arc;
+    use clawdefender_slm::engine::SlmConfig;
+    use clawdefender_slm::model_registry::{find_model, save_active_config, ActiveModelConfig};
+
+    let dir = models_dir()?;
+
+    // Find the model in catalog or treat as a custom file path
+    let (file_path, model_name, size_bytes, config_to_save) =
+        if let Some(catalog_model) = find_model(&model_id) {
+            let path = dir.join(&catalog_model.filename);
+            if !path.exists() {
+                return Err(format!("Model file not found: {}. Download it first.", catalog_model.display_name));
+            }
+            (
+                path.clone(),
+                catalog_model.display_name.clone(),
+                Some(catalog_model.size_bytes),
+                ActiveModelConfig::LocalCatalog {
+                    model_id: model_id.clone(),
+                    path: path.clone(),
+                },
+            )
+        } else {
+            // Treat model_id as a file path for custom models
+            let path = std::path::PathBuf::from(&model_id);
+            if !path.exists() {
+                return Err(format!("Model file not found: {}", model_id));
+            }
+            let size = std::fs::metadata(&path).map(|m| m.len()).ok();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "Custom Model".to_string());
+            (
+                path.clone(),
+                name,
+                size,
+                ActiveModelConfig::LocalCustom { path },
+            )
+        };
+
+    let slm_config = SlmConfig {
+        model_path: file_path.clone(),
+        ..SlmConfig::default()
+    };
+
+    let service = clawdefender_slm::SlmService::new(slm_config, true);
+    let using_gpu = service
+        .stats()
+        .map(|s| s.using_gpu)
+        .unwrap_or(false);
+
+    let info = ActiveModelInfo {
+        model_type: if find_model(&model_id).is_some() {
+            "local_catalog".to_string()
+        } else {
+            "local_custom".to_string()
+        },
+        model_id: Some(model_id),
+        model_name: model_name,
+        file_path: Some(file_path.to_string_lossy().to_string()),
+        provider: None,
+        size_bytes,
+        using_gpu,
+        total_inferences: 0,
+        avg_latency_ms: 0.0,
+    };
+
+    // Store in state (drop old model first)
+    {
+        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        *slm_guard = Some(Arc::new(service));
+    }
+    {
+        let mut info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
+        *info_guard = Some(info.clone());
+    }
+
+    // Persist config
+    save_active_config(&config_to_save).map_err(|e| e.to_string())?;
+
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn activate_cloud_provider(
+    provider: String,
+    model: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<ActiveModelInfo, String> {
+    use std::sync::Arc;
+    use clawdefender_slm::engine::{MockSlmBackend, SlmBackend, SlmConfig, SlmEngine};
+    use clawdefender_slm::model_registry::{cloud_providers, save_active_config, ActiveModelConfig};
+
+    // Verify the provider/model combination exists
+    let provider_info = cloud_providers()
+        .into_iter()
+        .find(|p| p.id == provider)
+        .ok_or_else(|| format!("Unknown cloud provider: {}", provider))?;
+
+    let model_info = provider_info
+        .models
+        .iter()
+        .find(|m| m.id == model)
+        .ok_or_else(|| format!("Unknown model '{}' for provider '{}'", model, provider))?;
+
+    // Verify API key exists in keychain
+    let has_key = clawdefender_slm::cloud_backend::has_api_key(&provider);
+    if !has_key {
+        return Err(format!(
+            "No API key configured for {}. Add one in Settings first.",
+            provider_info.display_name
+        ));
+    }
+
+    // Create a mock-backed SlmService for state tracking
+    // (actual cloud calls go through CloudBackend::analyze() directly)
+    let backend: Box<dyn SlmBackend> = Box::new(MockSlmBackend {
+        model_name: format!("{} ({})", model_info.display_name, provider_info.display_name),
+        model_size: 0,
+        gpu: false,
+        ..MockSlmBackend::default()
+    });
+    let config = SlmConfig::default();
+    let engine = Arc::new(SlmEngine::new(backend, config.clone()));
+    let service = clawdefender_slm::SlmService::with_engine(engine, config);
+
+    let info = ActiveModelInfo {
+        model_type: "cloud_api".to_string(),
+        model_id: Some(model.clone()),
+        model_name: format!("{} ({})", model_info.display_name, provider_info.display_name),
+        file_path: None,
+        provider: Some(provider.clone()),
+        size_bytes: None,
+        using_gpu: false,
+        total_inferences: 0,
+        avg_latency_ms: 0.0,
+    };
+
+    // Store in state
+    {
+        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        *slm_guard = Some(Arc::new(service));
+    }
+    {
+        let mut info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
+        *info_guard = Some(info.clone());
+    }
+
+    // Persist config
+    let config_to_save = ActiveModelConfig::CloudApi {
+        provider,
+        model,
+    };
+    save_active_config(&config_to_save).map_err(|e| e.to_string())?;
+
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn deactivate_model(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    use clawdefender_slm::model_registry::{save_active_config, ActiveModelConfig};
+
+    {
+        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        *slm_guard = None;
+    }
+    {
+        let mut info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
+        *info_guard = None;
+    }
+
+    save_active_config(&ActiveModelConfig::None).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_active_model(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<ActiveModelInfo>, String> {
+    // Security: Acquire locks sequentially and drop each before acquiring the next
+    // to prevent potential deadlocks from holding multiple Mutex locks simultaneously.
+    let mut info = {
+        let info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
+        info_guard.clone()
+    }; // info_guard dropped here
+
+    // Update live stats from the engine if available
+    if info.is_some() {
+        let slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        if let Some(ref slm) = *slm_guard {
+            if let Some(stats) = slm.stats() {
+                let model_info = info.as_mut().unwrap();
+                model_info.total_inferences = stats.total_inferences;
+                model_info.avg_latency_ms = stats.avg_latency_ms;
+                model_info.using_gpu = stats.using_gpu;
+            }
+        }
+    }
+
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn list_available_models(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<AvailableModel>, String> {
+    let dir = models_dir()?;
+
+    // Get currently active model id
+    let active_id = {
+        let info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
+        info_guard.as_ref().and_then(|i| i.model_id.clone())
+    };
+
+    // Get installed models
+    let installed = clawdefender_slm::downloader::list_installed_models(&dir)
+        .unwrap_or_default();
+    let installed_filenames: Vec<String> = installed.iter().map(|m| m.filename.clone()).collect();
+
+    let mut models = Vec::new();
+
+    // Catalog models
+    for cm in clawdefender_slm::model_registry::catalog() {
+        let is_active = active_id.as_deref() == Some(&cm.id);
+        let is_downloaded = installed_filenames.contains(&cm.filename);
+        let status = if is_active {
+            "active"
+        } else if is_downloaded {
+            "downloaded"
+        } else {
+            "not_downloaded"
+        };
+
+        models.push(AvailableModel {
+            id: cm.id,
+            name: cm.display_name,
+            model_type: "catalog".to_string(),
+            status: status.to_string(),
+            size_bytes: Some(cm.size_bytes),
+            description: Some(cm.description),
+            quality_rating: Some(cm.quality_rating),
+        });
+    }
+
+    // Cloud providers
+    for provider in clawdefender_slm::model_registry::cloud_providers() {
+        for cm in &provider.models {
+            let cloud_id = format!("{}:{}", provider.id, cm.id);
+            let is_active = active_id.as_deref() == Some(&cm.id);
+            let has_key = clawdefender_slm::cloud_backend::has_api_key(&provider.id);
+            let status = if is_active {
+                "active"
+            } else if has_key {
+                "available"
+            } else {
+                "not_downloaded"
+            };
+
+            models.push(AvailableModel {
+                id: cloud_id,
+                name: format!("{} ({})", cm.display_name, provider.display_name),
+                model_type: "cloud".to_string(),
+                status: status.to_string(),
+                size_bytes: None,
+                description: Some(format!("Cloud API - {}", provider.display_name)),
+                quality_rating: None,
+            });
+        }
+    }
+
+    Ok(models)
+}
+
+#[tauri::command]
+pub async fn get_slm_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<SlmStatusInfo, String> {
+    // Security: Clone data from each lock separately to avoid holding two locks
+    // at once, which could deadlock if another thread acquires them in reverse order.
+    let slm_opt = {
+        let slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        slm_guard.clone()
+    };
+    let info_opt = {
+        let info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
+        info_guard.clone()
+    };
+
+    match (&slm_opt, &info_opt) {
+        (Some(slm), Some(info)) => {
+            let size_str = info.size_bytes.map(|b| {
+                if b >= 1_000_000_000 {
+                    format!("{:.1} GB", b as f64 / 1_000_000_000.0)
+                } else {
+                    format!("{:.0} MB", b as f64 / 1_000_000.0)
+                }
+            });
+
+            let backend = match info.model_type.as_str() {
+                "cloud_api" => info.provider.clone().unwrap_or_else(|| "cloud".to_string()),
+                _ if slm.is_enabled() && info.using_gpu => "GPU".to_string(),
+                _ if slm.is_enabled() => "CPU".to_string(),
+                _ => "mock".to_string(),
+            };
+
+            Ok(SlmStatusInfo {
+                loaded: slm.is_enabled(),
+                model_name: Some(info.model_name.clone()),
+                model_size: size_str,
+                backend: Some(backend),
+            })
+        }
+        _ => Ok(SlmStatusInfo {
+            loaded: false,
+            model_name: None,
+            model_size: None,
+            backend: None,
+        }),
     }
 }
 

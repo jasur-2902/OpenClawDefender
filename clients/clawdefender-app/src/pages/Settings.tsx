@@ -1,7 +1,110 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import type { AppSettings, NetworkExtensionStatus, NetworkSettings } from "../types";
+
+interface SlmStatus {
+  loaded: boolean;
+  model_name: string | null;
+  model_size: string | null;
+  backend: string | null;
+}
+
+interface CatalogModel {
+  id: string;
+  name: string;
+  description: string;
+  filename: string;
+  size_bytes: number;
+  ram_required_bytes: number;
+  quality_rating: number;
+  tokens_per_sec_apple: number;
+  tokens_per_sec_intel: number;
+  url: string;
+}
+
+interface SystemCapabilities {
+  total_ram_bytes: number;
+  total_ram_gb: number;
+  arch: string;
+  is_apple_silicon: boolean;
+}
+
+interface InstalledModelInfo {
+  model_id: string | null;
+  filename: string;
+  path: string;
+  size_bytes: number;
+  is_catalog: boolean;
+}
+
+interface DownloadProgress {
+  task_id: string;
+  status: string;
+  bytes_downloaded: number;
+  bytes_total: number;
+  speed_bytes_per_sec: number;
+  eta_seconds: number;
+  percent: number;
+}
+
+interface ActiveModelInfo {
+  id: string;
+  name: string;
+  model_type: string;
+  size_bytes?: number;
+}
+
+interface CloudProvider {
+  id: string;
+  display_name: string;
+  models: CloudModel[];
+  api_endpoint: string;
+}
+
+interface CloudModel {
+  id: string;
+  display_name: string;
+  cost_per_1k_input: number;
+  cost_per_1k_output: number;
+  recommended: boolean;
+}
+
+interface ConnectionTestResult {
+  success: boolean;
+  latency_ms: number;
+  error?: string;
+  model_name: string;
+}
+
+interface CloudUsageStats {
+  provider: string;
+  model: string;
+  total_requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  estimated_cost_usd: number;
+}
+
+// --- Helper functions ---
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
+function formatSpeed(bytesPerSec: number): string {
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
+function QualityStars({ rating }: { rating: number }) {
+  return (
+    <span className="text-[var(--color-warning)]">
+      {Array.from({ length: 5 }, (_, i) => (i < rating ? "\u2605" : "\u2606")).join("")}
+    </span>
+  );
+}
 
 const defaultSettings: AppSettings = {
   theme: "system",
@@ -32,6 +135,76 @@ export function Settings() {
   const [netSettings, setNetSettings] = useState<NetworkSettings>(defaultNetworkSettings);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [slmStatus, setSlmStatus] = useState<SlmStatus | null>(null);
+
+  // --- Model management state ---
+  const [catalog, setCatalog] = useState<CatalogModel[]>([]);
+  const [installedModels, setInstalledModels] = useState<InstalledModelInfo[]>([]);
+  const [activeModel, setActiveModel] = useState<ActiveModelInfo | null>(null);
+  const [systemCaps, setSystemCaps] = useState<SystemCapabilities | null>(null);
+  const [downloads, setDownloads] = useState<Record<string, string>>({}); // modelId -> taskId
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, DownloadProgress>>({});
+  const [activatingModel, setActivatingModel] = useState<string | null>(null);
+  const [deletingModel, setDeletingModel] = useState<string | null>(null);
+  const [customModelPath, setCustomModelPath] = useState("");
+  const [customModelError, setCustomModelError] = useState<string | null>(null);
+  const [customModelActivating, setCustomModelActivating] = useState(false);
+  const [analysisFrequency, setAnalysisFrequency] = useState("all");
+
+  // Cloud API state
+  const [cloudExpanded, setCloudExpanded] = useState(false);
+  const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [selectedCloudModel, setSelectedCloudModel] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [cloudTesting, setCloudTesting] = useState(false);
+  const [cloudTestResult, setCloudTestResult] = useState<ConnectionTestResult | null>(null);
+  const [cloudUsage, setCloudUsage] = useState<CloudUsageStats | null>(null);
+
+  const downloadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadSlmStatus = useCallback(async () => {
+    try {
+      const s = await invoke<SlmStatus>("get_slm_status");
+      setSlmStatus(s);
+    } catch {
+      setSlmStatus(null);
+    }
+  }, []);
+
+  const loadModelData = useCallback(async () => {
+    try {
+      const [cat, installed, active, caps] = await Promise.all([
+        invoke<CatalogModel[]>("get_model_catalog").catch(() => []),
+        invoke<InstalledModelInfo[]>("get_installed_models").catch(() => []),
+        invoke<ActiveModelInfo | null>("get_active_model").catch(() => null),
+        invoke<SystemCapabilities>("get_system_capabilities").catch(() => null),
+      ]);
+      setCatalog(cat);
+      setInstalledModels(installed);
+      setActiveModel(active);
+      setSystemCaps(caps);
+    } catch {
+      // Model data not available
+    }
+  }, []);
+
+  const loadCloudProviders = useCallback(async () => {
+    try {
+      const providers = await invoke<CloudProvider[]>("get_cloud_providers");
+      setCloudProviders(providers);
+      if (providers.length > 0 && !selectedProvider) {
+        setSelectedProvider(providers[0].id);
+        if (providers[0].models.length > 0) {
+          setSelectedCloudModel(providers[0].models[0].id);
+        }
+      }
+    } catch {
+      // Cloud providers not available
+    }
+  }, [selectedProvider]);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -60,13 +233,224 @@ export function Settings() {
   useEffect(() => {
     loadSettings();
     loadNetworkState();
+    loadSlmStatus();
+    loadModelData();
     // Sync autostart state from the OS
     invoke<boolean>("is_autostart_enabled")
       .then((enabled) => {
         setSettings((s) => ({ ...s, auto_start_daemon: enabled }));
       })
       .catch(() => {});
-  }, [loadSettings, loadNetworkState]);
+  }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData]);
+
+  // Poll download progress when downloads are active
+  useEffect(() => {
+    const activeDownloadIds = Object.values(downloads);
+    if (activeDownloadIds.length === 0) {
+      if (downloadPollRef.current) {
+        clearInterval(downloadPollRef.current);
+        downloadPollRef.current = null;
+      }
+      return;
+    }
+
+    downloadPollRef.current = setInterval(async () => {
+      const newProgress: Record<string, DownloadProgress> = {};
+      let anyCompleted = false;
+      for (const [modelId, taskId] of Object.entries(downloads)) {
+        try {
+          const prog = await invoke<DownloadProgress>("get_download_progress", { taskId });
+          newProgress[modelId] = prog;
+          if (prog.status === "completed" || prog.status === "failed" || prog.status === "cancelled") {
+            anyCompleted = true;
+          }
+        } catch {
+          // Progress fetch failed
+        }
+      }
+      setDownloadProgress(newProgress);
+
+      if (anyCompleted) {
+        // Clean up completed downloads
+        setDownloads((prev) => {
+          const next = { ...prev };
+          for (const modelId of Object.keys(next)) {
+            const prog = newProgress[modelId];
+            if (prog && (prog.status === "completed" || prog.status === "failed" || prog.status === "cancelled")) {
+              delete next[modelId];
+            }
+          }
+          return next;
+        });
+        // Refresh installed models
+        loadModelData();
+      }
+    }, 1000);
+
+    return () => {
+      if (downloadPollRef.current) {
+        clearInterval(downloadPollRef.current);
+        downloadPollRef.current = null;
+      }
+    };
+  }, [downloads, loadModelData]);
+
+  // Check API key when provider changes
+  useEffect(() => {
+    if (selectedProvider) {
+      invoke<boolean>("has_cloud_api_key", { provider: selectedProvider })
+        .then(setHasApiKey)
+        .catch(() => setHasApiKey(false));
+    }
+  }, [selectedProvider]);
+
+  async function handleDownloadModel(modelId: string) {
+    try {
+      const taskId = await invoke<string>("download_model", { modelId });
+      setDownloads((prev) => ({ ...prev, [modelId]: taskId }));
+    } catch (err) {
+      console.error("Download failed:", err);
+    }
+  }
+
+  async function handleCancelDownload(modelId: string) {
+    const taskId = downloads[modelId];
+    if (taskId) {
+      try {
+        await invoke("cancel_download", { taskId });
+      } catch {
+        // Cancel may fail if already complete
+      }
+      setDownloads((prev) => {
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      });
+      setDownloadProgress((prev) => {
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      });
+    }
+  }
+
+  async function handleActivateModel(modelId: string) {
+    setActivatingModel(modelId);
+    try {
+      const info = await invoke<ActiveModelInfo>("activate_model", { modelId });
+      setActiveModel(info);
+      await loadSlmStatus();
+    } catch (err) {
+      console.error("Activate failed:", err);
+    } finally {
+      setActivatingModel(null);
+    }
+  }
+
+  async function handleDeactivateModel() {
+    try {
+      await invoke("deactivate_model");
+      setActiveModel(null);
+      await loadSlmStatus();
+    } catch (err) {
+      console.error("Deactivate failed:", err);
+    }
+  }
+
+  async function handleDeleteModel(modelId: string) {
+    setDeletingModel(modelId);
+    try {
+      await invoke("delete_model", { modelId });
+      await loadModelData();
+    } catch (err) {
+      console.error("Delete failed:", err);
+    } finally {
+      setDeletingModel(null);
+    }
+  }
+
+  async function handleActivateCustomModel() {
+    if (!customModelPath.trim()) {
+      setCustomModelError("Please enter a path to a .gguf model file");
+      return;
+    }
+    if (!customModelPath.endsWith(".gguf")) {
+      setCustomModelError("File must be a .gguf model file");
+      return;
+    }
+    setCustomModelError(null);
+    setCustomModelActivating(true);
+    try {
+      const info = await invoke<ActiveModelInfo>("activate_model", { modelId: customModelPath });
+      setActiveModel(info);
+      setCustomModelPath("");
+      await loadSlmStatus();
+    } catch (err) {
+      setCustomModelError(`Failed to activate: ${err}`);
+    } finally {
+      setCustomModelActivating(false);
+    }
+  }
+
+  async function handleSaveAndTestCloud() {
+    if (!selectedProvider || !apiKeyInput.trim()) return;
+    setCloudTesting(true);
+    setCloudTestResult(null);
+    try {
+      await invoke("save_api_key", { provider: selectedProvider, key: apiKeyInput.trim() });
+      setHasApiKey(true);
+      const result = await invoke<ConnectionTestResult>("test_api_connection", {
+        provider: selectedProvider,
+        model: selectedCloudModel,
+      });
+      setCloudTestResult(result);
+      if (result.success) {
+        setApiKeyInput("");
+      }
+    } catch (err) {
+      setCloudTestResult({ success: false, latency_ms: 0, error: String(err), model_name: "" });
+    } finally {
+      setCloudTesting(false);
+    }
+  }
+
+  async function handleActivateCloud() {
+    if (!selectedProvider || !selectedCloudModel) return;
+    try {
+      const info = await invoke<ActiveModelInfo>("activate_cloud_provider", {
+        provider: selectedProvider,
+        model: selectedCloudModel,
+      });
+      setActiveModel(info);
+      // Load usage stats
+      const usage = await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null);
+      setCloudUsage(usage);
+    } catch (err) {
+      console.error("Cloud activation failed:", err);
+    }
+  }
+
+  async function handleClearApiKey() {
+    if (!selectedProvider) return;
+    try {
+      await invoke("clear_api_key", { provider: selectedProvider });
+      setHasApiKey(false);
+      setApiKeyInput("");
+      setCloudTestResult(null);
+    } catch {
+      // Clear may fail
+    }
+  }
+
+  function getModelStatus(modelId: string): "active" | "downloaded" | "not_downloaded" | "downloading" {
+    if (activeModel?.id === modelId) return "active";
+    if (downloads[modelId]) return "downloading";
+    if (installedModels.some((m) => m.model_id === modelId)) return "downloaded";
+    return "not_downloaded";
+  }
+
+  const currentProvider = cloudProviders.find((p) => p.id === selectedProvider);
+  const isCloudActive = activeModel?.model_type === "cloud";
 
   async function updateNetField<K extends keyof NetworkSettings>(key: K, value: NetworkSettings[K]) {
     const next = { ...netSettings, [key]: value };
@@ -239,6 +623,405 @@ export function Settings() {
               <span>15s</span>
               <span>120s</span>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* AI Model */}
+      <section className="mb-8">
+        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">
+          AI Model
+        </h2>
+
+        {/* Section 1: Active Model Status */}
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
+          {activeModel ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-success)]" />
+                  <p className="text-sm font-medium">{activeModel.name}</p>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)]">
+                    Active
+                  </span>
+                </div>
+                <button
+                  onClick={handleDeactivateModel}
+                  className="px-3 py-1 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                >
+                  Change Model
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-[var(--color-text-secondary)] text-xs">Type</span>
+                  <p className="text-[var(--color-text-primary)] text-xs font-medium capitalize">{activeModel.model_type}</p>
+                </div>
+                {activeModel.size_bytes && (
+                  <div>
+                    <span className="text-[var(--color-text-secondary)] text-xs">Size</span>
+                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{formatBytes(activeModel.size_bytes)}</p>
+                  </div>
+                )}
+                {slmStatus?.backend && (
+                  <div>
+                    <span className="text-[var(--color-text-secondary)] text-xs">Backend</span>
+                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{slmStatus.backend}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-sm font-medium text-[var(--color-text-primary)] mb-1">No AI Model Active</p>
+              <p className="text-xs text-[var(--color-text-secondary)] mb-3">
+                Set up an AI model to enable intelligent security analysis
+              </p>
+              <span className="inline-block px-4 py-1.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] text-xs font-medium">
+                Choose a model below to get started
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Local Models */}
+        <div className="rounded-lg border border-[var(--color-success)]/30 bg-[var(--color-bg-secondary)] p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+              Local Models — Private, Fast, Free
+            </h3>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] font-medium">
+              Recommended
+            </span>
+          </div>
+          <p className="text-xs text-[var(--color-text-secondary)] mb-3">
+            Runs entirely on your machine. No data leaves your device.
+          </p>
+
+          <div className="space-y-3">
+            {catalog.map((model) => {
+              const status = getModelStatus(model.id);
+              const progress = downloadProgress[model.id];
+              const isActive = status === "active";
+              const speedEstimate = systemCaps?.is_apple_silicon
+                ? model.tokens_per_sec_apple
+                : model.tokens_per_sec_intel;
+
+              return (
+                <div
+                  key={model.id}
+                  className={`rounded-lg border p-3 ${
+                    isActive
+                      ? "border-[var(--color-success)] bg-[var(--color-success)]/5"
+                      : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm font-medium text-[var(--color-text-primary)]">{model.name}</p>
+                        {isActive && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] font-medium">
+                            Active
+                          </span>
+                        )}
+                        {status === "downloaded" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-medium">
+                            Downloaded
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[var(--color-text-secondary)] mb-2">{model.description}</p>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-secondary)]">
+                        <span>{formatBytes(model.size_bytes)}</span>
+                        <span>RAM: {formatBytes(model.ram_required_bytes)}</span>
+                        <QualityStars rating={model.quality_rating} />
+                        {speedEstimate > 0 && <span>~{speedEstimate} tok/s</span>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {status === "not_downloaded" && (
+                        <button
+                          onClick={() => handleDownloadModel(model.id)}
+                          className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-success)] text-white hover:opacity-90"
+                        >
+                          Download
+                        </button>
+                      )}
+                      {status === "downloading" && (
+                        <button
+                          onClick={() => handleCancelDownload(model.id)}
+                          className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {status === "downloaded" && (
+                        <>
+                          <button
+                            onClick={() => handleActivateModel(model.id)}
+                            disabled={activatingModel === model.id}
+                            className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
+                          >
+                            {activatingModel === model.id ? "Activating..." : "Activate"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteModel(model.id)}
+                            disabled={deletingModel === model.id}
+                            className="px-2 py-1.5 rounded-md text-xs border border-[var(--color-danger)]/50 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white disabled:opacity-50"
+                            title="Delete model"
+                          >
+                            {deletingModel === model.id ? "..." : "Delete"}
+                          </button>
+                        </>
+                      )}
+                      {isActive && (
+                        <span className="text-xs text-[var(--color-success)] font-medium">In Use</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Download progress bar */}
+                  {status === "downloading" && progress && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mb-1">
+                        <span>
+                          {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.bytes_total)}
+                        </span>
+                        <span>
+                          {formatSpeed(progress.speed_bytes_per_sec)}
+                          {progress.eta_seconds > 0 && ` — ${Math.ceil(progress.eta_seconds)}s left`}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-[var(--color-bg-primary)] overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[var(--color-success)] transition-all duration-300"
+                          style={{ width: `${Math.min(progress.percent, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {catalog.length === 0 && (
+              <p className="text-xs text-[var(--color-text-secondary)] text-center py-4">
+                No models available in catalog. Check your internet connection.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Section 3: Custom Model */}
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
+          <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-1">Use Your Own Model</h3>
+          <p className="text-xs text-[var(--color-text-secondary)] mb-3">
+            Load a custom .gguf model file from your local filesystem
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={customModelPath}
+              onChange={(e) => {
+                setCustomModelPath(e.target.value);
+                setCustomModelError(null);
+              }}
+              placeholder="/path/to/model.gguf"
+              className="flex-1 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] font-mono text-xs"
+            />
+            <button
+              onClick={handleActivateCustomModel}
+              disabled={customModelActivating}
+              className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {customModelActivating ? "Activating..." : "Activate"}
+            </button>
+          </div>
+          {customModelError && (
+            <p className="text-xs text-[var(--color-danger)] mt-2">{customModelError}</p>
+          )}
+        </div>
+
+        {/* Section 4: Cloud API (collapsed) */}
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] mb-4">
+          <button
+            onClick={() => {
+              setCloudExpanded(!cloudExpanded);
+              if (!cloudExpanded && cloudProviders.length === 0) {
+                loadCloudProviders();
+              }
+            }}
+            className="w-full flex items-center justify-between p-4 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-[var(--color-text-secondary)]">Advanced: Cloud API</h3>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)] font-medium">
+                Not Recommended
+              </span>
+            </div>
+            <span className="text-[var(--color-text-secondary)] text-xs">{cloudExpanded ? "\u25B2" : "\u25BC"}</span>
+          </button>
+
+          {cloudExpanded && (
+            <div className="px-4 pb-4 space-y-4">
+              {/* Warning */}
+              <div className="rounded-lg bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 p-3">
+                <p className="text-xs text-[var(--color-warning)] font-medium mb-1">Not Recommended</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  Cloud API sends security event metadata to third-party servers, is slower than local models (500ms+ vs 50ms),
+                  costs money per analysis ($5-20/month with typical usage), and requires internet connectivity. Local models
+                  are private, fast, free, and work offline.
+                </p>
+              </div>
+
+              {isCloudActive && (
+                <div className="flex items-center justify-between rounded-lg bg-[var(--color-bg-tertiary)] p-3">
+                  <div>
+                    <p className="text-xs font-medium text-[var(--color-text-primary)]">Cloud model is active</p>
+                    {cloudUsage && (
+                      <p className="text-xs text-[var(--color-text-secondary)]">
+                        This session: {cloudUsage.total_requests} analyses, ~${cloudUsage.estimated_cost_usd.toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleDeactivateModel}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-success)] text-white hover:opacity-90"
+                  >
+                    Switch to Local Model
+                  </button>
+                </div>
+              )}
+
+              {/* Provider */}
+              <div>
+                <label className="text-xs text-[var(--color-text-secondary)] block mb-1">Provider</label>
+                <select
+                  value={selectedProvider}
+                  onChange={(e) => {
+                    setSelectedProvider(e.target.value);
+                    setCloudTestResult(null);
+                    const provider = cloudProviders.find((p) => p.id === e.target.value);
+                    if (provider && provider.models.length > 0) {
+                      setSelectedCloudModel(provider.models[0].id);
+                    }
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+                >
+                  {cloudProviders.map((p) => (
+                    <option key={p.id} value={p.id}>{p.display_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* API Key */}
+              <div>
+                <label className="text-xs text-[var(--color-text-secondary)] block mb-1">
+                  API Key {hasApiKey && <span className="text-[var(--color-success)]">(saved)</span>}
+                </label>
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      type={showApiKey ? "text" : "password"}
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder={hasApiKey ? "Key saved — enter new key to update" : "Enter API key"}
+                      className="w-full px-3 py-1.5 pr-16 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] font-mono text-xs"
+                    />
+                    <button
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                    >
+                      {showApiKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {hasApiKey && (
+                    <button
+                      onClick={handleClearApiKey}
+                      className="px-2 py-1.5 rounded-md text-xs border border-[var(--color-danger)]/50 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Model selection */}
+              <div>
+                <label className="text-xs text-[var(--color-text-secondary)] block mb-1">Model</label>
+                <select
+                  value={selectedCloudModel}
+                  onChange={(e) => {
+                    setSelectedCloudModel(e.target.value);
+                    setCloudTestResult(null);
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+                >
+                  {currentProvider?.models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name}
+                      {m.recommended ? " (Recommended)" : ""}
+                      {` — $${m.cost_per_1k_input}/1k in, $${m.cost_per_1k_output}/1k out`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Save & Test / Activate */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveAndTestCloud}
+                  disabled={cloudTesting || (!apiKeyInput.trim() && !hasApiKey)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium border border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white disabled:opacity-50"
+                >
+                  {cloudTesting ? "Testing..." : "Save & Test"}
+                </button>
+                {hasApiKey && cloudTestResult?.success && !isCloudActive && (
+                  <button
+                    onClick={handleActivateCloud}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
+                  >
+                    Activate Cloud Model
+                  </button>
+                )}
+              </div>
+
+              {/* Test result */}
+              {cloudTestResult && (
+                <div
+                  className={`rounded-lg p-3 text-xs ${
+                    cloudTestResult.success
+                      ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                      : "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
+                  }`}
+                >
+                  {cloudTestResult.success
+                    ? `Connected — Latency: ${cloudTestResult.latency_ms}ms`
+                    : `Failed: ${cloudTestResult.error}`}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Section 5: Model Settings */}
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Analysis Frequency</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">When to run AI analysis on events</p>
+            </div>
+            <select
+              value={analysisFrequency}
+              onChange={(e) => setAnalysisFrequency(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+            >
+              <option value="all">Analyze all prompted events</option>
+              <option value="high_risk">Analyze high-risk events only</option>
+              <option value="disabled">Disabled</option>
+            </select>
           </div>
         </div>
       </section>

@@ -119,9 +119,17 @@ pub fn build_user_prompt(request: &AnalysisRequest) -> String {
             prompt.push_str("Tool: ");
             push_untrusted(&mut prompt, tool_name);
             prompt.push('\n');
-            prompt.push_str("Arguments: ");
+            // SECURITY: Truncate arguments to prevent leaking large file contents
+            // into the SLM prompt. The SLM only needs metadata (paths, tool names)
+            // for risk assessment, not raw file contents.
+            prompt.push_str("Arguments (truncated): ");
             let args_str = arguments.to_string();
-            push_untrusted(&mut prompt, &args_str);
+            let safe_args = if args_str.len() > 500 {
+                format!("{}... [truncated, {} bytes total]", &args_str[..500], args_str.len())
+            } else {
+                args_str
+            };
+            push_untrusted(&mut prompt, &safe_args);
             prompt.push('\n');
         }
         AnalysisEventType::McpResourceRead { uri } => {
@@ -132,8 +140,14 @@ pub fn build_user_prompt(request: &AnalysisRequest) -> String {
         }
         AnalysisEventType::McpSampling { content } => {
             prompt.push_str("Event: MCP Sampling Request\n");
-            prompt.push_str("Content: ");
-            push_untrusted(&mut prompt, content);
+            // SECURITY: Truncate sampling content to prevent leaking user data.
+            prompt.push_str("Content (truncated): ");
+            let safe_content = if content.len() > 500 {
+                format!("{}... [truncated, {} bytes total]", &content[..500], content.len())
+            } else {
+                content.clone()
+            };
+            push_untrusted(&mut prompt, &safe_content);
             prompt.push('\n');
         }
         AnalysisEventType::UncorrelatedOsActivity { description } => {

@@ -27,7 +27,9 @@ anyhow = "1"
 tracing = "0.1"
 toml = "0.8"
 libc = "0.2"
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+clawdefender-slm = { path = "../../../crates/clawdefender-slm", features = ["cloud", "download"] }
+dirs = "5"
 
 [dev-dependencies]
 tempfile = "3"

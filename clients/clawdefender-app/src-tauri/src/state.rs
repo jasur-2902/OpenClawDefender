@@ -1,8 +1,25 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+use clawdefender_slm::downloader::DownloadManager;
+use clawdefender_slm::SlmService;
 
 use crate::ipc_client::DaemonIpcClient;
+
+/// Information about the currently active AI model, exposed to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveModelInfo {
+    pub model_type: String,
+    pub model_id: Option<String>,
+    pub model_name: String,
+    pub file_path: Option<String>,
+    pub provider: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub using_gpu: bool,
+    pub total_inferences: u64,
+    pub avg_latency_ms: f64,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
@@ -299,6 +316,50 @@ pub struct NetworkSettings {
     pub log_dns: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanFinding {
+    pub severity: String,
+    pub category: String,
+    pub module: String,
+    pub description: String,
+    pub affected_resource: String,
+    pub fix_suggestion: String,
+    pub fix_action: Option<ScanFixAction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanFixAction {
+    pub action_type: String,
+    pub client: Option<String>,
+    pub server: Option<String>,
+    pub rule_name: Option<String>,
+    pub rule_resource: Option<String>,
+    pub rule_action: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanModuleResult {
+    pub module_id: String,
+    pub module_name: String,
+    pub status: String,
+    pub findings: Vec<ScanFinding>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    pub scan_id: String,
+    pub status: String,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub modules: Vec<ScanModuleResult>,
+    pub total_findings: u32,
+    pub critical_count: u32,
+    pub high_count: u32,
+    pub medium_count: u32,
+    pub low_count: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct ScanTracker {
     pub status: String,
@@ -307,6 +368,7 @@ pub struct ScanTracker {
     pub modules_total: u32,
     pub findings_count: u32,
     pub current_module: Option<String>,
+    pub result: Option<ScanResult>,
 }
 
 /// Maximum number of events to keep in the buffer to prevent unbounded memory growth.
@@ -332,6 +394,12 @@ pub struct AppState {
     pub daemon_started_by_gui: Mutex<bool>,
     /// Active and completed scan trackers, keyed by scan ID.
     pub active_scans: Mutex<HashMap<String, ScanTracker>>,
+    /// Download manager for model downloads with progress tracking.
+    pub download_manager: DownloadManager,
+    /// Currently loaded SLM service for AI analysis.
+    pub active_slm: Mutex<Option<Arc<SlmService>>>,
+    /// Info about the active model for UI display.
+    pub active_model_info: Mutex<Option<ActiveModelInfo>>,
 }
 
 impl AppState {
@@ -392,6 +460,9 @@ impl Default for AppState {
             ipc_client: DaemonIpcClient::new(),
             daemon_started_by_gui: Mutex::new(false),
             active_scans: Mutex::new(HashMap::new()),
+            download_manager: DownloadManager::new(),
+            active_slm: Mutex::new(None),
+            active_model_info: Mutex::new(None),
         }
     }
 }

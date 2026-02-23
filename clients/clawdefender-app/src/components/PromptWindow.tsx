@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import type { PendingPrompt } from "../types";
 import { useEventStore } from "../stores/eventStore";
 
+interface SlmAnalysis {
+  analysis: string;
+  recommendation: string;
+}
+
 type Decision = "deny" | "allow_once" | "allow_session" | "allow_always";
 
 interface PromptWindowProps {
@@ -14,9 +19,27 @@ export function PromptWindow({ prompt, queueCount }: PromptWindowProps) {
   const removePrompt = useEventStore((s) => s.removePrompt);
   const [remaining, setRemaining] = useState(prompt.timeout_seconds);
   const [responding, setResponding] = useState(false);
+  const [slmAnalysis, setSlmAnalysis] = useState<SlmAnalysis | null>(null);
+  const [slmLoading, setSlmLoading] = useState(true);
 
   const isHighRisk =
     prompt.risk_level === "high" || prompt.risk_level === "critical";
+
+  // Progressive SLM analysis loading
+  useEffect(() => {
+    let cancelled = false;
+    invoke<SlmAnalysis>("get_slm_analysis_for_prompt", { promptId: prompt.id })
+      .then((result) => {
+        if (!cancelled) {
+          setSlmAnalysis(result);
+          setSlmLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSlmLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [prompt.id]);
 
   const respond = useCallback(
     async (decision: Decision) => {
@@ -145,6 +168,31 @@ export function PromptWindow({ prompt, queueCount }: PromptWindowProps) {
           </p>
         )}
       </div>
+
+      {/* SLM Analysis (progressive disclosure) */}
+      {(slmLoading || slmAnalysis) && (
+        <div className="px-4 pb-3">
+          {slmLoading && !slmAnalysis ? (
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)] rounded px-2 py-1.5">
+              <span className="inline-block w-3 h-3 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+              Analyzing with local AI...
+            </div>
+          ) : slmAnalysis ? (
+            <div className="bg-[rgba(59,130,246,0.08)] border border-[rgba(59,130,246,0.2)] rounded px-2 py-1.5 space-y-1">
+              <p className="text-xs text-[var(--color-accent)] font-medium flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-accent)]" />
+                AI Analysis
+              </p>
+              <p className="text-xs text-[var(--color-text-primary)] break-words">{slmAnalysis.analysis}</p>
+              {slmAnalysis.recommendation && (
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  Recommendation: {slmAnalysis.recommendation}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className={`px-4 pb-4 ${isHighRisk ? "space-y-2" : ""}`}>

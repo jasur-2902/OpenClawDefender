@@ -97,6 +97,60 @@ pub(crate) fn is_safe_audit_path(path: &PathBuf) -> bool {
     }
 }
 
+/// Normalize classification/risk strings to the TypeScript union type:
+/// "low" | "medium" | "high" | "critical".
+fn normalize_risk_level(raw: &str) -> &'static str {
+    match raw.to_lowercase().as_str() {
+        "critical" | "crit" => "critical",
+        "high" | "block" | "blocked" => "high",
+        "medium" | "med" | "review" | "prompt" | "prompted" => "medium",
+        "low" | "info" | "pass" | "log" | "logged" | "allow" | "allowed" => "low",
+        _ => "low",
+    }
+}
+
+/// Build a human-readable description from a daemon audit record.
+fn build_human_details(record: &DaemonAuditRecord) -> String {
+    let server = record.server_name.as_deref().unwrap_or("unknown");
+    let tool = record.tool_name.as_deref();
+    let method = record.jsonrpc_method.as_deref();
+
+    // Try to extract a resource path from arguments for context
+    let resource = record.arguments.as_ref().and_then(|args| {
+        args.get("path")
+            .or_else(|| args.get("uri"))
+            .or_else(|| args.get("url"))
+            .or_else(|| args.get("command"))
+            .and_then(|v| v.as_str())
+    });
+
+    match (method, tool, resource) {
+        (Some("tools/call"), Some(t), Some(r)) => format!("{server} {t} {r}"),
+        (Some("tools/call"), Some(t), None) => format!("{server} called {t}"),
+        (Some("resources/read"), _, Some(r)) => format!("{server} read resource {r}"),
+        (Some("resources/read"), _, None) => format!("{server} read resource"),
+        (Some("sampling/createMessage"), _, _) => format!("{server} AI sampling request"),
+        (Some("tools/list"), _, _) | (Some("resources/list"), _, _) => {
+            format!("{server} discovery request")
+        }
+        _ => {
+            // Fallback: use event_summary if it's meaningful
+            if !record.event_summary.is_empty()
+                && record.event_summary != "session-start"
+                && record.event_summary != "session-end"
+            {
+                if server != "unknown" {
+                    format!("{server}: {}", record.event_summary)
+                } else {
+                    record.event_summary.clone()
+                }
+            } else {
+                record.event_summary.clone()
+            }
+        }
+    }
+}
+
 /// Convert a daemon audit record to the GUI's AuditEvent.
 pub fn to_audit_event(record: &DaemonAuditRecord, seq: u64) -> AuditEvent {
     let decision = record
@@ -105,22 +159,28 @@ pub fn to_audit_event(record: &DaemonAuditRecord, seq: u64) -> AuditEvent {
         .unwrap_or(&record.action_taken)
         .to_string();
 
-    let risk_level = record
+    let raw_risk = record
         .classification
         .as_deref()
-        .unwrap_or("info")
-        .to_string();
+        .unwrap_or("info");
+    let risk_level = normalize_risk_level(raw_risk).to_string();
 
-    let action = record
-        .jsonrpc_method
-        .as_deref()
-        .unwrap_or(&record.event_summary)
-        .to_string();
-
-    let details = match &record.event_details {
-        Some(v) if !v.is_null() => serde_json::to_string(v).unwrap_or_default(),
-        _ => record.event_summary.clone(),
+    // Use event_summary which now contains human-readable labels from the proxy
+    // (e.g. "File Read", "Shell Command"), falling back to jsonrpc_method.
+    let action = if !record.event_summary.is_empty()
+        && record.event_summary != "session-start"
+        && record.event_summary != "session-end"
+    {
+        record.event_summary.clone()
+    } else {
+        record
+            .jsonrpc_method
+            .as_deref()
+            .unwrap_or(&record.event_summary)
+            .to_string()
     };
+
+    let details = build_human_details(record);
 
     let resource = record.arguments.as_ref().and_then(|args| {
         // Try to extract a meaningful resource path from arguments
@@ -513,8 +573,8 @@ mod tests {
         assert_eq!(event.server_name, "filesystem");
         assert_eq!(event.tool_name, Some("read_file".into()));
         assert_eq!(event.decision, "allow");
-        assert_eq!(event.risk_level, "info");
-        assert_eq!(event.action, "tools/call"); // jsonrpc_method takes priority
+        assert_eq!(event.risk_level, "low"); // "info" normalizes to "low"
+        assert_eq!(event.action, "Tool call"); // event_summary is now preferred
     }
 
     #[test]
@@ -525,7 +585,7 @@ mod tests {
         assert_eq!(event.id, "evt-0");
         assert_eq!(event.server_name, "unknown");
         assert_eq!(event.decision, ""); // action_taken default is empty string
-        assert_eq!(event.risk_level, "info"); // classification default
+        assert_eq!(event.risk_level, "low"); // "info" normalizes to "low"
     }
 
     #[test]

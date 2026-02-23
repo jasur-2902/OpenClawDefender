@@ -10,7 +10,7 @@ import { useEventStore } from "../stores/eventStore";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import type { AuditEvent } from "../types";
 
-const ROW_HEIGHT = 44;
+const ROW_HEIGHT = 48;
 const BUFFER_ROWS = 10;
 
 function formatTimestamp(ts: string): string {
@@ -63,6 +63,20 @@ function normalizeRiskLevel(r: string): string {
   if (lower === "low" || lower === "medium" || lower === "high" || lower === "critical")
     return lower;
   return "low";
+}
+
+function truncateResource(resource: string | null, maxLen = 40): string {
+  if (!resource) return "";
+  if (resource.length <= maxLen) return resource;
+  // For file paths, show .../<last-two-segments>
+  if (resource.includes("/")) {
+    const parts = resource.split("/");
+    if (parts.length > 2) {
+      const tail = parts.slice(-2).join("/");
+      if (tail.length <= maxLen - 4) return ".../" + tail;
+    }
+  }
+  return resource.slice(0, maxLen - 3) + "...";
 }
 
 function eventTypeIcon(eventType: string): string {
@@ -133,6 +147,43 @@ function RiskBadge({ level }: { level: string }) {
     >
       {normalized}
     </span>
+  );
+}
+
+function extractSlmAnalysis(details: string): string | null {
+  try {
+    const parsed = JSON.parse(details);
+    // slm_analysis is a structured record with risk_level, explanation, etc.
+    const slm = parsed.slm_analysis ?? parsed.analysis;
+    if (!slm) return null;
+    // If it's a string, return directly; if it's an object, format the key fields.
+    if (typeof slm === "string") return slm;
+    if (typeof slm === "object") {
+      const parts: string[] = [];
+      if (slm.risk_level) parts.push(`Risk: ${slm.risk_level}`);
+      if (slm.explanation) parts.push(slm.explanation);
+      if (slm.confidence != null) parts.push(`Confidence: ${(slm.confidence * 100).toFixed(0)}%`);
+      return parts.join("\n") || null;
+    }
+  } catch {
+    // Not JSON or no analysis field
+  }
+  return null;
+}
+
+function SlmAnalysisSection({ details }: { details: string }) {
+  const analysis = extractSlmAnalysis(details);
+  if (!analysis) return null;
+  return (
+    <div className="mt-4">
+      <p className="text-xs text-[var(--color-text-secondary)] mb-1 flex items-center gap-1.5">
+        <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-accent)]" />
+        SLM Analysis
+      </p>
+      <div className="text-xs text-[var(--color-text-primary)] bg-[rgba(59,130,246,0.08)] border border-[rgba(59,130,246,0.2)] rounded-lg p-3 whitespace-pre-wrap break-words">
+        {analysis}
+      </div>
+    </div>
   );
 }
 
@@ -239,6 +290,8 @@ function EventDetailPanel({
           {tryFormatJson(event.details)}
         </pre>
       </div>
+
+      <SlmAnalysisSection details={event.details} />
     </div>
   );
 }
@@ -508,6 +561,11 @@ export function Timeline() {
                   {evt.tool_name
                     ? `${evt.tool_name}: ${evt.action}`
                     : evt.action}
+                  {evt.resource && (
+                    <span className="ml-1.5 text-xs text-[var(--color-text-secondary)] font-mono">
+                      {truncateResource(evt.resource, 36)}
+                    </span>
+                  )}
                 </span>
                 <RiskBadge level={evt.risk_level} />
               </div>

@@ -180,33 +180,26 @@ pub struct InstalledModel {
 // ---------------------------------------------------------------------------
 
 /// Return the built-in registry of recommended models.
+///
+/// Models are sourced from the curated catalog in [`crate::model_registry`]
+/// and converted to [`ModelInfo`] for backward compatibility.
+/// Ordered from smallest to largest.
 pub fn recommended_models() -> Vec<ModelInfo> {
-    vec![
-        ModelInfo {
-            name: "TinyLlama 1.1B Chat Q4_K_M".to_string(),
-            filename: "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf".to_string(),
-            size_bytes: 669_000_000,
-            quantization: "Q4_K_M".to_string(),
-            url: "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf".to_string(),
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        },
-        ModelInfo {
-            name: "Phi-2 Q4_K_M".to_string(),
-            filename: "phi-2.Q4_K_M.gguf".to_string(),
-            size_bytes: 1_790_000_000,
-            quantization: "Q4_K_M".to_string(),
-            url: "https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf".to_string(),
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        },
-        ModelInfo {
-            name: "Qwen2-0.5B Instruct Q8_0".to_string(),
-            filename: "qwen2-0_5b-instruct-q8_0.gguf".to_string(),
-            size_bytes: 530_000_000,
-            quantization: "Q8_0".to_string(),
-            url: "https://huggingface.co/Qwen/Qwen2-0.5B-Instruct-GGUF/resolve/main/qwen2-0_5b-instruct-q8_0.gguf".to_string(),
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        },
-    ]
+    use crate::model_registry;
+
+    let mut models: Vec<ModelInfo> = model_registry::catalog()
+        .into_iter()
+        .map(|cm| ModelInfo {
+            name: format!("{} {}", cm.display_name, cm.quantization),
+            filename: cm.filename,
+            size_bytes: cm.size_bytes,
+            quantization: cm.quantization,
+            url: cm.download_url,
+            sha256: cm.sha256,
+        })
+        .collect();
+    models.sort_by_key(|m| m.size_bytes);
+    models
 }
 
 // ---------------------------------------------------------------------------
