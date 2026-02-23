@@ -27,4 +27,4 @@ tempfile = "3"
 mockito = "1"
 tokio = { workspace = true, features = ["full", "test-util"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand = "0.8"
+rand = "0.9"
