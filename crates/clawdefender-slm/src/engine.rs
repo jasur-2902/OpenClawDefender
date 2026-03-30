@@ -287,9 +287,9 @@ impl SlmEngine {
 /// EXPLANATION: <text>
 /// ```
 ///
-/// Falls back to Low risk if parsing fails.
+/// Falls back to High risk if parsing fails (fail-closed).
 pub fn parse_slm_output(raw: &str, latency_ms: u64) -> SlmResponse {
-    let mut risk_level = RiskLevel::Low;
+    let mut risk_level = RiskLevel::High; // Fail-closed: default to HIGH if unparseable
     let mut confidence: f32 = 0.5;
     let mut explanation = String::new();
     let tokens_approx = (raw.len() / 4).max(1) as u32;
@@ -302,7 +302,7 @@ pub fn parse_slm_output(raw: &str, latency_ms: u64) -> SlmResponse {
                 "medium" => RiskLevel::Medium,
                 "high" => RiskLevel::High,
                 "critical" => RiskLevel::Critical,
-                _ => RiskLevel::Low,
+                _ => RiskLevel::High, // Fail-closed: unknown risk level defaults to HIGH
             };
         } else if let Some(rest) = line.strip_prefix("CONFIDENCE:") {
             confidence = rest.trim().parse().unwrap_or(0.5);
@@ -419,16 +419,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_unknown_risk_defaults_low() {
+    fn parse_unknown_risk_defaults_high() {
         let raw = "RISK: banana\nCONFIDENCE: 0.5\nEXPLANATION: weird";
         let resp = parse_slm_output(raw, 0);
-        assert_eq!(resp.risk_level, RiskLevel::Low);
+        assert_eq!(resp.risk_level, RiskLevel::High);
     }
 
     #[test]
-    fn parse_empty_output_defaults() {
+    fn parse_empty_output_defaults_high() {
         let resp = parse_slm_output("", 0);
-        assert_eq!(resp.risk_level, RiskLevel::Low);
+        assert_eq!(resp.risk_level, RiskLevel::High);
         assert!((resp.confidence - 0.5).abs() < 0.01);
     }
 

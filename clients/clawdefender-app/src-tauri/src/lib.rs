@@ -1,3 +1,4 @@
+pub mod alerts;
 mod commands;
 mod daemon;
 mod event_stream;
@@ -127,7 +128,7 @@ pub fn run() {
                                 tracing::info!("Loaded saved custom AI model on startup");
                             }
                             ActiveModelConfig::CloudApi { provider, model } => {
-                                if clawdefender_slm::cloud_backend::has_api_key(&provider) {
+                                if let Ok(Some(api_key)) = clawdefender_slm::cloud_backend::get_api_key(&provider) {
                                     let provider_name = clawdefender_slm::model_registry::cloud_providers()
                                         .into_iter()
                                         .find(|p| p.id == provider)
@@ -140,13 +141,13 @@ pub fn run() {
                                         .map(|m| m.display_name)
                                         .unwrap_or_else(|| model.clone());
 
+                                    // Use real CloudBackend for actual API calls
                                     let backend: Box<dyn clawdefender_slm::engine::SlmBackend> =
-                                        Box::new(clawdefender_slm::engine::MockSlmBackend {
-                                            model_name: format!("{} ({})", model_name, provider_name),
-                                            model_size: 0,
-                                            gpu: false,
-                                            ..Default::default()
-                                        });
+                                        Box::new(clawdefender_slm::cloud_backend::CloudBackend::new(
+                                            provider.clone(),
+                                            model.clone(),
+                                            api_key,
+                                        ));
                                     let config = clawdefender_slm::engine::SlmConfig::default();
                                     let engine = std::sync::Arc::new(
                                         clawdefender_slm::engine::SlmEngine::new(backend, config.clone()),
@@ -279,6 +280,13 @@ pub fn run() {
             commands::list_available_models,
             commands::get_slm_analysis_for_prompt,
             commands::get_slm_status,
+            commands::get_active_alerts_cmd,
+            commands::get_alert_stats_cmd,
+            commands::dismiss_alert_cmd,
+            commands::resolve_alert_cmd,
+            commands::dismiss_all_alerts,
+            commands::get_alert_history_cmd,
+            commands::get_alert_detail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,8 +3,18 @@
 //! Receives [`CorrelatedEvent`]s from the correlation engine and fans them out
 //! to the audit logger, connected UI clients, and (optionally) the behavioral
 //! analysis engines (learning, anomaly scoring, kill chain detection, decision).
+//!
+//! Events are escalated to the SLM for advisory AI analysis when any of these
+//! triggers fire:
+//! - Anomaly score >= `anomaly_score_escalation_threshold` (default 0.6)
+//! - Kill chain pattern match (regardless of anomaly score)
+//! - DecisionEngine returns `EnrichedPrompt` or `AutoBlock`
+//! - Uncorrelated high-severity OS event
+//!
+//! SLM escalation is rate-limited to `max_escalations_per_minute` (default 5).
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, RwLock};
@@ -12,10 +22,10 @@ use tracing::{debug, info, warn};
 
 use clawdefender_core::audit::{AuditRecord, SlmAnalysisRecord, SwarmAnalysisRecord};
 use clawdefender_core::behavioral::{
-    AnomalyScorer, BehavioralEvent, BehavioralEventType, DecisionEngine, KillChainDetector,
-    KillChainEvent, LearningEngine,
+    AnomalyScorer, BehavioralDecision, BehavioralEvent, BehavioralEventType, DecisionEngine,
+    KillChainDetector, KillChainEvent, LearningEngine,
 };
-use clawdefender_core::behavioral::killchain::StepEventType;
+use clawdefender_core::behavioral::killchain::{self, StepEventType};
 use clawdefender_core::event::correlation::CorrelatedEvent;
 use clawdefender_core::event::mcp::McpEventKind;
 use clawdefender_core::event::os::OsEventKind;
@@ -34,14 +44,38 @@ use clawdefender_swarm::prompts::SwarmEventData;
 pub struct EventRouterConfig {
     /// Minimum severity for forwarding uncorrelated events to SLM/Swarm.
     pub escalation_threshold: Severity,
+    /// Minimum anomaly score that triggers SLM escalation (0.0-1.0).
+    /// Events at or above this score are sent to the SLM for AI analysis.
+    pub anomaly_score_escalation_threshold: f64,
+    /// Maximum number of SLM escalations allowed per minute.
+    /// When the rate limit is hit, events are still processed normally
+    /// (behavioral analysis, audit log) but without AI enrichment.
+    pub max_escalations_per_minute: u32,
 }
 
 impl Default for EventRouterConfig {
     fn default() -> Self {
         Self {
             escalation_threshold: Severity::High,
+            anomaly_score_escalation_threshold: 0.6,
+            max_escalations_per_minute: 5,
         }
     }
+}
+
+/// Reason why an event was escalated to the SLM.
+/// Fields are read via Debug formatting in trace logs.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+enum EscalationReason {
+    /// Anomaly score crossed the escalation threshold.
+    HighAnomalyScore { score: f64 },
+    /// A kill chain pattern was matched.
+    KillChainMatch { pattern: String },
+    /// The behavioral decision engine flagged the event.
+    BehavioralDecision { decision_type: String },
+    /// Uncorrelated OS event with high severity.
+    UncorrelatedHighSeverity,
 }
 
 /// Optional behavioral engine handles, all behind Arc for shared ownership.
@@ -50,6 +84,43 @@ pub struct BehavioralEngines {
     pub scorer: Arc<AnomalyScorer>,
     pub killchain: Arc<RwLock<KillChainDetector>>,
     pub decision: Arc<RwLock<DecisionEngine>>,
+}
+
+/// Simple sliding-window rate limiter.
+///
+/// Tracks timestamps of recent escalations and enforces a maximum count
+/// within a 60-second rolling window.
+struct EscalationRateLimiter {
+    window: VecDeque<std::time::Instant>,
+    max_per_minute: u32,
+}
+
+impl EscalationRateLimiter {
+    fn new(max_per_minute: u32) -> Self {
+        Self {
+            window: VecDeque::new(),
+            max_per_minute,
+        }
+    }
+
+    /// Try to acquire a rate-limit slot. Returns `true` if allowed,
+    /// `false` if the limit has been reached.
+    fn try_acquire(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        let cutoff = now - std::time::Duration::from_secs(60);
+
+        // Evict entries older than 60 seconds.
+        while self.window.front().is_some_and(|t| *t < cutoff) {
+            self.window.pop_front();
+        }
+
+        if (self.window.len() as u32) < self.max_per_minute {
+            self.window.push_back(now);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// The event router receives correlated events and distributes them.
@@ -105,6 +176,8 @@ impl EventRouter {
         let slm_service = self.slm_service.clone();
         let swarm_commander = self.swarm_commander.clone();
         let escalation_audit_tx = self.audit_tx.clone();
+        let anomaly_threshold = self.config.anomaly_score_escalation_threshold;
+        let mut rate_limiter = EscalationRateLimiter::new(self.config.max_escalations_per_minute);
 
         tokio::spawn(async move {
             while let Some(event) = correlated_rx.recv().await {
@@ -112,9 +185,24 @@ impl EventRouter {
                 let mut audit_record = event.to_audit_record();
 
                 // --- Behavioral engine processing (non-blocking) ---
-                if let Some(ref engines) = self.behavioral {
-                    self.process_behavioral(engines, &event, &mut audit_record)
-                        .await;
+                let escalation_reasons = if let Some(ref engines) = self.behavioral {
+                    self.process_behavioral(
+                        engines,
+                        &event,
+                        &mut audit_record,
+                        anomaly_threshold,
+                    )
+                    .await
+                } else {
+                    Vec::new()
+                };
+
+                // Check for uncorrelated high-severity OS events
+                let mut all_reasons = escalation_reasons;
+                if event.mcp_event.is_none()
+                    && event.severity() >= self.config.escalation_threshold
+                {
+                    all_reasons.push(EscalationReason::UncorrelatedHighSeverity);
                 }
 
                 if let Err(e) = self.audit_tx.try_send(audit_record) {
@@ -126,31 +214,38 @@ impl EventRouter {
                     debug!(error = %e, "no UI consumer for correlated event");
                 }
 
-                // If uncorrelated and high/critical severity, escalate to SLM/swarm.
+                // --- SLM escalation (advisory only) ---
                 // SAFETY: SLM and swarm results are advisory-only. They enrich audit
                 // logs but NEVER influence policy decisions.
-                if event.mcp_event.is_none() && event.severity() >= self.config.escalation_threshold
-                {
-                    debug!(
-                        id = %event.id,
-                        severity = ?event.severity(),
-                        "uncorrelated high-severity event flagged for analysis"
-                    );
-
-                    // Spawn non-blocking SLM analysis
+                if !all_reasons.is_empty() {
                     if let Some(ref slm) = slm_service {
                         if slm.is_enabled() {
-                            let slm = Arc::clone(slm);
-                            let event_clone = event.clone();
-                            let audit_tx = escalation_audit_tx.clone();
-                            let swarm = swarm_commander.clone();
+                            // Apply rate limiting
+                            if rate_limiter.try_acquire() {
+                                debug!(
+                                    id = %event.id,
+                                    reasons = ?all_reasons.iter().map(|r| format!("{:?}", r)).collect::<Vec<_>>(),
+                                    "event escalated to SLM for advisory analysis"
+                                );
 
-                            tokio::spawn(async move {
-                                Self::run_escalation_analysis(
-                                    slm, swarm, event_clone, audit_tx,
-                                )
-                                .await;
-                            });
+                                let slm = Arc::clone(slm);
+                                let event_clone = event.clone();
+                                let audit_tx = escalation_audit_tx.clone();
+                                let swarm = swarm_commander.clone();
+
+                                tokio::spawn(async move {
+                                    Self::run_escalation_analysis(
+                                        slm, swarm, event_clone, audit_tx,
+                                    )
+                                    .await;
+                                });
+                            } else {
+                                warn!(
+                                    id = %event.id,
+                                    "SLM escalation rate limit reached (max {} per minute), skipping AI analysis",
+                                    self.config.max_escalations_per_minute
+                                );
+                            }
                         }
                     }
                 }
@@ -168,26 +263,82 @@ impl EventRouter {
         event: CorrelatedEvent,
         audit_tx: mpsc::Sender<AuditRecord>,
     ) {
-        // Build a description from the OS events
-        let description = if event.os_events.is_empty() {
-            "Unknown uncorrelated OS activity".to_string()
-        } else {
-            event
-                .os_events
-                .iter()
-                .map(|e| format!("{:?}", e))
-                .collect::<Vec<_>>()
-                .join("; ")
-        };
+        let server_name = "unknown".to_string();
+        let client_name = "unknown".to_string();
 
-        let request = AnalysisRequest {
-            event_type: AnalysisEventType::UncorrelatedOsActivity { description },
-            server_name: "unknown".to_string(),
-            client_name: "unknown".to_string(),
-            context: AnalysisContext {
-                recent_events: vec![],
-                server_reputation: ServerReputation::default(),
-            },
+        // Build the analysis request based on the event type.
+        let request = if let Some(ref mcp) = event.mcp_event {
+            match &mcp.kind {
+                McpEventKind::ToolCall(tc) => AnalysisRequest {
+                    event_type: AnalysisEventType::McpToolCall {
+                        tool_name: tc.tool_name.clone(),
+                        arguments: tc.arguments.clone(),
+                    },
+                    server_name: server_name.clone(),
+                    client_name: client_name.clone(),
+                    context: AnalysisContext {
+                        recent_events: vec![],
+                        server_reputation: ServerReputation::default(),
+                    },
+                },
+                McpEventKind::ResourceRead(rr) => AnalysisRequest {
+                    event_type: AnalysisEventType::McpResourceRead {
+                        uri: rr.uri.clone(),
+                    },
+                    server_name: server_name.clone(),
+                    client_name: client_name.clone(),
+                    context: AnalysisContext {
+                        recent_events: vec![],
+                        server_reputation: ServerReputation::default(),
+                    },
+                },
+                McpEventKind::SamplingRequest(sr) => AnalysisRequest {
+                    event_type: AnalysisEventType::McpSampling {
+                        content: serde_json::to_string(&sr.messages)
+                            .unwrap_or_else(|_| "sampling request".to_string()),
+                    },
+                    server_name: server_name.clone(),
+                    client_name: client_name.clone(),
+                    context: AnalysisContext {
+                        recent_events: vec![],
+                        server_reputation: ServerReputation::default(),
+                    },
+                },
+                _ => {
+                    // Build a description from the MCP event debug repr
+                    let description = format!("{:?}", mcp.kind);
+                    AnalysisRequest {
+                        event_type: AnalysisEventType::UncorrelatedOsActivity { description },
+                        server_name: server_name.clone(),
+                        client_name: client_name.clone(),
+                        context: AnalysisContext {
+                            recent_events: vec![],
+                            server_reputation: ServerReputation::default(),
+                        },
+                    }
+                }
+            }
+        } else {
+            // Uncorrelated OS events
+            let description = if event.os_events.is_empty() {
+                "Unknown uncorrelated OS activity".to_string()
+            } else {
+                event
+                    .os_events
+                    .iter()
+                    .map(|e| format!("{:?}", e))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
+            AnalysisRequest {
+                event_type: AnalysisEventType::UncorrelatedOsActivity { description },
+                server_name: server_name.clone(),
+                client_name: client_name.clone(),
+                context: AnalysisContext {
+                    recent_events: vec![],
+                    server_reputation: ServerReputation::default(),
+                },
+            }
         };
 
         let prompt = build_user_prompt(&request);
@@ -210,6 +361,23 @@ impl EventRouter {
                     error = %e,
                     "SLM escalation analysis failed, continuing without"
                 );
+
+                // Log the failure to audit so analysts can see analysis was attempted but failed.
+                let mut audit_record = event.to_audit_record();
+                audit_record.slm_analysis = Some(SlmAnalysisRecord {
+                    risk_level: "analysis_failed".to_string(),
+                    explanation: format!("SLM analysis failed: {}", e),
+                    confidence: 0.0,
+                    latency_ms: 0,
+                    model: slm
+                        .stats()
+                        .map(|s| s.model_name.clone())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                });
+                if let Err(send_err) = audit_tx.try_send(audit_record) {
+                    warn!(error = %send_err, "failed to send SLM failure record to audit logger");
+                }
+
                 None
             }
         };
@@ -266,8 +434,8 @@ impl EventRouter {
                     .unwrap_or_else(|| "SLM analysis unavailable".to_string());
 
                 let swarm_event = SwarmEventData {
-                    server_name: "unknown".to_string(),
-                    client_name: "unknown".to_string(),
+                    server_name,
+                    client_name,
                     tool_name: None,
                     arguments: None,
                     resource_uri: None,
@@ -326,12 +494,18 @@ impl EventRouter {
     /// This extracts MCP and OS events, feeds them to the learning engine,
     /// scores them for anomalies, checks kill chains, and runs through the
     /// decision engine. Results are attached to the audit record.
+    ///
+    /// Returns a list of escalation reasons if the event should be sent to the
+    /// SLM for AI analysis. An empty list means no escalation.
     async fn process_behavioral(
         &self,
         engines: &BehavioralEngines,
         correlated: &CorrelatedEvent,
         audit_record: &mut AuditRecord,
-    ) {
+        anomaly_escalation_threshold: f64,
+    ) -> Vec<EscalationReason> {
+        let mut escalation_reasons = Vec::new();
+
         // We use a default server/client name when not available.
         let server_name = audit_record
             .server_name
@@ -509,7 +683,7 @@ impl EventRouter {
 
         let profile = match profile {
             Some(p) => p,
-            None => return, // No profile yet, nothing to score
+            None => return escalation_reasons, // No profile yet, nothing to score
         };
 
         // Find the highest anomaly score across all events in this correlation
@@ -523,6 +697,13 @@ impl EventRouter {
                     highest_score = Some(score);
                 }
             }
+        }
+
+        // Check anomaly score escalation threshold
+        if highest_score_total >= anomaly_escalation_threshold {
+            escalation_reasons.push(EscalationReason::HighAnomalyScore {
+                score: highest_score_total,
+            });
         }
 
         // Ingest kill chain events and collect matches
@@ -542,7 +723,23 @@ impl EventRouter {
         }
 
         // Pick the most severe kill chain match
-        let best_kc = all_kc_matches.into_iter().next();
+        let best_kc = if all_kc_matches.len() <= 1 {
+            all_kc_matches.into_iter().next()
+        } else {
+            all_kc_matches.into_iter().max_by_key(|m| match m.severity {
+                killchain::Severity::Critical => 4u8,
+                killchain::Severity::High => 3,
+                killchain::Severity::Medium => 2,
+                killchain::Severity::Low => 1,
+            })
+        };
+
+        // Any kill chain match triggers escalation regardless of anomaly score
+        if let Some(ref kc_match) = best_kc {
+            escalation_reasons.push(EscalationReason::KillChainMatch {
+                pattern: kc_match.pattern.name.clone(),
+            });
+        }
 
         // --- Decision engine ---
         if let Ok(mut decision_engine) = engines.decision.try_write() {
@@ -560,9 +757,9 @@ impl EventRouter {
             let audit_data = decision_engine.build_audit_data(&decision, &profile);
             audit_record.behavioral = Some(audit_data);
 
-            // Log significant findings
+            // Log significant findings and collect escalation reasons
             match &decision {
-                clawdefender_core::behavioral::BehavioralDecision::AutoBlock {
+                BehavioralDecision::AutoBlock {
                     explanation, ..
                 } => {
                     warn!(
@@ -570,8 +767,11 @@ impl EventRouter {
                         explanation = %explanation,
                         "Behavioral engine: auto-block triggered"
                     );
+                    escalation_reasons.push(EscalationReason::BehavioralDecision {
+                        decision_type: "AutoBlock".to_string(),
+                    });
                 }
-                clawdefender_core::behavioral::BehavioralDecision::EnrichedPrompt {
+                BehavioralDecision::EnrichedPrompt {
                     anomaly_score,
                     ..
                 } => {
@@ -580,9 +780,14 @@ impl EventRouter {
                         score = anomaly_score.total,
                         "Behavioral engine: anomaly detected"
                     );
+                    escalation_reasons.push(EscalationReason::BehavioralDecision {
+                        decision_type: "EnrichedPrompt".to_string(),
+                    });
                 }
                 _ => {}
             }
         }
+
+        escalation_reasons
     }
 }

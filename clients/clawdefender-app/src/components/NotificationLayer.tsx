@@ -2,17 +2,20 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
+import { useAlertStore } from "../stores/alertStore";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import { PromptQueue } from "./PromptQueue";
 import { AutoBlockToast } from "./AutoBlockToast";
 import { AlertWindow } from "./AlertWindow";
-import type { PendingPrompt } from "../types";
+import type { PendingPrompt, IntelligentAlert } from "../types";
 import type { AutoBlockInfo } from "./AutoBlockToast";
 import type { AlertData } from "./AlertWindow";
 
 export function NotificationLayer() {
   const navigate = useNavigate();
   const addPrompt = useEventStore((s) => s.addPrompt);
+  const fetchAlerts = useAlertStore((s) => s.fetchAlerts);
+  const fetchStats = useAlertStore((s) => s.fetchStats);
   const [toasts, setToasts] = useState<AutoBlockInfo[]>([]);
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const pendingPrompts = useEventStore((s) => s.pendingPrompts);
@@ -37,6 +40,13 @@ export function NotificationLayer() {
     setAlerts((prev) => [...prev, payload]);
   }, []);
   useTauriEvent<AlertData>("clawdefender://alert", handleAlert);
+
+  // Listen for intelligent-alert events (from Agent 2's alert engine)
+  const handleIntelligentAlert = useCallback(() => {
+    fetchAlerts();
+    fetchStats();
+  }, [fetchAlerts, fetchStats]);
+  useTauriEvent<IntelligentAlert>("clawdefender://intelligent-alert", handleIntelligentAlert);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

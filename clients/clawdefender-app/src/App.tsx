@@ -3,20 +3,23 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-ro
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "./components/Sidebar";
-import { Dashboard } from "./pages/Dashboard";
-import { Timeline } from "./pages/Timeline";
+import { Home } from "./pages/Home";
+import { Activity } from "./pages/Activity";
+import { EventDetail } from "./pages/EventDetail";
+import { Alerts } from "./pages/Alerts";
+import { AlertDetail } from "./pages/AlertDetail";
 import { Onboarding } from "./pages/Onboarding";
 import { NotificationLayer } from "./components/NotificationLayer";
 import { PolicyEditor } from "./pages/PolicyEditor";
 import { Settings } from "./pages/Settings";
-import { Behavioral } from "./pages/Behavioral";
-import { Scanner } from "./pages/Scanner";
-import { Guards } from "./pages/Guards";
-import { AuditLog } from "./pages/AuditLog";
 import { SystemHealth } from "./pages/SystemHealth";
 import { ThreatIntel } from "./pages/ThreatIntel";
-import { NetworkLog } from "./pages/NetworkLog";
 import { useTheme } from "./hooks/useTheme";
+import { useAlertStore } from "./stores/alertStore";
+import { useTauriEvent } from "./hooks/useTauriEvent";
+import { AskClaw } from "./pages/AskClaw";
+import { MyTools } from "./pages/MyTools";
+import { ToolDetail } from "./pages/ToolDetail";
 
 function TrayNavigationListener() {
   const navigate = useNavigate();
@@ -34,6 +37,21 @@ function TrayNavigationListener() {
       unlisten?.();
     };
   }, [navigate]);
+
+  return null;
+}
+
+/** Listen for intelligent-alert events and refresh the alert store. */
+function IntelligentAlertListener() {
+  const fetchAlerts = useAlertStore((s) => s.fetchAlerts);
+  const fetchStats = useAlertStore((s) => s.fetchStats);
+
+  const handleIntelligentAlert = () => {
+    fetchAlerts();
+    fetchStats();
+  };
+
+  useTauriEvent("clawdefender://intelligent-alert", handleIntelligentAlert);
 
   return null;
 }
@@ -71,6 +89,7 @@ function App() {
   return (
     <BrowserRouter>
       <TrayNavigationListener />
+      <IntelligentAlertListener />
       <OnboardingRedirect>
         <Routes>
           <Route
@@ -84,15 +103,16 @@ function App() {
                 <Sidebar />
                 <main className="flex-1 overflow-y-auto">
                   <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/timeline" element={<Timeline />} />
+                    <Route path="/" element={<Home />} />
+                    <Route path="/activity" element={<Activity />} />
+                    <Route path="/activity/:id" element={<EventDetail />} />
+                    <Route path="/alerts" element={<Alerts />} />
+                    <Route path="/alerts/:id" element={<AlertDetail />} />
+                    <Route path="/ask" element={<AskClaw />} />
+                    <Route path="/tools" element={<MyTools />} />
+                    <Route path="/tools/:name" element={<ToolDetail />} />
                     <Route path="/policy" element={<PolicyEditor />} />
-                    <Route path="/behavioral" element={<Behavioral />} />
-                    <Route path="/scanner" element={<Scanner />} />
-                    <Route path="/guards" element={<Guards />} />
-                    <Route path="/audit" element={<AuditLog />} />
                     <Route path="/threat-intel" element={<ThreatIntel />} />
-                    <Route path="/network" element={<NetworkLog />} />
                     <Route path="/health" element={<SystemHealth />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>

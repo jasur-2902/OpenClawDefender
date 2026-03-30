@@ -3,14 +3,22 @@
 //! API keys are stored exclusively in the macOS Keychain via the `security` CLI tool.
 //! Keys are never written to config files, logs, or error messages.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::engine::{parse_slm_output, SlmResponse};
+use crate::engine::{parse_slm_output, SlmBackend, SlmResponse};
 use crate::model_registry::{cloud_providers, CloudProvider};
+use crate::sanitizer::sanitize_for_cloud;
+
+/// Maximum time for a cloud API request before timeout.
+const CLOUD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum time to establish a connection to a cloud API.
+const CLOUD_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 // ---------------------------------------------------------------------------
 // Keychain constants
@@ -96,7 +104,9 @@ pub fn delete_api_key(provider: &str) -> Result<()> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Not-found is not an error for deletion.
-        if !stderr.contains("could not be found") && !stderr.contains("SecKeychainSearchCopyNext") {
+        if !stderr.contains("could not be found")
+            && !stderr.contains("SecKeychainSearchCopyNext")
+        {
             bail!("failed to delete API key from Keychain: {}", stderr.trim());
         }
     }
@@ -129,11 +139,17 @@ impl CloudBackend {
     ///
     /// The API key is passed in directly (retrieved from Keychain by the caller).
     pub fn new(provider: String, model: String, api_key: String) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(CLOUD_REQUEST_TIMEOUT)
+            .connect_timeout(CLOUD_CONNECT_TIMEOUT)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
         Self {
             provider,
             model,
             api_key,
-            client: reqwest::Client::new(),
+            client,
             tokens_in: AtomicU64::new(0),
             tokens_out: AtomicU64::new(0),
             total_requests: AtomicU64::new(0),
@@ -153,11 +169,14 @@ impl CloudBackend {
     }
 
     /// Call the appropriate provider API and return the raw response text.
+    ///
+    /// Applies data minimization to strip PII before sending to the cloud.
     async fn call_provider(&self, prompt: &str) -> Result<String> {
+        let sanitized_prompt = sanitize_for_cloud(prompt);
         match self.provider.as_str() {
-            "anthropic" => self.call_anthropic(prompt).await,
-            "openai" => self.call_openai(prompt).await,
-            "google" => self.call_google(prompt).await,
+            "anthropic" => self.call_anthropic(&sanitized_prompt).await,
+            "openai" => self.call_openai(&sanitized_prompt).await,
+            "google" => self.call_google(&sanitized_prompt).await,
             other => bail!("unsupported cloud provider: {}", other),
         }
     }
@@ -181,7 +200,8 @@ impl CloudBackend {
             .context("Anthropic API request failed")?;
 
         let status = resp.status();
-        let json: serde_json::Value = resp.json().await.context("failed to parse Anthropic response")?;
+        let json: serde_json::Value =
+            resp.json().await.context("failed to parse Anthropic response")?;
 
         if !status.is_success() {
             let msg = json["error"]["message"]
@@ -229,7 +249,8 @@ impl CloudBackend {
             .context("OpenAI API request failed")?;
 
         let status = resp.status();
-        let json: serde_json::Value = resp.json().await.context("failed to parse OpenAI response")?;
+        let json: serde_json::Value =
+            resp.json().await.context("failed to parse OpenAI response")?;
 
         if !status.is_success() {
             let msg = json["error"]["message"]
@@ -281,7 +302,8 @@ impl CloudBackend {
             .context("Google API request failed")?;
 
         let status = resp.status();
-        let json: serde_json::Value = resp.json().await.context("failed to parse Google response")?;
+        let json: serde_json::Value =
+            resp.json().await.context("failed to parse Google response")?;
 
         if !status.is_success() {
             let msg = json["error"]["message"]
@@ -319,8 +341,8 @@ impl CloudBackend {
 
         // Look up cost rates from the provider registry.
         let (cost_in, cost_out) = cost_rates(&self.provider, &self.model);
-        let estimated_cost = (tokens_in as f64 / 1000.0) * cost_in
-            + (tokens_out as f64 / 1000.0) * cost_out;
+        let estimated_cost =
+            (tokens_in as f64 / 1000.0) * cost_in + (tokens_out as f64 / 1000.0) * cost_out;
 
         CloudUsageStats {
             provider: self.provider.clone(),
@@ -330,6 +352,31 @@ impl CloudBackend {
             tokens_out,
             estimated_cost_usd: estimated_cost,
         }
+    }
+}
+
+impl SlmBackend for CloudBackend {
+    fn infer<'a>(
+        &'a self,
+        prompt: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
+        Box::pin(async move {
+            let raw_text = self.call_provider(prompt).await?;
+            self.total_requests.fetch_add(1, Ordering::Relaxed);
+            Ok(raw_text)
+        })
+    }
+
+    fn model_name(&self) -> &str {
+        &self.model
+    }
+
+    fn model_size_bytes(&self) -> u64 {
+        0 // Cloud models have no local file size.
+    }
+
+    fn using_gpu(&self) -> bool {
+        false // Cloud inference; GPU is on the provider side.
     }
 }
 

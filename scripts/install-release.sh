@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ClawDefender release installer — downloads pre-built binaries from GitHub Releases.
+# For building from source, use scripts/install.sh instead.
+
+REPO="clawdefender/clawdefender"
+INSTALL_DIR="/usr/local/bin"
+BINARY_NAME="clawdefender"
+GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
+GITHUB_DL="https://github.com/${REPO}/releases/download"
+
+# --- Helpers ---
+
+info()  { echo "==> $*"; }
+error() { echo "ERROR: $*" >&2; exit 1; }
+
+# --- Pre-flight checks ---
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    error "ClawDefender currently supports macOS only. See https://github.com/${REPO} for other platforms."
+fi
+
+MACOS_VER="$(sw_vers -productVersion 2>/dev/null || echo "0")"
+MACOS_MAJOR="$(echo "$MACOS_VER" | cut -d. -f1)"
+if [[ "$MACOS_MAJOR" -lt 13 ]]; then
+    error "ClawDefender requires macOS 13 (Ventura) or later. You have macOS $MACOS_VER."
+fi
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+    arm64|aarch64|x86_64) ;;
+    *) error "Unsupported architecture: $ARCH" ;;
+esac
+info "Detected macOS $MACOS_VER on $ARCH"
+
+if command -v "$BINARY_NAME" &>/dev/null; then
+    EXISTING="$(command -v "$BINARY_NAME")"
+    EXISTING_VER="$("$BINARY_NAME" --version 2>/dev/null || echo "unknown")"
+    info "Existing installation found: $EXISTING ($EXISTING_VER)"
+    info "It will be replaced."
+fi
+
+# --- Resolve latest release ---
+
+info "Fetching latest release from GitHub..."
+LATEST_TAG="$(curl -fsSL "$GITHUB_API" | grep '"tag_name"' | cut -d'"' -f4)" \
+    || error "Failed to fetch latest release. Check your network connection."
+
+if [[ -z "$LATEST_TAG" ]]; then
+    error "Could not determine latest release tag."
+fi
+
+info "Latest release: $LATEST_TAG"
+
+# --- Download ---
+
+TARBALL="clawdefender-macos-universal.tar.gz"
+DOWNLOAD_URL="${GITHUB_DL}/${LATEST_TAG}/${TARBALL}"
+CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+info "Downloading ${TARBALL}..."
+curl -fSL --progress-bar "$DOWNLOAD_URL" -o "$TMPDIR/$TARBALL" \
+    || error "Download failed. URL: $DOWNLOAD_URL"
+
+info "Downloading checksum..."
+curl -fsSL "$CHECKSUM_URL" -o "$TMPDIR/${TARBALL}.sha256" \
+    || error "Checksum download failed."
+
+# --- Verify checksum ---
+
+info "Verifying SHA-256 checksum..."
+EXPECTED="$(awk '{print $1}' "$TMPDIR/${TARBALL}.sha256")"
+ACTUAL="$(shasum -a 256 "$TMPDIR/$TARBALL" | awk '{print $1}')"
+
+if [[ "$EXPECTED" != "$ACTUAL" ]]; then
+    error "Checksum mismatch!\n  Expected: $EXPECTED\n  Actual:   $ACTUAL\nThe download may be corrupted. Please try again."
+fi
+
+info "Checksum verified."
+
+# --- Install ---
+
+info "Extracting..."
+tar xzf "$TMPDIR/$TARBALL" -C "$TMPDIR"
+chmod +x "$TMPDIR/$BINARY_NAME"
+chmod +x "$TMPDIR/clawdefender-daemon" 2>/dev/null || true
+
+info "Installing to $INSTALL_DIR (may require sudo)..."
+if [[ -w "$INSTALL_DIR" ]]; then
+    mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+    if [[ -f "$TMPDIR/clawdefender-daemon" ]]; then
+        mv "$TMPDIR/clawdefender-daemon" "$INSTALL_DIR/clawdefender-daemon"
+    fi
+else
+    sudo mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+    if [[ -f "$TMPDIR/clawdefender-daemon" ]]; then
+        sudo mv "$TMPDIR/clawdefender-daemon" "$INSTALL_DIR/clawdefender-daemon"
+    fi
+fi
+
+# --- Initialize ---
+
+info "Running 'clawdefender init'..."
+"$INSTALL_DIR/$BINARY_NAME" init || true
+
+# --- Done ---
+
+echo ""
+echo "ClawDefender $LATEST_TAG installed successfully!"
+echo ""
+echo "Next steps:"
+echo "  clawdefender wrap <server-name>   Protect an MCP server"
+echo "  clawdefender status               Check proxy status"
+echo "  clawdefender --help               Full usage information"
+echo ""
+echo "Configuration: ~/.config/clawdefender/"
+echo "Audit logs:    ~/.local/share/clawdefender/"

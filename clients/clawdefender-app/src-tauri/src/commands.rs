@@ -2203,6 +2203,67 @@ pub async fn respond_to_prompt(
                 );
             }
         }
+        "deny_always" => {
+            // Create a permanent block rule (mirror of allow_always).
+            if let Some(ref prompt) = removed_prompt {
+                let rule_name = format!("auto-block-{}-{}", prompt.server_name, prompt.tool_name);
+                let resource = if prompt.resource.starts_with("http://")
+                    || prompt.resource.starts_with("https://")
+                    || prompt.resource.contains(':')
+                {
+                    "network"
+                } else {
+                    "file"
+                };
+                let rule = PolicyRule {
+                    name: rule_name.clone(),
+                    description: format!(
+                        "Auto-blocked: {} {} on {} (from prompt {})",
+                        prompt.server_name, prompt.tool_name, prompt.resource, prompt_id
+                    ),
+                    action: "deny".to_string(),
+                    resource: resource.to_string(),
+                    pattern: prompt.resource.clone(),
+                    priority: 60,
+                    enabled: true,
+                };
+
+                let path = policy_file_path();
+                let mut doc = if path.exists() {
+                    read_policy_file()?
+                } else {
+                    let mut m = toml::map::Map::new();
+                    m.insert(
+                        "rules".to_string(),
+                        toml::Value::Table(toml::map::Map::new()),
+                    );
+                    toml::Value::Table(m)
+                };
+
+                let key = sanitize_rule_key(&rule_name);
+                let already_exists = doc
+                    .get("rules")
+                    .and_then(|v| v.as_table())
+                    .map(|t| t.contains_key(&key))
+                    .unwrap_or(false);
+
+                if !already_exists {
+                    if let Some(rules) = doc.get_mut("rules").and_then(|v| v.as_table_mut()) {
+                        rules.insert(key.clone(), policy_rule_to_toml_table(&rule));
+                    }
+                    write_policy_file(&doc)?;
+                    try_reload_daemon(&state);
+                    tracing::info!("Added deny-always policy rule: {}", key);
+                } else {
+                    tracing::debug!("Policy rule {} already exists, skipping", key);
+                }
+            } else {
+                tracing::info!(
+                    "Prompt {} not found for deny_always — decision recorded but no policy rule created",
+                    prompt_id
+                );
+            }
+        }
         "deny" | "allow_once" | "allow_session" => {
             // These decisions don't create persistent policy rules.
             // "deny" is a one-time denial, "allow_once" and "allow_session" are transient.
@@ -4079,7 +4140,8 @@ pub async fn activate_cloud_provider(
     state: tauri::State<'_, AppState>,
 ) -> Result<ActiveModelInfo, String> {
     use std::sync::Arc;
-    use clawdefender_slm::engine::{MockSlmBackend, SlmBackend, SlmConfig, SlmEngine};
+    use clawdefender_slm::engine::{SlmBackend, SlmConfig, SlmEngine};
+    use clawdefender_slm::cloud_backend::CloudBackend;
     use clawdefender_slm::model_registry::{cloud_providers, save_active_config, ActiveModelConfig};
 
     // Verify the provider/model combination exists
@@ -4094,23 +4156,20 @@ pub async fn activate_cloud_provider(
         .find(|m| m.id == model)
         .ok_or_else(|| format!("Unknown model '{}' for provider '{}'", model, provider))?;
 
-    // Verify API key exists in keychain
-    let has_key = clawdefender_slm::cloud_backend::has_api_key(&provider);
-    if !has_key {
-        return Err(format!(
+    // Verify API key exists in keychain and retrieve it
+    let api_key = clawdefender_slm::cloud_backend::get_api_key(&provider)
+        .map_err(|e| format!("Failed to read API key: {}", e))?
+        .ok_or_else(|| format!(
             "No API key configured for {}. Add one in Settings first.",
             provider_info.display_name
-        ));
-    }
+        ))?;
 
-    // Create a mock-backed SlmService for state tracking
-    // (actual cloud calls go through CloudBackend::analyze() directly)
-    let backend: Box<dyn SlmBackend> = Box::new(MockSlmBackend {
-        model_name: format!("{} ({})", model_info.display_name, provider_info.display_name),
-        model_size: 0,
-        gpu: false,
-        ..MockSlmBackend::default()
-    });
+    // Create a real CloudBackend that calls the actual cloud API
+    let backend: Box<dyn SlmBackend> = Box::new(CloudBackend::new(
+        provider.clone(),
+        model.clone(),
+        api_key,
+    ));
     let config = SlmConfig::default();
     let engine = Arc::new(SlmEngine::new(backend, config.clone()));
     let service = clawdefender_slm::SlmService::with_engine(engine, config);
@@ -4387,6 +4446,98 @@ pub async fn get_slm_status(
             backend: None,
         }),
     }
+}
+
+// --- Alert management commands ---
+
+#[tauri::command]
+pub async fn get_active_alerts_cmd(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::alerts::engine::IntelligentAlert>, String> {
+    let store = state
+        .alert_store
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(crate::alerts::lifecycle::get_active_alerts(&store))
+}
+
+#[tauri::command]
+pub async fn get_alert_stats_cmd(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::alerts::lifecycle::AlertStats, String> {
+    let store = state
+        .alert_store
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(crate::alerts::lifecycle::get_alert_stats(&store))
+}
+
+#[tauri::command]
+pub async fn dismiss_alert_cmd(
+    state: tauri::State<'_, AppState>,
+    alert_id: String,
+) -> Result<bool, String> {
+    let mut store = state
+        .alert_store
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(crate::alerts::lifecycle::dismiss_alert(&mut store, &alert_id))
+}
+
+#[tauri::command]
+pub async fn resolve_alert_cmd(
+    state: tauri::State<'_, AppState>,
+    alert_id: String,
+    resolution: String,
+) -> Result<bool, String> {
+    let mut store = state
+        .alert_store
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(crate::alerts::lifecycle::resolve_alert(
+        &mut store,
+        &alert_id,
+        &resolution,
+    ))
+}
+
+#[tauri::command]
+pub async fn dismiss_all_alerts(
+    state: tauri::State<'_, AppState>,
+    max_severity: String,
+) -> Result<u32, String> {
+    let mut store = state
+        .alert_store
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(crate::alerts::lifecycle::dismiss_all(
+        &mut store,
+        Some(&max_severity),
+    ))
+}
+
+#[tauri::command]
+pub async fn get_alert_history_cmd(
+    state: tauri::State<'_, AppState>,
+    days: u32,
+) -> Result<Vec<crate::alerts::engine::IntelligentAlert>, String> {
+    let store = state
+        .alert_store
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(crate::alerts::lifecycle::get_alert_history(&store, days))
+}
+
+#[tauri::command]
+pub async fn get_alert_detail(
+    state: tauri::State<'_, AppState>,
+    alert_id: String,
+) -> Result<Option<crate::alerts::engine::IntelligentAlert>, String> {
+    let store = state
+        .alert_store
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(store.iter().find(|a| a.id == alert_id).cloned())
 }
 
 #[cfg(test)]

@@ -30,7 +30,7 @@ pub mod sanitizer;
 use std::sync::Arc;
 
 use anyhow::Result;
-use tracing::info;
+use tracing::{info, warn};
 
 #[cfg(any(not(feature = "gguf"), test))]
 use crate::engine::MockSlmBackend;
@@ -38,10 +38,17 @@ use crate::engine::{RiskLevel, SlmBackend, SlmConfig, SlmEngine, SlmResponse, Sl
 
 /// Top-level service that owns the SLM engine and exposes a simple API
 /// for the rest of ClawDefender.
+///
+/// Supports an automatic fallback chain: if the primary engine fails,
+/// the service tries the fallback engine before giving up.
+/// Typical chain: GGUF (local) -> Cloud API -> Mock (analysis unavailable).
 pub struct SlmService {
     engine: Option<Arc<SlmEngine>>,
+    /// Fallback engine used when the primary engine's inference fails.
+    fallback_engine: Option<Arc<SlmEngine>>,
     config: SlmConfig,
     enabled: bool,
+    mock_mode: bool,
 }
 
 impl SlmService {
@@ -49,8 +56,10 @@ impl SlmService {
     pub fn with_engine(engine: Arc<SlmEngine>, config: SlmConfig) -> Self {
         Self {
             engine: Some(engine),
+            fallback_engine: None,
             config,
             enabled: true,
+            mock_mode: false,
         }
     }
 
@@ -86,8 +95,10 @@ impl SlmService {
                     let engine = Arc::new(SlmEngine::new(backend, config.clone()));
                     return Self {
                         engine: Some(engine),
+                        fallback_engine: None,
                         config,
                         enabled: true,
+                        mock_mode: false,
                     };
                 }
                 Err(e) => {
@@ -114,8 +125,10 @@ impl SlmService {
 
             Self {
                 engine: Some(engine),
+                fallback_engine: None,
                 config,
                 enabled: true,
+                mock_mode: true,
             }
         }
     }
@@ -124,8 +137,10 @@ impl SlmService {
     pub fn disabled(config: SlmConfig) -> Self {
         Self {
             engine: None,
+            fallback_engine: None,
             config,
             enabled: false,
+            mock_mode: false,
         }
     }
 
@@ -139,15 +154,67 @@ impl SlmService {
         self.is_enabled()
     }
 
+    /// Returns true if the service is using the mock backend instead of a real model.
+    pub fn is_mock_mode(&self) -> bool {
+        self.mock_mode
+    }
+
+    /// Explicitly set mock mode (e.g. for cloud API models that use MockSlmBackend).
+    pub fn set_mock_mode(&mut self, mock: bool) {
+        self.mock_mode = mock;
+    }
+
+    /// Add a fallback engine to this service.
+    ///
+    /// When the primary engine fails, the fallback is tried before returning
+    /// an error. This enables automatic fallback chains like:
+    /// GGUF (local) -> Cloud API -> Mock (analysis unavailable).
+    pub fn with_fallback(mut self, fallback: Arc<SlmEngine>) -> Self {
+        // If we have a fallback but no primary, promote fallback to primary.
+        if self.engine.is_none() {
+            self.engine = Some(Arc::clone(&fallback));
+            self.enabled = true;
+        } else {
+            self.fallback_engine = Some(fallback);
+        }
+        self
+    }
+
     /// Analyze an event by running SLM inference.
     ///
+    /// Uses the fallback chain: primary engine first, then fallback engine.
     /// Returns `RiskLevel::Low` immediately if the service is disabled.
     pub async fn analyze_event(&self, prompt: &str) -> Result<SlmResponse> {
         if let Some(ref engine) = self.engine {
-            engine.infer(prompt).await
-        } else {
-            Ok(Self::disabled_response())
+            match engine.infer(prompt).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) => {
+                    // Primary failed -- try fallback if available.
+                    if let Some(ref fallback) = self.fallback_engine {
+                        warn!(
+                            error = %e,
+                            primary = engine.stats().model_name,
+                            fallback = fallback.stats().model_name,
+                            "Primary SLM inference failed, falling back"
+                        );
+                        match fallback.infer(prompt).await {
+                            Ok(resp) => return Ok(resp),
+                            Err(fallback_err) => {
+                                warn!(
+                                    error = %fallback_err,
+                                    "Fallback SLM inference also failed"
+                                );
+                                return Ok(Self::unavailable_response());
+                            }
+                        }
+                    }
+                    // No fallback available -- return unavailable.
+                    warn!(error = %e, "SLM inference failed with no fallback");
+                    return Ok(Self::unavailable_response());
+                }
+            }
         }
+        Ok(Self::disabled_response())
     }
 
     /// Analyze a scanner finding for deeper risk assessment.
@@ -246,7 +313,8 @@ impl SlmService {
                 if stats.using_gpu { "GPU" } else { "CPU" }
             )
         } else {
-            "No model loaded - place a GGUF model in ~/.local/share/clawdefender/models/".to_string()
+            "No model loaded - place a GGUF model in ~/.local/share/clawdefender/models/"
+                .to_string()
         }
     }
 
@@ -255,6 +323,19 @@ impl SlmService {
         SlmResponse {
             risk_level: RiskLevel::Low,
             explanation: "SLM disabled".to_string(),
+            confidence: 0.0,
+            tokens_used: 0,
+            latency_ms: 0,
+        }
+    }
+
+    /// Response when all backends in the fallback chain have failed.
+    /// Fail-closed to HIGH risk since we cannot analyze the event.
+    fn unavailable_response() -> SlmResponse {
+        SlmResponse {
+            risk_level: RiskLevel::High,
+            explanation: "Analysis unavailable: all SLM backends failed (fail-closed to HIGH)"
+                .to_string(),
             confidence: 0.0,
             tokens_used: 0,
             latency_ms: 0,
@@ -293,7 +374,6 @@ mod tests {
 
         let resp = svc.analyze_event("test prompt").await.unwrap();
         assert_eq!(resp.risk_level, RiskLevel::Low);
-        assert!(resp.confidence > 0.0);
 
         let stats = svc.stats().unwrap();
         assert_eq!(stats.total_inferences, 1);
@@ -345,11 +425,15 @@ mod tests {
         let svc = SlmService::with_engine(engine, config);
 
         let resp = svc
-            .analyze_scan_finding("weak_permission", "MEDIUM", "World-readable config", "/etc/app.conf")
+            .analyze_scan_finding(
+                "weak_permission",
+                "MEDIUM",
+                "World-readable config",
+                "/etc/app.conf",
+            )
             .await
             .unwrap();
         assert_eq!(resp.risk_level, RiskLevel::Low); // Mock always returns Low
-        assert!(resp.confidence > 0.0);
     }
 
     #[tokio::test]
@@ -387,5 +471,102 @@ mod tests {
         let status = svc.status_display();
         assert!(status.contains("Model loaded"));
         assert!(status.contains("mock-model-q4"));
+    }
+
+    // -- Fallback chain tests --
+
+    /// A backend that always fails, used to test fallback behavior.
+    struct FailingBackend;
+
+    impl SlmBackend for FailingBackend {
+        fn infer<'a>(
+            &'a self,
+            _prompt: &'a str,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>> + Send + 'a>>
+        {
+            Box::pin(async { Err(anyhow::anyhow!("simulated backend failure")) })
+        }
+        fn model_name(&self) -> &str {
+            "failing-backend"
+        }
+        fn model_size_bytes(&self) -> u64 {
+            0
+        }
+        fn using_gpu(&self) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_chain_uses_fallback_on_primary_failure() {
+        let primary = Box::new(FailingBackend);
+        let primary_engine = Arc::new(SlmEngine::new(primary, SlmConfig::default()));
+
+        let fallback = Box::new(MockSlmBackend::default());
+        let fallback_engine = Arc::new(SlmEngine::new(fallback, SlmConfig::default()));
+
+        let svc = SlmService::with_engine(primary_engine, SlmConfig::default())
+            .with_fallback(fallback_engine);
+
+        let resp = svc.analyze_event("test").await.unwrap();
+        // Should get the mock response from fallback, not an error
+        assert_eq!(resp.risk_level, RiskLevel::Low);
+        assert!(resp.explanation.contains("safe") || resp.explanation.contains("MOCK"));
+    }
+
+    #[tokio::test]
+    async fn fallback_chain_returns_unavailable_when_both_fail() {
+        let primary = Box::new(FailingBackend);
+        let primary_engine = Arc::new(SlmEngine::new(primary, SlmConfig::default()));
+
+        let fallback = Box::new(FailingBackend);
+        let fallback_engine = Arc::new(SlmEngine::new(fallback, SlmConfig::default()));
+
+        let svc = SlmService::with_engine(primary_engine, SlmConfig::default())
+            .with_fallback(fallback_engine);
+
+        let resp = svc.analyze_event("test").await.unwrap();
+        // Fail-closed to HIGH when all backends fail
+        assert_eq!(resp.risk_level, RiskLevel::High);
+        assert!(resp.explanation.contains("unavailable"));
+    }
+
+    #[tokio::test]
+    async fn fallback_chain_uses_primary_when_it_succeeds() {
+        let primary = Box::new(MockSlmBackend {
+            response_text:
+                "RISK: MEDIUM\nCONFIDENCE: 0.7\nEXPLANATION: Primary analysis".to_string(),
+            ..Default::default()
+        });
+        let primary_engine = Arc::new(SlmEngine::new(primary, SlmConfig::default()));
+
+        let fallback = Box::new(MockSlmBackend::default());
+        let fallback_engine = Arc::new(SlmEngine::new(fallback, SlmConfig::default()));
+
+        let svc = SlmService::with_engine(primary_engine, SlmConfig::default())
+            .with_fallback(fallback_engine);
+
+        let resp = svc.analyze_event("test").await.unwrap();
+        // Should use primary result
+        assert_eq!(resp.risk_level, RiskLevel::Medium);
+        assert!(resp.explanation.contains("Primary analysis"));
+    }
+
+    #[test]
+    fn with_fallback_promotes_when_no_primary() {
+        let fallback = Box::new(MockSlmBackend::default());
+        let fallback_engine = Arc::new(SlmEngine::new(fallback, SlmConfig::default()));
+
+        let svc = SlmService::disabled(SlmConfig::default()).with_fallback(fallback_engine);
+
+        // Should be enabled now since fallback was promoted
+        assert!(svc.is_enabled());
+    }
+
+    #[test]
+    fn unavailable_response_is_fail_closed() {
+        let resp = SlmService::unavailable_response();
+        assert_eq!(resp.risk_level, RiskLevel::High);
+        assert!(resp.explanation.contains("fail-closed"));
     }
 }

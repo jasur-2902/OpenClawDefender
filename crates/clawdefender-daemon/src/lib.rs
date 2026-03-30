@@ -656,7 +656,15 @@ impl Daemon {
             threads: self.config.slm.threads.unwrap_or(4),
             ..SlmEngineConfig::default()
         };
-        let slm_service = Arc::new(SlmService::new(slm_engine_config, self.config.slm.enabled));
+        let slm_service = {
+            let mut svc = SlmService::new(slm_engine_config, self.config.slm.enabled);
+            // Try to wire up a cloud backend as fallback (GGUF -> cloud -> fail-closed)
+            if let Some(cloud_engine) = try_create_cloud_fallback() {
+                info!("SLM: cloud fallback engine available");
+                svc = svc.with_fallback(cloud_engine);
+            }
+            Arc::new(svc)
+        };
         if slm_service.is_enabled() {
             info!("SLM: enabled (standalone mode)");
         } else {
@@ -937,7 +945,15 @@ impl Daemon {
             threads: self.config.slm.threads.unwrap_or(4),
             ..SlmEngineConfig::default()
         };
-        let slm_service = Arc::new(SlmService::new(slm_engine_config, self.config.slm.enabled));
+        let slm_service = {
+            let mut svc = SlmService::new(slm_engine_config, self.config.slm.enabled);
+            // Try to wire up a cloud backend as fallback (GGUF -> cloud -> fail-closed)
+            if let Some(cloud_engine) = try_create_cloud_fallback() {
+                info!("SLM: cloud fallback engine available");
+                svc = svc.with_fallback(cloud_engine);
+            }
+            Arc::new(svc)
+        };
         if slm_service.is_enabled() {
             info!("SLM: enabled");
         } else {
@@ -1543,6 +1559,51 @@ fn remove_pid_file(path: &PathBuf) {
             info!(path = %path.display(), "removed PID file");
         }
     }
+}
+
+/// Try to create a cloud-backed SLM engine for use as a fallback.
+///
+/// Checks the model_config.toml for a configured CloudApi, then verifies
+/// the API key exists in the Keychain. Returns None if no cloud provider
+/// is configured or the key is missing.
+fn try_create_cloud_fallback() -> Option<Arc<clawdefender_slm::engine::SlmEngine>> {
+    use clawdefender_slm::cloud_backend::get_api_key;
+    use clawdefender_slm::model_registry::{cloud_providers, load_active_config, ActiveModelConfig};
+
+    // Check if a cloud provider is configured
+    let config = load_active_config().ok()?;
+    let (provider_id, model_id) = match config {
+        ActiveModelConfig::CloudApi { provider, model } => (provider, model),
+        _ => {
+            // No cloud configured — try to find any provider with a stored API key
+            for p in cloud_providers() {
+                if let Ok(Some(_)) = get_api_key(&p.id) {
+                    let recommended = p.models.iter().find(|m| m.recommended)?;
+                    return try_create_cloud_engine(&p.id, &recommended.id);
+                }
+            }
+            return None;
+        }
+    };
+
+    try_create_cloud_engine(&provider_id, &model_id)
+}
+
+fn try_create_cloud_engine(
+    provider_id: &str,
+    model_id: &str,
+) -> Option<Arc<clawdefender_slm::engine::SlmEngine>> {
+    use clawdefender_slm::cloud_backend::{get_api_key, CloudBackend};
+    use clawdefender_slm::engine::{SlmBackend, SlmEngine};
+
+    let api_key = get_api_key(provider_id).ok().flatten()?;
+    let backend: Box<dyn SlmBackend> = Box::new(CloudBackend::new(
+        provider_id.to_string(),
+        model_id.to_string(),
+        api_key,
+    ));
+    let config = SlmEngineConfig::default();
+    Some(Arc::new(SlmEngine::new(backend, config)))
 }
 
 #[cfg(test)]

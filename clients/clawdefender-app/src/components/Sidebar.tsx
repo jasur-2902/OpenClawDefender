@@ -1,22 +1,23 @@
 import { NavLink } from "react-router-dom";
 import { useEventStore } from "../stores/eventStore";
+import { useAlertStore } from "../stores/alertStore";
 
 interface NavItem {
   path: string;
   label: string;
   icon: string;
+  badge?: "prompts" | "alerts";
 }
 
 const navItems: NavItem[] = [
-  { path: "/", label: "Dashboard", icon: "grid" },
-  { path: "/timeline", label: "Timeline", icon: "clock" },
-  { path: "/policy", label: "Policy", icon: "shield" },
-  { path: "/behavioral", label: "Behavioral", icon: "activity" },
-  { path: "/scanner", label: "Scanner", icon: "search" },
-  { path: "/guards", label: "Guards", icon: "lock" },
+  { path: "/", label: "Home", icon: "grid" },
+  { path: "/activity", label: "Activity", icon: "clock" },
+  { path: "/alerts", label: "Alerts", icon: "shield", badge: "alerts" },
+  { path: "/tools", label: "My Tools", icon: "lock" },
+  { path: "/ask", label: "Ask Claw", icon: "chat" },
+  { path: "/policy", label: "Policy", icon: "activity" },
   { path: "/threat-intel", label: "Threat Intel", icon: "globe" },
-  { path: "/network", label: "Network Log", icon: "network" },
-  { path: "/audit", label: "Audit Log", icon: "list" },
+  { path: "/health", label: "System Health", icon: "network" },
   { path: "/settings", label: "Settings", icon: "settings" },
 ];
 
@@ -31,11 +32,13 @@ const iconMap: Record<string, string> = {
   network: "\u21C4",
   list: "\u2630",
   settings: "\u2699",
+  chat: "\u2026",
 };
 
 export function Sidebar() {
   const daemonRunning = useEventStore((s) => s.daemonRunning);
   const pendingPrompts = useEventStore((s) => s.pendingPrompts);
+  const unresolvedCount = useAlertStore((s) => s.unresolvedCount);
 
   return (
     <aside className="flex flex-col w-56 h-full border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
@@ -80,12 +83,17 @@ export function Sidebar() {
                 {pendingPrompts.length}
               </span>
             )}
+            {item.badge === "alerts" && unresolvedCount > 0 && (
+              <span className="ml-auto bg-[var(--color-warning)] text-white text-xs px-1.5 py-0.5 rounded-full" aria-label={`${unresolvedCount} unresolved alerts`}>
+                {unresolvedCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
 
       <div className="px-4 py-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-secondary)]">
-        v0.5.0-beta
+        v0.6.0-beta
       </div>
     </aside>
   );

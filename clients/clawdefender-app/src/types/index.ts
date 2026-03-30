@@ -72,6 +72,8 @@ export interface PendingPrompt {
   risk_level: "low" | "medium" | "high" | "critical";
   context: string;
   timeout_seconds: number;
+  slm_analysis?: string;
+  slm_recommendation?: string;
 }
 
 export interface ServerProfileSummary {
@@ -267,6 +269,267 @@ export interface ServerTrafficData {
   unique_destinations: number;
   period: string;
 }
+
+// --- Alert types ---
+
+export interface AlertAction {
+  id: string;
+  label: string;
+  action_type: string;
+  params?: Record<string, unknown>;
+}
+
+export interface KillChainStep {
+  step_number: number;
+  timestamp: string;
+  description: string;
+  severity: string;
+  was_blocked: boolean;
+  event_id: string;
+}
+
+export interface KillChainNarrative {
+  pattern_name: string;
+  summary: string;
+  steps: KillChainStep[];
+  verdict: string;
+  outcome: string;
+  confidence: number;
+}
+
+export interface IntelligentAlert {
+  id: string;
+  alert_type: string;
+  severity: string;
+  status: string;
+  title: string;
+  description: string;
+  recommendation: string;
+  source_events: string[];
+  server_name: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  dedup_key: string;
+  dedup_count: number;
+  actions: AlertAction[];
+  kill_chain: KillChainNarrative | null;
+  ai_summary?: string;
+  ai_risk_level?: string;
+  ai_confidence?: number;
+  ai_recommendation?: string;
+}
+
+export interface AlertStats {
+  total_active: number;
+  dangerous_count: number;
+  suspicious_count: number;
+  unusual_count: number;
+  info_count: number;
+  resolved_this_week: number;
+  blocked_this_week: number;
+  avg_resolution_minutes: number;
+}
+
+export interface Recommendation {
+  id: string;
+  rec_type: string;
+  description: string;
+  action_label: string;
+  action_type: string;
+  action_params?: Record<string, unknown>;
+  priority: number;
+  dismissed: boolean;
+}
+
+// --- Humanized Event (from Rust backend humanizer) ---
+
+export interface HumanizedEvent {
+  event_id: string;
+  timestamp: string;
+  server_display_name: string;
+  client_name: string | null;
+  one_liner: string;
+  expanded_explanation: string;
+  educational_aside: string | null;
+  behavioral_context: string;
+  risk_level: string;
+  risk_explanation: string;
+  action_taken: "Allowed" | "Blocked" | "Prompted" | "AutoBlocked";
+  action_reason: string;
+  is_notable: boolean;
+  correlation_id: string | null;
+  kill_chain_id: string | null;
+  raw_event: AuditEvent;
+}
+
+// --- Correlation types ---
+
+export interface CorrelatedEvent {
+  event_id: string;
+  timestamp: string;
+  description: string;
+  match_confidence: number;
+  match_reason: string;
+}
+
+export interface UncorrelatedEvent {
+  event_id: string;
+  timestamp: string;
+  description: string;
+  concern_level: string;
+  explanation: string;
+}
+
+export interface CoverageAssessment {
+  mcp_events_with_match: number;
+  mcp_events_without_match: number;
+  uncorrelated_count: number;
+  coverage_percent: number;
+  assessment: string;
+}
+
+export interface CorrelationResult {
+  mcp_event_id: string;
+  correlated_events: CorrelatedEvent[];
+  correlation_confidence: number;
+  uncorrelated_events: UncorrelatedEvent[];
+  coverage: CoverageAssessment;
+}
+
+// --- Protection Score types ---
+
+export interface FixAction {
+  label: string;
+  action_type: string;
+  target: string;
+  params?: unknown;
+}
+
+export interface ScoreFactor {
+  id: string;
+  name: string;
+  description: string;
+  max_points: number;
+  current_points: number;
+  status: string;
+  details: string;
+  fix_actions: FixAction[];
+}
+
+/** Alias used by ScoreBreakdown component. */
+export type BackendScoreFactor = ScoreFactor;
+
+export interface ProtectionScore {
+  total: number;
+  label: string;
+  color: string;
+  factors: ScoreFactor[];
+  computed_at: string;
+  change_from_last: number | null;
+}
+
+export interface ScoreSnapshot {
+  id: number;
+  score: number;
+  factors_json: string;
+  computed_at: string;
+}
+
+// --- Tool types (for My Tools / Tool Detail pages) ---
+
+export type TrustLevel = "trusted" | "default" | "untrusted" | "blocked";
+
+export type PermissionAction = "allow" | "deny" | "prompt" | "inherit" | "block";
+
+export interface ServerCapabilities {
+  read_files: boolean;
+  write_files: boolean;
+  execute_commands: boolean;
+  network_access: boolean;
+  browser_access: boolean;
+  can_read_files?: boolean;
+  can_write_files?: boolean;
+  can_execute?: boolean;
+  can_network?: boolean;
+}
+
+export interface PermissionState {
+  permission: string;
+  action: PermissionAction;
+  inherited: boolean;
+}
+
+export interface PermissionChange {
+  permission: string;
+  old_action: PermissionAction;
+  new_action: PermissionAction;
+}
+
+export interface TrustLevelInfo {
+  server_name: string;
+  trust_level: TrustLevel;
+  permissions: PermissionState[];
+}
+
+export interface ToolCardData {
+  server_name: string;
+  client_name: string;
+  display_name: string;
+  wrapped: boolean;
+  status: string;
+  trust_level: TrustLevel;
+  event_count: number;
+  anomaly_score: number;
+  capabilities: ServerCapabilities;
+  last_activity: string | null;
+}
+
+export interface NewToolInfo {
+  server_name: string;
+  client_name: string;
+  client_display_name?: string;
+  display_name: string;
+  detected_at: string;
+  capabilities?: ServerCapabilities;
+}
+
+export interface NetworkSummary {
+  destinations: string[];
+  total_connections: number;
+  blocked_connections: number;
+}
+
+export interface ActivityPattern {
+  peak_hour: number;
+  avg_daily_events: number;
+  trend: string;
+}
+
+export interface ServerSummary {
+  server_name: string;
+  display_name: string;
+  client_name: string;
+  trust_level: TrustLevel;
+  status: string;
+  event_count: number;
+  anomaly_score: number;
+  tools_count: number;
+  total_calls: number;
+  last_activity: string | null;
+  capabilities: ServerCapabilities;
+  permissions: PermissionState[];
+  learning_status?: string;
+  territory?: string[];
+  common_tools?: string[];
+  network_summary?: NetworkSummary;
+  activity_pattern?: ActivityPattern;
+  notable_observations?: string[];
+  trust_recommendation?: string;
+}
+
+// --- Tauri Event Union ---
 
 export type TauriEvent =
   | { type: "event"; payload: AuditEvent }

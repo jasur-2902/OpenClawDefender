@@ -1,0 +1,237 @@
+/*
+ * ClawDefender Design Tokens
+ *
+ * Single source of truth for all visual design values.
+ * Dark mode is the default (:root). Light mode uses [data-theme="light"].
+ *
+ * See docs/design/visual-identity.md for full documentation.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Color Tokens                                                        */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Base */
+  --color-bg-primary: #0f0f0f;
+  --color-bg-secondary: #1a1a1a;
+  --color-bg-tertiary: #252525;
+  --color-bg-sunken: #0a0a0a;
+  --color-text-primary: #e5e5e5;
+  --color-text-secondary: #a3a3a3;
+  --color-text-muted: #6b7280;
+  --color-border: #2a2a2a;
+  --color-border-subtle: #1f1f1f;
+
+  /* Accent */
+  --color-accent: #38bdf8;
+  --color-accent-hover: #7dd3fc;
+  --color-accent-active: #0ea5e9;
+  --color-accent-subtle: rgba(56, 189, 248, 0.12);
+  --color-accent-text: #7dd3fc;
+
+  /* Safe (green) */
+  --color-safe: #22c55e;
+  --color-safe-light: rgba(34, 197, 94, 0.10);
+  --color-safe-dark: #4ade80;
+  --color-safe-subtle: rgba(34, 197, 94, 0.15);
+  --color-safe-border: #22c55e;
+
+  /* Danger (red) */
+  --color-danger: #ef4444;
+  --color-danger-light: rgba(239, 68, 68, 0.10);
+  --color-danger-dark: #f87171;
+  --color-danger-subtle: rgba(239, 68, 68, 0.15);
+  --color-danger-border: #ef4444;
+
+  /* Warning (amber) */
+  --color-warning: #f59e0b;
+  --color-warning-light: rgba(245, 158, 11, 0.10);
+  --color-warning-dark: #fbbf24;
+  --color-warning-subtle: rgba(245, 158, 11, 0.15);
+  --color-warning-border: #f59e0b;
+
+  /* Info (blue) */
+  --color-info: #3b82f6;
+  --color-info-light: rgba(59, 130, 246, 0.10);
+  --color-info-dark: #60a5fa;
+  --color-info-subtle: rgba(59, 130, 246, 0.15);
+  --color-info-border: #3b82f6;
+
+  /* ---------------------------------------------------------------- */
+  /* Animation Tokens                                                  */
+  /* ---------------------------------------------------------------- */
+  --duration-fast: 100ms;
+  --duration-normal: 150ms;
+  --duration-moderate: 200ms;
+  --duration-slow: 300ms;
+
+  --ease-out: ease-out;
+  --ease-in: ease-in;
+  --ease-in-out: ease-in-out;
+
+  /* ---------------------------------------------------------------- */
+  /* Shadow Tokens                                                     */
+  /* ---------------------------------------------------------------- */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  /* ---------------------------------------------------------------- */
+  /* Border Radius Tokens                                              */
+  /* ---------------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* ---------------------------------------------------------------- */
+  /* Z-Index Scale                                                     */
+  /* ---------------------------------------------------------------- */
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-overlay: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --z-prompt: 60;
+}
+
+/* ------------------------------------------------------------------ */
+/* Light Mode Overrides                                                */
+/* ------------------------------------------------------------------ */
+
+[data-theme="light"] {
+  /* Base */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f8f9fa;
+  --color-bg-tertiary: #f0f1f3;
+  --color-bg-sunken: #edeef0;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #737b88;
+  --color-border: #e5e7eb;
+  --color-border-subtle: #f0f1f3;
+
+  /* Accent */
+  --color-accent: #0284c7;
+  --color-accent-hover: #0369a1;
+  --color-accent-active: #075985;
+  --color-accent-subtle: rgba(2, 132, 199, 0.08);
+  --color-accent-text: #0369a1;
+
+  /* Safe (green) */
+  --color-safe: #16a34a;
+  --color-safe-light: rgba(22, 163, 74, 0.08);
+  --color-safe-dark: #15803d;
+  --color-safe-subtle: rgba(22, 163, 74, 0.12);
+  --color-safe-border: #16a34a;
+
+  /* Danger (red) */
+  --color-danger: #dc2626;
+  --color-danger-light: rgba(220, 38, 38, 0.08);
+  --color-danger-dark: #b91c1c;
+  --color-danger-subtle: rgba(220, 38, 38, 0.12);
+  --color-danger-border: #dc2626;
+
+  /* Warning (amber) */
+  --color-warning: #d97706;
+  --color-warning-light: rgba(217, 119, 6, 0.08);
+  --color-warning-dark: #b45309;
+  --color-warning-subtle: rgba(217, 119, 6, 0.12);
+  --color-warning-border: #d97706;
+
+  /* Info (blue) */
+  --color-info: #2563eb;
+  --color-info-light: rgba(37, 99, 235, 0.08);
+  --color-info-dark: #1d4ed8;
+  --color-info-subtle: rgba(37, 99, 235, 0.12);
+  --color-info-border: #2563eb;
+
+  /* Shadows — lighter for light mode */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* ------------------------------------------------------------------ */
+/* System Dark Mode (CSS fallback before JS hydrates data-theme)       */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg-primary: #0f0f0f;
+    --color-bg-secondary: #1a1a1a;
+    --color-bg-tertiary: #252525;
+    --color-bg-sunken: #0a0a0a;
+    --color-text-primary: #e5e5e5;
+    --color-text-secondary: #a3a3a3;
+    --color-text-muted: #6b7280;
+    --color-border: #2a2a2a;
+    --color-border-subtle: #1f1f1f;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f8f9fa;
+    --color-bg-tertiary: #f0f1f3;
+    --color-bg-sunken: #edeef0;
+    --color-text-primary: #1a1a1a;
+    --color-text-secondary: #6b7280;
+    --color-text-muted: #737b88;
+    --color-border: #e5e7eb;
+    --color-border-subtle: #f0f1f3;
+
+    --color-accent: #0284c7;
+    --color-accent-hover: #0369a1;
+    --color-accent-active: #075985;
+    --color-accent-subtle: rgba(2, 132, 199, 0.08);
+    --color-accent-text: #0369a1;
+
+    --color-safe: #16a34a;
+    --color-safe-light: rgba(22, 163, 74, 0.08);
+    --color-safe-dark: #15803d;
+    --color-safe-subtle: rgba(22, 163, 74, 0.12);
+    --color-safe-border: #16a34a;
+
+    --color-danger: #dc2626;
+    --color-danger-light: rgba(220, 38, 38, 0.08);
+    --color-danger-dark: #b91c1c;
+    --color-danger-subtle: rgba(220, 38, 38, 0.12);
+    --color-danger-border: #dc2626;
+
+    --color-warning: #d97706;
+    --color-warning-light: rgba(217, 119, 6, 0.08);
+    --color-warning-dark: #b45309;
+    --color-warning-subtle: rgba(217, 119, 6, 0.12);
+    --color-warning-border: #d97706;
+
+    --color-info: #2563eb;
+    --color-info-light: rgba(37, 99, 235, 0.08);
+    --color-info-dark: #1d4ed8;
+    --color-info-subtle: rgba(37, 99, 235, 0.12);
+    --color-info-border: #2563eb;
+
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12);
+    --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Reduced Motion                                                      */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -5,10 +5,11 @@ use std::thread;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tracing::{debug, info, warn};
 
+use crate::alerts::engine as alert_engine;
 use crate::events::{self, AlertPayload, AutoBlockPayload, SuspiciousEventPayload};
 use crate::state::{AppState, AuditEvent, PendingPrompt};
 
@@ -350,6 +351,33 @@ fn send_native_notification(app: &AppHandle, title: &str, body: &str, sound: boo
     }
 }
 
+/// Extract SLM analysis from event details JSON (written by `to_audit_event`
+/// when the daemon embeds SLM enrichment in the audit record).
+fn extract_slm_from_details(details: &str) -> (Option<String>, Option<String>) {
+    let parsed: serde_json::Value = match serde_json::from_str(details) {
+        Ok(v) => v,
+        Err(_) => return (None, None),
+    };
+    let slm = match parsed.get("slm_analysis") {
+        Some(v) => v,
+        None => return (None, None),
+    };
+    let explanation = slm
+        .get("explanation")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let risk = slm
+        .get("risk_level")
+        .and_then(|v| v.as_str())
+        .unwrap_or("medium");
+    let recommendation = match risk {
+        "critical" | "high" => Some("Deny this request".to_string()),
+        "medium" => Some("Review carefully before allowing".to_string()),
+        _ => Some("Likely safe to allow".to_string()),
+    };
+    (explanation, recommendation)
+}
+
 /// Process a single parsed audit event: push to state and emit frontend events.
 fn process_event(app: &AppHandle, event: AuditEvent) {
     let state = app.state::<AppState>();
@@ -379,8 +407,34 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
         );
     }
 
-    // Create a pending prompt for "prompted" decisions
+    // Create a pending prompt for "prompted" decisions.
+    // Coalescing: skip if a pending prompt already exists for the same
+    // server + tool + action to prevent a flood of identical prompts.
     if event.decision == "prompted" || event.decision == "prompt" {
+        let tool = event.tool_name.as_deref().unwrap_or("unknown");
+        let already_pending = state
+            .pending_prompts
+            .lock()
+            .map(|prompts| {
+                prompts.iter().any(|p| {
+                    p.server_name == event.server_name
+                        && p.tool_name == tool
+                        && p.action == event.action
+                })
+            })
+            .unwrap_or(false);
+
+        if already_pending {
+            debug!(
+                server = %event.server_name,
+                tool = %tool,
+                action = %event.action,
+                "Coalescing duplicate prompt — already pending for same server/tool/action"
+            );
+        } else {
+        // Extract pre-computed SLM analysis from event details if present
+        // (EnrichedPrompt path from behavioral engine).
+        let (slm_analysis, slm_recommendation) = extract_slm_from_details(&event.details);
         let prompt = PendingPrompt {
             id: event.id.clone(),
             timestamp: event.timestamp.clone(),
@@ -391,6 +445,8 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
             risk_level: event.risk_level.clone(),
             context: event.details.clone(),
             timeout_seconds: 30,
+            slm_analysis,
+            slm_recommendation,
         };
         state.push_prompt(prompt.clone());
         events::emit_prompt(app, &prompt);
@@ -406,6 +462,7 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
             &format!("{} wants to {}", event.server_name, resource_display),
             true,
         );
+        } // end else (not already_pending)
     }
 
     // Emit auto-block event for denied/blocked decisions
@@ -428,6 +485,29 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
 
     // Always push to state and emit the audit event
     events::emit_audit_event(app, &event);
+
+    // Run the alert engine against this event to generate intelligent alerts.
+    let events_buffer = state
+        .event_buffer
+        .lock()
+        .map(|buf| buf.clone())
+        .unwrap_or_default();
+    let new_alerts = alert_engine::process_event(&event, &events_buffer);
+    for alert in new_alerts {
+        let is_new = state.push_alert(alert.clone());
+        if is_new {
+            // Emit the intelligent alert to the frontend for real-time notification.
+            if let Err(e) = app.emit("clawdefender://intelligent-alert", &alert) {
+                debug!(error = %e, "Failed to emit intelligent alert");
+            }
+        }
+    }
+
+    // Periodically auto-expire stale alerts.
+    if let Ok(mut store) = state.alert_store.lock() {
+        crate::alerts::lifecycle::auto_expire_alerts(&mut store);
+    }
+
     state.push_event(event);
 }
 
