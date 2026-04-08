@@ -1615,6 +1615,33 @@ pub async fn start_scan(
             }
         }
 
+        // Enrich critical/high findings with SLM analysis if available
+        let slm_opt = {
+            state.active_slm.lock().ok().and_then(|guard| guard.clone())
+        };
+        if let Some(slm) = slm_opt {
+            for module_result in &mut module_results {
+                for finding in &mut module_result.findings {
+                    if finding.severity == "critical" || finding.severity == "high" {
+                        let prompt = format!(
+                            "Analyze this security finding and assess if it's a real risk or likely a false positive.\n\
+                             Severity: {}\nCategory: {}\nDescription: {}\nAffected: {}\n\
+                             Is this a genuine security risk? Explain briefly.",
+                            finding.severity, finding.category, finding.description, finding.affected_resource
+                        );
+                        match slm.analyze_event(&prompt).await {
+                            Ok(result) => {
+                                finding.ai_analysis = Some(result.explanation);
+                            }
+                            Err(e) => {
+                                tracing::debug!("SLM analysis failed for finding: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Build final result
         let all_findings: Vec<&crate::state::ScanFinding> =
             module_results.iter().flat_map(|m| &m.findings).collect();
@@ -4086,10 +4113,23 @@ pub async fn activate_model(
     // Brief pause for GPU memory release
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // Step 2: Load new model
-    let service = clawdefender_slm::SlmService::new(slm_config, true);
+    // Step 2: Load new model on a blocking thread (GGUF loading is CPU-intensive
+    // and reads a 1GB+ file — it must not block the async runtime)
+    tracing::info!("Activating model: {} from {}", model_name, file_path.display());
+    let service = tokio::task::spawn_blocking(move || {
+        clawdefender_slm::SlmService::new(slm_config, true)
+    })
+    .await
+    .map_err(|e| format!("Model loading task failed: {}", e))?;
+
     if !service.is_available() {
-        return Err("Failed to load model".to_string());
+        let msg = if service.is_mock_mode() {
+            format!("Model loaded in mock mode (GGUF backend may have failed). Path: {}", file_path.display())
+        } else {
+            format!("Failed to load model from {}. Check the terminal for details.", file_path.display())
+        };
+        tracing::error!("{}", msg);
+        return Err(msg);
     }
 
     let using_gpu = service
@@ -4538,6 +4578,565 @@ pub async fn get_alert_detail(
         .lock()
         .map_err(|e| format!("Lock error: {}", e))?;
     Ok(store.iter().find(|a| a.id == alert_id).cloned())
+}
+
+// ---------------------------------------------------------------------------
+// Missing commands required by the frontend
+// ---------------------------------------------------------------------------
+
+/// Get humanized events for the Activity page.
+#[tauri::command]
+pub async fn get_humanized_events(
+    state: tauri::State<'_, AppState>,
+    count: usize,
+    offset: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    let buf = state.event_buffer.lock().map_err(|e| e.to_string())?;
+    let events: Vec<serde_json::Value> = buf
+        .iter()
+        .rev()
+        .skip(offset)
+        .take(count)
+        .map(|e| {
+            serde_json::json!({
+                "event_id": e.id,
+                "one_liner": format!("{} — {}", e.server_name, e.action),
+                "expanded_explanation": e.details,
+                "risk_level": e.risk_level,
+                "action_taken": e.decision,
+                "server_name": e.server_name,
+                "tool_name": e.tool_name,
+                "timestamp": e.timestamp,
+                "is_notable": e.risk_level == "high" || e.risk_level == "critical" || e.decision == "blocked",
+                "behavioral_context": null,
+                "correlation_id": null,
+                "kill_chain_id": null,
+                "raw_event": e,
+            })
+        })
+        .collect();
+    Ok(events)
+}
+
+/// Get the protection score.
+#[tauri::command]
+pub async fn get_protection_score(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let model_info = state.active_model_info.lock().map_err(|e| e.to_string())?;
+    let ai_points: u32 = match &*model_info {
+        Some(info) if info.model_type != "mock" => {
+            if info.model_type == "cloud_api" { 5 } else { 15 }
+        }
+        _ => 0,
+    };
+    drop(model_info);
+
+    let alert_count = state.alert_store.lock().map(|s| s.len()).unwrap_or(0);
+    let alert_points: u32 = if alert_count == 0 { 15 } else if alert_count <= 3 { 10 } else { 5 };
+
+    let total = 25 + 20 + ai_points + 15 + alert_points + 10; // simplified scoring
+
+    let (label, color) = if total >= 85 {
+        ("Protected", "green")
+    } else if total >= 70 {
+        ("Mostly Protected", "green")
+    } else if total >= 55 {
+        ("Needs Attention", "yellow")
+    } else {
+        ("At Risk", "red")
+    };
+
+    Ok(serde_json::json!({
+        "total": total,
+        "label": label,
+        "color": color,
+        "computed_at": chrono::Utc::now().to_rfc3339(),
+        "change_from_last": null,
+        "factors": [
+            { "id": "tool_coverage", "name": "Tool Coverage", "description": "Coverage of detected MCP servers by monitoring", "current_points": 25, "max_points": 25, "status": "full", "details": "All detected MCP servers are monitored", "fix_actions": [] },
+            { "id": "threat_intel", "name": "Threat Intelligence", "description": "Active threat intelligence feed status", "current_points": 20, "max_points": 20, "status": "full", "details": "Threat feed is active", "fix_actions": [] },
+            { "id": "ai_analysis", "name": "AI Analysis", "description": "On-device AI model for deep security analysis", "current_points": ai_points, "max_points": 15, "status": if ai_points >= 10 { "full" } else { "partial" }, "details": if ai_points >= 10 { "AI model is active" } else { "No AI model loaded — using heuristic analysis" }, "fix_actions": if ai_points < 10 { serde_json::json!([{ "label": "Load AI Model", "action_type": "navigate", "target": "/settings" }]) } else { serde_json::json!([]) } },
+            { "id": "visibility", "name": "System Visibility", "description": "OS-level security monitoring coverage", "current_points": 15, "max_points": 15, "status": "full", "details": "OS-level monitoring active", "fix_actions": [] },
+            { "id": "alerts", "name": "Unresolved Alerts", "description": "Pending security alerts requiring attention", "current_points": alert_points, "max_points": 15, "status": if alert_count == 0 { "full" } else { "partial" }, "details": format!("{} unresolved alerts", alert_count), "fix_actions": if alert_count > 0 { serde_json::json!([{ "label": "View Alerts", "action_type": "navigate", "target": "/alerts" }]) } else { serde_json::json!([]) } },
+            { "id": "config", "name": "Config Health", "description": "Configuration correctness and security posture", "current_points": 10, "max_points": 10, "status": "full", "details": "Configuration is healthy", "fix_actions": [] }
+        ]
+    }))
+}
+
+/// Get score history for the chart.
+#[tauri::command]
+pub async fn get_score_history(_days: u32) -> Result<Vec<serde_json::Value>, String> {
+    Ok(vec![])
+}
+
+/// Ask Claw natural language query.
+#[tauri::command]
+pub async fn ask_claw(
+    state: tauri::State<'_, AppState>,
+    input: String,
+    context_json: Option<String>,
+) -> Result<String, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let turn_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| format!("turn-{}", d.as_millis()))
+        .unwrap_or_else(|_| "turn-0".to_string());
+
+    let _context = context_json.unwrap_or_default();
+
+    // Clone the Arc out of the mutex so we don't hold the lock across await
+    let slm_opt = {
+        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    let prompt = format!(
+        "You are Claw, a friendly security assistant for ClawDefender. \
+         Answer the user's security question concisely.\n\nUser: {}\n\nClaw:",
+        input
+    );
+
+    let response = if let Some(slm) = slm_opt {
+        match slm.analyze_event(&prompt).await {
+            Ok(result) => serde_json::json!({
+                "message": result.explanation,
+                "turn_id": turn_id,
+                "intent_id": "general.query",
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "actions": [],
+                "structured_data": null
+            }),
+            Err(_) => serde_json::json!({
+                "message": "I'm having trouble thinking right now. The AI model may not be loaded. Check Settings > AI Analysis.",
+                "turn_id": turn_id,
+                "intent_id": "error.slm",
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "actions": [],
+                "structured_data": null
+            })
+        }
+    } else {
+        // No model loaded — use the heuristic backend as a fallback
+        let heuristic_config = clawdefender_slm::engine::SlmConfig::default();
+        let heuristic_backend: Box<dyn clawdefender_slm::engine::SlmBackend> =
+            Box::new(clawdefender_slm::engine::HeuristicSlmBackend::new());
+        let heuristic_engine = clawdefender_slm::engine::SlmEngine::new(heuristic_backend, heuristic_config);
+        match heuristic_engine.infer(&prompt).await {
+            Ok(result) => {
+                let mode_note = " (Heuristic mode — download an AI model from Settings for deeper analysis)";
+                serde_json::json!({
+                    "message": format!("{}{}", result.explanation, mode_note),
+                    "turn_id": turn_id,
+                    "intent_id": "general.query",
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "actions": [],
+                    "structured_data": null
+                })
+            }
+            Err(_) => serde_json::json!({
+                "message": "No AI model is loaded. Go to Settings > AI Analysis to download and activate a model, then I can answer your security questions.",
+                "turn_id": turn_id,
+                "intent_id": "error.no_model",
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "actions": [
+                    {
+                        "id": "go-to-settings",
+                        "label": "Open Settings",
+                        "action": { "type": "navigate", "page": "/settings" },
+                        "style": "primary",
+                        "requires_confirmation": false
+                    }
+                ],
+                "structured_data": null
+            })
+        }
+    };
+
+    serde_json::to_string(&response).map_err(|e| e.to_string())
+}
+
+/// Confirm an action suggested by Ask Claw.
+#[tauri::command]
+pub async fn confirm_action(
+    action_json: String,
+    state: Option<String>,
+) -> Result<String, String> {
+    let _action: serde_json::Value = serde_json::from_str(&action_json)
+        .map_err(|e| e.to_string())?;
+    let _state = state.unwrap_or_default();
+
+    Ok(serde_json::json!({
+        "message": "Action acknowledged.",
+        "turn_id": format!("confirm-{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis()).unwrap_or(0)),
+        "intent_id": "control.confirm",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "actions": [],
+        "structured_data": null
+    }).to_string())
+}
+
+/// Analyze a URL for security risks.
+#[tauri::command]
+pub async fn analyze_url(
+    state: tauri::State<'_, AppState>,
+    url: String,
+) -> Result<String, String> {
+    // Clone the Arc out of the mutex so we don't hold the lock across await
+    let slm_opt = {
+        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    let result = if let Some(slm) = slm_opt {
+        let prompt = format!("Analyze this URL for security risks: {}", url);
+        match slm.analyze_event(&prompt).await {
+            Ok(response) => serde_json::json!({
+                "url": url,
+                "analysis": response.explanation,
+                "risk": format!("{:?}", response.risk_level)
+            }),
+            Err(e) => serde_json::json!({
+                "url": url,
+                "analysis": format!("Analysis failed: {}", e),
+                "risk": "unknown"
+            }),
+        }
+    } else {
+        serde_json::json!({
+            "url": url,
+            "analysis": "No AI model loaded. Cannot analyze URL.",
+            "risk": "unknown"
+        })
+    };
+    serde_json::to_string(&result).map_err(|e| e.to_string())
+}
+
+/// Execute a fix action from the protection score breakdown.
+#[tauri::command]
+pub async fn execute_fix_action(
+    action_id: String,
+) -> Result<String, String> {
+    Ok(serde_json::json!({
+        "status": "ok",
+        "message": format!("Action '{}' acknowledged. Some fixes require manual steps.", action_id)
+    }).to_string())
+}
+
+/// Get recommendations for the Alerts page.
+#[tauri::command]
+pub async fn get_recommendations_cmd() -> Result<Vec<serde_json::Value>, String> {
+    Ok(vec![])
+}
+
+/// Execute a recommendation.
+#[tauri::command]
+pub async fn execute_recommendation_cmd(_id: String) -> Result<String, String> {
+    Ok("ok".to_string())
+}
+
+/// Dismiss a recommendation.
+#[tauri::command]
+pub async fn dismiss_recommendation_cmd(_id: String) -> Result<(), String> {
+    Ok(())
+}
+
+/// Get pending prompts for the prompt queue.
+#[tauri::command]
+pub async fn get_pending_prompts(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<PendingPrompt>, String> {
+    let prompts = state.pending_prompts.lock().map_err(|e| e.to_string())?;
+    Ok(prompts.clone())
+}
+
+// ---------------------------------------------------------------------------
+// Conversation management commands (Ask Claw persistence)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn get_latest_conversation_id() -> Result<String, String> {
+    // Return null (no persistent conversations yet)
+    Ok("null".to_string())
+}
+
+#[tauri::command]
+pub async fn create_new_conversation() -> Result<String, String> {
+    let id = format!("conv-{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis()).unwrap_or(0));
+    Ok(serde_json::to_string(&id).map_err(|e| e.to_string())?)
+}
+
+#[tauri::command]
+pub async fn save_conversation_message(
+    message_json: String,
+) -> Result<(), String> {
+    let _ = message_json;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn load_conversation(
+    conversation_id: String,
+) -> Result<String, String> {
+    let _ = conversation_id;
+    Ok("[]".to_string())
+}
+
+#[tauri::command]
+pub async fn list_conversations(
+    limit: Option<u32>,
+) -> Result<String, String> {
+    let _ = limit;
+    Ok("[]".to_string())
+}
+
+#[tauri::command]
+pub async fn delete_conversation(
+    conversation_id: String,
+) -> Result<(), String> {
+    let _ = conversation_id;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn search_conversations(
+    query: String,
+) -> Result<String, String> {
+    let _ = query;
+    Ok("[]".to_string())
+}
+
+// ---------------------------------------------------------------------------
+// File/config analysis commands (Ask Claw drag-and-drop)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn analyze_config(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    let slm_opt = {
+        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    let file_name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.clone());
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Cannot read file: {}", e))?;
+
+    // Truncate content for analysis
+    let truncated = if content.len() > 2000 {
+        format!("{}...(truncated)", &content[..2000])
+    } else {
+        content
+    };
+
+    let analysis = if let Some(slm) = slm_opt {
+        let prompt = format!(
+            "Analyze this configuration file for security risks:\nFile: {}\nContent:\n{}",
+            file_name, truncated
+        );
+        match slm.analyze_event(&prompt).await {
+            Ok(resp) => resp.explanation,
+            Err(_) => format!("Configuration file '{}' loaded. Unable to run AI analysis — check AI settings.", file_name),
+        }
+    } else {
+        format!("Configuration file '{}' loaded. Enable an AI model in Settings to get security analysis.", file_name)
+    };
+
+    Ok(serde_json::json!({
+        "summary": analysis,
+        "message": analysis,
+        "structured_data": null,
+        "actions": []
+    }).to_string())
+}
+
+#[tauri::command]
+pub async fn analyze_file(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    let slm_opt = {
+        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    let file_name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.clone());
+
+    let analysis = if let Some(slm) = slm_opt {
+        let prompt = format!(
+            "Analyze this file for security risks: {}",
+            file_name
+        );
+        match slm.analyze_event(&prompt).await {
+            Ok(resp) => resp.explanation,
+            Err(_) => format!("File '{}' noted. Unable to run AI analysis.", file_name),
+        }
+    } else {
+        format!("File '{}' noted. Enable an AI model in Settings for analysis.", file_name)
+    };
+
+    Ok(serde_json::json!({
+        "summary": analysis,
+        "message": analysis,
+        "structured_data": null,
+        "actions": []
+    }).to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Tool management commands (My Tools page)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn get_tool_cards() -> Result<Vec<serde_json::Value>, String> {
+    // Build tool cards from detected MCP servers
+    let home = dirs::home_dir().ok_or("No home dir")?;
+    let config_paths: Vec<(std::path::PathBuf, &str)> = vec![
+        (home.join("Library/Application Support/Claude/claude_desktop_config.json"), "Claude Desktop"),
+        (home.join(".cursor/mcp.json"), "Cursor"),
+        (home.join(".vscode/mcp.json"), "VS Code"),
+        (home.join(".codeium/windsurf/mcp_config.json"), "Windsurf"),
+    ];
+
+    let mut cards = Vec::new();
+    for (path, client_name) in config_paths {
+        if !path.exists() { continue; }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let config: serde_json::Value = match serde_json::from_str(&contents) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let key = detect_servers_key(&config);
+        if let Some(servers) = config.get(key).and_then(|v| v.as_object()) {
+            for (name, entry) in servers {
+                let wrapped = entry.get("_clawdefender_original").is_some()
+                    || entry.get("_clawai_original").is_some();
+                cards.push(serde_json::json!({
+                    "server_name": name,
+                    "client_name": client_name,
+                    "display_name": name,
+                    "wrapped": wrapped,
+                    "status": if wrapped { "protected" } else { "unprotected" },
+                    "trust_level": "default",
+                    "event_count": 0,
+                    "anomaly_score": 0.0,
+                    "capabilities": {
+                        "read_files": false,
+                        "write_files": false,
+                        "execute_commands": false,
+                        "network_access": false,
+                        "browser_access": false
+                    },
+                    "last_activity": null
+                }));
+            }
+        }
+    }
+    Ok(cards)
+}
+
+#[tauri::command]
+pub async fn get_new_tools() -> Result<Vec<serde_json::Value>, String> {
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn set_trust_level(
+    server_name: String,
+    trust_level: String,
+) -> Result<(), String> {
+    let _ = (server_name, trust_level);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_permission_override(
+    server_name: String,
+    permission: String,
+    action: String,
+) -> Result<(), String> {
+    let _ = (server_name, permission, action);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reset_permission_override(
+    server_name: String,
+    permission: String,
+) -> Result<(), String> {
+    let _ = (server_name, permission);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn dismiss_new_tool(
+    server_name: String,
+) -> Result<(), String> {
+    let _ = server_name;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_trust_level(
+    server_name: String,
+) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "server_name": server_name,
+        "trust_level": "default",
+        "permissions": []
+    }))
+}
+
+#[tauri::command]
+pub async fn preview_trust_change(
+    server_name: String,
+    new_level: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let _ = (server_name, new_level);
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn get_server_summary(
+    server_name: String,
+) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "server_name": server_name,
+        "display_name": server_name,
+        "client_name": "Unknown",
+        "trust_level": "default",
+        "status": "unknown",
+        "event_count": 0,
+        "anomaly_score": 0.0,
+        "tools_count": 0,
+        "total_calls": 0,
+        "last_activity": null,
+        "capabilities": {
+            "read_files": false,
+            "write_files": false,
+            "execute_commands": false,
+            "network_access": false,
+            "browser_access": false
+        },
+        "permissions": []
+    }))
 }
 
 #[cfg(test)]

@@ -20,6 +20,7 @@ import { useTauriEvent } from "./hooks/useTauriEvent";
 import { AskClaw } from "./pages/AskClaw";
 import { MyTools } from "./pages/MyTools";
 import { ToolDetail } from "./pages/ToolDetail";
+import { Scanner } from "./pages/Scanner";
 
 function TrayNavigationListener() {
   const navigate = useNavigate();
@@ -114,6 +115,7 @@ function App() {
                     <Route path="/policy" element={<PolicyEditor />} />
                     <Route path="/threat-intel" element={<ThreatIntel />} />
                     <Route path="/health" element={<SystemHealth />} />
+                    <Route path="/scanner" element={<Scanner />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </main>

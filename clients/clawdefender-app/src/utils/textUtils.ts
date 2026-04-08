@@ -12,6 +12,7 @@
  * Unicode-safe: splits on codepoints, not UTF-16 code units.
  */
 export function truncateMiddle(text: string, maxLen: number): string {
+  if (!text) return "";
   const chars = Array.from(text);
   if (chars.length <= maxLen) return text;
   if (maxLen < 5) return truncateEnd(text, maxLen);
@@ -30,6 +31,7 @@ export function truncateMiddle(text: string, maxLen: number): string {
  * Unicode-safe: splits on codepoints, not UTF-16 code units.
  */
 export function truncateEnd(text: string, maxLen: number): string {
+  if (!text) return "";
   const chars = Array.from(text);
   if (chars.length <= maxLen) return text;
   if (maxLen <= 1) return "\u2026";

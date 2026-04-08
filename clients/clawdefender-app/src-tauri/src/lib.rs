@@ -198,6 +198,46 @@ pub fn run() {
                 });
             }
 
+            // Auto-scan on first launch: if no previous scan results exist, trigger a scan
+            {
+                let scan_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // Brief delay to let the UI finish loading
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                    let home = dirs::home_dir().unwrap_or_default();
+                    let scans_dir = home.join(".local/share/clawdefender/scans");
+                    let has_previous_scans = scans_dir.exists()
+                        && std::fs::read_dir(&scans_dir)
+                            .map(|entries| entries.filter_map(|e| e.ok()).count() > 0)
+                            .unwrap_or(false);
+
+                    if !has_previous_scans {
+                        tracing::info!("First launch detected — running automatic security scan");
+                        let all_modules: Vec<String> = vec![
+                            "mcp-config-audit".to_string(),
+                            "policy-strength".to_string(),
+                            "server-reputation".to_string(),
+                            "system-posture".to_string(),
+                            "behavioral-anomaly".to_string(),
+                        ];
+                        match commands::start_scan(
+                            scan_handle,
+                            String::new(),
+                            all_modules,
+                            300,
+                        ).await {
+                            Ok(scan_id) => {
+                                tracing::info!("Auto-scan started: {}", scan_id);
+                            }
+                            Err(e) => {
+                                tracing::warn!("Auto-scan failed to start: {}", e);
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -287,6 +327,35 @@ pub fn run() {
             commands::dismiss_all_alerts,
             commands::get_alert_history_cmd,
             commands::get_alert_detail,
+            commands::get_humanized_events,
+            commands::get_protection_score,
+            commands::get_score_history,
+            commands::ask_claw,
+            commands::confirm_action,
+            commands::analyze_url,
+            commands::execute_fix_action,
+            commands::get_recommendations_cmd,
+            commands::execute_recommendation_cmd,
+            commands::dismiss_recommendation_cmd,
+            commands::get_pending_prompts,
+            commands::get_latest_conversation_id,
+            commands::create_new_conversation,
+            commands::save_conversation_message,
+            commands::load_conversation,
+            commands::list_conversations,
+            commands::delete_conversation,
+            commands::search_conversations,
+            commands::analyze_config,
+            commands::analyze_file,
+            commands::get_tool_cards,
+            commands::get_new_tools,
+            commands::set_trust_level,
+            commands::set_permission_override,
+            commands::reset_permission_override,
+            commands::dismiss_new_tool,
+            commands::get_trust_level,
+            commands::preview_trust_change,
+            commands::get_server_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

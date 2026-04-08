@@ -337,6 +337,8 @@ pub struct ScanFinding {
     pub affected_resource: String,
     pub fix_suggestion: String,
     pub fix_action: Option<ScanFixAction>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ai_analysis: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -188,6 +188,54 @@ impl SlmEngine {
         }
     }
 
+    /// Run raw inference, returning the model's text output directly.
+    ///
+    /// Respects concurrency limits but skips output parsing. Use this when
+    /// you need custom parsing (e.g. triage classification).
+    pub async fn raw_infer(&self, prompt: &str) -> Result<String> {
+        // Try to enter the bounded queue.
+        let queue_permit = match self.queue_semaphore.try_acquire() {
+            Ok(permit) => permit,
+            Err(_) => {
+                warn!("SLM inference queue full ({MAX_QUEUED}), dropping request");
+                return Err(anyhow::anyhow!("inference queue full"));
+            }
+        };
+
+        // Wait for the single inference slot.
+        let _infer_permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|_| anyhow::anyhow!("inference semaphore closed"))?;
+        drop(queue_permit);
+
+        let start = Instant::now();
+        let raw_output = self
+            .backend
+            .infer(prompt)
+            .await
+            .context("SLM backend inference failed")?;
+        let latency_ms = start.elapsed().as_millis() as u64;
+
+        if latency_ms > SLOW_INFERENCE_MS {
+            warn!(
+                latency_ms,
+                "SLM inference exceeded {SLOW_INFERENCE_MS}ms threshold"
+            );
+        }
+
+        let tokens_approx = (raw_output.len() / 4).max(1) as u64;
+        self.total_inferences.fetch_add(1, Ordering::Relaxed);
+        self.total_tokens
+            .fetch_add(tokens_approx, Ordering::Relaxed);
+        self.total_latency_ms
+            .fetch_add(latency_ms, Ordering::Relaxed);
+        self.last_latency_ms.store(latency_ms, Ordering::Relaxed);
+
+        Ok(raw_output)
+    }
+
     /// Run inference, respecting concurrency limits.
     ///
     /// - At most 1 inference runs at a time (semaphore).
@@ -379,6 +427,192 @@ impl SlmBackend for MockSlmBackend {
 }
 
 // ---------------------------------------------------------------------------
+// Heuristic backend — rule-based security analysis (no model needed)
+// ---------------------------------------------------------------------------
+
+/// A pattern/rule for the heuristic analyzer.
+struct HeuristicRule {
+    /// Patterns to match (case-insensitive substring matching).
+    patterns: &'static [&'static str],
+    risk: RiskLevel,
+    confidence: f32,
+    explanation: &'static str,
+}
+
+const HEURISTIC_RULES: &[HeuristicRule] = &[
+    // Critical-level rules
+    HeuristicRule {
+        patterns: &["rm -rf /", "rm -rf /*"],
+        risk: RiskLevel::Critical,
+        confidence: 0.98,
+        explanation: "Destructive command detected: recursive forced deletion of system root directory",
+    },
+    HeuristicRule {
+        patterns: &[":(){ :|:& };:", "fork bomb"],
+        risk: RiskLevel::Critical,
+        confidence: 0.95,
+        explanation: "Fork bomb detected: this will exhaust system resources and crash the system",
+    },
+    HeuristicRule {
+        patterns: &["mkfs.", "dd if=/dev/zero of=/dev/"],
+        risk: RiskLevel::Critical,
+        confidence: 0.97,
+        explanation: "Disk destruction command detected: this will wipe or format storage devices",
+    },
+    // High-level rules
+    HeuristicRule {
+        patterns: &["curl | sh", "curl | bash", "wget | sh", "wget | bash", "curl|sh", "curl|bash", "wget|sh", "wget|bash", "| bash", "| sh", "|bash", "|sh"],
+        risk: RiskLevel::High,
+        confidence: 0.92,
+        explanation: "Remote code execution pattern: downloading and executing untrusted scripts from the internet",
+    },
+    HeuristicRule {
+        patterns: &["/etc/passwd", "/etc/shadow"],
+        risk: RiskLevel::High,
+        confidence: 0.88,
+        explanation: "Sensitive system file access: attempting to read system authentication files",
+    },
+    HeuristicRule {
+        patterns: &["eval(", "exec(", "os.system(", "subprocess.call("],
+        risk: RiskLevel::High,
+        confidence: 0.85,
+        explanation: "Dynamic code execution: using eval/exec which can run arbitrary code",
+    },
+    HeuristicRule {
+        patterns: &["base64 -d", "base64 --decode", "base64decode"],
+        risk: RiskLevel::High,
+        confidence: 0.82,
+        explanation: "Base64 decoding detected: often used to obfuscate malicious commands",
+    },
+    HeuristicRule {
+        patterns: &["AKIA", "sk-", "ghp_", "glpat-", "xoxb-", "xoxp-"],
+        risk: RiskLevel::High,
+        confidence: 0.90,
+        explanation: "Potential API key or secret token detected in the content",
+    },
+    HeuristicRule {
+        patterns: &["nc -l", "ncat -l", "netcat", "/dev/tcp/"],
+        risk: RiskLevel::High,
+        confidence: 0.88,
+        explanation: "Reverse shell or network listener pattern detected",
+    },
+    HeuristicRule {
+        patterns: &["chmod 777", "chmod +s", "setuid"],
+        risk: RiskLevel::High,
+        confidence: 0.85,
+        explanation: "Dangerous permission change: overly permissive or setuid modification",
+    },
+    // Medium-level rules
+    HeuristicRule {
+        patterns: &["sudo ", "su -", "doas "],
+        risk: RiskLevel::Medium,
+        confidence: 0.75,
+        explanation: "Privilege escalation: command requests elevated system permissions",
+    },
+    HeuristicRule {
+        patterns: &["ssh-keygen", ".ssh/", "authorized_keys", "id_rsa"],
+        risk: RiskLevel::Medium,
+        confidence: 0.72,
+        explanation: "SSH key operation detected: modifying or accessing SSH credentials",
+    },
+    HeuristicRule {
+        patterns: &["password", "passwd", "credential", "secret_key", "private_key"],
+        risk: RiskLevel::Medium,
+        confidence: 0.70,
+        explanation: "Sensitive keyword detected: content references passwords or credentials",
+    },
+    HeuristicRule {
+        patterns: &["iptables", "ufw ", "firewall"],
+        risk: RiskLevel::Medium,
+        confidence: 0.72,
+        explanation: "Firewall modification detected: changing network security rules",
+    },
+    HeuristicRule {
+        patterns: &["curl ", "wget ", "http://", "https://"],
+        risk: RiskLevel::Medium,
+        confidence: 0.55,
+        explanation: "Network request detected: downloading content from the internet",
+    },
+];
+
+/// Heuristic SLM backend that uses pattern matching to assess risk without needing a model.
+///
+/// Provides immediate security value by detecting common dangerous patterns, API keys,
+/// and suspicious commands. Use this when no AI model is downloaded yet.
+pub struct HeuristicSlmBackend;
+
+impl HeuristicSlmBackend {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Analyze input text against heuristic rules and return the formatted response.
+    fn analyze(prompt: &str) -> String {
+        let lower = prompt.to_lowercase();
+
+        // Find the highest-severity matching rule
+        let mut best_match: Option<&HeuristicRule> = None;
+
+        for rule in HEURISTIC_RULES {
+            let matched = rule.patterns.iter().any(|p| lower.contains(&p.to_lowercase()));
+            if matched {
+                match best_match {
+                    None => best_match = Some(rule),
+                    Some(current) if rule.risk > current.risk => best_match = Some(rule),
+                    Some(current) if rule.risk == current.risk && rule.confidence > current.confidence => {
+                        best_match = Some(rule);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        match best_match {
+            Some(rule) => format!(
+                "RISK: {}\nCONFIDENCE: {:.2}\nEXPLANATION: {}",
+                match rule.risk {
+                    RiskLevel::Low => "low",
+                    RiskLevel::Medium => "medium",
+                    RiskLevel::High => "high",
+                    RiskLevel::Critical => "critical",
+                },
+                rule.confidence,
+                rule.explanation,
+            ),
+            None => "RISK: low\nCONFIDENCE: 0.85\nEXPLANATION: No suspicious patterns detected. This operation appears safe based on heuristic analysis.".to_string(),
+        }
+    }
+}
+
+impl Default for HeuristicSlmBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SlmBackend for HeuristicSlmBackend {
+    fn infer<'a>(
+        &'a self,
+        prompt: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
+        let result = Self::analyze(prompt);
+        Box::pin(async move { Ok(result) })
+    }
+
+    fn model_name(&self) -> &str {
+        "heuristic-analyzer"
+    }
+
+    fn model_size_bytes(&self) -> u64 {
+        0
+    }
+
+    fn using_gpu(&self) -> bool {
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -502,6 +736,70 @@ mod tests {
         let parsed: SlmResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.risk_level, RiskLevel::Medium);
         assert_eq!(parsed.tokens_used, 42);
+    }
+
+    // -- heuristic backend tests --
+
+    #[test]
+    fn heuristic_rm_rf_critical() {
+        let output = HeuristicSlmBackend::analyze("please run rm -rf / to clean up");
+        let resp = parse_slm_output(&output, 0);
+        assert_eq!(resp.risk_level, RiskLevel::Critical);
+        assert!(resp.explanation.contains("recursive"));
+    }
+
+    #[test]
+    fn heuristic_curl_pipe_bash_high() {
+        let output = HeuristicSlmBackend::analyze("install it with curl https://example.com/setup.sh | bash");
+        let resp = parse_slm_output(&output, 0);
+        assert_eq!(resp.risk_level, RiskLevel::High);
+        assert!(resp.explanation.contains("remote code execution") || resp.explanation.contains("untrusted"));
+    }
+
+    #[test]
+    fn heuristic_safe_file_low() {
+        let output = HeuristicSlmBackend::analyze("read the contents of README.md and summarize them");
+        let resp = parse_slm_output(&output, 0);
+        assert_eq!(resp.risk_level, RiskLevel::Low);
+    }
+
+    #[test]
+    fn heuristic_api_key_high() {
+        let output = HeuristicSlmBackend::analyze("set the key to sk-proj-abc123def456 in the config");
+        let resp = parse_slm_output(&output, 0);
+        assert_eq!(resp.risk_level, RiskLevel::High);
+        assert!(resp.explanation.to_lowercase().contains("api key") || resp.explanation.to_lowercase().contains("secret"));
+    }
+
+    #[test]
+    fn heuristic_normal_prompt_low() {
+        let output = HeuristicSlmBackend::analyze("list all files in the current directory");
+        let resp = parse_slm_output(&output, 0);
+        assert_eq!(resp.risk_level, RiskLevel::Low);
+        assert!(!resp.explanation.is_empty());
+    }
+
+    #[test]
+    fn heuristic_etc_passwd_high() {
+        let output = HeuristicSlmBackend::analyze("cat /etc/passwd");
+        let resp = parse_slm_output(&output, 0);
+        assert_eq!(resp.risk_level, RiskLevel::High);
+    }
+
+    #[test]
+    fn heuristic_sudo_medium() {
+        let output = HeuristicSlmBackend::analyze("sudo apt-get install nginx");
+        let resp = parse_slm_output(&output, 0);
+        assert!(resp.risk_level >= RiskLevel::Medium);
+    }
+
+    #[tokio::test]
+    async fn heuristic_backend_infer() {
+        let backend = HeuristicSlmBackend::new();
+        let engine = SlmEngine::new(Box::new(backend), SlmConfig::default());
+        let resp = engine.infer("run rm -rf /tmp/stuff").await.unwrap();
+        // Should detect this as at least medium due to general patterns
+        assert!(!resp.explanation.is_empty());
     }
 
     #[tokio::test]

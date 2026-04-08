@@ -570,6 +570,12 @@ function AIAnalysisStep({
                 size_bytes: model.size_bytes,
               },
             ]);
+            // Auto-activate the downloaded model so it's ready to use
+            try {
+              await invoke("activate_model", { modelId: model.id });
+            } catch (e) {
+              console.warn("Failed to auto-activate model:", e);
+            }
           } else if (st === "failed") {
             const failedMsg = typeof progress.status === "object" && progress.status !== null
               ? (progress.status as { failed: string }).failed
@@ -659,9 +665,12 @@ function AIAnalysisStep({
       <h2 className="text-xl font-semibold mb-2 text-center text-[var(--color-text-primary)]">
         Enable AI-Powered Security Analysis
       </h2>
-      <p className="text-[var(--color-text-secondary)] text-center mb-6 max-w-md mx-auto">
+      <p className="text-[var(--color-text-secondary)] text-center mb-4 max-w-md mx-auto">
         ClawDefender can use an on-device AI model to analyze suspicious activity,
         explain risks in plain English, and help you make better security decisions.
+      </p>
+      <p className="text-sm text-[var(--color-text-secondary)] text-center mb-6 max-w-md mx-auto bg-[var(--color-bg-tertiary)] rounded-lg px-4 py-3">
+        ClawDefender works immediately with built-in heuristic analysis. Download a model later for deeper AI insights.
       </p>
 
       {capabilities && (
@@ -855,19 +864,31 @@ function AIAnalysisStep({
       )}
 
       <div className="flex flex-col items-center gap-3">
-        <button
-          onClick={onNext}
-          className="px-8 py-3 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors"
-        >
-          Continue
-        </button>
-        {!downloadingModelId && !downloadDone && !installedModels.length && (
+        {(downloadDone || installedModels.length > 0) ? (
           <button
             onClick={onNext}
-            className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+            className="px-8 py-3 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors"
           >
-            Skip for now
+            Continue
           </button>
+        ) : (
+          <>
+            {downloadingModelId ? (
+              <button
+                onClick={onNext}
+                className="px-8 py-3 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors"
+              >
+                Continue (download will finish in background)
+              </button>
+            ) : (
+              <button
+                onClick={onNext}
+                className="px-8 py-3 rounded-lg border-2 border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white font-medium transition-colors"
+              >
+                Skip for now — use built-in analysis
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

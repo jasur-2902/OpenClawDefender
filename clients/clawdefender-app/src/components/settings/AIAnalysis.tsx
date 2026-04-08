@@ -142,6 +142,7 @@ export function AIAnalysis({ showModelManager, onToggleModelManager }: AIAnalysi
   const [downloadProgress, setDownloadProgress] = useState<Record<string, DownloadProgress>>({});
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
+  const [activateError, setActivateError] = useState<string | null>(null);
   const [deletingModel, setDeletingModel] = useState<string | null>(null);
 
   // Cloud state
@@ -328,12 +329,14 @@ export function AIAnalysis({ showModelManager, onToggleModelManager }: AIAnalysi
 
   async function handleActivateModel(modelId: string) {
     setActivatingModel(modelId);
+    setActivateError(null);
     try {
       const info = await invoke<ActiveModelInfo>("activate_model", { modelId });
       setActiveModel(info);
       await loadSlmStatus();
-    } catch {
-      // Activate may fail
+    } catch (e) {
+      console.error("Failed to activate model:", e);
+      setActivateError(`Failed to activate model: ${e}`);
     } finally {
       setActivatingModel(null);
     }
@@ -620,9 +623,9 @@ export function AIAnalysis({ showModelManager, onToggleModelManager }: AIAnalysi
                           <button
                             onClick={() => handleActivateModel(model.id)}
                             disabled={activatingModel === model.id}
-                            className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 ${activatingModel === model.id ? "bg-[var(--color-warning)] animate-pulse" : "bg-[var(--color-accent)]"}`}
                           >
-                            {activatingModel === model.id ? "Activating..." : "Activate"}
+                            {activatingModel === model.id ? "Loading model into GPU..." : "Activate"}
                           </button>
                           <button
                             onClick={() => handleDeleteModel(model.id)}
@@ -677,6 +680,13 @@ export function AIAnalysis({ showModelManager, onToggleModelManager }: AIAnalysi
                           </button>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Activate error */}
+                  {activateError && activatingModel === null && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-danger)]/30">
+                      <p className="text-xs text-[var(--color-danger)]">{activateError}</p>
                     </div>
                   )}
                 </div>

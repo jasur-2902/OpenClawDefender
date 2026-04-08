@@ -66,6 +66,7 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
                     affected_resource: config_path.to_string_lossy().to_string(),
                     fix_suggestion: "Fix the JSON syntax in the configuration file".to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
                 continue;
             }
@@ -120,6 +121,7 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
                         rule_resource: None,
                         rule_action: None,
                     }),
+                    ai_analysis: None,
                 });
             } else if !wrapped {
                 // HIGH: unwrapped server
@@ -144,6 +146,7 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
                         rule_resource: None,
                         rule_action: None,
                     }),
+                    ai_analysis: None,
                 });
             } else if !sensitive_paths.is_empty() {
                 // HIGH: wrapped but exposes sensitive paths
@@ -162,6 +165,7 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
                         "Restrict the server's filesystem access to project directories only"
                             .to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
             }
 
@@ -183,6 +187,7 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
                         "Restrict to specific project directories instead of home or root"
                             .to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
             }
         }
@@ -297,6 +302,7 @@ pub fn scan_policy_strength() -> ScanModuleResult {
             affected_resource: policy_path.to_string_lossy().to_string(),
             fix_suggestion: "Apply a security template from the Policy page to establish baseline rules".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
 
         return ScanModuleResult {
@@ -319,6 +325,7 @@ pub fn scan_policy_strength() -> ScanModuleResult {
                 affected_resource: policy_path.to_string_lossy().to_string(),
                 fix_suggestion: "Check file permissions on the policy file".to_string(),
                 fix_action: None,
+                ai_analysis: None,
             });
             return ScanModuleResult {
                 module_id: "policy-strength".to_string(),
@@ -368,6 +375,7 @@ pub fn scan_policy_strength() -> ScanModuleResult {
                     rule_resource: Some(pattern.to_string()),
                     rule_action: Some("block".to_string()),
                 }),
+                ai_analysis: None,
             });
         }
     }
@@ -405,6 +413,7 @@ pub fn scan_policy_strength() -> ScanModuleResult {
                     rule_resource: Some(pattern.to_string()),
                     rule_action: Some("block".to_string()),
                 }),
+                ai_analysis: None,
             });
         }
     }
@@ -435,6 +444,7 @@ pub fn scan_policy_strength() -> ScanModuleResult {
                     affected_resource: format!("policy:rule:{}", any_rule_name),
                     fix_suggestion: "Remove the catch-all allow rule or change its action to 'audit'".to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
                 in_any_rule = false;
             }
@@ -455,6 +465,7 @@ pub fn scan_policy_strength() -> ScanModuleResult {
             affected_resource: policy_path.to_string_lossy().to_string(),
             fix_suggestion: "Apply a security template to establish baseline protection".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     } else if rule_count < 5 {
         findings.push(ScanFinding {
@@ -465,6 +476,7 @@ pub fn scan_policy_strength() -> ScanModuleResult {
             affected_resource: policy_path.to_string_lossy().to_string(),
             fix_suggestion: "Apply the 'strict' template for comprehensive protection".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -578,6 +590,7 @@ pub fn scan_server_reputation() -> ScanModuleResult {
                             suspicious
                         ),
                         fix_action: None,
+                        ai_analysis: None,
                     });
                 }
             }
@@ -598,6 +611,7 @@ pub fn scan_server_reputation() -> ScanModuleResult {
                         affected_resource: format!("{}:{}", client_name, server_name),
                         fix_suggestion: "Prefer scoped packages (@org/package) or local installations for security".to_string(),
                         fix_action: None,
+                        ai_analysis: None,
                     });
                 }
             }
@@ -617,6 +631,7 @@ pub fn scan_server_reputation() -> ScanModuleResult {
                             affected_resource: format!("{}:{}", client_name, server_name),
                             fix_suggestion: "Use absolute paths for server scripts".to_string(),
                             fix_action: None,
+                            ai_analysis: None,
                         });
                     }
                 }
@@ -639,6 +654,7 @@ pub fn scan_server_reputation() -> ScanModuleResult {
                             affected_resource: blocklist_path.to_string_lossy().to_string(),
                             fix_suggestion: "Update threat intelligence feed from Settings > Threat Intel".to_string(),
                             fix_action: None,
+                            ai_analysis: None,
                         });
                     }
                 }
@@ -653,6 +669,7 @@ pub fn scan_server_reputation() -> ScanModuleResult {
             affected_resource: blocklist_path.to_string_lossy().to_string(),
             fix_suggestion: "Enable threat intelligence feed to download the latest blocklist".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -691,6 +708,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             affected_resource: "daemon".to_string(),
             fix_suggestion: "Start the daemon from the Dashboard".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -705,6 +723,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             affected_resource: config_dir.to_string_lossy().to_string(),
             fix_suggestion: "Run the setup wizard or start the daemon to create configuration".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -719,6 +738,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             affected_resource: policy_path.to_string_lossy().to_string(),
             fix_suggestion: "Create a policy file or apply a template from the Policy page".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -733,6 +753,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             affected_resource: data_dir.to_string_lossy().to_string(),
             fix_suggestion: "Start the daemon to initialize the data directory".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -756,6 +777,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
                         affected_resource: audit_log.to_string_lossy().to_string(),
                         fix_suggestion: "Ensure the daemon is running and processing events".to_string(),
                         fix_action: None,
+                        ai_analysis: None,
                     });
                 }
             }
@@ -773,6 +795,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             affected_resource: socket_path.to_string_lossy().to_string(),
             fix_suggestion: "Check daemon configuration for socket path".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -796,6 +819,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
                                 affected_resource: "threat-intel-feed".to_string(),
                                 fix_suggestion: "Update the threat feed from Settings > Threat Intel".to_string(),
                                 fix_action: None,
+                                ai_analysis: None,
                             });
                         }
                     }
@@ -811,6 +835,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             affected_resource: "threat-intel-feed".to_string(),
             fix_suggestion: "Enable and update threat intelligence from Settings".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -829,6 +854,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
                 affected_resource: profiles_dir.to_string_lossy().to_string(),
                 fix_suggestion: "Wrap and use MCP servers to build behavioral baselines".to_string(),
                 fix_action: None,
+                ai_analysis: None,
             });
         }
     }
@@ -862,6 +888,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             affected_resource: "slm-model".to_string(),
             fix_suggestion: "Download a GGUF model for local security analysis enrichment".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 
@@ -922,6 +949,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
                 fix_suggestion:
                     "Use wrapped MCP servers to build behavioral baselines over time".to_string(),
                 fix_action: None,
+                ai_analysis: None,
             }],
             summary: "No behavioral data available for analysis".to_string(),
         };
@@ -955,6 +983,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
                 fix_suggestion:
                     "Use wrapped MCP servers to build behavioral baselines".to_string(),
                 fix_action: None,
+                ai_analysis: None,
             }],
             summary: "No behavioral profiles to analyze".to_string(),
         };
@@ -1026,6 +1055,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
                     affected_resource: format!("profile:{}", server_name),
                     fix_suggestion: "Review the server's network connections for unauthorized destinations".to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
             }
         }
@@ -1055,6 +1085,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
                     affected_resource: format!("profile:{}", server_name),
                     fix_suggestion: "Consider restricting the server's filesystem access scope".to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
             }
 
@@ -1079,6 +1110,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
                     affected_resource: format!("profile:{}", server_name),
                     fix_suggestion: "Investigate if the high write rate is expected behavior".to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
             }
         }
@@ -1103,6 +1135,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
                     affected_resource: format!("profile:{}", server_name),
                     fix_suggestion: "Allow more observations to build a reliable baseline".to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
             }
         }
@@ -1126,6 +1159,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
                     affected_resource: format!("profile:{}", server_name),
                     fix_suggestion: "Review recent activity for suspicious rapid-fire operations".to_string(),
                     fix_action: None,
+                    ai_analysis: None,
                 });
             }
         }
@@ -1143,6 +1177,7 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
             affected_resource: "behavioral-engine".to_string(),
             fix_suggestion: "Continue using these servers to complete the learning phase".to_string(),
             fix_action: None,
+            ai_analysis: None,
         });
     }
 

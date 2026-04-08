@@ -288,7 +288,7 @@ export function Home() {
   const pendingActions = useMemo(() => {
     if (!score) return [];
     return score.factors
-      .filter((f) => f.status !== "full" && f.fix_actions.length > 0)
+      .filter((f) => f.status !== "full" && f.fix_actions && f.fix_actions.length > 0)
       .map((f) => ({
         label: f.fix_actions[0].label,
         description: f.details,

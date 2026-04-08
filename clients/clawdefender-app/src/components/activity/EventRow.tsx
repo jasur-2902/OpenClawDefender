@@ -37,7 +37,11 @@ function ActionBadge({ action }: { action: HumanizedEvent["action_taken"] }) {
       color: "var(--color-danger)",
     },
   };
-  const c = config[action];
+  const c = config[action] ?? {
+    label: action ?? "Unknown",
+    bg: "var(--color-bg-tertiary)",
+    color: "var(--color-text-secondary)",
+  };
   return (
     <span
       className="text-xs px-2 py-0.5 rounded-full font-medium"

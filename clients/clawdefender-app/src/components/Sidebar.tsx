@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
   { path: "/policy", label: "Policy", icon: "activity" },
   { path: "/threat-intel", label: "Threat Intel", icon: "globe" },
   { path: "/health", label: "System Health", icon: "network" },
+  { path: "/scanner", label: "Security Scan", icon: "search" },
   { path: "/settings", label: "Settings", icon: "settings" },
 ];
 

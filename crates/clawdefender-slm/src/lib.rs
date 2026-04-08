@@ -12,9 +12,11 @@
 //! - `gguf_backend` -- real GGUF inference via llama.cpp (requires `gguf` feature)
 
 pub mod analyzer;
+pub mod clustering;
 #[cfg(feature = "cloud")]
 pub mod cloud_backend;
 pub mod context;
+pub mod context_window;
 #[cfg(feature = "download")]
 pub mod downloader;
 pub mod engine;
@@ -23,9 +25,11 @@ pub mod gguf_backend;
 pub mod model_manager;
 pub mod model_registry;
 pub mod noise_filter;
+pub mod offline_intel;
 pub mod output_validator;
 pub mod profiles;
 pub mod sanitizer;
+pub mod triage;
 
 use std::sync::Arc;
 
