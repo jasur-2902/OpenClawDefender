@@ -1,5 +1,7 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { AuditEvent, HumanizedEvent, PendingPrompt } from "../types";
+import { tauriStorage } from "./tauriStorage";
 
 const MAX_EVENTS = 10_000;
 
@@ -9,6 +11,14 @@ interface EventStore {
   daemonRunning: boolean;
   onlyNotable: boolean;
 
+  // Filter state (persists across navigation)
+  searchText: string;
+  serverFilter: string[];
+  statusFilter: string;
+  riskFilter: string;
+  timeRange: string;
+  correlationFilter: string;
+
   addEvent: (event: HumanizedEvent) => void;
   /** Add a raw AuditEvent by wrapping it as a minimal HumanizedEvent. */
   addRawEvent: (event: AuditEvent) => void;
@@ -17,6 +27,15 @@ interface EventStore {
   setDaemonRunning: (running: boolean) => void;
   setEvents: (events: HumanizedEvent[]) => void;
   setOnlyNotable: (value: boolean) => void;
+
+  // Filter actions
+  setSearchText: (text: string) => void;
+  setServerFilter: (servers: string[]) => void;
+  setStatusFilter: (status: string) => void;
+  setRiskFilter: (risk: string) => void;
+  setTimeRange: (range: string) => void;
+  setCorrelationFilter: (filter: string) => void;
+  resetFilters: () => void;
 }
 
 /** Convert a raw AuditEvent to a minimal HumanizedEvent for live display. */
@@ -57,11 +76,21 @@ function wrapRawEvent(event: AuditEvent): HumanizedEvent {
   };
 }
 
-export const useEventStore = create<EventStore>((set) => ({
+export const useEventStore = create<EventStore>()(
+  persist(
+    (set) => ({
   events: [],
   pendingPrompts: [],
   daemonRunning: false,
   onlyNotable: false,
+
+  // Filter state
+  searchText: "",
+  serverFilter: [],
+  statusFilter: "",
+  riskFilter: "",
+  timeRange: "",
+  correlationFilter: "",
 
   addEvent: (event) =>
     set((state) => {
@@ -97,4 +126,37 @@ export const useEventStore = create<EventStore>((set) => ({
   setEvents: (events) => set({ events }),
 
   setOnlyNotable: (value) => set({ onlyNotable: value }),
-}));
+
+  // Filter actions
+  setSearchText: (text) => set({ searchText: text }),
+  setServerFilter: (servers) => set({ serverFilter: servers }),
+  setStatusFilter: (status) => set({ statusFilter: status }),
+  setRiskFilter: (risk) => set({ riskFilter: risk }),
+  setTimeRange: (range) => set({ timeRange: range }),
+  setCorrelationFilter: (filter) => set({ correlationFilter: filter }),
+  resetFilters: () =>
+    set({
+      searchText: "",
+      serverFilter: [],
+      statusFilter: "",
+      riskFilter: "",
+      timeRange: "",
+      correlationFilter: "",
+      onlyNotable: false,
+    }),
+}),
+    {
+      name: "event-store",
+      storage: tauriStorage,
+      partialize: (state) => ({
+        onlyNotable: state.onlyNotable,
+        searchText: state.searchText,
+        serverFilter: state.serverFilter,
+        statusFilter: state.statusFilter,
+        riskFilter: state.riskFilter,
+        timeRange: state.timeRange,
+        correlationFilter: state.correlationFilter,
+      }),
+    }
+  )
+);

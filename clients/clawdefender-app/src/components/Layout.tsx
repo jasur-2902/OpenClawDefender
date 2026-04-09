@@ -10,7 +10,7 @@ import { useAppStore } from "../stores/appStore";
 import { useAlertStore } from "../stores/alertStore";
 import { GuidanceToastContainer } from "./guidance/GuidanceToast";
 import { PromptOverlay } from "./guidance/PromptOverlay";
-import type { AuditEvent, PendingPrompt } from "../types";
+import type { PendingPrompt } from "../types";
 
 interface GuidanceMilestone {
   id: string;
@@ -68,7 +68,7 @@ function RestartReminderBanner() {
 
 export function Layout() {
   const location = useLocation();
-  const addRawEvent = useEventStore((s) => s.addRawEvent);
+  // addRawEvent is handled globally by GlobalEventListener in App.tsx
   const addPrompt = useEventStore((s) => s.addPrompt);
   const setDaemonStatus = useAppStore((s) => s.setDaemonStatus);
   const fetchAlerts = useAlertStore((s) => s.fetchAlerts);
@@ -108,9 +108,7 @@ export function Layout() {
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
-    listen<AuditEvent>("clawdefender://event", (e) => {
-      addRawEvent(e.payload);
-    }).then((fn) => unlisteners.push(fn));
+    // Note: clawdefender://event is handled by GlobalEventListener in App.tsx
 
     listen<{ daemon_running: boolean }>("clawdefender://status-change", (e) => {
       setDaemonStatus({ running: e.payload.daemon_running });
@@ -160,7 +158,7 @@ export function Layout() {
     return () => {
       for (const fn of unlisteners) fn();
     };
-  }, [addRawEvent, addPrompt, setDaemonStatus, fetchAlerts, addGuidanceHint, setGuidanceOverlay, setRestartReminder]);
+  }, [addPrompt, setDaemonStatus, fetchAlerts, addGuidanceHint, setGuidanceOverlay, setRestartReminder]);
 
   return (
     <div className="flex h-screen bg-[var(--color-bg-primary)]">

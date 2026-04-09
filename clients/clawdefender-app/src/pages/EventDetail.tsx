@@ -5,11 +5,14 @@ import { useEventStore } from "../stores/eventStore";
 import { PageHeader } from "../components/PageHeader";
 import { CorrelationTimeline } from "../components/activity/CorrelationTimeline";
 import { CoverageInsight } from "../components/activity/CoverageInsight";
+import { LiveInvestigationView } from "../components/investigation/LiveInvestigationView";
+import { InvestigationDetail } from "../components/investigation/InvestigationDetail";
 import { getThreatColor } from "../utils/threatLevel";
 import type { ThreatLevel } from "../utils/threatLevel";
-import type { HumanizedEvent, CorrelationResult, CoverageAssessment } from "../types";
+import type { HumanizedEvent, CorrelationResult, CoverageAssessment, InvestigationProgress } from "../types";
 import { truncateEnd } from "../utils/textUtils";
 import { ExpandableContent } from "../components/shared/TruncatedText";
+import { useAiStatus } from "../hooks/useAiStatus";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -182,6 +185,10 @@ export function EventDetail() {
   const events = useEventStore((s) => s.events);
   const [showTechnical, setShowTechnical] = useState(false);
   const [showEducational, setShowEducational] = useState(false);
+  const [investigationId, setInvestigationId] = useState<string | null>(null);
+  const [investigationDepth, setInvestigationDepth] = useState<string>("quick");
+  const [startingInvestigation, setStartingInvestigation] = useState(false);
+  const { canInvestigate } = useAiStatus();
 
   const event = useMemo(
     () => events.find((e) => e.event_id === id) ?? null,
@@ -259,18 +266,57 @@ export function EventDetail() {
           { label: truncateEnd(event.one_liner, 40) },
         ]}
         actions={
-          <button
-            onClick={() =>
-              navigate("/ask", {
-                state: {
-                  prefill: `Tell me about this event: ${event.one_liner} (event ${event.event_id})`,
-                },
-              })
-            }
-            className="text-sm px-4 py-1.5 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors"
-          >
-            Ask Claw about this
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              value={investigationDepth}
+              onChange={(e) => setInvestigationDepth(e.target.value)}
+              className="px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+            >
+              <option value="quick">Quick</option>
+              <option value="standard">Standard</option>
+              <option value="deep">Deep</option>
+            </select>
+            <div className="relative group">
+              <button
+                onClick={async () => {
+                  setStartingInvestigation(true);
+                  try {
+                    const result = await invoke<InvestigationProgress>("start_investigation", {
+                      targetType: "event",
+                      targetId: event.event_id,
+                      targetData: JSON.parse(JSON.stringify(event.raw_event)),
+                      depth: investigationDepth,
+                    });
+                    setInvestigationId(result.investigation_id);
+                  } catch {
+                    // ok
+                  }
+                  setStartingInvestigation(false);
+                }}
+                disabled={startingInvestigation || !!investigationId || !canInvestigate}
+                className="text-sm px-4 py-1.5 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50 transition-colors"
+              >
+                {startingInvestigation ? "Starting..." : "Investigate with AI"}
+              </button>
+              {!canInvestigate && (
+                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block whitespace-nowrap text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] rounded px-2 py-1">
+                  Requires Cloud API -- set up in Settings
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() =>
+                navigate("/ask", {
+                  state: {
+                    prefill: `Tell me about this event: ${event.one_liner} (event ${event.event_id})`,
+                  },
+                })
+              }
+              className="text-sm px-4 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors"
+            >
+              Ask Claw
+            </button>
+          </div>
         }
       />
 
@@ -501,6 +547,20 @@ export function EventDetail() {
           <CoverageInsight
             assessment={coverageResult}
             serverName={event.raw_event.server_name}
+          />
+        </div>
+      )}
+
+      {/* Investigation results */}
+      {investigationId && (
+        <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-4 mb-4 mt-4">
+          <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+            AI Investigation
+          </h3>
+          <LiveInvestigationView
+            investigationId={investigationId}
+            onComplete={() => {}}
+            onCancel={() => setInvestigationId(null)}
           />
         </div>
       )}

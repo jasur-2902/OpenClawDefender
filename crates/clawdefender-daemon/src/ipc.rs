@@ -21,12 +21,14 @@ use clawdefender_core::policy::PolicyEngine;
 use clawdefender_guard::connection::{GuardRequest, GuardResponse};
 use clawdefender_guard::registry::{GuardMode, GuardRegistry};
 use clawdefender_mcp_proxy::ProxyMetrics;
-use clawdefender_slm::SlmService;
+use clawdefender_slm::{AiBackendManager, SlmService};
 
 /// Optional AI subsystem references for enriched status responses.
 #[derive(Clone, Default)]
 pub struct AiSubsystemContext {
     pub slm_service: Option<Arc<SlmService>>,
+    /// Dual AI backend manager (local SLM + cloud API).
+    pub ai_manager: Option<Arc<AiBackendManager>>,
     pub behavioral_enabled: bool,
     pub behavioral_profile_count: Option<usize>,
     pub swarm_available: bool,
@@ -152,6 +154,49 @@ async fn handle_client(
                     })
                 };
                 response["slm_status"] = slm_status;
+            }
+
+            // Enrich with dual AI backend status when available.
+            if let Some(ref ai_mgr) = ai_ctx.ai_manager {
+                let ai_status = ai_mgr.get_status();
+                let local_info = if ai_status.local.active {
+                    serde_json::json!({
+                        "model": ai_status.local.model_name,
+                        "status": "ready",
+                        "gpu": ai_status.local.gpu_enabled,
+                        "total_inferences": ai_status.local.total_inferences,
+                        "avg_latency_ms": ai_status.local.avg_latency_ms,
+                    })
+                } else {
+                    serde_json::json!({
+                        "status": "unavailable",
+                    })
+                };
+                let cloud_info = if ai_status.cloud.active {
+                    serde_json::json!({
+                        "provider": ai_status.cloud.provider,
+                        "model": ai_status.cloud.model,
+                        "status": "ready",
+                    })
+                } else {
+                    serde_json::json!({
+                        "status": "unconfigured",
+                    })
+                };
+                let routing = if ai_status.local.active && ai_status.cloud.active {
+                    "dual"
+                } else if ai_status.local.active {
+                    "local_only"
+                } else if ai_status.cloud.active {
+                    "cloud_only"
+                } else {
+                    "unavailable"
+                };
+                response["ai"] = serde_json::json!({
+                    "local": local_info,
+                    "cloud": cloud_info,
+                    "routing": routing,
+                });
             }
 
             // Query live behavioral engine stats if available.

@@ -63,7 +63,7 @@ function parseMessage(raw: Record<string, unknown>): ConversationMessage {
   return {
     id: raw.id as string,
     role: raw.role as 'user' | 'claw',
-    contentText: raw.content_text as string,
+    contentText: (raw.content_text as string) ?? "",
     contentRichJson: (raw.content_rich_json as string) || undefined,
     actionsJson: (raw.actions_json as string) || undefined,
     intentId: (raw.intent_id as string) || undefined,

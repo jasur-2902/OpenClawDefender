@@ -56,132 +56,311 @@ pub fn run() {
                 }
             }
 
-            // Load configured AI model on startup
+            // Load configured AI model(s) on startup via DualAiConfig migration
             if let Some(app_state) = app.try_state::<AppState>() {
-                match clawdefender_slm::model_registry::load_active_config() {
-                    Ok(config) => {
-                        use clawdefender_slm::model_registry::ActiveModelConfig;
-                        match config {
-                            ActiveModelConfig::LocalCatalog { model_id, path } => {
-                                let slm_config = clawdefender_slm::engine::SlmConfig {
-                                    model_path: path.clone(),
-                                    ..Default::default()
-                                };
-                                let service = clawdefender_slm::SlmService::new(slm_config, true);
-                                let using_gpu = service.stats().map(|s| s.using_gpu).unwrap_or(false);
-                                let display_name = clawdefender_slm::model_registry::find_model(&model_id)
+                let ai_backends = app_state.ai_backends.clone();
+                match clawdefender_slm::config_migration::load_dual_config() {
+                    Ok(dual_config) => {
+                        // Load local backend if configured
+                        if let Some(ref local) = dual_config.local {
+                            let slm_config = clawdefender_slm::engine::SlmConfig {
+                                model_path: local.path.clone(),
+                                ..Default::default()
+                            };
+                            let service = clawdefender_slm::SlmService::new(slm_config, true);
+                            let using_gpu = service.stats().map(|s| s.using_gpu).unwrap_or(false);
+
+                            let (display_name, size_bytes) = if local.model_type == "catalog" {
+                                let mid = local.model_id.as_deref().unwrap_or("");
+                                let name = clawdefender_slm::model_registry::find_model(mid)
                                     .map(|m| m.display_name)
-                                    .unwrap_or_else(|| model_id.clone());
-                                let size_bytes = clawdefender_slm::model_registry::find_model(&model_id)
+                                    .unwrap_or_else(|| mid.to_string());
+                                let size = clawdefender_slm::model_registry::find_model(mid)
                                     .map(|m| m.size_bytes);
-
-                                let info = state::ActiveModelInfo {
-                                    model_type: "local_catalog".to_string(),
-                                    model_id: Some(model_id),
-                                    model_name: display_name,
-                                    file_path: Some(path.to_string_lossy().to_string()),
-                                    provider: None,
-                                    size_bytes,
-                                    using_gpu,
-                                    total_inferences: 0,
-                                    avg_latency_ms: 0.0,
-                                };
-
-                                if let Ok(mut slm) = app_state.active_slm.lock() {
-                                    *slm = Some(std::sync::Arc::new(service));
-                                }
-                                if let Ok(mut mi) = app_state.active_model_info.lock() {
-                                    *mi = Some(info);
-                                }
-                                tracing::info!("Loaded saved AI model on startup");
-                            }
-                            ActiveModelConfig::LocalCustom { path } => {
-                                let slm_config = clawdefender_slm::engine::SlmConfig {
-                                    model_path: path.clone(),
-                                    ..Default::default()
-                                };
-                                let service = clawdefender_slm::SlmService::new(slm_config, true);
-                                let using_gpu = service.stats().map(|s| s.using_gpu).unwrap_or(false);
-                                let size = std::fs::metadata(&path).map(|m| m.len()).ok();
-                                let name = path.file_name()
+                                (name, size)
+                            } else {
+                                let name = local.path.file_name()
                                     .map(|n| n.to_string_lossy().to_string())
                                     .unwrap_or_else(|| "Custom Model".to_string());
+                                let size = std::fs::metadata(&local.path).map(|m| m.len()).ok();
+                                (name, size)
+                            };
 
-                                let info = state::ActiveModelInfo {
-                                    model_type: "local_custom".to_string(),
-                                    model_id: None,
-                                    model_name: name,
-                                    file_path: Some(path.to_string_lossy().to_string()),
-                                    provider: None,
-                                    size_bytes: size,
-                                    using_gpu,
-                                    total_inferences: 0,
-                                    avg_latency_ms: 0.0,
-                                };
+                            let local_info = clawdefender_slm::LocalModelInfo {
+                                model_name: display_name,
+                                model_id: local.model_id.clone(),
+                                file_path: Some(local.path.to_string_lossy().to_string()),
+                                size_bytes,
+                                using_gpu,
+                            };
+                            let svc = std::sync::Arc::new(service);
+                            ai_backends.set_local(svc, local_info);
+                            tracing::info!("Loaded saved local AI model on startup");
+                        }
 
-                                if let Ok(mut slm) = app_state.active_slm.lock() {
-                                    *slm = Some(std::sync::Arc::new(service));
-                                }
-                                if let Ok(mut mi) = app_state.active_model_info.lock() {
-                                    *mi = Some(info);
-                                }
-                                tracing::info!("Loaded saved custom AI model on startup");
+                        // Load cloud backend if configured
+                        if let Some(ref cloud) = dual_config.cloud {
+                            if let Ok(Some(api_key)) = clawdefender_slm::cloud_backend::get_api_key(&cloud.provider) {
+                                let model_display = clawdefender_slm::model_registry::cloud_providers()
+                                    .into_iter()
+                                    .find(|p| p.id == cloud.provider)
+                                    .and_then(|p| p.models.into_iter().find(|m| m.id == cloud.model))
+                                    .map(|m| m.display_name)
+                                    .unwrap_or_else(|| cloud.model.clone());
+
+                                let backend: Box<dyn clawdefender_slm::engine::SlmBackend> =
+                                    Box::new(clawdefender_slm::cloud_backend::CloudBackend::new(
+                                        cloud.provider.clone(),
+                                        cloud.model.clone(),
+                                        api_key,
+                                    ));
+                                let config = clawdefender_slm::engine::SlmConfig::default();
+                                let engine = std::sync::Arc::new(
+                                    clawdefender_slm::engine::SlmEngine::new(backend, config.clone()),
+                                );
+                                let service = clawdefender_slm::SlmService::with_engine(engine, config);
+                                let svc = std::sync::Arc::new(service);
+
+                                ai_backends.set_cloud(svc, cloud.provider.clone(), model_display);
+                                tracing::info!("Loaded saved cloud AI model on startup");
+                            } else {
+                                tracing::warn!("Cloud model configured but API key missing for {}, skipping", cloud.provider);
                             }
-                            ActiveModelConfig::CloudApi { provider, model } => {
-                                if let Ok(Some(api_key)) = clawdefender_slm::cloud_backend::get_api_key(&provider) {
-                                    let provider_name = clawdefender_slm::model_registry::cloud_providers()
-                                        .into_iter()
-                                        .find(|p| p.id == provider)
-                                        .map(|p| p.display_name)
-                                        .unwrap_or_else(|| provider.clone());
-                                    let model_name = clawdefender_slm::model_registry::cloud_providers()
-                                        .into_iter()
-                                        .find(|p| p.id == provider)
-                                        .and_then(|p| p.models.into_iter().find(|m| m.id == model))
-                                        .map(|m| m.display_name)
-                                        .unwrap_or_else(|| model.clone());
-
-                                    // Use real CloudBackend for actual API calls
-                                    let backend: Box<dyn clawdefender_slm::engine::SlmBackend> =
-                                        Box::new(clawdefender_slm::cloud_backend::CloudBackend::new(
-                                            provider.clone(),
-                                            model.clone(),
-                                            api_key,
-                                        ));
-                                    let config = clawdefender_slm::engine::SlmConfig::default();
-                                    let engine = std::sync::Arc::new(
-                                        clawdefender_slm::engine::SlmEngine::new(backend, config.clone()),
-                                    );
-                                    let service = clawdefender_slm::SlmService::with_engine(engine, config);
-
-                                    let info = state::ActiveModelInfo {
-                                        model_type: "cloud_api".to_string(),
-                                        model_id: Some(model),
-                                        model_name: format!("{} ({})", model_name, provider_name),
-                                        file_path: None,
-                                        provider: Some(provider),
-                                        size_bytes: None,
-                                        using_gpu: false,
-                                        total_inferences: 0,
-                                        avg_latency_ms: 0.0,
-                                    };
-
-                                    if let Ok(mut slm) = app_state.active_slm.lock() {
-                                        *slm = Some(std::sync::Arc::new(service));
-                                    }
-                                    if let Ok(mut mi) = app_state.active_model_info.lock() {
-                                        *mi = Some(info);
-                                    }
-                                    tracing::info!("Loaded saved cloud AI model on startup");
-                                } else {
-                                    tracing::warn!("Cloud model configured but API key missing, skipping");
-                                }
-                            }
-                            ActiveModelConfig::None => {}
                         }
                     }
                     Err(e) => {
                         tracing::warn!("Failed to load AI model config: {}", e);
+                    }
+                }
+            }
+
+            // Phase 2: Initialize cloud agent session manager if an API key is available.
+            if let Some(app_state) = app.try_state::<AppState>() {
+                // Try Anthropic first, then OpenAI, then Google
+                let cloud_setup = clawdefender_slm::cloud_backend::get_api_key("anthropic")
+                    .ok()
+                    .flatten()
+                    .map(|key| ("anthropic".to_string(), key, "claude-sonnet-4-20250514".to_string()))
+                    .or_else(|| {
+                        clawdefender_slm::cloud_backend::get_api_key("openai")
+                            .ok()
+                            .flatten()
+                            .map(|key| ("openai".to_string(), key, "gpt-4o".to_string()))
+                    })
+                    .or_else(|| {
+                        clawdefender_slm::cloud_backend::get_api_key("google")
+                            .ok()
+                            .flatten()
+                            .map(|key| ("google".to_string(), key, "gemini-2.5-pro".to_string()))
+                    });
+
+                if let Some((provider_id, api_key, model)) = cloud_setup {
+                    tracing::info!("Cloud API key found for {}, initializing agent session manager", provider_id);
+
+                    // Build cloud provider
+                    let cloud_provider: Box<dyn clawdefender_swarm::cloud_api::CloudProvider> =
+                        match provider_id.as_str() {
+                            "anthropic" => Box::new(
+                                clawdefender_swarm::cloud_api::AnthropicProvider::new(api_key),
+                            ),
+                            "openai" => Box::new(
+                                clawdefender_swarm::cloud_api::OpenAIProvider::new(api_key),
+                            ),
+                            "google" => Box::new(
+                                clawdefender_swarm::cloud_api::OpenAIProvider::new(api_key)
+                                    .with_base_url("https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+                            ),
+                            _ => Box::new(
+                                clawdefender_swarm::cloud_api::OpenAIProvider::new(api_key),
+                            ),
+                        };
+
+                    // Build privacy filter
+                    let privacy_filter = std::sync::Arc::new(
+                        clawdefender_swarm::privacy::PrivacyFilter::new(),
+                    );
+
+                    // Build cost tracker
+                    let home = dirs::home_dir().unwrap_or_default();
+                    let db_path = home
+                        .join(".local/share/clawdefender/swarm_usage.db");
+                    if let Some(parent) = db_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+
+                    let cost_tracker_result = clawdefender_swarm::cost::CostTracker::new(
+                        &db_path,
+                        clawdefender_swarm::cost::PricingTable::default(),
+                        clawdefender_swarm::cost::BudgetConfig::default(),
+                    );
+
+                    if let Ok(cost_tracker) = cost_tracker_result {
+                        let cost_tracker_arc = std::sync::Arc::new(
+                            std::sync::Mutex::new(cost_tracker),
+                        );
+                        let cost_guard = std::sync::Arc::new(
+                            clawdefender_swarm::cost::CostGuard::new(cost_tracker_arc.clone()),
+                        );
+
+                        // Build CloudApiClient with middleware
+                        let cloud_client = std::sync::Arc::new(
+                            clawdefender_swarm::cloud_api::CloudApiClient::new(cloud_provider)
+                                .with_privacy(privacy_filter.clone())
+                                .with_cost_guard(cost_guard.clone()),
+                        );
+
+                        // Build ToolSandbox
+                        let tool_sandbox = std::sync::Arc::new(
+                            clawdefender_swarm::tool_sandbox::ToolSandbox::new(),
+                        );
+
+                        // Build sessions directory
+                        let sessions_dir = home
+                            .join(".local/share/clawdefender/agent_sessions");
+
+                        // Create the AgentSessionManager
+                        let session_manager = std::sync::Arc::new(
+                            clawdefender_swarm::agent_session::AgentSessionManager::new(
+                                cloud_client,
+                                tool_sandbox,
+                                model.clone(),
+                                sessions_dir,
+                            ),
+                        );
+
+                        if let Ok(mut mgr) = app_state.agent_session_manager.lock() {
+                            *mgr = Some(session_manager);
+                        }
+                        if let Ok(mut ct) = app_state.cost_tracker.lock() {
+                            *ct = Some(cost_tracker_arc);
+                        }
+
+                        // Phase 3: Initialize scan orchestrator using a second cloud client
+                        let scan_cloud_provider: Box<dyn clawdefender_swarm::cloud_api::CloudProvider> = {
+                            let key = clawdefender_slm::cloud_backend::get_api_key(&provider_id)
+                                .ok().flatten().unwrap_or_default();
+                            match provider_id.as_str() {
+                                "anthropic" => Box::new(clawdefender_swarm::cloud_api::AnthropicProvider::new(key)),
+                                "google" => Box::new(
+                                    clawdefender_swarm::cloud_api::OpenAIProvider::new(key)
+                                        .with_base_url("https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+                                ),
+                                _ => Box::new(clawdefender_swarm::cloud_api::OpenAIProvider::new(key)),
+                            }
+                        };
+
+                        let scan_cloud_client = std::sync::Arc::new(
+                            clawdefender_swarm::cloud_api::CloudApiClient::new(scan_cloud_provider)
+                                .with_privacy(privacy_filter.clone())
+                                .with_cost_guard(cost_guard),
+                        );
+
+                        let scan_tool_sandbox = std::sync::Arc::new(
+                            clawdefender_swarm::tool_sandbox::ToolSandbox::new(),
+                        );
+
+                        let scans_dir = home.join(".local/share/clawdefender/ai_scans");
+
+                        let scan_orch = std::sync::Arc::new(
+                            clawdefender_swarm::scan_orchestrator::ScanOrchestrator::new(
+                                scan_cloud_client,
+                                scan_tool_sandbox,
+                                model.clone(),
+                                scans_dir,
+                            ),
+                        );
+
+                        if let Ok(mut so) = app_state.scan_orchestrator.lock() {
+                            *so = Some(scan_orch);
+                        }
+                        tracing::info!("Phase 3 scan orchestrator initialized successfully");
+
+                        // Phase 4: Initialize threat hunter using a third cloud client
+                        let hunt_cloud_provider: Box<dyn clawdefender_swarm::cloud_api::CloudProvider> = {
+                            let key = clawdefender_slm::cloud_backend::get_api_key(&provider_id)
+                                .ok().flatten().unwrap_or_default();
+                            match provider_id.as_str() {
+                                "anthropic" => Box::new(clawdefender_swarm::cloud_api::AnthropicProvider::new(key)),
+                                "google" => Box::new(
+                                    clawdefender_swarm::cloud_api::OpenAIProvider::new(key)
+                                        .with_base_url("https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+                                ),
+                                _ => Box::new(clawdefender_swarm::cloud_api::OpenAIProvider::new(key)),
+                            }
+                        };
+
+                        let hunt_cloud_client = std::sync::Arc::new(
+                            clawdefender_swarm::cloud_api::CloudApiClient::new(hunt_cloud_provider)
+                                .with_privacy(privacy_filter.clone()),
+                        );
+
+                        let hunt_tool_sandbox = std::sync::Arc::new(
+                            clawdefender_swarm::tool_sandbox::ToolSandbox::new(),
+                        );
+
+                        let hunts_dir = home.join(".local/share/clawdefender/threat_hunts");
+
+                        let hunt_model = model.clone();
+
+                        let threat_hunter = std::sync::Arc::new(
+                            clawdefender_swarm::threat_hunting::ThreatHunter::new(
+                                hunt_cloud_client,
+                                hunt_tool_sandbox,
+                                hunt_model,
+                                hunts_dir,
+                            ),
+                        );
+
+                        if let Ok(mut th) = app_state.threat_hunter.lock() {
+                            *th = Some(threat_hunter);
+                        }
+                        tracing::info!("Phase 4 threat hunter initialized successfully");
+
+                        // Phase 4: Initialize investigation engine
+                        let inv_cloud_provider: Box<dyn clawdefender_swarm::cloud_api::CloudProvider> = {
+                            let key = clawdefender_slm::cloud_backend::get_api_key(&provider_id)
+                                .ok().flatten().unwrap_or_default();
+                            match provider_id.as_str() {
+                                "anthropic" => Box::new(clawdefender_swarm::cloud_api::AnthropicProvider::new(key)),
+                                "google" => Box::new(
+                                    clawdefender_swarm::cloud_api::OpenAIProvider::new(key)
+                                        .with_base_url("https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+                                ),
+                                _ => Box::new(clawdefender_swarm::cloud_api::OpenAIProvider::new(key)),
+                            }
+                        };
+
+                        let inv_cloud_client = std::sync::Arc::new(
+                            clawdefender_swarm::cloud_api::CloudApiClient::new(inv_cloud_provider)
+                                .with_privacy(privacy_filter.clone()),
+                        );
+
+                        let inv_tool_sandbox = std::sync::Arc::new(
+                            clawdefender_swarm::tool_sandbox::ToolSandbox::new(),
+                        );
+
+                        let inv_model = model.clone();
+
+                        let inv_engine = std::sync::Arc::new(
+                            clawdefender_swarm::investigation_engine::InvestigationEngine::new(
+                                inv_cloud_client,
+                                inv_tool_sandbox,
+                                inv_model,
+                            ),
+                        );
+
+                        if let Ok(mut ie) = app_state.investigation_engine.lock() {
+                            *ie = Some(inv_engine);
+                        }
+                        tracing::info!("Phase 4 investigation engine initialized successfully");
+
+                        if let Ok(mut pf) = app_state.privacy_filter.lock() {
+                            *pf = Some(privacy_filter);
+                        }
+
+                        tracing::info!("Phase 2 agent session manager initialized successfully");
+                    } else {
+                        tracing::warn!("Failed to initialize cost tracker database, agent sessions disabled");
                     }
                 }
             }
@@ -316,6 +495,11 @@ pub fn run() {
             commands::activate_model,
             commands::activate_cloud_provider,
             commands::deactivate_model,
+            commands::deactivate_cloud_provider,
+            commands::get_ai_status,
+            commands::get_routing_preferences,
+            commands::update_routing_preferences,
+            commands::get_rate_limit_status,
             commands::get_active_model,
             commands::list_available_models,
             commands::get_slm_analysis_for_prompt,
@@ -356,6 +540,148 @@ pub fn run() {
             commands::get_trust_level,
             commands::preview_trust_change,
             commands::get_server_summary,
+            // Phase 2 — Agent Session commands
+            commands::start_agent_session,
+            commands::send_agent_message,
+            commands::get_agent_session_status,
+            commands::list_agent_sessions,
+            commands::cancel_agent_session,
+            commands::approve_pending_action,
+            commands::reject_pending_action,
+            // Phase 2 — Cloud status & budget commands
+            commands::get_cloud_status,
+            commands::get_budget_status,
+            commands::update_budgets,
+            commands::get_cloud_config,
+            commands::update_cloud_config,
+            // Phase 2 — Privacy commands
+            commands::get_privacy_preview,
+            commands::get_outbound_audit,
+            // Phase 3 — AI scan orchestrator commands
+            commands::start_ai_scan,
+            commands::get_ai_scan_progress,
+            commands::get_ai_scan_result,
+            commands::cancel_ai_scan,
+            commands::respond_to_scan_request,
+            commands::get_scan_evidence_chain,
+            commands::get_scan_remediations,
+            commands::execute_scan_remediation,
+            commands::revert_scan_remediation,
+            commands::get_scan_playbooks,
+            commands::get_playbook_detail,
+            // Phase 3 — Report generator commands
+            commands::generate_scan_report,
+            commands::get_scan_report,
+            commands::get_scan_comparison,
+            commands::list_scan_reports,
+            // Phase 4 — Threat Hunting commands
+            commands::start_threat_hunt,
+            commands::get_hunt_progress,
+            commands::get_hunt_results,
+            commands::cancel_threat_hunt,
+            // Phase 4 — Investigation persistence commands
+            commands::list_investigations,
+            commands::get_investigation,
+            commands::search_investigations,
+            commands::delete_investigation,
+            commands::pin_investigation,
+            commands::export_investigation,
+            commands::resume_investigation,
+            // Phase 4 — Investigation Timeline commands
+            commands::get_investigation_timeline,
+            commands::get_event_story,
+            commands::get_related_investigations,
+            // Phase 4 — Investigation Engine commands
+            commands::start_investigation,
+            commands::get_investigation_progress,
+            commands::get_investigation_result,
+            commands::cancel_investigation,
+            // Ask Claw AI commands
+            commands::ask_claw_ai,
+            commands::get_ask_claw_mode,
+            commands::approve_claw_action,
+            commands::reject_claw_action,
+            commands::set_claw_context,
+            commands::list_claw_conversations,
+            // Phase 5 — Scheduled Analysis commands
+            commands::get_analysis_schedules,
+            commands::update_analysis_schedule,
+            commands::run_schedule_now,
+            commands::get_schedule_history,
+            commands::get_monthly_cost_estimate,
+            // Phase 5 — Drift Detection commands
+            commands::get_drift_baselines,
+            commands::check_server_drift,
+            commands::check_all_drift,
+            commands::reset_drift_baseline,
+            // Phase 5 — Smart Alert commands
+            commands::get_alert_groups,
+            commands::get_alert_group_detail,
+            commands::mute_alert_pattern,
+            commands::get_alert_fatigue_suggestions,
+            commands::set_quiet_hours,
+            // Phase 5 — Adaptive Posture commands
+            commands::get_threat_posture,
+            commands::set_posture_override,
+            commands::clear_posture_override,
+            commands::get_posture_history,
+            commands::get_posture_parameters,
+            // Phase 5 — Threat Simulation commands
+            commands::run_threat_simulation,
+            commands::get_simulation_results,
+            commands::get_simulation_history,
+            commands::get_defense_score,
+            commands::get_simulation_scenarios,
+            // Phase 5 — Knowledge Base commands
+            commands::get_knowledge_stats,
+            commands::get_server_knowledge,
+            commands::list_known_servers,
+            commands::get_false_positives,
+            commands::get_learned_patterns,
+            commands::add_manual_knowledge,
+            commands::forget_server_knowledge,
+            commands::save_knowledge_base,
+            commands::export_knowledge_base,
+            // Phase 6 — Autonomy Framework commands
+            commands::get_autonomy_level,
+            commands::set_autonomy_level,
+            commands::set_server_autonomy_override,
+            commands::clear_server_autonomy_override,
+            commands::activate_lockdown,
+            commands::deactivate_lockdown,
+            commands::get_autonomy_action_log,
+            commands::get_autonomy_stats,
+            // Phase 6 — Response Playbook commands
+            commands::list_response_playbooks,
+            commands::get_response_playbook,
+            commands::get_playbook_executions,
+            commands::test_response_playbook,
+            // Phase 6 — Report Generation commands
+            commands::list_reports,
+            commands::get_report_content,
+            commands::get_report_count,
+            commands::delete_report,
+            // Phase 6 — Feedback & Calibration commands
+            commands::get_feedback_stats,
+            commands::get_self_assessment,
+            commands::run_calibration,
+            commands::get_knowledge_suggestions,
+            // Phase 6 — Data Portability commands
+            commands::export_clawdefender_data,
+            commands::preview_import,
+            commands::get_export_history,
+            // Phase 6 — Transparency Dashboard commands
+            commands::get_dashboard_summary,
+            commands::get_agent_activities,
+            commands::get_cost_summary,
+            commands::get_accuracy_metrics,
+            commands::get_audit_trail,
+            commands::get_decision_explanations,
+            commands::get_learned_patterns_view,
+            // UI State Persistence commands
+            commands::get_ui_state,
+            commands::set_ui_state,
+            commands::remove_ui_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

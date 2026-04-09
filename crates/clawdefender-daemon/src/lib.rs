@@ -41,7 +41,7 @@ use clawdefender_sensor::{default_watch_paths, EnhancedFsWatcher, EsloggerManage
 use clawdefender_slm::context::ContextTracker;
 use clawdefender_slm::engine::SlmConfig as SlmEngineConfig;
 use clawdefender_slm::noise_filter::NoiseFilter;
-use clawdefender_slm::SlmService;
+use clawdefender_slm::{AiBackendManager, LocalModelInfo, SlmService};
 use clawdefender_swarm::chat::ChatManager;
 use clawdefender_swarm::chat_server::ChatServer;
 use clawdefender_swarm::commander::Commander;
@@ -426,6 +426,7 @@ impl Daemon {
         ui_event_tx: mpsc::Sender<CorrelatedEvent>,
         slm_service: Option<Arc<SlmService>>,
         swarm_commander: Option<Arc<Commander>>,
+        ai_manager: Option<Arc<AiBackendManager>>,
     ) -> Vec<tokio::task::JoinHandle<()>> {
         let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
@@ -500,7 +501,13 @@ impl Daemon {
                 info!("Event router: behavioral engines attached");
             }
 
-            // Attach SLM service for advisory escalation analysis (advisory only)
+            // Attach dual AI backend manager (takes priority over legacy SLM)
+            if let Some(ref mgr) = ai_manager {
+                router = router.with_ai_manager(Arc::clone(mgr));
+                info!("Event router: dual AI backend manager attached (local + cloud)");
+            }
+
+            // Attach legacy SLM service (used only if ai_manager is not set)
             if let Some(ref slm) = slm_service {
                 if slm.is_enabled() {
                     router = router.with_slm_service(Arc::clone(slm));
@@ -671,6 +678,35 @@ impl Daemon {
             info!("SLM: disabled (no model or disabled in config)");
         }
 
+        // --- Dual AI backend manager ---
+        let ai_manager = Arc::new(AiBackendManager::new());
+        // Load local backend from the existing SLM service.
+        if slm_service.is_enabled() {
+            let local_info = LocalModelInfo {
+                model_name: slm_service
+                    .stats()
+                    .map(|s| s.model_name.clone())
+                    .unwrap_or_else(|| "local-model".to_string()),
+                model_id: None,
+                file_path: self.config.slm.model_path.as_ref().map(|p| p.display().to_string()),
+                size_bytes: None,
+                using_gpu: self.config.slm.use_gpu,
+            };
+            ai_manager
+                .set_local(Arc::clone(&slm_service), local_info);
+            info!("AI manager: local backend loaded");
+        }
+        // Check for cloud backend (reuse existing cloud fallback detection).
+        if let Some((cloud_service, provider, model)) = try_create_cloud_backend() {
+            ai_manager
+                .set_cloud(Arc::new(cloud_service), provider.clone(), model.clone());
+            info!(
+                provider = %provider,
+                model = %model,
+                "AI manager: cloud backend configured"
+            );
+        }
+
         // --- MCP server (cooperative security endpoint) ---
         let mcp_server_handle = if self.config.mcp_server.enabled {
             let policy_snapshot = if self.config.policy_path.exists() {
@@ -753,6 +789,7 @@ impl Daemon {
                 _ui_correlated_tx,
                 Some(Arc::clone(&slm_service)),
                 None, // No swarm commander in standalone mode (no API keys)
+                Some(Arc::clone(&ai_manager)),
             )
             .await;
 
@@ -773,6 +810,7 @@ impl Daemon {
         let guard_registry_for_ipc = Arc::clone(&self.guard_registry);
         let ai_ctx = ipc::AiSubsystemContext {
             slm_service: Some(Arc::clone(&slm_service)),
+            ai_manager: Some(Arc::clone(&ai_manager)),
             behavioral_enabled: self.config.behavioral.enabled,
             behavioral_profile_count: self.profile_store.as_ref().and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
             swarm_available: false, // standalone mode does not run swarm
@@ -960,6 +998,33 @@ impl Daemon {
             info!("SLM: disabled (no model or disabled in config)");
         }
 
+        // --- Dual AI backend manager ---
+        let ai_manager = Arc::new(AiBackendManager::new());
+        if slm_service.is_enabled() {
+            let local_info = LocalModelInfo {
+                model_name: slm_service
+                    .stats()
+                    .map(|s| s.model_name.clone())
+                    .unwrap_or_else(|| "local-model".to_string()),
+                model_id: None,
+                file_path: self.config.slm.model_path.as_ref().map(|p| p.display().to_string()),
+                size_bytes: None,
+                using_gpu: self.config.slm.use_gpu,
+            };
+            ai_manager
+                .set_local(Arc::clone(&slm_service), local_info);
+            info!("AI manager: local backend loaded");
+        }
+        if let Some((cloud_service, provider, model)) = try_create_cloud_backend() {
+            ai_manager
+                .set_cloud(Arc::new(cloud_service), provider.clone(), model.clone());
+            info!(
+                provider = %provider,
+                model = %model,
+                "AI manager: cloud backend configured"
+            );
+        }
+
         let noise_filter = Arc::new(tokio::sync::Mutex::new(NoiseFilter::new()));
         let context_tracker = Arc::new(tokio::sync::Mutex::new(ContextTracker::new()));
 
@@ -981,6 +1046,7 @@ impl Daemon {
                 let cost_db = data_dir.join("swarm_usage.db");
 
                 let budget = BudgetConfig {
+                    session_limit_usd: 0.50,
                     daily_limit_usd: self.config.swarm.daily_budget_usd,
                     monthly_limit_usd: self.config.swarm.monthly_budget_usd,
                 };
@@ -1120,6 +1186,7 @@ impl Daemon {
                 _ui_correlated_tx,
                 Some(Arc::clone(&slm_service)),
                 swarm_commander.clone(),
+                Some(Arc::clone(&ai_manager)),
             )
             .await;
 
@@ -1210,6 +1277,7 @@ impl Daemon {
         let guard_registry_for_ipc = Arc::clone(&self.guard_registry);
         let ai_ctx = ipc::AiSubsystemContext {
             slm_service: Some(Arc::clone(&slm_service)),
+            ai_manager: Some(Arc::clone(&ai_manager)),
             behavioral_enabled: self.config.behavioral.enabled,
             behavioral_profile_count: self.profile_store.as_ref().and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
             swarm_available: swarm_commander.is_some(),
@@ -1604,6 +1672,44 @@ fn try_create_cloud_engine(
     ));
     let config = SlmEngineConfig::default();
     Some(Arc::new(SlmEngine::new(backend, config)))
+}
+
+/// Try to create a cloud backend as an `SlmService` for the `AiBackendManager`.
+/// Returns `(SlmService, provider_id, model_id)` if a cloud API key is found.
+fn try_create_cloud_backend() -> Option<(SlmService, String, String)> {
+    use clawdefender_slm::cloud_backend::{get_api_key, CloudBackend};
+    use clawdefender_slm::engine::{SlmBackend, SlmConfig, SlmEngine};
+    use clawdefender_slm::model_registry::{cloud_providers, load_active_config, ActiveModelConfig};
+
+    // Determine provider and model
+    let (provider_id, model_id) = match load_active_config().ok()? {
+        ActiveModelConfig::CloudApi { provider, model } => (provider, model),
+        _ => {
+            // Try to find any provider with a stored API key
+            let mut found = None;
+            for p in cloud_providers() {
+                if let Ok(Some(_)) = get_api_key(&p.id) {
+                    if let Some(recommended) = p.models.iter().find(|m| m.recommended) {
+                        found = Some((p.id.clone(), recommended.id.clone()));
+                        break;
+                    }
+                }
+            }
+            found?
+        }
+    };
+
+    let api_key = get_api_key(&provider_id).ok().flatten()?;
+    let backend: Box<dyn SlmBackend> = Box::new(CloudBackend::new(
+        provider_id.clone(),
+        model_id.clone(),
+        api_key,
+    ));
+    let config = SlmConfig::default();
+    let engine = Arc::new(SlmEngine::new(backend, config.clone()));
+    let service = SlmService::with_engine(engine, config);
+
+    Some((service, provider_id, model_id))
 }
 
 #[cfg(test)]

@@ -96,17 +96,11 @@ pub fn check_time_based_milestones(app: &AppHandle) {
         to_fire.push("feature_nudge_tools".to_string());
     }
 
-    // ai_model_nudge: 5 days, SLM still in mock mode or not loaded
+    // ai_model_nudge: 5 days, no local model loaded
     if !store.has_fired("ai_model_nudge") && elapsed > Duration::days(5) {
-        let is_mock_or_none = state
-            .active_model_info
-            .lock()
-            .map(|info| match &*info {
-                Some(model) => model.mock_mode,
-                None => true,
-            })
-            .unwrap_or(true);
-        if is_mock_or_none {
+        let has_local = tokio::runtime::Handle::current()
+            .block_on(state.ai_backends.local_available());
+        if !has_local {
             to_fire.push("ai_model_nudge".to_string());
         }
     }

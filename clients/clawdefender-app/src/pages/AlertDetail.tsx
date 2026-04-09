@@ -3,11 +3,13 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { PageHeader } from "../components/PageHeader";
 import { ThreatStory } from "../components/alerts/ThreatStory";
+import { LiveInvestigationView } from "../components/investigation/LiveInvestigationView";
 import { useAlertStore } from "../stores/alertStore";
 import { useToastStore } from "../components/notifications/ToastContainer";
 import { getThreatColor, type ThreatLevel } from "../utils/threatLevel";
-import type { IntelligentAlert, AlertAction } from "../types";
+import type { IntelligentAlert, AlertAction, InvestigationProgress } from "../types";
 import { truncateEnd } from "../utils/textUtils";
+import { useAiStatus } from "../hooks/useAiStatus";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,6 +73,9 @@ export function AlertDetail() {
 
   const [alert, setAlert] = useState<IntelligentAlert | null>(null);
   const [loading, setLoading] = useState(true);
+  const [investigationId, setInvestigationId] = useState<string | null>(null);
+  const [startingInvestigation, setStartingInvestigation] = useState(false);
+  const { canInvestigate } = useAiStatus();
 
   useEffect(() => {
     if (!id) return;
@@ -387,6 +392,29 @@ export function AlertDetail() {
                 Keep blocking
               </button>
             )}
+            <button
+              onClick={async () => {
+                if (!alert) return;
+                setStartingInvestigation(true);
+                try {
+                  const result = await invoke<InvestigationProgress>("start_investigation", {
+                    targetType: "alert",
+                    targetId: alert.id,
+                    targetData: { title: alert.title, description: alert.description, severity: alert.severity },
+                    depth: "standard",
+                  });
+                  setInvestigationId(result.investigation_id);
+                } catch {
+                  // ok
+                }
+                setStartingInvestigation(false);
+              }}
+              disabled={startingInvestigation || !!investigationId || !canInvestigate}
+              className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+              title={!canInvestigate ? "Requires Cloud API -- set up in Settings" : undefined}
+            >
+              {startingInvestigation ? "Starting..." : "Investigate"}
+            </button>
             <Link
               to="/ask"
               state={{ prefill: `Tell me about alert: ${alert.title}` }}
@@ -414,6 +442,22 @@ export function AlertDetail() {
           </div>
         )}
       </div>
+
+      {/* Investigation results */}
+      {investigationId && (
+        <section aria-label="AI Investigation">
+          <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+            AI Investigation
+          </h3>
+          <div className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4">
+            <LiveInvestigationView
+              investigationId={investigationId}
+              onComplete={() => {}}
+              onCancel={() => setInvestigationId(null)}
+            />
+          </div>
+        </section>
+      )}
 
       {/* Kill chain: ThreatStory */}
       {isKillChain && alert.kill_chain && (

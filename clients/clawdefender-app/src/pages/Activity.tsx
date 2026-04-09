@@ -7,7 +7,6 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
-import { useTauriEvent } from "../hooks/useTauriEvent";
 import { PageHeader } from "../components/PageHeader";
 import { ActivityFilters } from "../components/activity/ActivityFilters";
 import { EventRow } from "../components/activity/EventRow";
@@ -15,7 +14,7 @@ import { GroupedEventRow } from "../components/activity/GroupedEventRow";
 import { groupEvents, PERIOD_LABELS } from "../utils/eventGrouper";
 import { EMPTY_STATES } from "../constants/messages";
 import { useToastStore } from "../components/notifications/ToastContainer";
-import type { AuditEvent, HumanizedEvent } from "../types";
+import type { HumanizedEvent } from "../types";
 import type { EventGroup, TimePeriod } from "../utils/eventGrouper";
 
 // ---------------------------------------------------------------------------
@@ -63,17 +62,22 @@ function getTimeRangeCutoff(range: string): number {
 export function Activity() {
   const events = useEventStore((s) => s.events);
   const setEvents = useEventStore((s) => s.setEvents);
-  const addRawEvent = useEventStore((s) => s.addRawEvent);
   const onlyNotable = useEventStore((s) => s.onlyNotable);
   const setOnlyNotable = useEventStore((s) => s.setOnlyNotable);
 
-  // Filters
-  const [searchText, setSearchText] = useState("");
-  const [serverFilter, setServerFilter] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [riskFilter, setRiskFilter] = useState("");
-  const [timeRange, setTimeRange] = useState("");
-  const [correlationFilter, setCorrelationFilter] = useState("");
+  // Filters (persisted in store across navigation)
+  const searchText = useEventStore((s) => s.searchText);
+  const setSearchText = useEventStore((s) => s.setSearchText);
+  const serverFilter = useEventStore((s) => s.serverFilter);
+  const setServerFilter = useEventStore((s) => s.setServerFilter);
+  const statusFilter = useEventStore((s) => s.statusFilter);
+  const setStatusFilter = useEventStore((s) => s.setStatusFilter);
+  const riskFilter = useEventStore((s) => s.riskFilter);
+  const setRiskFilter = useEventStore((s) => s.setRiskFilter);
+  const timeRange = useEventStore((s) => s.timeRange);
+  const setTimeRange = useEventStore((s) => s.setTimeRange);
+  const correlationFilter = useEventStore((s) => s.correlationFilter);
+  const setCorrelationFilter = useEventStore((s) => s.setCorrelationFilter);
 
   // Scroll state
   const [autoScroll, setAutoScroll] = useState(true);
@@ -113,24 +117,23 @@ export function Activity() {
       });
   }, [setEvents]);
 
-  const handleNewEvent = useCallback(
-    (payload: AuditEvent) => {
-      addRawEvent(payload);
+  // Track when new events arrive (for live indicator and new-events chip).
+  // The actual event listener lives in GlobalEventListener at the App root.
+  const eventCount = useEventStore((s) => s.events.length);
+  const prevCountRef = useRef(eventCount);
 
-      // Flash live indicator
+  useEffect(() => {
+    if (eventCount > prevCountRef.current) {
       setIsLive(true);
       if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
       liveTimerRef.current = setTimeout(() => setIsLive(false), 5000);
 
-      // If not auto-scrolling, show "new events" chip
       if (!autoScroll) {
-        setNewEventsPending((prev) => prev + 1);
+        setNewEventsPending((prev) => prev + (eventCount - prevCountRef.current));
       }
-    },
-    [addRawEvent, autoScroll]
-  );
-
-  useTauriEvent<AuditEvent>("clawdefender://event", handleNewEvent);
+    }
+    prevCountRef.current = eventCount;
+  }, [eventCount, autoScroll]);
 
   // ---------------------------------------------------------------------------
   // Derived data
@@ -407,13 +410,7 @@ export function Activity() {
             {hasFilters && (
               <button
                 onClick={() => {
-                  setSearchText("");
-                  setServerFilter([]);
-                  setStatusFilter("");
-                  setRiskFilter("");
-                  setTimeRange("");
-                  setOnlyNotable(false);
-                  setCorrelationFilter("");
+                  useEventStore.getState().resetFilters();
                 }}
                 className="mt-4 text-sm text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
               >

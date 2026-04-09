@@ -13,9 +13,9 @@ import { ScoreBreakdown } from "../components/home/ScoreBreakdown";
 import { GuidanceAnchor } from "../components/guidance/GuidanceAnchor";
 import { EMPTY_STATES } from "../constants/messages";
 import { useToastStore } from "../components/notifications/ToastContainer";
+import { useAiStatus } from "../hooks/useAiStatus";
 import type {
   DaemonStatus,
-  AuditEvent,
   McpClient,
   GuardSummary,
   PendingPrompt,
@@ -118,7 +118,7 @@ export function Home() {
   const navigate = useNavigate();
   const events = useEventStore((s) => s.events);
   const setDaemonRunning = useEventStore((s) => s.setDaemonRunning);
-  const addRawEvent = useEventStore((s) => s.addRawEvent);
+  // addRawEvent handled by GlobalEventListener in App.tsx
   const addPrompt = useEventStore((s) => s.addPrompt);
   const fetchScore = useAppStore((s) => s.fetchScore);
   const fetchScoreHistory = useAppStore((s) => s.fetchScoreHistory);
@@ -133,6 +133,11 @@ export function Home() {
   const [loading, setLoading] = useState(true);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [slmMockMode, setSlmMockMode] = useState(false);
+  const { status: aiStatus, localActive, cloudActive } = useAiStatus();
+  const [postureInfo, setPostureInfo] = useState<any>(null);
+  const [latestSweep, setLatestSweep] = useState<any>(null);
+  const [defenseScore, setDefenseScore] = useState<number | null>(null);
+  const [knowledgeStats, setKnowledgeStats] = useState<any>(null);
 
   // Non-score home data (daemon, clients, guards, events)
   const [clients, setClients] = useState<McpClient[]>([]);
@@ -165,6 +170,31 @@ export function Home() {
       .catch(() => {});
   }, []);
 
+  // Load proactive monitoring data
+  useEffect(() => {
+    async function loadProactiveData() {
+      try {
+        const posture = await invoke("get_threat_posture");
+        setPostureInfo(posture);
+      } catch { /* ignore */ }
+      try {
+        const history = await invoke<any[]>("get_schedule_history", { id: "hourly_sweep", count: 1 });
+        if (Array.isArray(history) && history.length > 0) {
+          setLatestSweep(history[0]);
+        }
+      } catch { /* ignore */ }
+      try {
+        const score = await invoke<number | null>("get_defense_score");
+        setDefenseScore(score);
+      } catch { /* ignore */ }
+      try {
+        const stats = await invoke("get_knowledge_stats");
+        setKnowledgeStats(stats);
+      } catch { /* ignore */ }
+    }
+    loadProactiveData();
+  }, []);
+
   // Cmd+R refreshes all home data (force bypass TTL cache)
   const refreshAll = useCallback(() => {
     fetchScore(true);
@@ -195,11 +225,7 @@ export function Home() {
   );
   useTauriEvent<ProtectionScore>("clawdefender://score-changed", handleScoreChanged);
 
-  // Other Tauri events
-  const handleNewEvent = useCallback(
-    (payload: AuditEvent) => addRawEvent(payload),
-    [addRawEvent]
-  );
+  // Other Tauri events (clawdefender://event handled by GlobalEventListener in App.tsx)
   const handleStatusChange = useCallback(
     (payload: { daemon_running: boolean }) => {
       setDaemonRunning(payload.daemon_running);
@@ -212,7 +238,6 @@ export function Home() {
     (payload: PendingPrompt) => addPrompt(payload),
     [addPrompt]
   );
-  useTauriEvent<AuditEvent>("clawdefender://event", handleNewEvent);
   useTauriEvent<{ daemon_running: boolean }>(
     "clawdefender://status-change",
     handleStatusChange
@@ -333,6 +358,28 @@ export function Home() {
             <p className="mt-3 text-sm text-[var(--color-text-secondary)] text-center max-w-sm">
               {monitoringSubtitle}
             </p>
+            <div className="flex items-center gap-3 text-sm mt-2">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${localActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-secondary)]'}`} />
+                <span className="text-[var(--color-text-secondary)]">
+                  Local: {aiStatus?.local.active ? aiStatus.local.model_name : 'Not loaded'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${cloudActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-secondary)]'}`} />
+                <span className="text-[var(--color-text-secondary)]">
+                  Cloud: {aiStatus?.cloud.active ? aiStatus.cloud.provider : 'Not configured'}
+                </span>
+              </div>
+            </div>
+            {!localActive && !cloudActive && (
+              <button
+                onClick={() => navigate("/settings")}
+                className="mt-2 text-xs text-[var(--color-accent)] hover:underline"
+              >
+                Set up AI analysis in Settings for real-time security monitoring.
+              </button>
+            )}
           </>
         )}
       </section>
@@ -446,6 +493,97 @@ export function Home() {
         )}
       </section>
 
+      {/* Section: Proactive Monitoring */}
+      <section aria-label="Proactive monitoring" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Threat Posture */}
+        <div
+          className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4 cursor-pointer hover:border-[var(--color-accent-subtle)] transition-colors"
+          onClick={() => navigate("/settings")}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className="inline-block w-3 h-3 rounded-full"
+              style={{
+                backgroundColor: postureInfo
+                  ? postureInfo.color === "green" ? "var(--color-success)"
+                  : postureInfo.color === "yellow" ? "var(--color-warning)"
+                  : postureInfo.color === "orange" ? "#f97316"
+                  : postureInfo.color === "red" ? "var(--color-danger)"
+                  : "var(--color-success)"
+                  : "var(--color-text-muted)",
+              }}
+            />
+            <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
+              Posture
+            </span>
+          </div>
+          <span className="text-lg font-bold text-[var(--color-text-primary)]">
+            {postureInfo?.level_name || "Normal"}
+          </span>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1 truncate">
+            {postureInfo?.reason || "Standard operation"}
+          </p>
+        </div>
+
+        {/* Hourly Sweep */}
+        <div className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4">
+          <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
+            Last Sweep
+          </span>
+          <p className="text-sm font-semibold text-[var(--color-text-primary)] mt-2">
+            {latestSweep
+              ? latestSweep.status === "all_clear"
+                ? "All Clear"
+                : latestSweep.status === "needs_attention"
+                ? "Needs Attention"
+                : "Concerning"
+              : "Pending..."}
+          </p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            {latestSweep
+              ? `${latestSweep.suspicious_count} suspicious`
+              : "No sweeps yet"}
+          </p>
+        </div>
+
+        {/* Defense Score */}
+        <div
+          className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4 cursor-pointer hover:border-[var(--color-accent-subtle)] transition-colors"
+          onClick={async () => {
+            try {
+              await invoke("run_threat_simulation");
+              const score = await invoke<number | null>("get_defense_score");
+              setDefenseScore(score);
+            } catch { /* ignore */ }
+          }}
+        >
+          <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
+            Defense Score
+          </span>
+          <p className="text-lg font-bold text-[var(--color-text-primary)] mt-2">
+            {defenseScore !== null ? `${Math.round(defenseScore)}%` : "---"}
+          </p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            Click to run simulation
+          </p>
+        </div>
+
+        {/* Knowledge Base */}
+        <div className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4">
+          <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
+            Agent Knowledge
+          </span>
+          <p className="text-sm font-semibold text-[var(--color-text-primary)] mt-2">
+            {knowledgeStats ? `${knowledgeStats.total_entries} entries` : "---"}
+          </p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            {knowledgeStats
+              ? `${knowledgeStats.server_count} servers, ${knowledgeStats.learned_pattern_count} patterns`
+              : "Loading..."}
+          </p>
+        </div>
+      </section>
+
       {/* Section 4: Server Overview */}
       <section aria-label="Server overview">
         <GuidanceAnchor id="home-server-overview" />
@@ -480,7 +618,38 @@ export function Home() {
         )}
       </section>
 
-      {/* Section 5: Pending Actions */}
+      {/* Section 5: Quick Actions */}
+      <section aria-label="Quick actions" className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <button
+          onClick={() => navigate("/investigations")}
+          className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4 text-left hover:border-[var(--color-accent-subtle)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        >
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">Threat Hunt</span>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            Proactive AI-powered threat sweep
+          </p>
+        </button>
+        <button
+          onClick={() => navigate("/scanner")}
+          className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4 text-left hover:border-[var(--color-accent-subtle)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        >
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">Security Scan</span>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            AI-driven security assessment
+          </p>
+        </button>
+        <button
+          onClick={() => navigate("/ask")}
+          className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4 text-left hover:border-[var(--color-accent-subtle)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        >
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">Ask Claw</span>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            Ask anything about your security
+          </p>
+        </button>
+      </section>
+
+      {/* Section 6: Pending Actions */}
       <section aria-label="Pending actions">
         <GuidanceAnchor id="home-pending-actions" />
         <GuidanceAnchor id="pending-actions" />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -16,11 +16,15 @@ import { SystemHealth } from "./pages/SystemHealth";
 import { ThreatIntel } from "./pages/ThreatIntel";
 import { useTheme } from "./hooks/useTheme";
 import { useAlertStore } from "./stores/alertStore";
+import { useEventStore } from "./stores/eventStore";
 import { useTauriEvent } from "./hooks/useTauriEvent";
+import type { AuditEvent } from "./types";
 import { AskClaw } from "./pages/AskClaw";
 import { MyTools } from "./pages/MyTools";
 import { ToolDetail } from "./pages/ToolDetail";
 import { Scanner } from "./pages/Scanner";
+import { Investigations } from "./pages/Investigations";
+import { Agent } from "./pages/Agent";
 
 function TrayNavigationListener() {
   const navigate = useNavigate();
@@ -53,6 +57,19 @@ function IntelligentAlertListener() {
   };
 
   useTauriEvent("clawdefender://intelligent-alert", handleIntelligentAlert);
+
+  return null;
+}
+
+/** Listen for live events globally and feed them into the event store. */
+function GlobalEventListener() {
+  const addRawEvent = useEventStore((s) => s.addRawEvent);
+
+  const handleEvent = useCallback((payload: AuditEvent) => {
+    addRawEvent(payload);
+  }, [addRawEvent]);
+
+  useTauriEvent<AuditEvent>("clawdefender://event", handleEvent);
 
   return null;
 }
@@ -91,6 +108,7 @@ function App() {
     <BrowserRouter>
       <TrayNavigationListener />
       <IntelligentAlertListener />
+      <GlobalEventListener />
       <OnboardingRedirect>
         <Routes>
           <Route
@@ -115,7 +133,9 @@ function App() {
                     <Route path="/policy" element={<PolicyEditor />} />
                     <Route path="/threat-intel" element={<ThreatIntel />} />
                     <Route path="/health" element={<SystemHealth />} />
+                    <Route path="/investigations" element={<Investigations />} />
                     <Route path="/scanner" element={<Scanner />} />
+                    <Route path="/agent" element={<Agent />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </main>

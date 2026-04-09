@@ -529,6 +529,686 @@ export interface ServerSummary {
   trust_recommendation?: string;
 }
 
+// --- AI Scan types ---
+
+export interface AiScanProgress {
+  scan_id: string;
+  status: string;
+  progress_percent: number;
+  stages_completed: number;
+  stages_total: number;
+  findings_count: number;
+  tool_calls_used: number;
+  elapsed_secs: number;
+  current_stage: string | null;
+}
+
+export interface AiScanResult {
+  scan_id: string;
+  playbook_id: string;
+  playbook_name: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  duration_secs: number;
+  findings: AiScanFinding[];
+  evidence_count: number;
+  stages_completed: string[];
+  total_findings: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  info_count: number;
+  tool_calls_used: number;
+  estimated_cost: number;
+  summary: string;
+}
+
+export interface AiScanFinding {
+  id: string;
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  title: string;
+  description: string;
+  evidence_ids: string[];
+  remediation_hint: string | null;
+  stage: string;
+  discovered_at: string;
+}
+
+export interface PlaybookSummary {
+  id: string;
+  name: string;
+  description: string;
+  stage_count: number;
+  estimated_duration_secs: number;
+  estimated_cost_usd: number;
+}
+
+export interface ScanUserRequest {
+  id: string;
+  request_id: string;
+  question: string;
+  scan_id: string;
+  context: string;
+}
+
+export interface ScanFindingEvent {
+  scan_id: string;
+  finding_id: string;
+  severity: string;
+  title: string;
+  stage: string;
+}
+
+export interface ScanStageCompleteEvent {
+  scan_id: string;
+  stage_name: string;
+  stages_completed: number;
+  stages_total: number;
+}
+
+export interface ScanCompleteEvent {
+  scan_id: string;
+  status: string;
+  findings_count: number;
+  summary: string;
+}
+
+export interface ScanRemediation {
+  id: string;
+  finding_id: string;
+  title: string;
+  description: string;
+  risk_level: string;
+  auto_executable: boolean;
+  status: string;
+  executed_at: string | null;
+  reverted_at: string | null;
+}
+
+export interface ScanEvidenceItem {
+  id: string;
+  evidence_type: string;
+  source: string;
+  content: string;
+  collected_at: string;
+  tool_call_id: string | null;
+}
+
+// --- Investigation types ---
+
+export interface InvestigationProgress {
+  investigation_id: string;
+  status: string;
+  target_summary: string;
+  depth: string;
+  questions_answered: number;
+  questions_total: number;
+  tool_calls_count: number;
+  max_tool_calls: number;
+  elapsed_secs: number;
+  findings_count: number;
+  current_activity: string;
+}
+
+export interface ImpactAssessment {
+  data_accessed: string[];
+  data_modified: string[];
+  data_exfiltrated: boolean;
+  blast_radius: string;
+  severity: string;
+}
+
+export interface InvestigationResult {
+  investigation_id: string;
+  target_type: string;
+  target_id: string;
+  target_summary: string;
+  what_happened: string;
+  why_it_happened: string;
+  part_of_larger: string | null;
+  impact: ImpactAssessment;
+  recommendations: string[];
+  related_events: string[];
+  evidence_ids: string[];
+  verdict: string;
+  confidence: number;
+  narrative: string;
+  total_tool_calls: number;
+  estimated_cost_usd: number;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface InvestigationIndexEntry {
+  id: string;
+  target_type: string;
+  target_id: string;
+  target_summary: string;
+  verdict: string;
+  confidence: number;
+  severity: string;
+  servers_involved: string[];
+  started_at: string;
+  completed_at: string | null;
+  narrative_preview: string;
+  pinned: boolean;
+}
+
+export interface HuntProgress {
+  hunt_id: string;
+  hunt_type: string;
+  status: string;
+  patterns_checked: string[];
+  findings_count: number;
+  tool_calls_count: number;
+  elapsed_secs: number;
+}
+
+export interface HuntFinding {
+  id: string;
+  pattern_name: string;
+  description: string;
+  involved_servers: string[];
+  involved_events: string[];
+  confidence: number;
+  severity: string;
+  recommended_investigation: string;
+}
+
+export interface HuntResult {
+  hunt_id: string;
+  hunt_type: string;
+  status: string;
+  findings: HuntFinding[];
+  patterns_checked: string[];
+  summary: string;
+  estimated_cost_usd: number;
+}
+
+export interface TimelineEntry {
+  id: string;
+  timestamp: string;
+  entry_type: string;
+  server: string;
+  description: string;
+  severity: string;
+  event_id: string | null;
+  is_key_moment: boolean;
+  connects_to: string | null;
+  stage: string | null;
+}
+
+export interface InvestigationTimeline {
+  investigation_id: string;
+  entries: TimelineEntry[];
+  servers_involved: string[];
+  narrative_summary: string;
+}
+
+export interface SuggestedAction {
+  id: string;
+  action_type: string;
+  description: string;
+  preview: string | null;
+  requires_approval: boolean;
+}
+
+export interface ContextReference {
+  ref_type: string;
+  ref_id: string;
+  label: string;
+}
+
+export interface ToolCallInfo {
+  tool_name: string;
+  description: string;
+  success: boolean;
+}
+
+export interface AskClawAIResponse {
+  mode: string;
+  response_text: string;
+  conversation_id: string;
+  suggested_actions: SuggestedAction[];
+  context_references: ContextReference[];
+  tool_calls_made: ToolCallInfo[];
+}
+
+// --- Phase 5: Proactive Security Agent types ---
+
+export interface ScheduleInfo {
+  id: string;
+  display_name: string;
+  description: string;
+  enabled: boolean;
+  requires_cloud: boolean;
+  interval_minutes: number;
+  preferred_time: string | null;
+  last_run: string | null;
+  next_run: string | null;
+  last_status: string | null;
+  estimated_cost: number | null;
+}
+
+export interface HourlySummary {
+  id: string;
+  timestamp: string;
+  event_volume: string;
+  suspicious_count: number;
+  new_kill_chain_progress: boolean;
+  new_servers_detected: string[];
+  anomaly_trends: AnomalyTrend[];
+  concerns: string[];
+  status: string;
+}
+
+export interface AnomalyTrend {
+  server_name: string;
+  direction: string;
+  current_score: number;
+  previous_score: number;
+}
+
+export interface DailyBrief {
+  id: string;
+  date: string;
+  timestamp: string;
+  summary: string;
+  notable_events: NotableEvent[];
+  trend_observations: string[];
+  recommendation: string;
+  events_processed: number;
+  cost_usd: number;
+  skipped_reason: string | null;
+}
+
+export interface NotableEvent {
+  event_id: string;
+  summary: string;
+  severity: string;
+}
+
+export interface DriftReport {
+  id: string;
+  server_name: string;
+  timestamp: string;
+  overall_drift_score: number;
+  dimensions: DriftDimension[];
+  narrative: string;
+  recommended_action: string;
+}
+
+export interface DriftDimension {
+  drift_type: string;
+  score: number;
+  description: string;
+}
+
+export interface BaselineSummary {
+  server_name: string;
+  established_at: string;
+  last_updated: string;
+  tool_count: number;
+  path_count: number;
+  host_count: number;
+  current_drift_score: number | null;
+}
+
+export interface AlertGroup {
+  id: string;
+  primary_alert_id: string;
+  primary_summary: string;
+  primary_severity: string;
+  related_alert_ids: string[];
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  group_reason: string;
+  narrative: string;
+  escalating: boolean;
+  status: string;
+}
+
+export interface FatigueSuggestion {
+  pattern: string;
+  dismiss_count: number;
+  suggestion_type: string;
+  description: string;
+  created_at: string;
+}
+
+export interface PostureInfo {
+  level: string;
+  level_name: string;
+  color: string;
+  reason: string;
+  duration_minutes: number;
+  auto_adjust_enabled: boolean;
+  has_override: boolean;
+  on_battery: boolean;
+  active_adjustments: PostureAdjustment[];
+}
+
+export interface PostureAdjustment {
+  parameter: string;
+  old_value: string;
+  new_value: string;
+  reason: string;
+}
+
+export interface PostureChange {
+  id: string;
+  from: string;
+  to: string;
+  reason: string;
+  timestamp: string;
+  auto: boolean;
+}
+
+export interface SimulationRun {
+  id: string;
+  timestamp: string;
+  results: SimulationResult[];
+  overall_score: number;
+  gaps: DefenseGap[];
+  execution_time_ms: number;
+}
+
+export interface SimulationResult {
+  scenario_id: string;
+  scenario_name: string;
+  caught: boolean;
+  caught_at_step: number | null;
+  total_steps: number;
+  detection_method: string | null;
+}
+
+export interface DefenseGap {
+  scenario_id: string;
+  gap_description: string;
+  severity: string;
+  remediation: string;
+  failed_at_step: number;
+}
+
+export interface KnowledgeStats {
+  total_entries: number;
+  server_count: number;
+  false_positive_count: number;
+  learned_pattern_count: number;
+  resolved_incident_count: number;
+  storage_size_bytes: number;
+  oldest_entry: string | null;
+  newest_entry: string | null;
+}
+
+export interface ServerKnowledgeSummary {
+  server_name: string;
+  trust_level: string;
+  trust_assessment: string;
+  known_behaviors: string[];
+  false_positive_count: number;
+  investigation_count: number;
+  incident_count: number;
+  user_trust_signal_count: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+// --- Phase 6: Agent Autonomy & Reporting types ---
+
+export interface AutonomyInfo {
+  global_level: string;
+  is_locked_down: boolean;
+  server_overrides: Record<string, string>;
+  stats: AutonomyStats;
+}
+
+export interface AutonomyStats {
+  global_level: string;
+  total_actions: number;
+  approved_actions: number;
+  denied_actions: number;
+  auto_executed: number;
+  approval_rate: number;
+  days_at_current_level: number;
+  countdown_cancellations: number;
+}
+
+export interface AgentActionLog {
+  id: string;
+  timestamp: string;
+  action_category: string;
+  description: string;
+  server_name: string | null;
+  risk_level: string;
+  permission_result: string;
+  user_response: string | null;
+  outcome: string | null;
+}
+
+export interface ResponsePlaybook {
+  id: string;
+  name: string;
+  description: string;
+  trigger: unknown;
+  actions: PlaybookAction[];
+  enabled: boolean;
+  autonomy_required: string;
+  is_builtin: boolean;
+}
+
+export interface PlaybookAction {
+  action_type: string;
+  description: string;
+  parameters: unknown;
+  delay_after_secs: number;
+  continue_on_failure: boolean;
+  risk_level: string;
+}
+
+export interface PlaybookExecution {
+  id: string;
+  playbook_id: string;
+  playbook_name: string;
+  triggered_at: string;
+  completed_at: string | null;
+  trigger_context: string;
+  actions_attempted: number;
+  actions_executed: number;
+  actions_blocked: number;
+  status: string;
+}
+
+export interface GeneratedReport {
+  id: string;
+  report_type: string;
+  generated_at: string;
+  period_start: string | null;
+  period_end: string | null;
+  format: string;
+  file_path: string;
+  summary: string;
+  size_bytes: number;
+}
+
+export interface FeedbackStats {
+  triage_override_count: number;
+  alert_dismissal_count: number;
+  suggestion_approval_rate: number;
+  calibration_events: number;
+  last_calibration: string | null;
+}
+
+export interface SelfAssessment {
+  triage_accuracy: number;
+  alert_relevance: number;
+  suggestion_acceptance: number;
+  overall_accuracy: number;
+  trend: string;
+  areas_for_improvement: string[];
+}
+
+export interface DashboardSummary {
+  activity_summary: ActivitySummary;
+  cost_summary: CostSummaryData;
+  accuracy_metrics: AccuracyMetricsData;
+  pattern_stats: PatternStatsData;
+  audit_summary: AuditSummaryData;
+  recent_decisions: DecisionExplanation[];
+  generated_at: string;
+}
+
+export interface ActivitySummary {
+  total: number;
+  by_type: Record<string, number>;
+  by_server: Record<string, number>;
+  last_24h: number;
+  last_7d: number;
+}
+
+export interface CostSummaryData {
+  total_operations: number;
+  total_duration_ms: number;
+  by_type: Record<string, { count: number; total_duration_ms: number; avg_duration_ms: number }>;
+  last_24h_operations: number;
+  last_7d_operations: number;
+  avg_duration_ms: number;
+}
+
+export interface AccuracyMetricsData {
+  total_assessments: number;
+  correct: number;
+  incorrect: number;
+  accuracy_rate: number;
+  by_type: Record<string, { total: number; correct: number; accuracy_rate: number }>;
+  trend: string;
+}
+
+export interface PatternStatsData {
+  total_learned: number;
+  safe_count: number;
+  risk_count: number;
+  by_category: Record<string, number>;
+  by_server: Record<string, number>;
+}
+
+export interface AuditSummaryData {
+  total_entries: number;
+  permissions_requested: number;
+  permissions_granted: number;
+  permissions_denied: number;
+  actions_executed: number;
+  actions_blocked: number;
+  lockdowns_activated: number;
+  level_changes: number;
+}
+
+export interface DecisionExplanation {
+  id: string;
+  timestamp: string;
+  decision_type: string;
+  input_summary: string;
+  reasoning: string[];
+  conclusion: string;
+  confidence: number;
+  factors: DecisionFactorData[];
+  server_name: string | null;
+}
+
+export interface DecisionFactorData {
+  name: string;
+  value: string;
+  weight: number;
+  direction: string;
+}
+
+export interface AgentActivity {
+  id: string;
+  timestamp: string;
+  activity_type: string;
+  description: string;
+  server_name: string | null;
+  autonomy_level: string;
+  risk_level: string | null;
+  outcome: string | null;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  entry_type: string;
+  autonomy_level: string;
+  action_category: string | null;
+  server_name: string | null;
+  description: string;
+  user_response: string | null;
+  result: string | null;
+}
+
+export interface ExportResult {
+  export_id: string;
+  file_path: string;
+  size_bytes: number;
+  components_included: string[];
+  exported_at: string;
+}
+
+export interface ImportPreview {
+  version: string;
+  exported_at: string;
+  components: string[];
+  warnings: string[];
+}
+
+// --- Dual AI Backend Status ---
+
+export interface AiStatus {
+  local: LocalStatusInfo;
+  cloud: CloudStatusInfo;
+  routing: TaskRoutingInfo;
+}
+
+export interface LocalStatusInfo {
+  active: boolean;
+  model_name: string | null;
+  model_size: number | null;
+  gpu_enabled: boolean;
+  status: string | null;
+  total_inferences: number;
+  avg_latency_ms: number;
+}
+
+export interface CloudStatusInfo {
+  active: boolean;
+  provider: string | null;
+  model: string | null;
+  key_configured: boolean;
+  status: string | null;
+}
+
+export interface TaskRoutingInfo {
+  fast_tasks: string;
+  deep_tasks: string;
+}
+
+// --- Routing Preferences ---
+
+export interface RoutingPreferences {
+  prefer_local: boolean;
+  cloud_auto_escalate: boolean;
+  cloud_confirmation: boolean;
+  max_cloud_calls_per_hour: number;
+}
+
+export interface RateLimitStatus {
+  calls_this_hour: number;
+  max_per_hour: number;
+  remaining: number;
+}
+
 // --- Tauri Event Union ---
 
 export type TauriEvent =

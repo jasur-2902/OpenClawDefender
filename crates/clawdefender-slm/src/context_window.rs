@@ -553,6 +553,81 @@ impl ContextWindow {
         out
     }
 
+    /// Async version of [`deep_analysis_context()`] for use within a tokio runtime.
+    ///
+    /// Uses `.read().await` instead of `.blocking_read()` to avoid panicking
+    /// when called from an async context.
+    pub async fn deep_analysis_context_async(&self) -> String {
+        let ctx = self.current.read().await;
+        let mut out = String::with_capacity(800);
+
+        let window_mins = (ctx.window_end - ctx.window_start).num_minutes().max(1);
+        out.push_str(&format!(
+            "[CONTEXT window=last_{}min events={}]\n",
+            window_mins, ctx.total_events_in_window,
+        ));
+
+        if !ctx.active_servers.is_empty() {
+            out.push_str("SERVERS:");
+            for s in &ctx.active_servers {
+                let anomaly_label = if s.anomaly_score < 0.3 {
+                    "low"
+                } else if s.anomaly_score < 0.7 {
+                    "med"
+                } else {
+                    "high"
+                };
+                out.push_str(&format!(
+                    " {}({},{},{})",
+                    s.name, s.trust_level, anomaly_label, s.event_count
+                ));
+            }
+            out.push('\n');
+        }
+
+        if !ctx.recent_suspicious.is_empty() {
+            out.push_str("SUSPICIOUS:");
+            for s in &ctx.recent_suspicious {
+                out.push_str(&format!(" {} {} {}", s.timestamp, s.server_name, s.description));
+                out.push_str(" |");
+            }
+            if out.ends_with(" |") {
+                out.truncate(out.len() - 2);
+            }
+            out.push('\n');
+        }
+
+        if !ctx.active_kill_chains.is_empty() {
+            out.push_str("KILLCHAIN:");
+            for kc in &ctx.active_kill_chains {
+                out.push_str(&format!(
+                    " {} stage={} ({}/{})",
+                    kc.server_name, kc.pattern_name, kc.stages_matched, kc.total_stages
+                ));
+            }
+            out.push('\n');
+        }
+
+        out.push_str(&format!(
+            "POSTURE: daemon={} model={} wrapped={}/{}\n",
+            ctx.system_posture.daemon_status,
+            ctx.system_posture.model_status,
+            ctx.system_posture.wrapped_server_count,
+            ctx.system_posture.total_server_count,
+        ));
+
+        if ctx.threat_intel_status.offline_intel_ready {
+            out.push_str(&format!(
+                "INTEL: ready assessments={} tips={}\n",
+                ctx.threat_intel_status.server_assessments,
+                ctx.threat_intel_status.security_tips,
+            ));
+        }
+
+        out.push_str("[/CONTEXT]");
+        out
+    }
+
     /// Persist the current context to disk as JSON.
     pub async fn persist(&self) -> Result<()> {
         let ctx = self.current.read().await;

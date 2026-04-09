@@ -1,6 +1,9 @@
+import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
 import { useAlertStore } from "../stores/alertStore";
+import { useAiStatus } from "../hooks/useAiStatus";
 
 interface NavItem {
   path: string;
@@ -14,11 +17,13 @@ const navItems: NavItem[] = [
   { path: "/activity", label: "Activity", icon: "clock" },
   { path: "/alerts", label: "Alerts", icon: "shield", badge: "alerts" },
   { path: "/tools", label: "My Tools", icon: "lock" },
+  { path: "/investigations", label: "Investigations", icon: "investigate" },
   { path: "/ask", label: "Ask Claw", icon: "chat" },
   { path: "/policy", label: "Policy", icon: "activity" },
   { path: "/threat-intel", label: "Threat Intel", icon: "globe" },
   { path: "/health", label: "System Health", icon: "network" },
   { path: "/scanner", label: "Security Scan", icon: "search" },
+  { path: "/agent", label: "Agent", icon: "activity" },
   { path: "/settings", label: "Settings", icon: "settings" },
 ];
 
@@ -33,6 +38,7 @@ const iconMap: Record<string, string> = {
   network: "\u21C4",
   list: "\u2630",
   settings: "\u2699",
+  investigate: "\u2318",
   chat: "\u2026",
 };
 
@@ -40,6 +46,28 @@ export function Sidebar() {
   const daemonRunning = useEventStore((s) => s.daemonRunning);
   const pendingPrompts = useEventStore((s) => s.pendingPrompts);
   const unresolvedCount = useAlertStore((s) => s.unresolvedCount);
+  const [postureColor, setPostureColor] = useState("var(--color-success)");
+  const [postureName, setPostureName] = useState("Normal");
+  const { localActive, cloudActive } = useAiStatus();
+
+  useEffect(() => {
+    async function loadPosture() {
+      try {
+        const info = await invoke<any>("get_threat_posture");
+        setPostureName(info.level_name);
+        const colorMap: Record<string, string> = {
+          green: "var(--color-success)",
+          yellow: "var(--color-warning)",
+          orange: "#f97316",
+          red: "var(--color-danger)",
+        };
+        setPostureColor(colorMap[info.color] || "var(--color-success)");
+      } catch { /* ignore */ }
+    }
+    loadPosture();
+    const interval = setInterval(loadPosture, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <aside className="flex flex-col w-56 h-full border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
@@ -49,7 +77,7 @@ export function Sidebar() {
         </span>
       </div>
 
-      <div className="px-4 py-2">
+      <div className="px-4 py-2 space-y-2">
         <div className="flex items-center gap-2 text-xs" role="status" aria-label={`Daemon ${daemonRunning ? "running" : "stopped"}`}>
           <span
             aria-hidden="true"
@@ -59,6 +87,25 @@ export function Sidebar() {
           />
           <span className="text-[var(--color-text-secondary)]">
             Daemon {daemonRunning ? "Running" : "Stopped"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs" title={`Posture: ${postureName}`}>
+          <span
+            className="inline-block w-2 h-2 rounded-full"
+            style={{ backgroundColor: postureColor }}
+          />
+          <span className="text-[var(--color-text-secondary)]">{postureName}</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`inline-block w-2 h-2 rounded-full ${localActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-secondary)]'}`} />
+          <span className="text-[var(--color-text-secondary)]">
+            Local AI {localActive ? '\u2713' : '\u2717'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`inline-block w-2 h-2 rounded-full ${cloudActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-secondary)]'}`} />
+          <span className="text-[var(--color-text-secondary)]">
+            Cloud AI {cloudActive ? '\u2713' : '\u2717'}
           </span>
         </div>
       </div>

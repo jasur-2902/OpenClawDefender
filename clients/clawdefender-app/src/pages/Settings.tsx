@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-shell";
-import type { AppSettings, NetworkExtensionStatus, NetworkSettings } from "../types";
+import type { AppSettings, NetworkExtensionStatus, NetworkSettings, AiStatus } from "../types";
 
 interface SlmStatus {
   loaded: boolean;
@@ -180,8 +180,12 @@ export function Settings() {
   const [customModelError, setCustomModelError] = useState<string | null>(null);
   const [customModelActivating, setCustomModelActivating] = useState(false);
 
+  // Dual AI status
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+
   // Cloud API state
-  const [cloudExpanded, setCloudExpanded] = useState(false);
+  const [cloudSetupExpanded, setCloudSetupExpanded] = useState(false);
+  const [modelCatalogExpanded, setModelCatalogExpanded] = useState(false);
   const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedCloudModel, setSelectedCloudModel] = useState("");
@@ -236,6 +240,15 @@ export function Settings() {
     }
   }, [selectedProvider]);
 
+  const loadAiStatus = useCallback(async () => {
+    try {
+      const s = await invoke<AiStatus>("get_ai_status");
+      setAiStatus(s);
+    } catch {
+      // AI status not available
+    }
+  }, []);
+
   const loadSettings = useCallback(async () => {
     try {
       const s = await invoke<AppSettings>("get_settings");
@@ -265,13 +278,15 @@ export function Settings() {
     loadNetworkState();
     loadSlmStatus();
     loadModelData();
+    loadAiStatus();
+    loadCloudProviders();
     // Sync autostart state from the OS
     invoke<boolean>("is_autostart_enabled")
       .then((enabled) => {
         setSettings((s) => ({ ...s, auto_start_daemon: enabled }));
       })
       .catch(() => {});
-  }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData]);
+  }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData, loadAiStatus, loadCloudProviders]);
 
   // Scroll to a section if navigated with scrollTo state (e.g. from Dashboard)
   useEffect(() => {
@@ -416,7 +431,7 @@ export function Settings() {
     try {
       const info = await invoke<ActiveModelInfo>("activate_model", { modelId });
       setActiveModel(info);
-      await loadSlmStatus();
+      await Promise.all([loadSlmStatus(), loadAiStatus()]);
     } catch (err) {
       console.error("Activate failed:", err);
     } finally {
@@ -428,7 +443,7 @@ export function Settings() {
     try {
       await invoke("deactivate_model");
       setActiveModel(null);
-      await loadSlmStatus();
+      await Promise.all([loadSlmStatus(), loadAiStatus()]);
     } catch (err) {
       console.error("Deactivate failed:", err);
     }
@@ -461,7 +476,7 @@ export function Settings() {
       const info = await invoke<ActiveModelInfo>("activate_model", { modelId: customModelPath });
       setActiveModel(info);
       setCustomModelPath("");
-      await loadSlmStatus();
+      await Promise.all([loadSlmStatus(), loadAiStatus()]);
     } catch (err) {
       setCustomModelError(`Failed to activate: ${err}`);
     } finally {
@@ -499,6 +514,7 @@ export function Settings() {
         model: selectedCloudModel,
       });
       setActiveModel(info);
+      await loadAiStatus();
       // Load usage stats
       const usage = await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null);
       setCloudUsage(usage);
@@ -519,6 +535,18 @@ export function Settings() {
     }
   }
 
+  async function handleDeactivateCloud() {
+    try {
+      await invoke("deactivate_cloud_provider");
+      await loadAiStatus();
+      // Load usage stats
+      const usage = await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null);
+      setCloudUsage(usage);
+    } catch (err) {
+      console.error("Cloud deactivation failed:", err);
+    }
+  }
+
   function getModelStatus(modelId: string): "active" | "downloaded" | "not_downloaded" | "downloading" {
     if (activeModel?.model_id === modelId) return "active";
     if (downloads[modelId]) return "downloading";
@@ -527,7 +555,6 @@ export function Settings() {
   }
 
   const currentProvider = cloudProviders.find((p) => p.id === selectedProvider);
-  const isCloudActive = activeModel?.model_type === "cloud";
 
   async function updateNetField<K extends keyof NetworkSettings>(key: K, value: NetworkSettings[K]) {
     const next = { ...netSettings, [key]: value };
@@ -713,239 +740,276 @@ export function Settings() {
         </div>
       </section>
 
-      {/* AI Model */}
+      {/* AI Analysis */}
       <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">
-          AI Model
+        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-1">
+          AI Analysis
         </h2>
+        <p className="text-xs text-[var(--color-text-secondary)] mb-4">
+          Your security agent uses two AI systems together: a fast local model for real-time monitoring, and an optional cloud API for deep investigations.
+        </p>
 
-        {/* Section 1: Active Model Status */}
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
-          {activeModel ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-success)]" />
-                  <p className="text-sm font-medium">{activeModel.model_name}</p>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)]">
-                    Active
-                  </span>
-                  {activeModel.using_gpu && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)]">
-                      GPU
-                    </span>
-                  )}
+        {/* Dual panels */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+
+          {/* Left: Local Model Panel */}
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`inline-block w-2 h-2 rounded-full ${aiStatus?.local?.active ? "bg-[var(--color-success)]" : "bg-[var(--color-text-secondary)]"}`} />
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Local Model</h3>
+              <span className="text-[10px] text-[var(--color-text-secondary)]">Always-On · Private</span>
+            </div>
+
+            {aiStatus?.local?.active ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-[var(--color-text-primary)]">
+                    Active: {aiStatus.local.model_name || "Unknown"}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">
+                    {aiStatus.local.avg_latency_ms > 0 ? `~${aiStatus.local.avg_latency_ms.toFixed(0)}ms latency` : ""}
+                    {aiStatus.local.avg_latency_ms > 0 && aiStatus.local.gpu_enabled ? " · " : ""}
+                    {aiStatus.local.gpu_enabled ? "GPU enabled" : ""}
+                  </p>
                 </div>
+                <div>
+                  <p className="text-[10px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider mb-1">Used for:</p>
+                  <ul className="text-xs text-[var(--color-text-secondary)] space-y-0.5 list-disc list-inside">
+                    <li>Real-time triage</li>
+                    <li>Event classification</li>
+                    <li>Anomaly explanation</li>
+                    <li>Context tracking</li>
+                  </ul>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setModelCatalogExpanded(!modelCatalogExpanded)}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                  >
+                    Change Model
+                  </button>
+                  <button
+                    onClick={handleDeactivateModel}
+                    className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
+                  >
+                    Deactivate
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  No model loaded. Download one for real-time AI monitoring.
+                </p>
                 <button
-                  onClick={handleDeactivateModel}
-                  className="px-3 py-1 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                  onClick={() => setModelCatalogExpanded(!modelCatalogExpanded)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
                 >
-                  Change Model
+                  Set Up Local Model
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-3 text-sm">
+            )}
+          </div>
+
+          {/* Right: Cloud API Panel */}
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`inline-block w-2 h-2 rounded-full ${aiStatus?.cloud?.active ? "bg-[var(--color-success)]" : "bg-[var(--color-text-secondary)]"}`} />
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Cloud API</h3>
+              <span className="text-[10px] text-[var(--color-text-secondary)]">Optional · On-Demand</span>
+            </div>
+
+            {aiStatus?.cloud?.active ? (
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-[var(--color-text-primary)]">
+                  Connected: {aiStatus.cloud.provider}{aiStatus.cloud.model ? ` / ${aiStatus.cloud.model}` : ""}
+                </p>
                 <div>
-                  <span className="text-[var(--color-text-secondary)] text-xs">Type</span>
-                  <p className="text-[var(--color-text-primary)] text-xs font-medium capitalize">{activeModel.model_type}</p>
+                  <p className="text-[10px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider mb-1">Used for:</p>
+                  <ul className="text-xs text-[var(--color-text-secondary)] space-y-0.5 list-disc list-inside">
+                    <li>Deep investigations</li>
+                    <li>AI security scans</li>
+                    <li>Ask Claw conversations</li>
+                    <li>Report generation</li>
+                  </ul>
                 </div>
-                {activeModel.size_bytes != null && (
-                  <div>
-                    <span className="text-[var(--color-text-secondary)] text-xs">Size</span>
-                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{formatBytes(activeModel.size_bytes)}</p>
-                  </div>
+                {cloudUsage && (
+                  <p className="text-xs text-[var(--color-text-secondary)]">
+                    {cloudUsage.total_requests} requests · ~${cloudUsage.estimated_cost_usd.toFixed(2)}
+                  </p>
                 )}
-                {slmStatus?.backend && (
-                  <div>
-                    <span className="text-[var(--color-text-secondary)] text-xs">Backend</span>
-                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{slmStatus.backend}</p>
-                  </div>
-                )}
-                {activeModel.total_inferences > 0 && (
-                  <div>
-                    <span className="text-[var(--color-text-secondary)] text-xs">Inferences</span>
-                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{activeModel.total_inferences.toLocaleString()}</p>
-                  </div>
-                )}
-                {activeModel.avg_latency_ms > 0 && (
-                  <div>
-                    <span className="text-[var(--color-text-secondary)] text-xs">Avg Latency</span>
-                    <p className="text-[var(--color-text-primary)] text-xs font-medium">{activeModel.avg_latency_ms.toFixed(0)}ms</p>
-                  </div>
-                )}
+                <button
+                  onClick={handleDeactivateCloud}
+                  className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
+                >
+                  Disconnect
+                </button>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-4">
-              <p className="text-sm font-medium text-[var(--color-text-primary)] mb-1">No AI Model Active</p>
-              <p className="text-xs text-[var(--color-text-secondary)] mb-3">
-                Set up an AI model to enable intelligent security analysis
-              </p>
-              <span className="inline-block px-4 py-1.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] text-xs font-medium">
-                Choose a model below to get started
-              </span>
-            </div>
-          )}
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  Adds deep investigation and conversational analysis.
+                </p>
+                <button
+                  onClick={() => setCloudSetupExpanded(!cloudSetupExpanded)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
+                >
+                  Set Up Cloud API
+                </button>
+              </div>
+            )}
+
+            <p className="text-[10px] text-[var(--color-text-secondary)] mt-3">
+              Cloud analysis sends event metadata to the selected provider. No file contents or credentials are ever sent.
+            </p>
+          </div>
         </div>
 
-        {/* Section 2: Local Models */}
-        <div className="rounded-lg border border-[var(--color-success)]/30 bg-[var(--color-bg-secondary)] p-4 mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-              Local Models — Private, Fast, Free
-            </h3>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] font-medium">
-              Recommended
-            </span>
-          </div>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-3">
-            Runs entirely on your machine. No data leaves your device.
+        {/* How they work together */}
+        <div className="rounded-lg bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] p-3 mb-4">
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            <span className="font-medium text-[var(--color-text-primary)]">How they work together:</span>{" "}
+            Local model handles 95% of events instantly. Cloud API is called only for complex analysis that needs deeper reasoning. Without cloud, everything still works — you just don't get deep investigation features.
           </p>
+        </div>
 
-          {/* System info banner */}
-          {systemCaps && (
-            <div className="flex items-center gap-3 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] px-3 py-2 mb-3">
-              <span className="text-xs text-[var(--color-text-secondary)]">
-                Your Mac: {systemCaps.is_apple_silicon ? "Apple Silicon" : systemCaps.arch} · {systemCaps.total_ram_gb} GB RAM
-              </span>
+        {/* Expandable: Model Catalog */}
+        {modelCatalogExpanded && (
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Model Catalog</h3>
+              <button
+                onClick={() => setModelCatalogExpanded(false)}
+                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              >
+                Close
+              </button>
             </div>
-          )}
 
-          <div className="space-y-3">
-            {catalog.map((model) => {
-              const status = getModelStatus(model.id);
-              const progress = downloadProgress[model.id];
-              const dlError = downloadErrors[model.id];
-              const isActive = status === "active";
-              const speedEstimate = systemCaps?.is_apple_silicon
-                ? model.tokens_per_sec_apple
-                : model.tokens_per_sec_intel;
-              const ramGb = model.min_ram_gb;
-              const isRecommended = model.is_default || (systemCaps && (
-                (systemCaps.total_ram_gb < 8 && model.id.includes("1b")) ||
-                (systemCaps.total_ram_gb >= 8 && systemCaps.total_ram_gb < 16 && model.id.includes("1.7b")) ||
-                (systemCaps.total_ram_gb >= 16 && model.id.includes("4b"))
-              ));
+            {/* System info banner */}
+            {systemCaps && (
+              <div className="flex items-center gap-3 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] px-3 py-2 mb-3">
+                <span className="text-xs text-[var(--color-text-secondary)]">
+                  Your Mac: {systemCaps.is_apple_silicon ? "Apple Silicon" : systemCaps.arch} · {systemCaps.total_ram_gb} GB RAM
+                </span>
+              </div>
+            )}
 
-              return (
-                <div
-                  key={model.id}
-                  className={`rounded-lg border p-3 ${
-                    isActive
-                      ? "border-[var(--color-success)] bg-[var(--color-success)]/5"
-                      : isRecommended
-                      ? "border-[var(--color-accent)]/50 bg-[var(--color-bg-tertiary)]"
-                      : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)]"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{model.display_name}</p>
-                        {isActive && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] font-medium">
-                            Active
-                          </span>
-                        )}
-                        {status === "downloaded" && !isActive && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-medium">
-                            Downloaded
-                          </span>
-                        )}
-                        {isRecommended && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)] font-medium">
-                            Recommended for your Mac
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-[var(--color-text-secondary)] mb-1.5">
-                        {model.quantization} · by {model.author}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-secondary)] mb-2">{model.description}</p>
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-secondary)]">
-                        <span>{formatBytes(model.size_bytes)} download</span>
-                        <span>~{ramGb} GB RAM</span>
-                        <QualityStars rating={model.quality_rating} />
-                        {speedEstimate > 0 && <span>~{speedEstimate} tok/s</span>}
-                      </div>
-                      {model.model_page_url && (
-                        <button
-                          onClick={() => open(model.model_page_url)}
-                          className="mt-2 text-[11px] text-[var(--color-accent)] hover:underline"
-                        >
-                          View on HuggingFace
-                        </button>
-                      )}
-                    </div>
+            <div className="space-y-3">
+              {catalog.map((model) => {
+                const status = getModelStatus(model.id);
+                const progress = downloadProgress[model.id];
+                const dlError = downloadErrors[model.id];
+                const isActive = status === "active";
+                const speedEstimate = systemCaps?.is_apple_silicon
+                  ? model.tokens_per_sec_apple
+                  : model.tokens_per_sec_intel;
+                const ramGb = model.min_ram_gb;
+                const isRecommended = model.is_default || (systemCaps && (
+                  (systemCaps.total_ram_gb < 8 && model.id.includes("1b")) ||
+                  (systemCaps.total_ram_gb >= 8 && systemCaps.total_ram_gb < 16 && model.id.includes("1.7b")) ||
+                  (systemCaps.total_ram_gb >= 16 && model.id.includes("4b"))
+                ));
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      {status === "not_downloaded" && (
-                        <button
-                          onClick={() => handleDownloadModel(model.id)}
-                          className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-success)] text-white hover:opacity-90"
-                        >
-                          Download
-                        </button>
-                      )}
-                      {status === "downloading" && (
-                        <button
-                          onClick={() => handleCancelDownload(model.id)}
-                          className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      {status === "downloaded" && (
-                        <>
-                          <button
-                            onClick={() => handleActivateModel(model.id)}
-                            disabled={activatingModel === model.id}
-                            className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
-                          >
-                            {activatingModel === model.id ? "Activating..." : "Activate"}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteModel(model.id)}
-                            disabled={deletingModel === model.id}
-                            className="px-2 py-1.5 rounded-md text-xs border border-[var(--color-danger)]/50 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white disabled:opacity-50"
-                            title="Delete model"
-                          >
-                            {deletingModel === model.id ? "..." : "Delete"}
-                          </button>
-                        </>
-                      )}
-                      {isActive && (
-                        <span className="text-xs text-[var(--color-success)] font-medium">In Use</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Download progress / error feedback */}
-                  {status === "downloading" && (
-                    <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
-                      {dlError && !progress ? (
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
-                          <button
-                            onClick={() => { handleCancelDownload(model.id); handleDownloadModel(model.id); }}
-                            className="ml-3 px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 shrink-0"
-                          >
-                            Retry
-                          </button>
+                return (
+                  <div
+                    key={model.id}
+                    className={`rounded-lg border p-3 ${
+                      isActive
+                        ? "border-[var(--color-success)] bg-[var(--color-success)]/5"
+                        : isRecommended
+                        ? "border-[var(--color-accent)]/50 bg-[var(--color-bg-tertiary)]"
+                        : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{model.display_name}</p>
+                          {isActive && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] font-medium">
+                              Active
+                            </span>
+                          )}
+                          {status === "downloaded" && !isActive && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-medium">
+                              Downloaded
+                            </span>
+                          )}
+                          {isRecommended && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)] font-medium">
+                              Recommended for your Mac
+                            </span>
+                          )}
                         </div>
-                      ) : !progress ? (
-                        <p className="text-xs text-[var(--color-text-secondary)] animate-pulse">
-                          Connecting to server...
+                        <p className="text-[11px] text-[var(--color-text-secondary)] mb-1.5">
+                          {model.quantization} · by {model.author}
                         </p>
-                      ) : (() => {
-                        const st = getStatusType(progress.status);
-                        const failedMsg = typeof progress.status === "object" && progress.status !== null
-                          ? (progress.status as { failed: string }).failed
-                          : null;
-                        return st === "failed" ? (
+                        <p className="text-xs text-[var(--color-text-secondary)] mb-2">{model.description}</p>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-secondary)]">
+                          <span>{formatBytes(model.size_bytes)} download</span>
+                          <span>~{ramGb} GB RAM</span>
+                          <QualityStars rating={model.quality_rating} />
+                          {speedEstimate > 0 && <span>~{speedEstimate} tok/s</span>}
+                        </div>
+                        {model.model_page_url && (
+                          <button
+                            onClick={() => open(model.model_page_url)}
+                            className="mt-2 text-[11px] text-[var(--color-accent)] hover:underline"
+                          >
+                            View on HuggingFace
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {status === "not_downloaded" && (
+                          <button
+                            onClick={() => handleDownloadModel(model.id)}
+                            className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-success)] text-white hover:opacity-90"
+                          >
+                            Download
+                          </button>
+                        )}
+                        {status === "downloading" && (
+                          <button
+                            onClick={() => handleCancelDownload(model.id)}
+                            className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        {status === "downloaded" && (
+                          <>
+                            <button
+                              onClick={() => handleActivateModel(model.id)}
+                              disabled={activatingModel === model.id}
+                              className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
+                            >
+                              {activatingModel === model.id ? "Activating..." : "Activate"}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteModel(model.id)}
+                              disabled={deletingModel === model.id}
+                              className="px-2 py-1.5 rounded-md text-xs border border-[var(--color-danger)]/50 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white disabled:opacity-50"
+                              title="Delete model"
+                            >
+                              {deletingModel === model.id ? "..." : "Delete"}
+                            </button>
+                          </>
+                        )}
+                        {isActive && (
+                          <span className="text-xs text-[var(--color-success)] font-medium">In Use</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Download progress / error feedback */}
+                    {status === "downloading" && (
+                      <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                        {dlError && !progress ? (
                           <div className="flex items-center justify-between">
-                            <p className="text-xs text-[var(--color-danger)] flex-1">
-                              {failedMsg || "Download failed"}
-                            </p>
+                            <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
                             <button
                               onClick={() => { handleCancelDownload(model.id); handleDownloadModel(model.id); }}
                               className="ml-3 px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 shrink-0"
@@ -953,154 +1017,139 @@ export function Settings() {
                               Retry
                             </button>
                           </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mb-1.5">
-                              <span>
-                                {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.bytes_total)}
-                              </span>
-                              <span>
-                                {st === "pending" ? "Connecting..." : (
-                                  <>
-                                    {formatSpeed(progress.speed_bytes_per_sec)}
-                                    {progress.eta_seconds > 0 && ` · ~${Math.ceil(progress.eta_seconds)}s remaining`}
-                                  </>
-                                )}
-                              </span>
+                        ) : !progress ? (
+                          <p className="text-xs text-[var(--color-text-secondary)] animate-pulse">
+                            Connecting to server...
+                          </p>
+                        ) : (() => {
+                          const st = getStatusType(progress.status);
+                          const failedMsg = typeof progress.status === "object" && progress.status !== null
+                            ? (progress.status as { failed: string }).failed
+                            : null;
+                          return st === "failed" ? (
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-[var(--color-danger)] flex-1">
+                                {failedMsg || "Download failed"}
+                              </p>
+                              <button
+                                onClick={() => { handleCancelDownload(model.id); handleDownloadModel(model.id); }}
+                                className="ml-3 px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 shrink-0"
+                              >
+                                Retry
+                              </button>
                             </div>
-                            <div className="w-full h-2.5 rounded-full bg-[var(--color-bg-primary)] overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-300 ${
-                                  st === "verifying"
-                                    ? "bg-[var(--color-warning)] animate-pulse"
-                                    : "bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-success)]"
-                                }`}
-                                style={{ width: `${Math.max(Math.min(progress.percent, 100), st === "downloading" ? 1 : 0)}%` }}
-                              />
-                            </div>
-                            <p className="text-[10px] text-[var(--color-text-secondary)] mt-1 text-right">
-                              {st === "verifying" ? "Verifying checksum..." : `${progress.percent.toFixed(1)}%`}
-                            </p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
-                  {/* Show download error with retry option */}
-                  {status !== "downloading" && dlError && (
-                    <div className="mt-3 pt-3 border-t border-[var(--color-danger)]/30">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
-                        <div className="flex items-center gap-2 ml-3 shrink-0">
-                          <button
-                            onClick={() => handleDownloadModel(model.id)}
-                            className="px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
-                          >
-                            Retry
-                          </button>
-                          <button
-                            onClick={() => setDownloadErrors((prev) => { const next = { ...prev }; delete next[model.id]; return next; })}
-                            className="px-2 py-1 rounded text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-                          >
-                            Dismiss
-                          </button>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mb-1.5">
+                                <span>
+                                  {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.bytes_total)}
+                                </span>
+                                <span>
+                                  {st === "pending" ? "Connecting..." : (
+                                    <>
+                                      {formatSpeed(progress.speed_bytes_per_sec)}
+                                      {progress.eta_seconds > 0 && ` · ~${Math.ceil(progress.eta_seconds)}s remaining`}
+                                    </>
+                                  )}
+                                </span>
+                              </div>
+                              <div className="w-full h-2.5 rounded-full bg-[var(--color-bg-primary)] overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${
+                                    st === "verifying"
+                                      ? "bg-[var(--color-warning)] animate-pulse"
+                                      : "bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-success)]"
+                                  }`}
+                                  style={{ width: `${Math.max(Math.min(progress.percent, 100), st === "downloading" ? 1 : 0)}%` }}
+                                />
+                              </div>
+                              <p className="text-[10px] text-[var(--color-text-secondary)] mt-1 text-right">
+                                {st === "verifying" ? "Verifying checksum..." : `${progress.percent.toFixed(1)}%`}
+                              </p>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    {/* Show download error with retry option */}
+                    {status !== "downloading" && dlError && (
+                      <div className="mt-3 pt-3 border-t border-[var(--color-danger)]/30">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
+                          <div className="flex items-center gap-2 ml-3 shrink-0">
+                            <button
+                              onClick={() => handleDownloadModel(model.id)}
+                              className="px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
+                            >
+                              Retry
+                            </button>
+                            <button
+                              onClick={() => setDownloadErrors((prev) => { const next = { ...prev }; delete next[model.id]; return next; })}
+                              className="px-2 py-1 rounded text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {catalog.length === 0 && (
-              <p className="text-xs text-[var(--color-text-secondary)] text-center py-4">
-                No models available in catalog. Check your internet connection.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Section 3: Custom Model */}
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
-          <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-1">Use Your Own Model</h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-3">
-            Load a custom .gguf model file from your local filesystem
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={customModelPath}
-              onChange={(e) => {
-                setCustomModelPath(e.target.value);
-                setCustomModelError(null);
-              }}
-              placeholder="/path/to/model.gguf"
-              className="flex-1 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] font-mono text-xs"
-            />
-            <button
-              onClick={handleActivateCustomModel}
-              disabled={customModelActivating}
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {customModelActivating ? "Activating..." : "Activate"}
-            </button>
-          </div>
-          {customModelError && (
-            <p className="text-xs text-[var(--color-danger)] mt-2">{customModelError}</p>
-          )}
-        </div>
-
-        {/* Section 4: Cloud API (collapsed) */}
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] mb-4">
-          <button
-            onClick={() => {
-              setCloudExpanded(!cloudExpanded);
-              if (!cloudExpanded && cloudProviders.length === 0) {
-                loadCloudProviders();
-              }
-            }}
-            className="w-full flex items-center justify-between p-4 text-left"
-          >
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-[var(--color-text-secondary)]">Advanced: Cloud API</h3>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)] font-medium">
-                Not Recommended
-              </span>
-            </div>
-            <span className="text-[var(--color-text-secondary)] text-xs">{cloudExpanded ? "\u25B2" : "\u25BC"}</span>
-          </button>
-
-          {cloudExpanded && (
-            <div className="px-4 pb-4 space-y-4">
-              {/* Warning */}
-              <div className="rounded-lg bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 p-3">
-                <p className="text-xs text-[var(--color-warning)] font-medium mb-1">Not Recommended</p>
-                <p className="text-xs text-[var(--color-text-secondary)]">
-                  Cloud API sends security event metadata to third-party servers, is slower than local models (500ms+ vs 50ms),
-                  costs money per analysis ($5-20/month with typical usage), and requires internet connectivity. Local models
-                  are private, fast, free, and work offline.
-                </p>
-              </div>
-
-              {isCloudActive && (
-                <div className="flex items-center justify-between rounded-lg bg-[var(--color-bg-tertiary)] p-3">
-                  <div>
-                    <p className="text-xs font-medium text-[var(--color-text-primary)]">Cloud model is active</p>
-                    {cloudUsage && (
-                      <p className="text-xs text-[var(--color-text-secondary)]">
-                        This session: {cloudUsage.total_requests} analyses, ~${cloudUsage.estimated_cost_usd.toFixed(2)}
-                      </p>
                     )}
                   </div>
-                  <button
-                    onClick={handleDeactivateModel}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-success)] text-white hover:opacity-90"
-                  >
-                    Switch to Local Model
-                  </button>
-                </div>
-              )}
+                );
+              })}
 
+              {catalog.length === 0 && (
+                <p className="text-xs text-[var(--color-text-secondary)] text-center py-4">
+                  No models available in catalog. Check your internet connection.
+                </p>
+              )}
+            </div>
+
+            {/* Custom Model */}
+            <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+              <h4 className="text-sm font-semibold text-[var(--color-text-primary)] mb-1">Use Your Own Model</h4>
+              <p className="text-xs text-[var(--color-text-secondary)] mb-3">
+                Load a custom .gguf model file from your local filesystem
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customModelPath}
+                  onChange={(e) => {
+                    setCustomModelPath(e.target.value);
+                    setCustomModelError(null);
+                  }}
+                  placeholder="/path/to/model.gguf"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] font-mono text-xs"
+                />
+                <button
+                  onClick={handleActivateCustomModel}
+                  disabled={customModelActivating}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {customModelActivating ? "Activating..." : "Activate"}
+                </button>
+              </div>
+              {customModelError && (
+                <p className="text-xs text-[var(--color-danger)] mt-2">{customModelError}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Expandable: Cloud Setup */}
+        {cloudSetupExpanded && (
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Cloud API Setup</h3>
+              <button
+                onClick={() => setCloudSetupExpanded(false)}
+                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-4">
               {/* Provider */}
               <div>
                 <label className="text-xs text-[var(--color-text-secondary)] block mb-1">Provider</label>
@@ -1184,12 +1233,12 @@ export function Settings() {
                 >
                   {cloudTesting ? "Testing..." : "Save & Test"}
                 </button>
-                {hasApiKey && cloudTestResult?.success && !isCloudActive && (
+                {hasApiKey && cloudTestResult?.success && !aiStatus?.cloud?.active && (
                   <button
                     onClick={handleActivateCloud}
                     className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
                   >
-                    Activate Cloud Model
+                    Activate Cloud API
                   </button>
                 )}
               </div>
@@ -1209,10 +1258,10 @@ export function Settings() {
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Section 5: Model Settings */}
+        {/* Analysis Frequency */}
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
           <div className="flex items-center justify-between">
             <div>

@@ -372,6 +372,9 @@ pub fn cloud_providers() -> Vec<CloudProvider> {
 // ---------------------------------------------------------------------------
 
 /// The currently active model configuration.
+///
+/// Deprecated: Use `DualAiConfig` and `config_migration::load_dual_config()` instead.
+/// Kept for backward compatibility during migration from v1 to v2 config format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ActiveModelConfig {
@@ -414,6 +417,8 @@ fn config_path() -> anyhow::Result<PathBuf> {
 /// Load the active model configuration from disk.
 ///
 /// Returns `ActiveModelConfig::None` if the config file does not exist.
+///
+/// Deprecated: Use `config_migration::load_dual_config()` instead.
 pub fn load_active_config() -> anyhow::Result<ActiveModelConfig> {
     let path = config_path()?;
     if !path.exists() {
@@ -426,6 +431,8 @@ pub fn load_active_config() -> anyhow::Result<ActiveModelConfig> {
 }
 
 /// Save the active model configuration to disk.
+///
+/// Deprecated: Use `config_migration::save_dual_config()` instead.
 pub fn save_active_config(config: &ActiveModelConfig) -> anyhow::Result<()> {
     let path = config_path()?;
     if let Some(parent) = path.parent() {

@@ -271,6 +271,16 @@ export const EventRow = memo(function EventRow({ event, defaultExpanded = false 
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  navigate(`/activity/${event.event_id}`);
+                }}
+                className="text-xs text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
+                title="Investigate this event with AI"
+              >
+                Investigate
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   navigate("/ask", {
                     state: {
                       prefill: `Tell me about this event: ${event.one_liner} (event ${event.event_id})`,
@@ -280,15 +290,6 @@ export const EventRow = memo(function EventRow({ event, defaultExpanded = false 
                 className="text-xs text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
               >
                 Ask Claw about this
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                className="text-xs text-[var(--color-text-muted)] cursor-default"
-                title="Coming soon"
-              >
-                Show related events
               </button>
             </div>
           </div>

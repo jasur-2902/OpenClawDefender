@@ -755,25 +755,17 @@ fn exec_get_feed_status() -> Result<serde_json::Value, String> {
 }
 
 fn exec_get_slm_status(state: &AppState) -> Result<serde_json::Value, String> {
-    let slm_opt = state
-        .active_slm
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone();
-    let info_opt = state
-        .active_model_info
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone();
+    let handle = tokio::runtime::Handle::current();
+    let ai_status = handle.block_on(state.ai_backends.get_status());
 
-    let loaded = slm_opt.as_ref().map(|s| s.is_enabled()).unwrap_or(false);
-    let model_name = info_opt.as_ref().map(|i| i.model_name.clone());
-    let mock_mode = slm_opt.as_ref().map(|s| s.is_mock_mode()).unwrap_or(false);
+    let loaded = ai_status.local.active || ai_status.cloud.active;
+    let model_name = ai_status.local.model_name
+        .or(ai_status.cloud.model);
 
     Ok(serde_json::json!({
         "loaded": loaded,
         "model_name": model_name,
-        "mock_mode": mock_mode,
+        "mock_mode": false,
     }))
 }
 

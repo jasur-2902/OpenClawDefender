@@ -1615,28 +1615,23 @@ pub async fn start_scan(
             }
         }
 
-        // Enrich critical/high findings with SLM analysis if available
-        let slm_opt = {
-            state.active_slm.lock().ok().and_then(|guard| guard.clone())
-        };
-        if let Some(slm) = slm_opt {
-            for module_result in &mut module_results {
-                for finding in &mut module_result.findings {
-                    if finding.severity == "critical" || finding.severity == "high" {
-                        let prompt = format!(
-                            "Analyze this security finding and assess if it's a real risk or likely a false positive.\n\
-                             Severity: {}\nCategory: {}\nDescription: {}\nAffected: {}\n\
-                             Is this a genuine security risk? Explain briefly.",
-                            finding.severity, finding.category, finding.description, finding.affected_resource
-                        );
-                        match slm.analyze_event(&prompt).await {
-                            Ok(result) => {
-                                finding.ai_analysis = Some(result.explanation);
-                            }
-                            Err(e) => {
-                                tracing::debug!("SLM analysis failed for finding: {}", e);
-                            }
-                        }
+        // Enrich critical/high findings with AI analysis via backend manager
+        for module_result in &mut module_results {
+            for finding in &mut module_result.findings {
+                if finding.severity == "critical" || finding.severity == "high" {
+                    let prompt = format!(
+                        "Analyze this security finding and assess if it's a real risk or likely a false positive.\n\
+                         Severity: {}\nCategory: {}\nDescription: {}\nAffected: {}\n\
+                         Is this a genuine security risk? Explain briefly.",
+                        finding.severity, finding.category, finding.description, finding.affected_resource
+                    );
+                    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
+                        task_type: clawdefender_slm::TaskType::ScanAnalysis,
+                        prompt,
+                        context: None,
+                    }).await;
+                    if let Some(result) = ai_resp.response {
+                        finding.ai_analysis = Some(result.explanation);
                     }
                 }
             }
@@ -3912,16 +3907,42 @@ pub async fn test_api_connection(
 }
 
 #[tauri::command]
-pub async fn get_cloud_usage() -> Result<clawdefender_slm::cloud_backend::CloudUsageStats, String> {
-    // Return zeroed stats since usage is tracked per-session in CloudBackend instances.
-    Ok(clawdefender_slm::cloud_backend::CloudUsageStats {
-        provider: String::new(),
-        model: String::new(),
-        total_requests: 0,
-        tokens_in: 0,
-        tokens_out: 0,
-        estimated_cost_usd: 0.0,
-    })
+pub async fn get_cloud_usage(
+    state: tauri::State<'_, AppState>,
+) -> Result<clawdefender_slm::cloud_backend::CloudUsageStats, String> {
+    // Try to get real stats from the Phase 2 CostTracker
+    let tracker_opt = {
+        let guard = state.cost_tracker.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    if let Some(tracker_arc) = tracker_opt {
+        let tracker = tracker_arc.lock().map_err(|e| e.to_string())?;
+        let summary = tracker.get_summary();
+        Ok(clawdefender_slm::cloud_backend::CloudUsageStats {
+            provider: summary
+                .by_provider
+                .keys()
+                .next()
+                .cloned()
+                .unwrap_or_default(),
+            model: String::new(),
+            total_requests: summary.total_calls,
+            tokens_in: 0,
+            tokens_out: 0,
+            estimated_cost_usd: summary.total_cost,
+        })
+    } else {
+        // Fallback: return zeroed stats
+        Ok(clawdefender_slm::cloud_backend::CloudUsageStats {
+            provider: String::new(),
+            model: String::new(),
+            total_requests: 0,
+            tokens_in: 0,
+            tokens_out: 0,
+            estimated_cost_usd: 0.0,
+        })
+    }
 }
 
 #[tauri::command]
@@ -4037,6 +4058,9 @@ pub struct SlmStatusInfo {
     pub model_name: Option<String>,
     pub model_size: Option<String>,
     pub backend: Option<String>,
+    /// Whether a cloud backend is also available (for dual-backend awareness).
+    #[serde(default)]
+    pub cloud_available: bool,
 }
 
 /// A model available for activation (catalog, custom, or cloud).
@@ -4059,12 +4083,13 @@ pub async fn activate_model(
 ) -> Result<ActiveModelInfo, String> {
     use std::sync::Arc;
     use clawdefender_slm::engine::SlmConfig;
-    use clawdefender_slm::model_registry::{find_model, save_active_config, ActiveModelConfig};
+    use clawdefender_slm::model_registry::find_model;
+    use clawdefender_slm::config_migration::{load_dual_config, save_dual_config, LocalModelConfig};
 
     let dir = models_dir()?;
 
     // Find the model in catalog or treat as a custom file path
-    let (file_path, model_name, size_bytes, config_to_save) =
+    let (file_path, model_name, size_bytes, local_config) =
         if let Some(catalog_model) = find_model(&model_id) {
             let path = dir.join(&catalog_model.filename);
             if !path.exists() {
@@ -4074,8 +4099,9 @@ pub async fn activate_model(
                 path.clone(),
                 catalog_model.display_name.clone(),
                 Some(catalog_model.size_bytes),
-                ActiveModelConfig::LocalCatalog {
-                    model_id: model_id.clone(),
+                LocalModelConfig {
+                    model_type: "catalog".to_string(),
+                    model_id: Some(model_id.clone()),
                     path: path.clone(),
                 },
             )
@@ -4094,7 +4120,11 @@ pub async fn activate_model(
                 path.clone(),
                 name,
                 size,
-                ActiveModelConfig::LocalCustom { path },
+                LocalModelConfig {
+                    model_type: "custom".to_string(),
+                    model_id: None,
+                    path,
+                },
             )
         };
 
@@ -4103,13 +4133,8 @@ pub async fn activate_model(
         ..SlmConfig::default()
     };
 
-    // Step 1: Unload current model to free GPU memory
-    {
-        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        let old = slm_guard.take(); // Sets to None, takes ownership
-        drop(slm_guard); // Release lock first
-        drop(old); // Then drop old model to free GPU memory
-    }
+    // Step 1: Unload current local model to free GPU memory
+    state.ai_backends.clear_local();
     // Brief pause for GPU memory release
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
@@ -4143,8 +4168,8 @@ pub async fn activate_model(
         } else {
             "local_custom".to_string()
         },
-        model_id: Some(model_id),
-        model_name: model_name,
+        model_id: Some(model_id.clone()),
+        model_name: model_name.clone(),
         file_path: Some(file_path.to_string_lossy().to_string()),
         provider: None,
         size_bytes,
@@ -4153,18 +4178,20 @@ pub async fn activate_model(
         avg_latency_ms: 0.0,
     };
 
-    // Step 3: Install new model
-    {
-        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        *slm_guard = Some(Arc::new(service));
-    }
-    {
-        let mut info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
-        *info_guard = Some(info.clone());
-    }
+    // Step 3: Install new model via AiBackendManager
+    let local_info = clawdefender_slm::LocalModelInfo {
+        model_name: info.model_name.clone(),
+        model_id: info.model_id.clone(),
+        file_path: info.file_path.clone(),
+        size_bytes: info.size_bytes,
+        using_gpu,
+    };
+    state.ai_backends.set_local(Arc::new(service), local_info);
 
-    // Persist config
-    save_active_config(&config_to_save).map_err(|e| e.to_string())?;
+    // Persist config — update local field in DualAiConfig, preserve cloud
+    let mut dual_config = load_dual_config().unwrap_or_default();
+    dual_config.local = Some(local_config);
+    save_dual_config(&dual_config).map_err(|e| e.to_string())?;
 
     // Notify frontend of model change
     crate::events::emit_model_changed(&app_handle, Some(&info));
@@ -4182,7 +4209,8 @@ pub async fn activate_cloud_provider(
     use std::sync::Arc;
     use clawdefender_slm::engine::{SlmBackend, SlmConfig, SlmEngine};
     use clawdefender_slm::cloud_backend::CloudBackend;
-    use clawdefender_slm::model_registry::{cloud_providers, save_active_config, ActiveModelConfig};
+    use clawdefender_slm::model_registry::cloud_providers;
+    use clawdefender_slm::config_migration::{load_dual_config, save_dual_config, CloudModelConfig};
 
     // Verify the provider/model combination exists
     let provider_info = cloud_providers()
@@ -4226,32 +4254,20 @@ pub async fn activate_cloud_provider(
         avg_latency_ms: 0.0,
     };
 
-    // Step 1: Unload current local model if any (free GPU memory)
-    {
-        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        let old = slm_guard.take();
-        drop(slm_guard);
-        drop(old);
-    }
-    // Brief pause for GPU memory release
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // Step 1: Install cloud-backed service via AiBackendManager
+    state.ai_backends.set_cloud(
+        Arc::new(service),
+        provider.clone(),
+        model.clone(),
+    );
 
-    // Step 2: Install cloud-backed service
-    {
-        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        *slm_guard = Some(Arc::new(service));
-    }
-    {
-        let mut info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
-        *info_guard = Some(info.clone());
-    }
-
-    // Persist config
-    let config_to_save = ActiveModelConfig::CloudApi {
+    // Persist config — update cloud field in DualAiConfig, preserve local
+    let mut dual_config = load_dual_config().unwrap_or_default();
+    dual_config.cloud = Some(CloudModelConfig {
         provider,
         model,
-    };
-    save_active_config(&config_to_save).map_err(|e| e.to_string())?;
+    });
+    save_dual_config(&dual_config).map_err(|e| e.to_string())?;
 
     // Notify frontend of model change
     crate::events::emit_model_changed(&app_handle, Some(&info));
@@ -4264,21 +4280,15 @@ pub async fn deactivate_model(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    use clawdefender_slm::model_registry::{save_active_config, ActiveModelConfig};
+    use clawdefender_slm::config_migration::{load_dual_config, save_dual_config};
 
-    // Take ownership and drop old model to free GPU memory
-    {
-        let mut slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        let old = slm_guard.take();
-        drop(slm_guard);
-        drop(old);
-    }
-    {
-        let mut info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
-        *info_guard = None;
-    }
+    // Only clear the local backend — cloud survives local deactivation
+    state.ai_backends.clear_local();
 
-    save_active_config(&ActiveModelConfig::None).map_err(|e| e.to_string())?;
+    // Persist config — remove local field but preserve cloud
+    let mut dual_config = load_dual_config().unwrap_or_default();
+    dual_config.local = None;
+    save_dual_config(&dual_config).map_err(|e| e.to_string())?;
 
     // Notify frontend of model deactivation
     crate::events::emit_model_changed(&app_handle, None);
@@ -4287,30 +4297,111 @@ pub async fn deactivate_model(
 }
 
 #[tauri::command]
+pub async fn deactivate_cloud_provider(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    use clawdefender_slm::config_migration::{load_dual_config, save_dual_config};
+
+    // Only clear the cloud backend — local survives cloud deactivation
+    state.ai_backends.clear_cloud();
+
+    // Persist config — remove cloud field but preserve local
+    let mut dual_config = load_dual_config().unwrap_or_default();
+    dual_config.cloud = None;
+    save_dual_config(&dual_config).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_ai_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let status = state.ai_backends.get_status();
+    serde_json::to_value(status).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_routing_preferences(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let prefs = state.ai_backends.get_routing_preferences();
+    serde_json::to_value(prefs).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_routing_preferences(
+    state: tauri::State<'_, AppState>,
+    prefer_local: bool,
+    cloud_auto_escalate: bool,
+    cloud_confirmation: bool,
+    max_cloud_calls_per_hour: u32,
+) -> Result<(), String> {
+    let prefs = clawdefender_slm::RoutingPreferences {
+        prefer_local,
+        cloud_auto_escalate,
+        cloud_confirmation,
+        max_cloud_calls_per_hour,
+    };
+    state.ai_backends.update_routing_preferences(prefs);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_rate_limit_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let status = state.ai_backends.get_rate_limit_status();
+    serde_json::to_value(status).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_active_model(
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<ActiveModelInfo>, String> {
-    // Security: Acquire locks sequentially and drop each before acquiring the next
-    // to prevent potential deadlocks from holding multiple Mutex locks simultaneously.
-    let mut info = {
-        let info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
-        info_guard.clone()
-    }; // info_guard dropped here
+    // Build ActiveModelInfo from the dual backend manager
+    let local_info = state.ai_backends.local_model_info();
+    let local_stats = state.ai_backends.local_stats();
+    let cloud_info = state.ai_backends.cloud_info();
 
-    // Update live stats from the engine if available
-    if info.is_some() {
-        let slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        if let Some(ref slm) = *slm_guard {
-            if let Some(stats) = slm.stats() {
-                let model_info = info.as_mut().unwrap();
-                model_info.total_inferences = stats.total_inferences;
-                model_info.avg_latency_ms = stats.avg_latency_ms;
-                model_info.using_gpu = stats.using_gpu;
-            }
+    // Prefer local model info, fall back to cloud
+    if let Some(linfo) = local_info {
+        let mut info = ActiveModelInfo {
+            model_type: if linfo.model_id.is_some() {
+                "local_catalog".to_string()
+            } else {
+                "local_custom".to_string()
+            },
+            model_id: linfo.model_id,
+            model_name: linfo.model_name,
+            file_path: linfo.file_path,
+            provider: None,
+            size_bytes: linfo.size_bytes,
+            using_gpu: linfo.using_gpu,
+            total_inferences: 0,
+            avg_latency_ms: 0.0,
+        };
+        if let Some(stats) = local_stats {
+            info.total_inferences = stats.total_inferences;
+            info.avg_latency_ms = stats.avg_latency_ms;
+            info.using_gpu = stats.using_gpu;
         }
+        Ok(Some(info))
+    } else if let Some((provider, model_name)) = cloud_info {
+        Ok(Some(ActiveModelInfo {
+            model_type: "cloud_api".to_string(),
+            model_id: Some(model_name.clone()),
+            model_name,
+            file_path: None,
+            provider: Some(provider),
+            size_bytes: None,
+            using_gpu: false,
+            total_inferences: 0,
+            avg_latency_ms: 0.0,
+        }))
+    } else {
+        Ok(None)
     }
-
-    Ok(info)
 }
 
 #[tauri::command]
@@ -4319,11 +4410,9 @@ pub async fn list_available_models(
 ) -> Result<Vec<AvailableModel>, String> {
     let dir = models_dir()?;
 
-    // Get currently active model id
-    let active_id = {
-        let info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
-        info_guard.as_ref().and_then(|i| i.model_id.clone())
-    };
+    // Get currently active model id from the backend manager
+    let active_id = state.ai_backends.local_model_info()
+        .and_then(|i| i.model_id);
 
     // Get installed models
     let installed = clawdefender_slm::downloader::list_installed_models(&dir)
@@ -4395,17 +4484,6 @@ pub async fn get_slm_analysis_for_prompt(
     state: tauri::State<'_, AppState>,
     prompt_id: String,
 ) -> Result<Option<PromptSlmAnalysis>, String> {
-    // Get the active SLM service
-    let slm_opt = {
-        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-
-    let slm = match slm_opt {
-        Some(s) if s.is_enabled() => s,
-        _ => return Ok(None),
-    };
-
     // Find the pending prompt to build context
     let prompt_context = {
         let prompts = state.pending_prompts.lock().map_err(|e| e.to_string())?;
@@ -4423,8 +4501,15 @@ pub async fn get_slm_analysis_for_prompt(
         None => return Ok(None),
     };
 
-    match slm.analyze_event(&prompt_text).await {
-        Ok(response) => {
+    // Route through the AI backend manager as a Triage task
+    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
+        task_type: clawdefender_slm::TaskType::Triage,
+        prompt: prompt_text,
+        context: None,
+    }).await;
+
+    match ai_resp.response {
+        Some(response) => {
             let recommendation = match response.risk_level {
                 clawdefender_slm::engine::RiskLevel::Critical
                 | clawdefender_slm::engine::RiskLevel::High => "Deny this request".to_string(),
@@ -4436,7 +4521,7 @@ pub async fn get_slm_analysis_for_prompt(
                 recommendation,
             }))
         }
-        Err(_) => Ok(None),
+        None => Ok(None),
     }
 }
 
@@ -4444,47 +4529,47 @@ pub async fn get_slm_analysis_for_prompt(
 pub async fn get_slm_status(
     state: tauri::State<'_, AppState>,
 ) -> Result<SlmStatusInfo, String> {
-    // Security: Clone data from each lock separately to avoid holding two locks
-    // at once, which could deadlock if another thread acquires them in reverse order.
-    let slm_opt = {
-        let slm_guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        slm_guard.clone()
-    };
-    let info_opt = {
-        let info_guard = state.active_model_info.lock().map_err(|e| e.to_string())?;
-        info_guard.clone()
-    };
+    let ai_status = state.ai_backends.get_status();
 
-    match (&slm_opt, &info_opt) {
-        (Some(slm), Some(info)) => {
-            let size_str = info.size_bytes.map(|b| {
-                if b >= 1_000_000_000 {
-                    format!("{:.1} GB", b as f64 / 1_000_000_000.0)
-                } else {
-                    format!("{:.0} MB", b as f64 / 1_000_000.0)
-                }
-            });
+    let cloud_available = ai_status.cloud.active;
 
-            let backend = match info.model_type.as_str() {
-                "cloud_api" => info.provider.clone().unwrap_or_else(|| "cloud".to_string()),
-                _ if slm.is_enabled() && info.using_gpu => "GPU".to_string(),
-                _ if slm.is_enabled() => "CPU".to_string(),
-                _ => "mock".to_string(),
-            };
-
-            Ok(SlmStatusInfo {
-                loaded: slm.is_enabled(),
-                model_name: Some(info.model_name.clone()),
-                model_size: size_str,
-                backend: Some(backend),
-            })
-        }
-        _ => Ok(SlmStatusInfo {
+    // Prefer local backend info for backward-compatible status
+    if ai_status.local.active {
+        let size_str = ai_status.local.model_size.map(|b| {
+            if b >= 1_000_000_000 {
+                format!("{:.1} GB", b as f64 / 1_000_000_000.0)
+            } else {
+                format!("{:.0} MB", b as f64 / 1_000_000.0)
+            }
+        });
+        let backend = if ai_status.local.gpu_enabled {
+            "GPU".to_string()
+        } else {
+            "CPU".to_string()
+        };
+        Ok(SlmStatusInfo {
+            loaded: true,
+            model_name: ai_status.local.model_name,
+            model_size: size_str,
+            backend: Some(backend),
+            cloud_available,
+        })
+    } else if cloud_available {
+        Ok(SlmStatusInfo {
+            loaded: true,
+            model_name: ai_status.cloud.model,
+            model_size: None,
+            backend: ai_status.cloud.provider,
+            cloud_available,
+        })
+    } else {
+        Ok(SlmStatusInfo {
             loaded: false,
             model_name: None,
             model_size: None,
             backend: None,
-        }),
+            cloud_available: false,
+        })
     }
 }
 
@@ -4623,14 +4708,15 @@ pub async fn get_humanized_events(
 pub async fn get_protection_score(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    let model_info = state.active_model_info.lock().map_err(|e| e.to_string())?;
-    let ai_points: u32 = match &*model_info {
-        Some(info) if info.model_type != "mock" => {
-            if info.model_type == "cloud_api" { 5 } else { 15 }
-        }
-        _ => 0,
+    let local_active = state.ai_backends.local_available();
+    let cloud_active = state.ai_backends.cloud_available();
+    let ai_points: u32 = if local_active {
+        15
+    } else if cloud_active {
+        5
+    } else {
+        0
     };
-    drop(model_info);
 
     let alert_count = state.alert_store.lock().map(|s| s.len()).unwrap_or(0);
     let alert_points: u32 = if alert_count == 0 { 15 } else if alert_count <= 3 { 10 } else { 5 };
@@ -4671,6 +4757,10 @@ pub async fn get_score_history(_days: u32) -> Result<Vec<serde_json::Value>, Str
 }
 
 /// Ask Claw natural language query.
+///
+/// When a cloud agent session manager is available (API key configured),
+/// routes through the cloud-powered agent with tool-use capabilities.
+/// Falls back to local SLM or heuristic analysis otherwise.
 #[tauri::command]
 pub async fn ask_claw(
     state: tauri::State<'_, AppState>,
@@ -4686,39 +4776,101 @@ pub async fn ask_claw(
 
     let _context = context_json.unwrap_or_default();
 
-    // Clone the Arc out of the mutex so we don't hold the lock across await
-    let slm_opt = {
-        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
+    // Phase 2: Try cloud agent first when available
+    let cloud_mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
         guard.clone()
     };
 
+    if let Some(mgr) = cloud_mgr {
+        // Use a Chat session for Ask Claw queries via the cloud agent
+        let briefing = clawdefender_swarm::context_bridge::CloudBriefingBuilder::new(
+            clawdefender_swarm::context_bridge::SessionType::Chat,
+        )
+        .with_system_profile(clawdefender_swarm::context_bridge::SystemProfile {
+            os_version: std::env::consts::OS.to_string(),
+            cpu_architecture: std::env::consts::ARCH.to_string(),
+            cpu_name: "unknown".to_string(),
+            ram_gb: 0,
+            gpu: None,
+        })
+        .with_event_summary("No events loaded".to_string())
+        .build();
+
+        let briefing_text = briefing.to_system_prompt();
+
+        match mgr
+            .start_session(
+                clawdefender_swarm::agent_session::SessionType::Chat,
+                briefing_text,
+                Some(input.clone()),
+            )
+            .await
+        {
+            Ok(session_id) => {
+                match mgr.send_message(&session_id, &input).await {
+                    Ok(result) => {
+                        let response = serde_json::json!({
+                            "message": result.text,
+                            "turn_id": turn_id,
+                            "intent_id": "general.query",
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "actions": [],
+                            "structured_data": {
+                                "cloud_powered": true,
+                                "session_id": session_id,
+                                "tool_calls": result.tool_calls_made.len(),
+                                "findings": result.findings.len(),
+                                "tokens_used": {
+                                    "input": result.tokens_used.input_tokens,
+                                    "output": result.tokens_used.output_tokens,
+                                }
+                            }
+                        });
+                        return serde_json::to_string(&response).map_err(|e| e.to_string());
+                    }
+                    Err(e) => {
+                        tracing::warn!("Cloud agent send_message failed, falling back to local: {e}");
+                        // Fall through to local SLM below
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Cloud agent session start failed, falling back to local: {e}");
+                // Fall through to local SLM below
+            }
+        }
+    }
+
+    // Route through AiBackendManager as an AskClaw task
     let prompt = format!(
         "You are Claw, a friendly security assistant for ClawDefender. \
          Answer the user's security question concisely.\n\nUser: {}\n\nClaw:",
         input
     );
 
-    let response = if let Some(slm) = slm_opt {
-        match slm.analyze_event(&prompt).await {
-            Ok(result) => serde_json::json!({
-                "message": result.explanation,
-                "turn_id": turn_id,
-                "intent_id": "general.query",
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "actions": [],
-                "structured_data": null
-            }),
-            Err(_) => serde_json::json!({
-                "message": "I'm having trouble thinking right now. The AI model may not be loaded. Check Settings > AI Analysis.",
-                "turn_id": turn_id,
-                "intent_id": "error.slm",
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "actions": [],
-                "structured_data": null
-            })
-        }
+    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
+        task_type: clawdefender_slm::TaskType::AskClaw,
+        prompt: prompt.clone(),
+        context: None,
+    }).await;
+
+    // Check if the AI response is a real analysis or a fail-closed placeholder.
+    // analyze_event() catches internal errors and returns Ok(unavailable_response)
+    // with confidence 0.0, which looks like "success" but isn't a real analysis.
+    let usable_response = ai_resp.response.filter(|r| r.confidence > 0.0);
+
+    let response = if let Some(result) = usable_response {
+        serde_json::json!({
+            "message": result.explanation,
+            "turn_id": turn_id,
+            "intent_id": "general.query",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "actions": [],
+            "structured_data": null
+        })
     } else {
-        // No model loaded — use the heuristic backend as a fallback
+        // No usable backends — use the heuristic backend as a fallback
         let heuristic_config = clawdefender_slm::engine::SlmConfig::default();
         let heuristic_backend: Box<dyn clawdefender_slm::engine::SlmBackend> =
             Box::new(clawdefender_slm::engine::HeuristicSlmBackend::new());
@@ -4785,30 +4937,23 @@ pub async fn analyze_url(
     state: tauri::State<'_, AppState>,
     url: String,
 ) -> Result<String, String> {
-    // Clone the Arc out of the mutex so we don't hold the lock across await
-    let slm_opt = {
-        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
+    let prompt = format!("Analyze this URL for security risks: {}", url);
+    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
+        task_type: clawdefender_slm::TaskType::QuickRiskAssessment,
+        prompt,
+        context: None,
+    }).await;
 
-    let result = if let Some(slm) = slm_opt {
-        let prompt = format!("Analyze this URL for security risks: {}", url);
-        match slm.analyze_event(&prompt).await {
-            Ok(response) => serde_json::json!({
-                "url": url,
-                "analysis": response.explanation,
-                "risk": format!("{:?}", response.risk_level)
-            }),
-            Err(e) => serde_json::json!({
-                "url": url,
-                "analysis": format!("Analysis failed: {}", e),
-                "risk": "unknown"
-            }),
-        }
+    let result = if let Some(response) = ai_resp.response {
+        serde_json::json!({
+            "url": url,
+            "analysis": response.explanation,
+            "risk": format!("{:?}", response.risk_level)
+        })
     } else {
         serde_json::json!({
             "url": url,
-            "analysis": "No AI model loaded. Cannot analyze URL.",
+            "analysis": ai_resp.message.unwrap_or_else(|| "No AI model loaded. Cannot analyze URL.".to_string()),
             "risk": "unknown"
         })
     };
@@ -4920,11 +5065,6 @@ pub async fn analyze_config(
     state: tauri::State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
-    let slm_opt = {
-        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-
     let file_name = std::path::Path::new(&path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -4940,17 +5080,19 @@ pub async fn analyze_config(
         content
     };
 
-    let analysis = if let Some(slm) = slm_opt {
-        let prompt = format!(
-            "Analyze this configuration file for security risks:\nFile: {}\nContent:\n{}",
-            file_name, truncated
-        );
-        match slm.analyze_event(&prompt).await {
-            Ok(resp) => resp.explanation,
-            Err(_) => format!("Configuration file '{}' loaded. Unable to run AI analysis — check AI settings.", file_name),
-        }
-    } else {
-        format!("Configuration file '{}' loaded. Enable an AI model in Settings to get security analysis.", file_name)
+    let prompt = format!(
+        "Analyze this configuration file for security risks:\nFile: {}\nContent:\n{}",
+        file_name, truncated
+    );
+    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
+        task_type: clawdefender_slm::TaskType::DeepAnalysis,
+        prompt,
+        context: None,
+    }).await;
+
+    let analysis = match ai_resp.response {
+        Some(resp) => resp.explanation,
+        None => format!("Configuration file '{}' loaded. Enable an AI model in Settings to get security analysis.", file_name),
     };
 
     Ok(serde_json::json!({
@@ -4966,27 +5108,24 @@ pub async fn analyze_file(
     state: tauri::State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
-    let slm_opt = {
-        let guard = state.active_slm.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-
     let file_name = std::path::Path::new(&path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.clone());
 
-    let analysis = if let Some(slm) = slm_opt {
-        let prompt = format!(
-            "Analyze this file for security risks: {}",
-            file_name
-        );
-        match slm.analyze_event(&prompt).await {
-            Ok(resp) => resp.explanation,
-            Err(_) => format!("File '{}' noted. Unable to run AI analysis.", file_name),
-        }
-    } else {
-        format!("File '{}' noted. Enable an AI model in Settings for analysis.", file_name)
+    let prompt = format!(
+        "Analyze this file for security risks: {}",
+        file_name
+    );
+    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
+        task_type: clawdefender_slm::TaskType::QuickRiskAssessment,
+        prompt,
+        context: None,
+    }).await;
+
+    let analysis = match ai_resp.response {
+        Some(resp) => resp.explanation,
+        None => format!("File '{}' noted. Enable an AI model in Settings for analysis.", file_name),
     };
 
     Ok(serde_json::json!({
@@ -5137,6 +5276,2337 @@ pub async fn get_server_summary(
         },
         "permissions": []
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Agent Session commands (cloud-powered security agent)
+// ---------------------------------------------------------------------------
+
+/// Start a new cloud-powered agent session.
+#[tauri::command]
+pub async fn start_agent_session(
+    session_type: String,
+    initial_query: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Agent sessions not available. Configure a cloud API key in Settings.".to_string()
+        })?
+    };
+
+    // Parse session type string into the swarm SessionType enum
+    let st = match session_type.as_str() {
+        "chat" => clawdefender_swarm::agent_session::SessionType::Chat,
+        "scan" => clawdefender_swarm::agent_session::SessionType::Scan {
+            playbook: "full".to_string(),
+        },
+        "investigate" => clawdefender_swarm::agent_session::SessionType::Investigate {
+            event_id: initial_query.clone().unwrap_or_default(),
+        },
+        "report" => clawdefender_swarm::agent_session::SessionType::Report {
+            report_type: "security".to_string(),
+        },
+        _ => clawdefender_swarm::agent_session::SessionType::Chat,
+    };
+
+    // Build a basic cloud briefing with defaults
+    let briefing = clawdefender_swarm::context_bridge::CloudBriefingBuilder::new(
+        clawdefender_swarm::context_bridge::SessionType::Chat,
+    )
+    .with_system_profile(clawdefender_swarm::context_bridge::SystemProfile {
+        os_version: std::env::consts::OS.to_string(),
+        cpu_architecture: std::env::consts::ARCH.to_string(),
+        cpu_name: "unknown".to_string(),
+        ram_gb: 0,
+        gpu: None,
+    })
+    .with_event_summary("No events loaded".to_string())
+    .build();
+
+    let briefing_text = briefing.to_system_prompt();
+
+    let session_id = mgr
+        .start_session(st, briefing_text, initial_query)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "session_id": session_id }))
+}
+
+/// Send a message in an existing agent session and run the tool-use loop.
+#[tauri::command]
+pub async fn send_agent_message(
+    app_handle: tauri::AppHandle,
+    session_id: String,
+    message: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Agent sessions not available.".to_string()
+        })?
+    };
+
+    let result = match mgr.send_message(&session_id, &message).await {
+        Ok(r) => r,
+        Err(e) => {
+            // Emit cloud error event
+            crate::events::emit_cloud_error(&app_handle, &crate::events::CloudErrorPayload {
+                session_id: Some(session_id.clone()),
+                error: e.to_string(),
+                recoverable: !e.to_string().contains("Invalid API key"),
+            });
+            return Err(e.to_string());
+        }
+    };
+
+    // Emit cloud response event
+    crate::events::emit_cloud_response(&app_handle, &crate::events::CloudResponsePayload {
+        session_id: session_id.clone(),
+        text: result.text.clone(),
+        is_final: true,
+    });
+
+    // Emit tool call events
+    for tc in &result.tool_calls_made {
+        crate::events::emit_cloud_tool_call(&app_handle, &crate::events::CloudToolCallPayload {
+            session_id: session_id.clone(),
+            tool_name: tc.tool_name.clone(),
+            input_summary: tc.input_summary.clone(),
+            success: tc.success,
+        });
+    }
+
+    // Emit pending action events
+    for action in &result.pending_actions {
+        crate::events::emit_action_pending(&app_handle, &crate::events::ActionPendingPayload {
+            session_id: session_id.clone(),
+            action_id: action.id.clone(),
+            action_type: action.action_type.clone(),
+            description: action.description.clone(),
+        });
+    }
+
+    // Check budget warning (80% threshold)
+    {
+        let guard = state.cost_tracker.lock().map_err(|e| e.to_string())?;
+        if let Some(ref tracker_arc) = *guard {
+            if let Ok(tracker) = tracker_arc.lock() {
+                if let Ok(report) = tracker.get_budget_status() {
+                    if report.any_warning {
+                        let (tier, pct, used, limit) = if report.session_percent >= 80.0 {
+                            ("session", report.session_percent, report.session_used, report.session_budget)
+                        } else if report.daily_percent >= 80.0 {
+                            ("daily", report.daily_percent, report.daily_used, report.daily_budget)
+                        } else {
+                            ("monthly", report.monthly_percent, report.monthly_used, report.monthly_budget)
+                        };
+                        crate::events::emit_budget_warning(&app_handle, &crate::events::BudgetWarningPayload {
+                            tier: tier.to_string(),
+                            used_percent: pct,
+                            used_amount: used,
+                            limit_amount: limit,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+/// Get status of a specific agent session.
+#[tauri::command]
+pub async fn get_agent_session_status(
+    session_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Agent sessions not available.".to_string()
+        })?
+    };
+
+    let status = mgr
+        .get_session_status(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&status).map_err(|e| e.to_string())
+}
+
+/// List all agent sessions.
+#[tauri::command]
+pub async fn list_agent_sessions(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Agent sessions not available.".to_string()
+        })?
+    };
+
+    let sessions = mgr
+        .list_sessions()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&sessions).map_err(|e| e.to_string())
+}
+
+/// Cancel an active agent session.
+#[tauri::command]
+pub async fn cancel_agent_session(
+    session_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Agent sessions not available.".to_string()
+        })?
+    };
+
+    mgr.cancel_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "cancelled": true, "session_id": session_id }))
+}
+
+/// Approve a pending action from a cloud agent session.
+#[tauri::command]
+pub async fn approve_pending_action(
+    session_id: String,
+    action_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Agent sessions not available.".to_string()
+        })?
+    };
+
+    mgr.approve_pending_action(&session_id, &action_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "approved": true, "action_id": action_id }))
+}
+
+/// Reject a pending action from a cloud agent session.
+#[tauri::command]
+pub async fn reject_pending_action(
+    session_id: String,
+    action_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mgr = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Agent sessions not available.".to_string()
+        })?
+    };
+
+    mgr.reject_pending_action(&session_id, &action_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "rejected": true, "action_id": action_id }))
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Cloud status & budget commands
+// ---------------------------------------------------------------------------
+
+/// Get overall cloud agent status, including AI backend cloud info.
+#[tauri::command]
+pub async fn get_cloud_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let has_manager = {
+        let guard = state.agent_session_manager.lock().map_err(|e| e.to_string())?;
+        guard.is_some()
+    };
+
+    // Check if any cloud API key is configured
+    let provider_configured = clawdefender_slm::cloud_backend::has_api_key("anthropic")
+        || clawdefender_slm::cloud_backend::has_api_key("openai");
+
+    let budget_status = {
+        let guard = state.cost_tracker.lock().map_err(|e| e.to_string())?;
+        if let Some(ref tracker_arc) = *guard {
+            let tracker = tracker_arc.lock().map_err(|e| e.to_string())?;
+            let report = tracker.get_budget_status().map_err(|e| e.to_string())?;
+            serde_json::to_value(&report).unwrap_or(serde_json::json!(null))
+        } else {
+            serde_json::json!(null)
+        }
+    };
+
+    // Include AI backend cloud status (dual-backend architecture)
+    let ai_status = state.ai_backends.get_status();
+    let ai_cloud = serde_json::to_value(&ai_status.cloud).unwrap_or(serde_json::json!(null));
+
+    Ok(serde_json::json!({
+        "provider_configured": provider_configured,
+        "agent_sessions_available": has_manager,
+        "budget_status": budget_status,
+        "ai_backend": ai_cloud,
+    }))
+}
+
+/// Get budget status from the cost tracker.
+#[tauri::command]
+pub async fn get_budget_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.cost_tracker.lock().map_err(|e| e.to_string())?;
+    if let Some(ref tracker_arc) = *guard {
+        let tracker = tracker_arc.lock().map_err(|e| e.to_string())?;
+        let report = tracker.get_budget_status().map_err(|e| e.to_string())?;
+        serde_json::to_value(&report).map_err(|e| e.to_string())
+    } else {
+        Ok(serde_json::json!({
+            "session_budget": 0.50,
+            "session_used": 0.0,
+            "session_remaining": 0.50,
+            "session_percent": 0.0,
+            "daily_budget": 1.00,
+            "daily_used": 0.0,
+            "daily_remaining": 1.00,
+            "daily_percent": 0.0,
+            "monthly_budget": 20.00,
+            "monthly_used": 0.0,
+            "monthly_remaining": 20.00,
+            "monthly_percent": 0.0,
+            "warning_threshold_percent": 80.0,
+            "any_warning": false
+        }))
+    }
+}
+
+/// Update budget limits for cloud API usage.
+#[tauri::command]
+pub async fn update_budgets(
+    session_budget: Option<f64>,
+    daily_budget: Option<f64>,
+    monthly_budget: Option<f64>,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.cost_tracker.lock().map_err(|e| e.to_string())?;
+    if let Some(ref tracker_arc) = *guard {
+        let mut tracker = tracker_arc.lock().map_err(|e| e.to_string())?;
+        tracker
+            .update_budgets(session_budget, daily_budget, monthly_budget)
+            .map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "updated": true }))
+    } else {
+        Err("Cost tracker not initialized. Configure a cloud API key first.".to_string())
+    }
+}
+
+/// Get the current cloud configuration (provider, model, budgets).
+#[tauri::command]
+pub async fn get_cloud_config(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let has_anthropic = clawdefender_slm::cloud_backend::has_api_key("anthropic");
+    let has_openai = clawdefender_slm::cloud_backend::has_api_key("openai");
+
+    let provider = if has_anthropic {
+        "anthropic"
+    } else if has_openai {
+        "openai"
+    } else {
+        "none"
+    };
+
+    let model = match provider {
+        "anthropic" => "claude-sonnet-4-20250514",
+        "openai" => "gpt-4o",
+        _ => "",
+    };
+
+    let budgets = {
+        let guard = state.cost_tracker.lock().map_err(|e| e.to_string())?;
+        if let Some(ref tracker_arc) = *guard {
+            let tracker = tracker_arc.lock().map_err(|e| e.to_string())?;
+            let budget = tracker.budget().clone();
+            serde_json::json!({
+                "session_limit": budget.session_limit_usd,
+                "daily_limit": budget.daily_limit_usd,
+                "monthly_limit": budget.monthly_limit_usd,
+            })
+        } else {
+            serde_json::json!({
+                "session_limit": 0.50,
+                "daily_limit": 1.00,
+                "monthly_limit": 20.00,
+            })
+        }
+    };
+
+    Ok(serde_json::json!({
+        "provider": provider,
+        "model": model,
+        "api_key_configured": has_anthropic || has_openai,
+        "budgets": budgets,
+    }))
+}
+
+/// Update cloud configuration (budgets). Provider/model changes require
+/// saving a new API key and restarting the app to reinitialize the pipeline.
+#[tauri::command]
+pub async fn update_cloud_config(
+    session_budget: Option<f64>,
+    daily_budget: Option<f64>,
+    monthly_budget: Option<f64>,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.cost_tracker.lock().map_err(|e| e.to_string())?;
+    if let Some(ref tracker_arc) = *guard {
+        let mut tracker = tracker_arc.lock().map_err(|e| e.to_string())?;
+        tracker
+            .update_budgets(session_budget, daily_budget, monthly_budget)
+            .map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "updated": true }))
+    } else {
+        Err("Cost tracker not initialized. Configure a cloud API key first.".to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Privacy commands
+// ---------------------------------------------------------------------------
+
+/// Preview what data would be sent to the cloud for a given session type.
+#[tauri::command]
+pub async fn get_privacy_preview(
+    session_type: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let filter = {
+        let guard = state.privacy_filter.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    // Build a sample briefing
+    let st = match session_type.as_str() {
+        "scan" => clawdefender_swarm::context_bridge::SessionType::Scan {
+            playbook: "full".to_string(),
+        },
+        "investigate" => clawdefender_swarm::context_bridge::SessionType::Investigate {
+            event_id: "sample-event".to_string(),
+        },
+        "report" => clawdefender_swarm::context_bridge::SessionType::Report {
+            report_type: "security".to_string(),
+        },
+        _ => clawdefender_swarm::context_bridge::SessionType::Chat,
+    };
+
+    let briefing = clawdefender_swarm::context_bridge::CloudBriefingBuilder::new(st)
+        .with_system_profile(clawdefender_swarm::context_bridge::SystemProfile {
+            os_version: std::env::consts::OS.to_string(),
+            cpu_architecture: std::env::consts::ARCH.to_string(),
+            cpu_name: "unknown".to_string(),
+            ram_gb: 0,
+            gpu: None,
+        })
+        .with_event_summary("Sample events for preview".to_string())
+        .build();
+
+    let briefing_text = briefing.to_system_prompt();
+
+    let (filtered_text, redaction_count) = if let Some(pf) = filter {
+        let result = pf.filter_briefing(&briefing_text);
+        (result.filtered_text, result.redaction_count)
+    } else {
+        (briefing_text.clone(), 0)
+    };
+
+    let tool_defs = clawdefender_swarm::tools::get_all_tool_definitions();
+    let tool_names: Vec<&str> = tool_defs.iter().map(|t| t.name.as_str()).collect();
+
+    Ok(serde_json::json!({
+        "filtered_briefing": filtered_text,
+        "original_length": briefing_text.len(),
+        "filtered_length": filtered_text.len(),
+        "redaction_count": redaction_count,
+        "tools_available": tool_names,
+    }))
+}
+
+/// Get the outbound audit trail showing what data was sent to the cloud.
+#[tauri::command]
+pub async fn get_outbound_audit(
+    limit: Option<u32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let filter = {
+        let guard = state.privacy_filter.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    if let Some(pf) = filter {
+        let trail = pf.get_audit_trail();
+        let limit = limit.unwrap_or(50) as usize;
+        let entries: Vec<_> = trail.into_iter().rev().take(limit).collect();
+        serde_json::to_value(&entries).map_err(|e| e.to_string())
+    } else {
+        Ok(serde_json::json!([]))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — AI scan orchestrator commands
+// ---------------------------------------------------------------------------
+
+/// Start an AI security scan with the specified playbook.
+#[tauri::command]
+pub async fn start_ai_scan(
+    app_handle: tauri::AppHandle,
+    playbook_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available. Configure a cloud API key in Settings.".to_string()
+        })?
+    };
+
+    let progress = orch
+        .start_scan(&playbook_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let scan_id = progress.scan_id.clone();
+
+    // Spawn the scan loop as a background task
+    let orch_bg = orch.clone();
+    let app_bg = app_handle.clone();
+    let scan_id_bg = scan_id.clone();
+    tokio::spawn(async move {
+        match orch_bg.run_scan_loop(&scan_id_bg).await {
+            Ok(result) => {
+                let status_str = match &result.status {
+                    clawdefender_swarm::scan_orchestrator::ScanStatus::Completed => "completed",
+                    clawdefender_swarm::scan_orchestrator::ScanStatus::Cancelled => "cancelled",
+                    clawdefender_swarm::scan_orchestrator::ScanStatus::Failed { .. } => "failed",
+                    clawdefender_swarm::scan_orchestrator::ScanStatus::Running => "running",
+                };
+                crate::events::emit_scan_complete(
+                    &app_bg,
+                    &crate::events::ScanCompletePayload {
+                        scan_id: scan_id_bg.clone(),
+                        status: status_str.to_string(),
+                        findings_count: result.findings.len(),
+                        summary: result.summary.clone(),
+                    },
+                );
+            }
+            Err(e) => {
+                crate::events::emit_scan_complete(
+                    &app_bg,
+                    &crate::events::ScanCompletePayload {
+                        scan_id: scan_id_bg.clone(),
+                        status: "failed".to_string(),
+                        findings_count: 0,
+                        summary: format!("Scan failed: {}", e),
+                    },
+                );
+            }
+        }
+    });
+
+    serde_json::to_value(&progress).map_err(|e| e.to_string())
+}
+
+/// Get real-time progress of an AI scan.
+#[tauri::command]
+pub async fn get_ai_scan_progress(
+    scan_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    let progress = orch
+        .get_progress(&scan_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&progress).map_err(|e| e.to_string())
+}
+
+/// Get the final result of a completed AI scan.
+#[tauri::command]
+pub async fn get_ai_scan_result(
+    scan_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    let result = orch
+        .get_result(&scan_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+/// Cancel a running AI scan.
+#[tauri::command]
+pub async fn cancel_ai_scan(
+    scan_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    orch.cancel_scan(&scan_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "cancelled": true, "scan_id": scan_id }))
+}
+
+/// Respond to a user request from a running AI scan.
+#[tauri::command]
+pub async fn respond_to_scan_request(
+    scan_id: String,
+    request_id: String,
+    response: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    orch.respond_to_request(&scan_id, &request_id, &response)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "responded": true }))
+}
+
+/// Get the evidence chain for a specific finding in an AI scan.
+#[tauri::command]
+pub async fn get_scan_evidence_chain(
+    scan_id: String,
+    finding_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    let chain = orch
+        .get_evidence_chain(&scan_id, &finding_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&chain).map_err(|e| e.to_string())
+}
+
+/// Get all remediations for an AI scan.
+#[tauri::command]
+pub async fn get_scan_remediations(
+    scan_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    let remediations = orch
+        .get_remediations(&scan_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&remediations).map_err(|e| e.to_string())
+}
+
+/// Execute a specific remediation from an AI scan.
+#[tauri::command]
+pub async fn execute_scan_remediation(
+    scan_id: String,
+    remediation_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    orch.execute_remediation(&scan_id, &remediation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "executed": true, "remediation_id": remediation_id }))
+}
+
+/// Revert a previously executed remediation.
+#[tauri::command]
+pub async fn revert_scan_remediation(
+    scan_id: String,
+    remediation_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    orch.revert_remediation(&scan_id, &remediation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "reverted": true, "remediation_id": remediation_id }))
+}
+
+/// Get all available scan playbooks.
+#[tauri::command]
+pub async fn get_scan_playbooks() -> Result<serde_json::Value, String> {
+    let summaries = clawdefender_swarm::scan_playbooks::get_playbook_summaries();
+    serde_json::to_value(&summaries).map_err(|e| e.to_string())
+}
+
+/// Get detailed info about a specific playbook.
+#[tauri::command]
+pub async fn get_playbook_detail(
+    playbook_id: String,
+) -> Result<serde_json::Value, String> {
+    let playbook = clawdefender_swarm::scan_playbooks::get_playbook(&playbook_id)
+        .ok_or_else(|| format!("Playbook not found: {}", playbook_id))?;
+
+    serde_json::to_value(&playbook).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Report generator commands
+// ---------------------------------------------------------------------------
+
+/// Generate a scan report in the specified format (markdown or html).
+#[tauri::command]
+pub async fn generate_scan_report(
+    scan_id: String,
+    format: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available. Configure a cloud API key in Settings.".to_string()
+        })?
+    };
+
+    let scan_result = orch
+        .get_result(&scan_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let remediations = orch
+        .get_remediations(&scan_id)
+        .await
+        .unwrap_or_default();
+
+    let report_format = match format.to_lowercase().as_str() {
+        "html" => clawdefender_swarm::report_generator::ReportFormat::Html,
+        _ => clawdefender_swarm::report_generator::ReportFormat::Markdown,
+    };
+
+    let gen = clawdefender_swarm::report_generator::ReportGenerator::new();
+    let report = gen
+        .generate(&scan_result, None, &remediations, report_format, None)
+        .map_err(|e| e.to_string())?;
+
+    let content = match &report.format {
+        clawdefender_swarm::report_generator::ReportFormat::Markdown => gen.render_markdown(&report),
+        clawdefender_swarm::report_generator::ReportFormat::Html => gen.render_html(&report),
+    };
+
+    let file_path = gen
+        .save_report(&report, &content)
+        .map_err(|e| e.to_string())?;
+
+    Ok(file_path)
+}
+
+/// Get the content of a previously generated scan report.
+#[tauri::command]
+pub async fn get_scan_report(
+    scan_id: String,
+) -> Result<String, String> {
+    clawdefender_swarm::report_generator::ReportGenerator::load_report(&scan_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Compare two scan results and return the comparison data.
+#[tauri::command]
+pub async fn get_scan_comparison(
+    scan_id: String,
+    previous_scan_id: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orch = {
+        let guard = state.scan_orchestrator.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "AI scan not available.".to_string()
+        })?
+    };
+
+    let current = orch
+        .get_result(&scan_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let prev_id = previous_scan_id.ok_or_else(|| "previous_scan_id is required".to_string())?;
+
+    let previous = orch
+        .get_result(&prev_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let comparison = clawdefender_swarm::report_generator::ReportGenerator::compare_scans(
+        &current, &previous,
+    );
+
+    serde_json::to_value(&comparison).map_err(|e| e.to_string())
+}
+
+/// List all generated scan reports.
+#[tauri::command]
+pub async fn list_scan_reports() -> Result<Vec<serde_json::Value>, String> {
+    let summaries = clawdefender_swarm::report_generator::ReportGenerator::list_reports()
+        .map_err(|e| e.to_string())?;
+
+    summaries
+        .into_iter()
+        .map(|s| serde_json::to_value(s).map_err(|e| e.to_string()))
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Threat Hunting commands
+// ---------------------------------------------------------------------------
+
+/// Start a proactive threat hunt.
+#[tauri::command]
+pub async fn start_threat_hunt(
+    state: tauri::State<'_, AppState>,
+    hunt_type: String,
+    params: Option<String>,
+    time_range_hours: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    let hunter = {
+        let guard = state.threat_hunter.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Threat hunting not available. Configure a cloud API key in Settings.".to_string()
+        })?
+    };
+
+    let ht = match hunt_type.as_str() {
+        "general" => clawdefender_swarm::threat_hunting::HuntType::GeneralSweep,
+        "server" => clawdefender_swarm::threat_hunting::HuntType::ServerFocused {
+            server: params.clone().unwrap_or_else(|| "unknown".to_string()),
+        },
+        "pattern" => clawdefender_swarm::threat_hunting::HuntType::PatternSearch {
+            pattern: params.clone().unwrap_or_else(|| "general".to_string()),
+        },
+        "historical" => clawdefender_swarm::threat_hunting::HuntType::HistoricalReview {
+            period: params.clone().unwrap_or_else(|| "last 7 days".to_string()),
+        },
+        _ => clawdefender_swarm::threat_hunting::HuntType::GeneralSweep,
+    };
+
+    let hours = time_range_hours.unwrap_or(24);
+    let now = chrono::Utc::now();
+    let start = now - chrono::Duration::hours(hours as i64);
+    let time_range = clawdefender_swarm::threat_hunting::TimeRange {
+        start,
+        end: now,
+    };
+
+    let progress = hunter
+        .start_hunt(ht, time_range)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let hunt_id = progress.hunt_id.clone();
+
+    // Spawn the hunt loop as a background task
+    let hunter_bg = hunter.clone();
+    let hunt_id_bg = hunt_id.clone();
+    tokio::spawn(async move {
+        match hunter_bg.run_hunt_loop(&hunt_id_bg).await {
+            Ok(_result) => {
+                tracing::info!("Threat hunt {} completed", hunt_id_bg);
+            }
+            Err(e) => {
+                tracing::error!("Threat hunt {} failed: {}", hunt_id_bg, e);
+            }
+        }
+    });
+
+    serde_json::to_value(&progress).map_err(|e| e.to_string())
+}
+
+/// Get real-time progress of a threat hunt.
+#[tauri::command]
+pub async fn get_hunt_progress(
+    state: tauri::State<'_, AppState>,
+    hunt_id: String,
+) -> Result<serde_json::Value, String> {
+    let hunter = {
+        let guard = state.threat_hunter.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Threat hunting not available.".to_string()
+        })?
+    };
+
+    let progress = hunter
+        .get_progress(&hunt_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&progress).map_err(|e| e.to_string())
+}
+
+/// Get the final result of a completed threat hunt.
+#[tauri::command]
+pub async fn get_hunt_results(
+    state: tauri::State<'_, AppState>,
+    hunt_id: String,
+) -> Result<serde_json::Value, String> {
+    let hunter = {
+        let guard = state.threat_hunter.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Threat hunting not available.".to_string()
+        })?
+    };
+
+    let result = hunter
+        .get_result(&hunt_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+/// Cancel a running threat hunt.
+#[tauri::command]
+pub async fn cancel_threat_hunt(
+    state: tauri::State<'_, AppState>,
+    hunt_id: String,
+) -> Result<serde_json::Value, String> {
+    let hunter = {
+        let guard = state.threat_hunter.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Threat hunting not available.".to_string()
+        })?
+    };
+
+    hunter
+        .cancel_hunt(&hunt_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "cancelled": true, "hunt_id": hunt_id }))
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Investigation persistence commands
+// ---------------------------------------------------------------------------
+
+/// List investigations, optionally filtered.
+#[tauri::command]
+pub async fn list_investigations(
+    state: tauri::State<'_, AppState>,
+    filter: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.investigation_store.lock().map_err(|e| e.to_string())?;
+    let store = guard.as_ref().ok_or_else(|| {
+        "Investigation store not initialized.".to_string()
+    })?;
+
+    let query: Option<clawdefender_swarm::investigation_store::InvestigationSearchQuery> =
+        filter.and_then(|v| serde_json::from_value(v).ok());
+
+    let entries = store.list(query.as_ref());
+    serde_json::to_value(&entries).map_err(|e| e.to_string())
+}
+
+/// Get a full investigation result by ID.
+#[tauri::command]
+pub async fn get_investigation(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.investigation_store.lock().map_err(|e| e.to_string())?;
+    let store = guard.as_ref().ok_or_else(|| {
+        "Investigation store not initialized.".to_string()
+    })?;
+
+    let result = store.load(&investigation_id).map_err(|e| e.to_string())?;
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+/// Search investigations with full-text and filter criteria.
+#[tauri::command]
+pub async fn search_investigations(
+    state: tauri::State<'_, AppState>,
+    query: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let guard = state.investigation_store.lock().map_err(|e| e.to_string())?;
+    let store = guard.as_ref().ok_or_else(|| {
+        "Investigation store not initialized.".to_string()
+    })?;
+
+    let search_query: clawdefender_swarm::investigation_store::InvestigationSearchQuery =
+        serde_json::from_value(query).map_err(|e| e.to_string())?;
+
+    let results = store.search(&search_query).map_err(|e| e.to_string())?;
+    serde_json::to_value(&results).map_err(|e| e.to_string())
+}
+
+/// Delete an investigation by ID.
+#[tauri::command]
+pub async fn delete_investigation(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.investigation_store.lock().map_err(|e| e.to_string())?;
+    let store = guard.as_mut().ok_or_else(|| {
+        "Investigation store not initialized.".to_string()
+    })?;
+
+    store.delete(&investigation_id).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "deleted": true, "id": investigation_id }))
+}
+
+/// Pin or unpin an investigation.
+#[tauri::command]
+pub async fn pin_investigation(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+    pinned: bool,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.investigation_store.lock().map_err(|e| e.to_string())?;
+    let store = guard.as_mut().ok_or_else(|| {
+        "Investigation store not initialized.".to_string()
+    })?;
+
+    store.pin(&investigation_id, pinned).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "id": investigation_id, "pinned": pinned }))
+}
+
+/// Export an investigation in the specified format (json or markdown).
+#[tauri::command]
+pub async fn export_investigation(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+    format: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.investigation_store.lock().map_err(|e| e.to_string())?;
+    let store = guard.as_ref().ok_or_else(|| {
+        "Investigation store not initialized.".to_string()
+    })?;
+
+    let content = store.export(&investigation_id, &format).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "content": content, "format": format }))
+}
+
+/// Resume a previous investigation — loads the full result plus related investigations
+/// for context injection into a new Claude session.
+#[tauri::command]
+pub async fn resume_investigation(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.investigation_store.lock().map_err(|e| e.to_string())?;
+    let store = guard.as_ref().ok_or_else(|| {
+        "Investigation store not initialized.".to_string()
+    })?;
+
+    let result = store.load(&investigation_id).map_err(|e| e.to_string())?;
+
+    // Find related investigations for cross-referencing context
+    let related = store.find_related(None, Some(&result.target_id));
+
+    // Build a resumption context with the original investigation + related
+    let result_json = serde_json::to_value(&result).map_err(|e| e.to_string())?;
+    let related_json = serde_json::to_value(&related).map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "investigation": result_json,
+        "related_investigations": related_json,
+        "resumable": true,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Investigation Timeline commands
+// ---------------------------------------------------------------------------
+
+/// Get the investigation timeline for a given investigation.
+#[tauri::command]
+pub async fn get_investigation_timeline(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+) -> Result<serde_json::Value, String> {
+    // Gather events from the event buffer related to this investigation
+    let events: Vec<serde_json::Value> = {
+        let buffer = state.event_buffer.lock().map_err(|e| e.to_string())?;
+        buffer
+            .iter()
+            .map(|e| serde_json::to_value(e).unwrap_or_default())
+            .collect()
+    };
+
+    let timeline = clawdefender_swarm::investigation_timeline::TimelineBuilder::from_investigation(
+        &investigation_id,
+        &events,
+        &[],     // evidence
+        &[],     // findings
+        "",      // narrative — none without an active investigation session
+    );
+
+    serde_json::to_value(&timeline).map_err(|e| e.to_string())
+}
+
+/// Get a narrative story for a single event with surrounding context.
+#[tauri::command]
+pub async fn get_event_story(
+    state: tauri::State<'_, AppState>,
+    event_id: String,
+) -> Result<serde_json::Value, String> {
+    let (target, surrounding) = {
+        let buffer = state.event_buffer.lock().map_err(|e| e.to_string())?;
+        let target = buffer
+            .iter()
+            .find(|e| e.id == event_id)
+            .map(|e| serde_json::to_value(e).unwrap_or_default())
+            .ok_or_else(|| format!("Event not found: {}", event_id))?;
+
+        let target_idx = buffer.iter().position(|e| e.id == event_id).unwrap_or(0);
+        let start = target_idx.saturating_sub(10);
+        let end = (target_idx + 11).min(buffer.len());
+
+        let surrounding: Vec<serde_json::Value> = buffer[start..end]
+            .iter()
+            .filter(|e| e.id != event_id)
+            .map(|e| serde_json::to_value(e).unwrap_or_default())
+            .collect();
+
+        (target, surrounding)
+    };
+
+    let timeline = clawdefender_swarm::investigation_timeline::TimelineBuilder::from_event_context(
+        &event_id,
+        &target,
+        &surrounding,
+    );
+
+    serde_json::to_value(&timeline).map_err(|e| e.to_string())
+}
+
+/// Find investigations with similar patterns to the given event.
+#[tauri::command]
+pub async fn get_related_investigations(
+    _state: tauri::State<'_, AppState>,
+    event_id: String,
+) -> Result<serde_json::Value, String> {
+    // Return an empty list for now — will be populated when investigation
+    // persistence is fully wired up and past timelines are stored.
+    let result = serde_json::json!({
+        "event_id": event_id,
+        "related": [],
+        "message": "No past investigations stored yet."
+    });
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Investigation Engine commands
+// ---------------------------------------------------------------------------
+
+/// Start a new AI-powered investigation session.
+#[tauri::command]
+pub async fn start_investigation(
+    state: tauri::State<'_, AppState>,
+    target_type: String,
+    target_id: String,
+    target_data: Option<serde_json::Value>,
+    depth: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let engine = {
+        let guard = state.investigation_engine.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Investigation engine not available. Configure a cloud API key in Settings.".to_string()
+        })?
+    };
+
+    // Build InvestigationTarget from frontend params
+    let target = match target_type.as_str() {
+        "event" => clawdefender_swarm::investigation_tools::InvestigationTarget::Event {
+            event_id: target_id.clone(),
+            event_data: target_data.unwrap_or(serde_json::json!({})),
+        },
+        "alert" => clawdefender_swarm::investigation_tools::InvestigationTarget::Alert {
+            alert_id: target_id.clone(),
+            alert_data: target_data.unwrap_or(serde_json::json!({})),
+        },
+        "server" => clawdefender_swarm::investigation_tools::InvestigationTarget::Server {
+            server_name: target_id.clone(),
+        },
+        "time_range" => {
+            // Expect target_data to contain start/end
+            let data = target_data.unwrap_or(serde_json::json!({}));
+            let start = data
+                .get("start")
+                .and_then(|v| v.as_str())
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::hours(24));
+            let end = data
+                .get("end")
+                .and_then(|v| v.as_str())
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(chrono::Utc::now);
+            clawdefender_swarm::investigation_tools::InvestigationTarget::TimeRange {
+                start,
+                end,
+            }
+        }
+        _ => clawdefender_swarm::investigation_tools::InvestigationTarget::Freeform {
+            query: target_id.clone(),
+        },
+    };
+
+    // Parse depth
+    let depth = depth.map(|d| match d.as_str() {
+        "quick" => clawdefender_swarm::investigation_tools::InvestigationDepth::Quick,
+        "standard" => clawdefender_swarm::investigation_tools::InvestigationDepth::Standard,
+        "deep" => clawdefender_swarm::investigation_tools::InvestigationDepth::Deep,
+        _ => clawdefender_swarm::investigation_tools::InvestigationDepth::Standard,
+    });
+
+    let progress = engine
+        .start_investigation(target, depth)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Spawn the investigation loop in the background
+    let engine_clone = engine.clone();
+    let inv_id = progress.investigation_id.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = engine_clone.run_investigation_loop(&inv_id).await {
+            tracing::error!("Investigation {} loop error: {}", inv_id, e);
+        }
+    });
+
+    serde_json::to_value(&progress).map_err(|e| e.to_string())
+}
+
+/// Get real-time progress of a running investigation.
+#[tauri::command]
+pub async fn get_investigation_progress(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+) -> Result<serde_json::Value, String> {
+    let engine = {
+        let guard = state.investigation_engine.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Investigation engine not available.".to_string()
+        })?
+    };
+
+    let progress = engine
+        .get_progress(&investigation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&progress).map_err(|e| e.to_string())
+}
+
+/// Get the final result of a completed investigation.
+#[tauri::command]
+pub async fn get_investigation_result(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+) -> Result<serde_json::Value, String> {
+    let engine = {
+        let guard = state.investigation_engine.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Investigation engine not available.".to_string()
+        })?
+    };
+
+    let result = engine
+        .get_result(&investigation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+/// Cancel a running investigation.
+#[tauri::command]
+pub async fn cancel_investigation(
+    state: tauri::State<'_, AppState>,
+    investigation_id: String,
+) -> Result<serde_json::Value, String> {
+    let engine = {
+        let guard = state.investigation_engine.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| {
+            "Investigation engine not available.".to_string()
+        })?
+    };
+
+    engine
+        .cancel_investigation(&investigation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "cancelled": true, "investigation_id": investigation_id }))
+}
+
+// ---------------------------------------------------------------------------
+// Ask Claw AI commands
+// ---------------------------------------------------------------------------
+
+/// Send a message to the AI-powered Ask Claw assistant.
+#[tauri::command]
+pub async fn ask_claw_ai(
+    state: tauri::State<'_, AppState>,
+    input: String,
+    context_json: Option<String>,
+) -> Result<String, String> {
+    let ai_mutex = state.ask_claw_ai.clone();
+
+    // Ensure AskClawAI is initialized (short sync lock scope)
+    {
+        let mut guard = ai_mutex.lock().await;
+        if guard.is_none() {
+            let has_cloud = state.agent_session_manager.lock()
+                .map(|g| g.is_some())
+                .unwrap_or(false);
+
+            let mode = if has_cloud {
+                clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+            } else if state.ai_backends.local_available() {
+                clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+            } else {
+                clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+            };
+
+            *guard = Some(clawdefender_swarm::ask_claw_ai::AskClawAI::new(
+                mode,
+                None,
+                "claude-sonnet-4-20250514".to_string(),
+            ));
+        }
+    }
+
+    // Update context if provided
+    if let Some(ref ctx_json) = context_json {
+        if let Ok(ctx) = serde_json::from_str::<clawdefender_swarm::ask_claw_ai::ClawContext>(ctx_json) {
+            let mut guard = ai_mutex.lock().await;
+            if let Some(ref mut ai) = *guard {
+                ai.set_context(ctx);
+            }
+        }
+    }
+
+    // Send the message (holds tokio mutex across await — this is fine)
+    let mut guard = ai_mutex.lock().await;
+    let ai = guard.as_mut().ok_or("Ask Claw AI not initialized")?;
+    let response = ai.ask(&input).await.map_err(|e| e.to_string())?;
+
+    serde_json::to_string(&response).map_err(|e| e.to_string())
+}
+
+/// Get the current Ask Claw AI routing mode.
+#[tauri::command]
+pub async fn get_ask_claw_mode(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let guard = state.ask_claw_ai.lock().await;
+    let mode = match &*guard {
+        Some(ai) => ai.mode().clone(),
+        None => {
+            // Determine mode without initializing
+            let has_cloud = state.agent_session_manager.lock()
+                .map(|g| g.is_some())
+                .unwrap_or(false);
+            if has_cloud {
+                clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+            } else if state.ai_backends.local_available() {
+                clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+            } else {
+                clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+            }
+        }
+    };
+
+    serde_json::to_string(&mode).map_err(|e| e.to_string())
+}
+
+/// Approve a pending action suggested by Ask Claw AI.
+#[tauri::command]
+pub async fn approve_claw_action(
+    state: tauri::State<'_, AppState>,
+    action_id: String,
+) -> Result<String, String> {
+    let mut guard = state.ask_claw_ai.lock().await;
+    let ai = guard.as_mut().ok_or("Ask Claw AI not initialized")?;
+    let action = ai.approve_action(&action_id).map_err(|e| e.to_string())?;
+    serde_json::to_string(&action).map_err(|e| e.to_string())
+}
+
+/// Reject a pending action suggested by Ask Claw AI.
+#[tauri::command]
+pub async fn reject_claw_action(
+    state: tauri::State<'_, AppState>,
+    action_id: String,
+) -> Result<String, String> {
+    let mut guard = state.ask_claw_ai.lock().await;
+    let ai = guard.as_mut().ok_or("Ask Claw AI not initialized")?;
+    ai.reject_action(&action_id).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "rejected": true, "action_id": action_id }).to_string())
+}
+
+/// Update the context for Ask Claw AI conversations.
+#[tauri::command]
+pub async fn set_claw_context(
+    state: tauri::State<'_, AppState>,
+    context_json: String,
+) -> Result<(), String> {
+    let ctx: clawdefender_swarm::ask_claw_ai::ClawContext =
+        serde_json::from_str(&context_json).map_err(|e| e.to_string())?;
+
+    let mut guard = state.ask_claw_ai.lock().await;
+    if let Some(ref mut ai) = *guard {
+        ai.set_context(ctx);
+    }
+    Ok(())
+}
+
+/// List all Ask Claw AI conversations.
+#[tauri::command]
+pub async fn list_claw_conversations(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let guard = state.ask_claw_ai.lock().await;
+    let conversations = match &*guard {
+        Some(ai) => ai.list_conversations(),
+        None => Vec::new(),
+    };
+    serde_json::to_string(&conversations).map_err(|e| e.to_string())
+}
+
+// --- Phase 5: Scheduled Analysis commands ---
+
+#[tauri::command]
+pub async fn get_analysis_schedules(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let guard = state.scheduled_analysis.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Scheduled analysis not initialized")?;
+    let schedules = mgr.get_schedules();
+    serde_json::to_value(&schedules)
+        .map(|v| v.as_array().cloned().unwrap_or_default())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_analysis_schedule(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    enabled: Option<bool>,
+    interval_minutes: Option<u64>,
+) -> Result<(), String> {
+    let mut guard = state.scheduled_analysis.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_mut().ok_or("Scheduled analysis not initialized")?;
+    let interval = interval_minutes.map(|m| std::time::Duration::from_secs(m * 60));
+    mgr.update_schedule(&id, enabled, interval, None)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn run_schedule_now(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.scheduled_analysis.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_mut().ok_or("Scheduled analysis not initialized")?;
+    if id == "hourly_sweep" {
+        let ctx = clawdefender_swarm::scheduled_analysis::SweepContext {
+            total_events: 0,
+            events_last_hour: 0,
+            avg_hourly_events: 0.0,
+            suspicious_events: vec![],
+            kill_chain_active: false,
+            new_servers: vec![],
+            server_anomaly_scores: std::collections::HashMap::new(),
+            previous_scores: std::collections::HashMap::new(),
+        };
+        let summary = mgr.run_hourly_sweep(&ctx);
+        serde_json::to_value(&summary).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Schedule '{}' requires cloud API (run manually)", id))
+    }
+}
+
+#[tauri::command]
+pub async fn get_schedule_history(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    count: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.scheduled_analysis.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Scheduled analysis not initialized")?;
+    let c = count.unwrap_or(10);
+    match id.as_str() {
+        "hourly_sweep" => {
+            let summaries = mgr.get_hourly_summaries(c);
+            serde_json::to_value(&summaries).map_err(|e| e.to_string())
+        }
+        "daily_review" => {
+            let briefs = mgr.get_daily_briefs(c);
+            serde_json::to_value(&briefs).map_err(|e| e.to_string())
+        }
+        "weekly_report" => {
+            let reports = mgr.get_weekly_reports(c);
+            serde_json::to_value(&reports).map_err(|e| e.to_string())
+        }
+        _ => Err(format!("Unknown schedule: {}", id)),
+    }
+}
+
+#[tauri::command]
+pub async fn get_monthly_cost_estimate(
+    state: tauri::State<'_, AppState>,
+) -> Result<f64, String> {
+    let guard = state.scheduled_analysis.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Scheduled analysis not initialized")?;
+    Ok(mgr.get_monthly_cost_estimate())
+}
+
+// --- Phase 5: Drift Detection commands ---
+
+#[tauri::command]
+pub async fn get_drift_baselines(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.drift_detector.lock().map_err(|e| e.to_string())?;
+    let detector = guard.as_ref().ok_or("Drift detector not initialized")?;
+    let baselines = detector.list_baselines();
+    serde_json::to_value(&baselines).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn check_server_drift(
+    state: tauri::State<'_, AppState>,
+    server_name: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.drift_detector.lock().map_err(|e| e.to_string())?;
+    let detector = guard.as_ref().ok_or("Drift detector not initialized")?;
+    let report = detector.check_server_drift(&server_name);
+    serde_json::to_value(&report).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn check_all_drift(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.drift_detector.lock().map_err(|e| e.to_string())?;
+    let detector = guard.as_ref().ok_or("Drift detector not initialized")?;
+    let reports = detector.check_all_servers();
+    serde_json::to_value(&reports).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_drift_baseline(
+    state: tauri::State<'_, AppState>,
+    server_name: String,
+) -> Result<(), String> {
+    let mut guard = state.drift_detector.lock().map_err(|e| e.to_string())?;
+    let detector = guard.as_mut().ok_or("Drift detector not initialized")?;
+    detector.reset_baseline(&server_name);
+    Ok(())
+}
+
+// --- Phase 5: Smart Alert commands ---
+
+#[tauri::command]
+pub async fn get_alert_groups(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.smart_alert_engine.lock().map_err(|e| e.to_string())?;
+    let engine = guard.as_ref().ok_or("Smart alert engine not initialized")?;
+    let groups = engine.get_active_groups();
+    serde_json::to_value(&groups).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_alert_group_detail(
+    state: tauri::State<'_, AppState>,
+    group_id: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.smart_alert_engine.lock().map_err(|e| e.to_string())?;
+    let engine = guard.as_ref().ok_or("Smart alert engine not initialized")?;
+    let id = uuid::Uuid::parse_str(&group_id).map_err(|e| e.to_string())?;
+    let group = engine.get_group(id);
+    serde_json::to_value(&group).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn mute_alert_pattern(
+    state: tauri::State<'_, AppState>,
+    pattern: String,
+    hours: u64,
+) -> Result<(), String> {
+    let mut guard = state.smart_alert_engine.lock().map_err(|e| e.to_string())?;
+    let engine = guard.as_mut().ok_or("Smart alert engine not initialized")?;
+    engine.mute_pattern(&pattern, chrono::Duration::hours(hours as i64));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_alert_fatigue_suggestions(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.smart_alert_engine.lock().map_err(|e| e.to_string())?;
+    let engine = guard.as_mut().ok_or("Smart alert engine not initialized")?;
+    let suggestions = engine.check_fatigue_suggestions();
+    serde_json::to_value(&suggestions).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_quiet_hours(
+    state: tauri::State<'_, AppState>,
+    start_hour: u32,
+    start_minute: u32,
+    end_hour: u32,
+    end_minute: u32,
+) -> Result<(), String> {
+    let mut guard = state.smart_alert_engine.lock().map_err(|e| e.to_string())?;
+    let engine = guard.as_mut().ok_or("Smart alert engine not initialized")?;
+    let start = chrono::NaiveTime::from_hms_opt(start_hour, start_minute, 0)
+        .ok_or("Invalid start time")?;
+    let end = chrono::NaiveTime::from_hms_opt(end_hour, end_minute, 0)
+        .ok_or("Invalid end time")?;
+    engine.set_quiet_hours(start, end);
+    Ok(())
+}
+
+// --- Phase 5: Adaptive Posture commands ---
+
+#[tauri::command]
+pub async fn get_threat_posture(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.threat_posture.lock().map_err(|e| e.to_string())?;
+    let posture = guard.as_ref().ok_or("Threat posture not initialized")?;
+    let info = posture.get_posture_info();
+    serde_json::to_value(&info).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_posture_override(
+    state: tauri::State<'_, AppState>,
+    level: String,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.threat_posture.lock().map_err(|e| e.to_string())?;
+    let posture = guard.as_mut().ok_or("Threat posture not initialized")?;
+    let posture_level = match level.as_str() {
+        "low" => clawdefender_swarm::adaptive_posture::PostureLevel::Low,
+        "normal" => clawdefender_swarm::adaptive_posture::PostureLevel::Normal,
+        "elevated" => clawdefender_swarm::adaptive_posture::PostureLevel::Elevated,
+        "high" => clawdefender_swarm::adaptive_posture::PostureLevel::High,
+        "critical" => clawdefender_swarm::adaptive_posture::PostureLevel::Critical,
+        _ => return Err(format!("Invalid posture level: {}", level)),
+    };
+    let change = posture.set_override(posture_level);
+    serde_json::to_value(&change).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_posture_override(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.threat_posture.lock().map_err(|e| e.to_string())?;
+    let posture = guard.as_mut().ok_or("Threat posture not initialized")?;
+    let change = posture.clear_override();
+    serde_json::to_value(&change).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_posture_history(
+    state: tauri::State<'_, AppState>,
+    count: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.threat_posture.lock().map_err(|e| e.to_string())?;
+    let posture = guard.as_ref().ok_or("Threat posture not initialized")?;
+    let history = posture.get_history(count.unwrap_or(20));
+    serde_json::to_value(&history).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_posture_parameters(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.threat_posture.lock().map_err(|e| e.to_string())?;
+    let posture = guard.as_ref().ok_or("Threat posture not initialized")?;
+    let params = posture.get_parameters();
+    serde_json::to_value(&params).map_err(|e| e.to_string())
+}
+
+// --- Phase 5: Threat Simulation commands ---
+
+#[tauri::command]
+pub async fn run_threat_simulation(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.threat_simulator.lock().map_err(|e| e.to_string())?;
+    let simulator = guard.as_mut().ok_or("Threat simulator not initialized")?;
+    let policy = clawdefender_swarm::threat_simulation::PolicySimulator::new();
+    let anomaly = clawdefender_swarm::threat_simulation::AnomalySimulator::new(0.65);
+    let run = simulator.run_simulation(&policy, &anomaly);
+    serde_json::to_value(&run).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_simulation_results(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.threat_simulator.lock().map_err(|e| e.to_string())?;
+    let simulator = guard.as_ref().ok_or("Threat simulator not initialized")?;
+    let run = simulator.get_latest_run();
+    serde_json::to_value(&run).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_simulation_history(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.threat_simulator.lock().map_err(|e| e.to_string())?;
+    let simulator = guard.as_ref().ok_or("Threat simulator not initialized")?;
+    let history = simulator.get_run_history();
+    serde_json::to_value(&history).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_defense_score(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<f64>, String> {
+    let guard = state.threat_simulator.lock().map_err(|e| e.to_string())?;
+    let simulator = guard.as_ref().ok_or("Threat simulator not initialized")?;
+    Ok(simulator.get_defense_score())
+}
+
+#[tauri::command]
+pub async fn get_simulation_scenarios(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.threat_simulator.lock().map_err(|e| e.to_string())?;
+    let simulator = guard.as_ref().ok_or("Threat simulator not initialized")?;
+    let scenarios = simulator.get_scenarios();
+    serde_json::to_value(&scenarios).map_err(|e| e.to_string())
+}
+
+// --- Phase 5: Knowledge Base commands ---
+
+#[tauri::command]
+pub async fn get_knowledge_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_ref().ok_or("Knowledge base not initialized")?;
+    let stats = kb.get_knowledge_stats();
+    serde_json::to_value(&stats).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_server_knowledge(
+    state: tauri::State<'_, AppState>,
+    server_name: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_ref().ok_or("Knowledge base not initialized")?;
+    let summary = kb.get_server_summary(&server_name);
+    serde_json::to_value(&summary).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_known_servers(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_ref().ok_or("Knowledge base not initialized")?;
+    let servers = kb.list_known_servers();
+    serde_json::to_value(&servers).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_false_positives(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_ref().ok_or("Knowledge base not initialized")?;
+    let fps = kb.list_false_positives();
+    serde_json::to_value(&fps).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_learned_patterns(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_ref().ok_or("Knowledge base not initialized")?;
+    let patterns = kb.list_patterns();
+    serde_json::to_value(&patterns).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn add_manual_knowledge(
+    state: tauri::State<'_, AppState>,
+    server_name: String,
+    knowledge_type: String,
+    content: String,
+) -> Result<(), String> {
+    let mut guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_mut().ok_or("Knowledge base not initialized")?;
+    kb.add_manual_knowledge(&server_name, &knowledge_type, &content);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn forget_server_knowledge(
+    state: tauri::State<'_, AppState>,
+    server_name: String,
+) -> Result<(), String> {
+    let mut guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_mut().ok_or("Knowledge base not initialized")?;
+    kb.forget_server(&server_name);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn save_knowledge_base(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_ref().ok_or("Knowledge base not initialized")?;
+    kb.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn export_knowledge_base(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let guard = state.knowledge_base.lock().map_err(|e| e.to_string())?;
+    let kb = guard.as_ref().ok_or("Knowledge base not initialized")?;
+    kb.export_json().map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Phase 6: Autonomy Framework commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn get_autonomy_level(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_ref().ok_or("Autonomy framework not initialized")?;
+    serde_json::to_value(&serde_json::json!({
+        "global_level": format!("{}", framework.global_level()),
+        "is_locked_down": framework.is_locked_down(),
+        "server_overrides": framework.server_overrides(),
+        "stats": framework.get_stats(),
+    })).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_autonomy_level(
+    state: tauri::State<'_, AppState>,
+    level: String,
+) -> Result<(), String> {
+    use clawdefender_swarm::autonomy_framework::AutonomyLevel;
+    let autonomy_level = match level.as_str() {
+        "l0" | "L0" => AutonomyLevel::L0ObserveOnly,
+        "l1" | "L1" => AutonomyLevel::L1Suggest,
+        "l2" | "L2" => AutonomyLevel::L2ConfirmAndAct,
+        "l3" | "L3" => AutonomyLevel::L3AutoLowRisk,
+        _ => return Err(format!("Invalid autonomy level: {}", level)),
+    };
+    let mut guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_mut().ok_or("Autonomy framework not initialized")?;
+    framework.set_level(autonomy_level);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_server_autonomy_override(
+    state: tauri::State<'_, AppState>,
+    server_name: String,
+    level: String,
+) -> Result<(), String> {
+    use clawdefender_swarm::autonomy_framework::AutonomyLevel;
+    let autonomy_level = match level.as_str() {
+        "l0" | "L0" => AutonomyLevel::L0ObserveOnly,
+        "l1" | "L1" => AutonomyLevel::L1Suggest,
+        "l2" | "L2" => AutonomyLevel::L2ConfirmAndAct,
+        "l3" | "L3" => AutonomyLevel::L3AutoLowRisk,
+        _ => return Err(format!("Invalid autonomy level: {}", level)),
+    };
+    let mut guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_mut().ok_or("Autonomy framework not initialized")?;
+    framework.set_server_override(server_name, autonomy_level);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_server_autonomy_override(
+    state: tauri::State<'_, AppState>,
+    server_name: String,
+) -> Result<(), String> {
+    let mut guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_mut().ok_or("Autonomy framework not initialized")?;
+    framework.clear_server_override(&server_name);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn activate_lockdown(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_mut().ok_or("Autonomy framework not initialized")?;
+    framework.activate_lockdown();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn deactivate_lockdown(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_mut().ok_or("Autonomy framework not initialized")?;
+    framework.deactivate_lockdown();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_autonomy_action_log(
+    state: tauri::State<'_, AppState>,
+    count: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_ref().ok_or("Autonomy framework not initialized")?;
+    let log = framework.get_action_log(count.unwrap_or(50));
+    serde_json::to_value(&log).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_autonomy_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
+    let framework = guard.as_ref().ok_or("Autonomy framework not initialized")?;
+    serde_json::to_value(&framework.get_stats()).map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Phase 6: Response Playbook commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn list_response_playbooks(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.playbook_manager.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Playbook manager not initialized")?;
+    serde_json::to_value(mgr.list_playbooks()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_response_playbook(
+    state: tauri::State<'_, AppState>,
+    playbook_id: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.playbook_manager.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Playbook manager not initialized")?;
+    let playbook = mgr.get_playbook(&playbook_id).ok_or("Playbook not found")?;
+    serde_json::to_value(playbook).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_playbook_executions(
+    state: tauri::State<'_, AppState>,
+    count: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.playbook_manager.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Playbook manager not initialized")?;
+    let history = mgr.get_execution_history(None, count.unwrap_or(50));
+    serde_json::to_value(&history).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn test_response_playbook(
+    state: tauri::State<'_, AppState>,
+    playbook_id: String,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.playbook_manager.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_mut().ok_or("Playbook manager not initialized")?;
+    let context = clawdefender_swarm::response_playbooks::TriggerContext {
+        trigger_type: "test".to_string(),
+        server_name: None,
+        event_ids: vec![],
+        confidence: 1.0,
+        details: "dry_run test".to_string(),
+        timestamp: chrono::Utc::now(),
+    };
+    let result = mgr.test_playbook(&playbook_id, &context)
+        .ok_or("Playbook trigger did not match test context")?;
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Phase 6: Report Generation commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn list_reports(
+    state: tauri::State<'_, AppState>,
+    report_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.report_generator.lock().map_err(|e| e.to_string())?;
+    let gen = guard.as_ref().ok_or("Report generator not initialized")?;
+    let rtype = report_type.as_deref().and_then(|t| match t {
+        "daily_brief" => Some(clawdefender_swarm::report_system::ReportType::DailyBrief),
+        "weekly_report" => Some(clawdefender_swarm::report_system::ReportType::WeeklyReport),
+        "incident_report" => Some(clawdefender_swarm::report_system::ReportType::IncidentReport),
+        "compliance_report" => Some(clawdefender_swarm::report_system::ReportType::ComplianceReport),
+        "executive_summary" => Some(clawdefender_swarm::report_system::ReportType::ExecutiveSummary),
+        _ => None,
+    });
+    let reports = gen.list_reports(rtype.as_ref(), 100);
+    serde_json::to_value(&reports).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_report_content(
+    state: tauri::State<'_, AppState>,
+    report_id: String,
+) -> Result<String, String> {
+    let guard = state.report_generator.lock().map_err(|e| e.to_string())?;
+    let gen = guard.as_ref().ok_or("Report generator not initialized")?;
+    let id = uuid::Uuid::parse_str(&report_id).map_err(|e| e.to_string())?;
+    gen.get_report_content(id)
+}
+
+#[tauri::command]
+pub async fn get_report_count(
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, String> {
+    let guard = state.report_generator.lock().map_err(|e| e.to_string())?;
+    let gen = guard.as_ref().ok_or("Report generator not initialized")?;
+    Ok(gen.report_count())
+}
+
+#[tauri::command]
+pub async fn delete_report(
+    state: tauri::State<'_, AppState>,
+    report_id: String,
+) -> Result<(), String> {
+    let mut guard = state.report_generator.lock().map_err(|e| e.to_string())?;
+    let gen = guard.as_mut().ok_or("Report generator not initialized")?;
+    let id = uuid::Uuid::parse_str(&report_id).map_err(|e| e.to_string())?;
+    gen.delete_report(id)
+}
+
+// =============================================================================
+// Phase 6: Feedback & Calibration commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn get_feedback_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let fc_guard = state.feedback_collector.lock().map_err(|e| e.to_string())?;
+    let fc = fc_guard.as_ref().ok_or("Feedback collector not initialized")?;
+    let tc_guard = state.threshold_calibrator.lock().map_err(|e| e.to_string())?;
+    let tc = tc_guard.as_ref().ok_or("Threshold calibrator not initialized")?;
+    let stats = tc.get_stats(fc);
+    serde_json::to_value(&stats).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_self_assessment(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let fc_guard = state.feedback_collector.lock().map_err(|e| e.to_string())?;
+    let fc = fc_guard.as_ref().ok_or("Feedback collector not initialized")?;
+    let tc_guard = state.threshold_calibrator.lock().map_err(|e| e.to_string())?;
+    let tc = tc_guard.as_ref().ok_or("Threshold calibrator not initialized")?;
+    let assessment = tc.self_assessment(fc);
+    serde_json::to_value(&assessment).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn run_calibration(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let fc_guard = state.feedback_collector.lock().map_err(|e| e.to_string())?;
+    let fc = fc_guard.as_ref().ok_or("Feedback collector not initialized")?;
+    let mut tc_guard = state.threshold_calibrator.lock().map_err(|e| e.to_string())?;
+    let tc = tc_guard.as_mut().ok_or("Threshold calibrator not initialized")?;
+    let events = tc.run_calibration(fc);
+    serde_json::to_value(&events).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_knowledge_suggestions(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let fc_guard = state.feedback_collector.lock().map_err(|e| e.to_string())?;
+    let fc = fc_guard.as_ref().ok_or("Feedback collector not initialized")?;
+    let tc_guard = state.threshold_calibrator.lock().map_err(|e| e.to_string())?;
+    let tc = tc_guard.as_ref().ok_or("Threshold calibrator not initialized")?;
+    let suggestions = tc.check_knowledge_suggestions(fc);
+    serde_json::to_value(&suggestions).map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Phase 6: Data Portability commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn export_clawdefender_data(
+    state: tauri::State<'_, AppState>,
+    include_knowledge: bool,
+    include_playbooks: bool,
+    include_calibration: bool,
+) -> Result<serde_json::Value, String> {
+    let mut guard = state.data_portability.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_mut().ok_or("Data portability not initialized")?;
+    let options = clawdefender_swarm::data_portability::ExportOptions {
+        include_config: true,
+        include_knowledge: include_knowledge,
+        include_baselines: false,
+        include_playbooks: include_playbooks,
+        include_calibration: include_calibration,
+        include_investigations: false,
+        include_reports: false,
+        encrypt: false,
+        passphrase: None,
+    };
+    let result = mgr.export_data(&options)?;
+    serde_json::to_value(&result).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn preview_import(
+    state: tauri::State<'_, AppState>,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.data_portability.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Data portability not initialized")?;
+    let preview = mgr.preview_import(&file_path)?;
+    serde_json::to_value(&preview).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_export_history(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.data_portability.lock().map_err(|e| e.to_string())?;
+    let mgr = guard.as_ref().ok_or("Data portability not initialized")?;
+    serde_json::to_value(mgr.get_export_history()).map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Phase 6: Transparency Dashboard commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn get_dashboard_summary(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
+    let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
+    let summary = dashboard.get_dashboard_summary();
+    serde_json::to_value(&summary).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_agent_activities(
+    state: tauri::State<'_, AppState>,
+    count: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
+    let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
+    let activities = dashboard.activity_tracker.get_recent(count.unwrap_or(50));
+    serde_json::to_value(&activities).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_cost_summary(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
+    let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
+    let summary = dashboard.cost_dashboard.get_summary();
+    serde_json::to_value(&summary).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_accuracy_metrics(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
+    let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
+    let metrics = dashboard.accuracy_tracker.get_metrics();
+    serde_json::to_value(&metrics).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_audit_trail(
+    state: tauri::State<'_, AppState>,
+    count: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
+    let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
+    let entries = dashboard.audit_trail.get_recent(count.unwrap_or(50));
+    serde_json::to_value(&entries).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_decision_explanations(
+    state: tauri::State<'_, AppState>,
+    count: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
+    let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
+    let explanations = dashboard.decision_explainer.get_recent(count.unwrap_or(20));
+    serde_json::to_value(&explanations).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_learned_patterns_view(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
+    let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
+    let stats = dashboard.knowledge_viewer.get_pattern_stats();
+    serde_json::to_value(&serde_json::json!({
+        "stats": stats,
+        "learned": dashboard.knowledge_viewer.get_all_patterns(),
+        "safe": dashboard.knowledge_viewer.get_safe_patterns(),
+        "risk": dashboard.knowledge_viewer.get_risk_patterns(),
+    })).map_err(|e| e.to_string())
+}
+
+// --- UI State Persistence ---
+
+fn ui_state_path() -> std::path::PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    home.join(".local/share/clawdefender/ui_state.json")
+}
+
+fn load_ui_state(path: &std::path::Path) -> std::collections::HashMap<String, String> {
+    match std::fs::read_to_string(path) {
+        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
+        Err(_) => std::collections::HashMap::new(),
+    }
+}
+
+fn save_ui_state(
+    path: &std::path::Path,
+    state: &std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    // Enforce 1MB size limit
+    let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+    if json.len() > 1_048_576 {
+        return Err("UI state exceeds 1MB limit".to_string());
+    }
+
+    // Create parent directory
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    // Atomic write: write to temp file, then rename
+    let temp_path = path.with_extension("json.tmp");
+    std::fs::write(&temp_path, &json).map_err(|e| e.to_string())?;
+    std::fs::rename(&temp_path, path).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Get a UI state value by key.
+#[tauri::command]
+pub async fn get_ui_state(key: String) -> Result<Option<String>, String> {
+    let path = ui_state_path();
+    let state = load_ui_state(&path);
+    Ok(state.get(&key).cloned())
+}
+
+/// Set a UI state value by key.
+#[tauri::command]
+pub async fn set_ui_state(key: String, value: String) -> Result<(), String> {
+    let path = ui_state_path();
+    let mut state = load_ui_state(&path);
+    state.insert(key, value);
+    save_ui_state(&path, &state)
+}
+
+/// Remove a UI state value by key.
+#[tauri::command]
+pub async fn remove_ui_state(key: String) -> Result<(), String> {
+    let path = ui_state_path();
+    let mut state = load_ui_state(&path);
+    state.remove(&key);
+    save_ui_state(&path, &state)
 }
 
 #[cfg(test)]

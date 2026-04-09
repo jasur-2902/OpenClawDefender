@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ScanProgress } from "../types";
+import { PlaybookSelector } from "../components/scanner/PlaybookSelector";
+import { LiveScanView } from "../components/scanner/LiveScanView";
+import { AiScanResults } from "../components/scanner/AiScanResults";
+import { useAiStatus } from "../hooks/useAiStatus";
+import { useScanStore } from "../stores/scanStore";
+
+// ---------------------------------------------------------------------------
+// Quick Scan types (existing rule-based scanner)
+// ---------------------------------------------------------------------------
 
 interface ScanFinding {
   severity: string;
@@ -62,13 +71,161 @@ const SEVERITY_CONFIG: Record<string, { color: string; bg: string; label: string
   low: { color: "text-blue-400", bg: "bg-blue-500/20", label: "LOW", order: 3 },
 };
 
+type ScanTab = "quick" | "ai";
+
+// ---------------------------------------------------------------------------
+// AI Scan state machine
+// ---------------------------------------------------------------------------
+type AiScanPhase = "select" | "scanning" | "results";
+
 export function Scanner() {
+  const activeTab = useScanStore((s) => s.activeTab);
+  const setActiveTab = useScanStore((s) => s.setActiveTab);
+  const { cloudActive, localActive } = useAiStatus();
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Security Scanner</h1>
+      </div>
+
+      {/* AI enrichment status */}
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+        {cloudActive
+          ? 'Scan findings will be enriched with AI analysis'
+          : localActive
+            ? 'Basic AI analysis available. Connect Cloud API for deeper scan insights.'
+            : 'AI analysis unavailable. Connect an AI backend in Settings.'}
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-[var(--color-border)]">
+        <button
+          onClick={() => setActiveTab("ai")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "ai"
+              ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+              : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          }`}
+        >
+          AI Scan
+        </button>
+        <button
+          onClick={() => setActiveTab("quick")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "quick"
+              ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+              : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          }`}
+        >
+          Quick Scan
+        </button>
+      </div>
+
+      {activeTab === "ai" ? <AiScanTab /> : <QuickScanTab />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI Scan Tab
+// ---------------------------------------------------------------------------
+
+function AiScanTab() {
+  const phase = useScanStore((s) => s.aiScanPhase);
+  const setPhase = useScanStore((s) => s.setAiScanPhase);
+  const scanId = useScanStore((s) => s.aiScanId);
+  const error = useScanStore((s) => s.aiScanError);
+  const setError = useScanStore((s) => s.setAiScanError);
+  const startNewAiScan = useScanStore((s) => s.startNewAiScan);
+  const resetAiScan = useScanStore((s) => s.resetAiScan);
+  const [starting, setStarting] = useState(false);
+
+  async function handleStartScan(playbookId: string) {
+    setError(null);
+    setStarting(true);
+    try {
+      const result = await invoke<{ scan_id: string }>("start_ai_scan", {
+        playbookId,
+      });
+      startNewAiScan(result.scan_id);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  function handleComplete() {
+    setPhase("results");
+  }
+
+  function handleCancel() {
+    setPhase("results");
+  }
+
+  function handleNewScan() {
+    resetAiScan();
+  }
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+
+      {phase === "select" && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-medium text-[var(--color-text-primary)]">
+                AI-Powered Security Scan
+              </span>
+              <span className="px-1.5 py-0.5 rounded text-xs bg-[var(--color-accent)]/20 text-[var(--color-accent)]">
+                AI
+              </span>
+            </div>
+            <p className="text-xs text-[var(--color-text-secondary)] mb-4">
+              Choose a playbook to run an AI-driven security assessment. The AI agent will analyze
+              your MCP configuration, system posture, and security policies using real tools and
+              evidence collection.
+            </p>
+            <PlaybookSelector onStart={handleStartScan} disabled={starting} />
+          </div>
+        </div>
+      )}
+
+      {phase === "scanning" && scanId && (
+        <LiveScanView
+          scanId={scanId}
+          onComplete={handleComplete}
+          onCancel={handleCancel}
+        />
+      )}
+
+      {phase === "results" && scanId && (
+        <AiScanResults scanId={scanId} onNewScan={handleNewScan} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quick Scan Tab (original rule-based scanner, preserved as-is)
+// ---------------------------------------------------------------------------
+
+function QuickScanTab() {
   const [selectedModules, setSelectedModules] = useState<Set<string>>(
     new Set(MODULES.map((m) => m.id))
   );
-  const [activeScan, setActiveScan] = useState<ScanProgress | null>(null);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
+  const activeScan = useScanStore((s) => s.quickScanActiveScan);
+  const setActiveScan = useScanStore((s) => s.setQuickScanActiveScan);
+  const scanResult = useScanStore((s) => s.quickScanResult);
+  const setScanResult = useScanStore((s) => s.setQuickScanResult);
+  const scanHistory = useScanStore((s) => s.quickScanHistory);
+  const addQuickScanHistory = useScanStore((s) => s.addQuickScanHistory);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
@@ -86,15 +243,12 @@ export function Scanner() {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
-        setScanHistory((prev) => [
-          {
-            scan_id: progress.scan_id,
-            status: progress.status,
-            findings_count: progress.findings_count,
-            started_at: new Date().toISOString(),
-          },
-          ...prev,
-        ]);
+        addQuickScanHistory({
+          scan_id: progress.scan_id,
+          status: progress.status,
+          findings_count: progress.findings_count,
+          started_at: new Date().toISOString(),
+        });
         // Fetch full results
         try {
           const result = await invoke<ScanResult>("get_scan_results", {
@@ -119,7 +273,7 @@ export function Scanner() {
         timerRef.current = null;
       }
     }
-  }, []);
+  }, [setActiveScan, addQuickScanHistory, setScanResult]);
 
   useEffect(() => {
     return () => {
@@ -248,35 +402,7 @@ export function Scanner() {
     );
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Security Scanner</h1>
-        {scanResult && (
-          <div className="flex items-center gap-3 text-sm">
-            {scanResult.critical_count > 0 && (
-              <span className="text-red-400 font-medium">
-                {scanResult.critical_count} Critical
-              </span>
-            )}
-            {scanResult.high_count > 0 && (
-              <span className="text-orange-400 font-medium">
-                {scanResult.high_count} High
-              </span>
-            )}
-            {scanResult.medium_count > 0 && (
-              <span className="text-yellow-400 font-medium">
-                {scanResult.medium_count} Medium
-              </span>
-            )}
-            {scanResult.low_count > 0 && (
-              <span className="text-blue-400 font-medium">
-                {scanResult.low_count} Low
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
+    <div className="space-y-6">
       {error && (
         <div className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
           {error}
@@ -397,11 +523,33 @@ export function Scanner() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Results</h2>
-            <span className="text-xs text-[var(--color-text-secondary)]">
-              {scanResult.completed_at
-                ? new Date(scanResult.completed_at).toLocaleString()
-                : ""}
-            </span>
+            <div className="flex items-center gap-3 text-sm">
+              {scanResult.critical_count > 0 && (
+                <span className="text-red-400 font-medium">
+                  {scanResult.critical_count} Critical
+                </span>
+              )}
+              {scanResult.high_count > 0 && (
+                <span className="text-orange-400 font-medium">
+                  {scanResult.high_count} High
+                </span>
+              )}
+              {scanResult.medium_count > 0 && (
+                <span className="text-yellow-400 font-medium">
+                  {scanResult.medium_count} Medium
+                </span>
+              )}
+              {scanResult.low_count > 0 && (
+                <span className="text-blue-400 font-medium">
+                  {scanResult.low_count} Low
+                </span>
+              )}
+              <span className="text-xs text-[var(--color-text-secondary)]">
+                {scanResult.completed_at
+                  ? new Date(scanResult.completed_at).toLocaleString()
+                  : ""}
+              </span>
+            </div>
           </div>
 
           {/* Summary Cards */}

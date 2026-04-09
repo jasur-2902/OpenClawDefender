@@ -9,6 +9,8 @@ import { useEventStore } from "../stores/eventStore";
 import { ASK_CLAW } from "../constants/messages";
 import { DragDropZone } from "../components/conversation/DragDropZone";
 import { ConfirmationCard } from "../components/conversation/ConfirmationCard";
+import { useAiStatus } from "../hooks/useAiStatus";
+import type { AskClawAIResponse, SuggestedAction, ToolCallInfo, ContextReference } from "../types";
 
 // ---------------------------------------------------------------------------
 // Types matching the Rust ActionType enum
@@ -44,7 +46,8 @@ function formatRelativeTime(iso: string): string {
   }
 }
 
-function renderMarkdown(text: string): React.ReactNode[] {
+function renderMarkdown(text: string | undefined | null): React.ReactNode[] {
+  if (!text) return [text ?? ""];
   const parts: React.ReactNode[] = [];
   const regex = /(\*\*(.+?)\*\*|\[(.+?)\]\((.+?)\))/g;
   let lastIndex = 0;
@@ -239,6 +242,88 @@ function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
     );
   }
 
+  if (type === "ai_tool_calls") {
+    const toolCalls = (data.tool_calls ?? []) as Array<{ tool_name: string; description: string; success: boolean }>;
+    const suggestedActions = (data.suggested_actions ?? []) as Array<{ id: string; action_type: string; description: string; preview: string | null; requires_approval: boolean }>;
+    const contextRefs = (data.context_references ?? []) as Array<{ ref_type: string; ref_id: string; label: string }>;
+
+    return (
+      <div className="mt-2 space-y-2">
+        {toolCalls.length > 0 && (
+          <div className="space-y-1">
+            {toolCalls.map((tc, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                <span>{tc.success ? "\u2713" : "\u2717"}</span>
+                <span className="font-medium">{tc.tool_name}</span>
+                <span className="text-[var(--color-text-muted)]">{tc.description}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {suggestedActions.length > 0 && (
+          <div className="space-y-1 pt-1">
+            {suggestedActions.map((action) => (
+              <div
+                key={action.id}
+                className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-2"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-medium text-[var(--color-text-primary)]">
+                    {action.description}
+                  </span>
+                  {action.preview && (
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 truncate">
+                      {action.preview}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await invoke("approve_claw_action", { actionId: action.id });
+                      } catch {
+                        // ok
+                      }
+                    }}
+                    className="px-2 py-1 text-[10px] rounded bg-[var(--color-accent)] text-white hover:opacity-90"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await invoke("reject_claw_action", { actionId: action.id });
+                      } catch {
+                        // ok
+                      }
+                    }}
+                    className="px-2 py-1 text-[10px] rounded border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
+                  >
+                    Skip
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {contextRefs.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {contextRefs.map((ref, i) => (
+              <span
+                key={i}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] text-[var(--color-accent)] cursor-default"
+                title={`${ref.ref_type}: ${ref.ref_id}`}
+              >
+                {ref.label}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -257,8 +342,13 @@ export function AskClaw() {
   const [messageHistory, setMessageHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingConfirmations, setPendingConfirmations] = useState<Map<string, string>>(new Map());
+  const [aiMode, setAiMode] = useState<string | null>(null);
+  const [lastToolCalls, setLastToolCalls] = useState<ToolCallInfo[]>([]);
+  const [lastSuggestedActions, setLastSuggestedActions] = useState<SuggestedAction[]>([]);
+  const [lastContextRefs, setLastContextRefs] = useState<ContextReference[]>([]);
 
   const daemonRunning = useEventStore((s) => s.daemonRunning);
+  const { status: aiStatus, cloudActive, localActive } = useAiStatus();
   const {
     messages,
     isLoading,
@@ -273,6 +363,20 @@ export function AskClaw() {
   useEffect(() => {
     setCurrentPage("/ask");
   }, [setCurrentPage]);
+
+  // Fetch AI mode on mount
+  useEffect(() => {
+    invoke<string>("get_ask_claw_mode")
+      .then((mode) => {
+        try {
+          // Mode comes as JSON string like "\"Cloud\""
+          setAiMode(JSON.parse(mode));
+        } catch {
+          setAiMode(mode);
+        }
+      })
+      .catch(() => setAiMode("Pattern"));
+  }, []);
 
   // Load conversation on mount
   useEffect(() => {
@@ -330,38 +434,78 @@ export function AskClaw() {
       await addUserMessage(trimmed);
 
       try {
-        const contextJson = useConversationStore.getState().getContextJson();
-        const responseJson = await invoke<string>("ask_claw", {
-          input: trimmed,
-          contextJson,
-        });
-        const response = JSON.parse(responseJson);
+        // Try AI-powered ask first if Cloud/LocalSlm mode
+        let aiHandled = false;
+        if (aiMode === "Cloud" || aiMode === "LocalSlm") {
+          try {
+            const contextJson = useConversationStore.getState().getContextJson();
+            const aiResponseStr = await invoke<string>("ask_claw_ai", {
+              input: trimmed,
+              contextJson,
+            });
+            const aiResponse: AskClawAIResponse = JSON.parse(aiResponseStr);
 
-        const clawMsg: ConversationMessage = {
-          id: response.turn_id || `claw-${Date.now()}`,
-          role: "claw",
-          contentText: response.message,
-          contentRichJson: response.structured_data
-            ? JSON.stringify(response.structured_data)
-            : undefined,
-          actionsJson: response.actions?.length
-            ? JSON.stringify(response.actions)
-            : undefined,
-          intentId: response.intent_id,
-          timestamp: response.timestamp || new Date().toISOString(),
-        };
+            // Store tool calls and suggestions for display
+            setLastToolCalls(aiResponse.tool_calls_made ?? []);
+            setLastSuggestedActions(aiResponse.suggested_actions ?? []);
+            setLastContextRefs(aiResponse.context_references ?? []);
 
-        await addClawResponse(clawMsg);
+            const clawMsg: ConversationMessage = {
+              id: aiResponse.conversation_id || `claw-ai-${Date.now()}`,
+              role: "claw",
+              contentText: aiResponse.response_text,
+              contentRichJson: aiResponse.tool_calls_made?.length
+                ? JSON.stringify({
+                    type: "ai_tool_calls",
+                    tool_calls: aiResponse.tool_calls_made,
+                    suggested_actions: aiResponse.suggested_actions,
+                    context_references: aiResponse.context_references,
+                  })
+                : undefined,
+              timestamp: new Date().toISOString(),
+            };
 
-        // Check if any action requires confirmation
-        const actions: ActionButtonData[] = response.actions ?? [];
-        const confirmAction = actions.find((a: ActionButtonData) => a.requires_confirmation);
-        if (confirmAction) {
-          setPendingConfirmations((prev) => {
-            const next = new Map(prev);
-            next.set(clawMsg.id, JSON.stringify(confirmAction.action));
-            return next;
+            await addClawResponse(clawMsg);
+            aiHandled = true;
+          } catch {
+            // Fall through to pattern-based
+          }
+        }
+
+        if (!aiHandled) {
+          const contextJson = useConversationStore.getState().getContextJson();
+          const responseJson = await invoke<string>("ask_claw", {
+            input: trimmed,
+            contextJson,
           });
+          const response = JSON.parse(responseJson);
+
+          const clawMsg: ConversationMessage = {
+            id: response.turn_id || `claw-${Date.now()}`,
+            role: "claw",
+            contentText: response.message,
+            contentRichJson: response.structured_data
+              ? JSON.stringify(response.structured_data)
+              : undefined,
+            actionsJson: response.actions?.length
+              ? JSON.stringify(response.actions)
+              : undefined,
+            intentId: response.intent_id,
+            timestamp: response.timestamp || new Date().toISOString(),
+          };
+
+          await addClawResponse(clawMsg);
+
+          // Check if any action requires confirmation
+          const actions: ActionButtonData[] = response.actions ?? [];
+          const confirmAction = actions.find((a: ActionButtonData) => a.requires_confirmation);
+          if (confirmAction) {
+            setPendingConfirmations((prev) => {
+              const next = new Map(prev);
+              next.set(clawMsg.id, JSON.stringify(confirmAction.action));
+              return next;
+            });
+          }
         }
       } catch (e) {
         setError(String(e));
@@ -629,9 +773,18 @@ export function AskClaw() {
         {/* Header */}
         <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
           <div>
-            <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
-              Ask Claw
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                Ask Claw
+              </h1>
+              <span className="text-xs text-[var(--color-text-secondary)]">
+                {cloudActive
+                  ? `Powered by ${aiStatus?.cloud.provider ?? 'Cloud'} ${aiStatus?.cloud.model ?? ''}`
+                  : localActive
+                    ? `Powered by ${aiStatus?.local.model_name ?? 'Local'} (local)`
+                    : 'Offline Mode'}
+              </span>
+            </div>
             <p className="text-xs text-[var(--color-text-secondary)]">
               Ask anything about your security — Cmd+K from anywhere
             </p>

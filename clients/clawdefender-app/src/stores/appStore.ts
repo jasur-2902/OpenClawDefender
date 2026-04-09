@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProtectionScore, ScoreSnapshot } from "../types";
+import { tauriStorage } from "./tauriStorage";
 
 export type ConnectionState = "connected" | "reconnecting" | "disconnected";
 
@@ -64,7 +66,9 @@ interface AppStore {
   fetchScoreHistory: (force?: boolean) => Promise<void>;
 }
 
-export const useAppStore = create<AppStore>((set, get) => ({
+export const useAppStore = create<AppStore>()(
+  persist(
+    (set, get) => ({
   daemonStatus: { running: false },
   connectionState: "disconnected",
   protectionScore: 0,
@@ -132,4 +136,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // History unavailable
     }
   },
-}));
+}),
+    {
+      name: "app-store",
+      storage: tauriStorage,
+      partialize: (state) => ({
+        sidebarCollapsed: state.sidebarCollapsed,
+      }),
+    }
+  )
+);

@@ -12,9 +12,11 @@
 //! - `gguf_backend` -- real GGUF inference via llama.cpp (requires `gguf` feature)
 
 pub mod analyzer;
+pub mod backend_manager;
 pub mod clustering;
 #[cfg(feature = "cloud")]
 pub mod cloud_backend;
+pub mod config_migration;
 pub mod context;
 pub mod context_window;
 #[cfg(feature = "download")]
@@ -27,8 +29,10 @@ pub mod model_registry;
 pub mod noise_filter;
 pub mod offline_intel;
 pub mod output_validator;
+pub mod pipeline;
 pub mod profiles;
 pub mod sanitizer;
+pub mod task_router;
 pub mod triage;
 
 use std::sync::Arc;
@@ -39,6 +43,11 @@ use tracing::{info, warn};
 #[cfg(any(not(feature = "gguf"), test))]
 use crate::engine::MockSlmBackend;
 use crate::engine::{RiskLevel, SlmBackend, SlmConfig, SlmEngine, SlmResponse, SlmStats};
+
+pub use backend_manager::{
+    AiBackendManager, AiRequest, AiResponse, AiStatus, BackendStatus, LocalModelInfo, TaskType,
+};
+pub use task_router::{RateLimitStatus, RoutingDecision, RoutingPreferences, TaskRouter};
 
 /// Top-level service that owns the SLM engine and exposes a simple API
 /// for the rest of ClawDefender.
@@ -53,6 +62,17 @@ pub struct SlmService {
     config: SlmConfig,
     enabled: bool,
     mock_mode: bool,
+}
+
+impl std::fmt::Debug for SlmService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlmService")
+            .field("enabled", &self.enabled)
+            .field("mock_mode", &self.mock_mode)
+            .field("has_engine", &self.engine.is_some())
+            .field("has_fallback", &self.fallback_engine.is_some())
+            .finish()
+    }
 }
 
 impl SlmService {

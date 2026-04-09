@@ -35,8 +35,11 @@ use clawdefender_slm::analyzer::{
     AnalysisContext, AnalysisEventType, AnalysisRequest, ServerReputation,
 };
 use clawdefender_slm::analyzer::build_user_prompt;
+use clawdefender_slm::clustering::ClusterEvent;
 use clawdefender_slm::engine::RiskLevel;
-use clawdefender_slm::SlmService;
+use clawdefender_slm::pipeline::SlmPipeline;
+use clawdefender_slm::{AiBackendManager, AiRequest, TaskType, SlmService};
+use clawdefender_swarm::agent_session::AgentSessionManager;
 use clawdefender_swarm::commander::Commander;
 use clawdefender_swarm::prompts::SwarmEventData;
 
@@ -130,7 +133,18 @@ pub struct EventRouter {
     ui_tx: mpsc::Sender<CorrelatedEvent>,
     behavioral: Option<BehavioralEngines>,
     slm_service: Option<Arc<SlmService>>,
+    /// Dual AI backend manager (local SLM + cloud API).
+    /// When present, takes priority over the legacy `slm_service` for
+    /// escalation analysis, routing requests to the appropriate backend.
+    ai_manager: Option<Arc<AiBackendManager>>,
     swarm_commander: Option<Arc<Commander>>,
+    /// SLM pipeline for two-tier triage + clustering (optional).
+    /// When present, escalated events are fed into the pipeline instead of
+    /// calling `slm_service.analyze_event()` directly.
+    slm_pipeline: Option<Arc<SlmPipeline>>,
+    /// Phase 2: Cloud agent session manager for auto-escalation of suspicious
+    /// HIGH/CRITICAL events to an Investigate session.
+    cloud_agent_manager: Option<Arc<AgentSessionManager>>,
 }
 
 impl EventRouter {
@@ -145,7 +159,10 @@ impl EventRouter {
             ui_tx,
             behavioral: None,
             slm_service: None,
+            ai_manager: None,
             swarm_commander: None,
+            slm_pipeline: None,
+            cloud_agent_manager: None,
         }
     }
 
@@ -162,9 +179,36 @@ impl EventRouter {
         self
     }
 
+    /// Set the dual AI backend manager for routing analysis requests to
+    /// local SLM (fast triage) and cloud API (deep analysis).
+    /// When set, takes priority over the legacy `slm_service` path.
+    pub fn with_ai_manager(mut self, ai_manager: Arc<AiBackendManager>) -> Self {
+        self.ai_manager = Some(ai_manager);
+        self
+    }
+
     /// Set the swarm commander for advisory analysis of critical events.
     pub fn with_swarm_commander(mut self, commander: Arc<Commander>) -> Self {
         self.swarm_commander = Some(commander);
+        self
+    }
+
+    /// Set the SLM pipeline for two-tier triage + clustering.
+    ///
+    /// When the pipeline is attached, escalated events are fed into the
+    /// clustering buffer instead of calling `slm_service.analyze_event()` directly.
+    /// Non-escalated events are recorded as routine in the context window.
+    pub fn with_slm_pipeline(mut self, pipeline: Arc<SlmPipeline>) -> Self {
+        self.slm_pipeline = Some(pipeline);
+        self
+    }
+
+    /// Set the cloud agent session manager for auto-escalation of suspicious events.
+    ///
+    /// When configured, events with SUSPICIOUS + HIGH/CRITICAL severity will
+    /// automatically create an Investigate session with the cloud agent.
+    pub fn with_cloud_agent_manager(mut self, manager: Arc<AgentSessionManager>) -> Self {
+        self.cloud_agent_manager = Some(manager);
         self
     }
 
@@ -174,7 +218,9 @@ impl EventRouter {
         mut correlated_rx: mpsc::Receiver<CorrelatedEvent>,
     ) -> tokio::task::JoinHandle<()> {
         let slm_service = self.slm_service.clone();
+        let ai_manager = self.ai_manager.clone();
         let swarm_commander = self.swarm_commander.clone();
+        let cloud_agent_mgr = self.cloud_agent_manager.clone();
         let escalation_audit_tx = self.audit_tx.clone();
         let anomaly_threshold = self.config.anomaly_score_escalation_threshold;
         let mut rate_limiter = EscalationRateLimiter::new(self.config.max_escalations_per_minute);
@@ -205,6 +251,12 @@ impl EventRouter {
                     all_reasons.push(EscalationReason::UncorrelatedHighSeverity);
                 }
 
+                // Extract server name before audit_record is moved.
+                let event_server_name = audit_record
+                    .server_name
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
+
                 if let Err(e) = self.audit_tx.try_send(audit_record) {
                     warn!(error = %e, "failed to send correlated event to audit logger");
                 }
@@ -218,7 +270,56 @@ impl EventRouter {
                 // SAFETY: SLM and swarm results are advisory-only. They enrich audit
                 // logs but NEVER influence policy decisions.
                 if !all_reasons.is_empty() {
-                    if let Some(ref slm) = slm_service {
+                    // Prefer the pipeline (two-tier triage + clustering) when available.
+                    if let Some(ref pipeline) = self.slm_pipeline {
+                        if rate_limiter.try_acquire() {
+                            debug!(
+                                id = %event.id,
+                                reasons = ?all_reasons.iter().map(|r| format!("{:?}", r)).collect::<Vec<_>>(),
+                                "event escalated to SLM pipeline for triage"
+                            );
+
+                            let cluster_event = Self::correlated_to_cluster_event(&event);
+                            pipeline.ingest(cluster_event).await;
+                        } else {
+                            warn!(
+                                id = %event.id,
+                                "SLM pipeline rate limit reached (max {} per minute), skipping",
+                                self.config.max_escalations_per_minute
+                            );
+                        }
+                    }
+                    // Dual AI backend manager path: local triage + cloud deep analysis.
+                    else if let Some(ref mgr) = ai_manager {
+                        if rate_limiter.try_acquire() {
+                            debug!(
+                                id = %event.id,
+                                reasons = ?all_reasons.iter().map(|r| format!("{:?}", r)).collect::<Vec<_>>(),
+                                "event escalated to AI manager for dual-backend analysis"
+                            );
+
+                            let mgr = Arc::clone(mgr);
+                            let event_clone = event.clone();
+                            let audit_tx = escalation_audit_tx.clone();
+                            let swarm = swarm_commander.clone();
+                            let cloud = cloud_agent_mgr.clone();
+
+                            tokio::spawn(async move {
+                                Self::run_dual_escalation_analysis(
+                                    mgr, swarm, cloud, event_clone, audit_tx,
+                                )
+                                .await;
+                            });
+                        } else {
+                            warn!(
+                                id = %event.id,
+                                "AI escalation rate limit reached (max {} per minute), skipping",
+                                self.config.max_escalations_per_minute
+                            );
+                        }
+                    }
+                    // Legacy fallback: direct SLM analysis (single backend).
+                    else if let Some(ref slm) = slm_service {
                         if slm.is_enabled() {
                             // Apply rate limiting
                             if rate_limiter.try_acquire() {
@@ -232,10 +333,11 @@ impl EventRouter {
                                 let event_clone = event.clone();
                                 let audit_tx = escalation_audit_tx.clone();
                                 let swarm = swarm_commander.clone();
+                                let cloud = cloud_agent_mgr.clone();
 
                                 tokio::spawn(async move {
                                     Self::run_escalation_analysis(
-                                        slm, swarm, event_clone, audit_tx,
+                                        slm, swarm, cloud, event_clone, audit_tx,
                                     )
                                     .await;
                                 });
@@ -248,10 +350,87 @@ impl EventRouter {
                             }
                         }
                     }
+                } else if let Some(ref pipeline) = self.slm_pipeline {
+                    // Non-escalated event: record as routine in the context window
+                    // so the SLM has awareness of normal activity patterns.
+                    pipeline.record_routine_event(&event_server_name);
                 }
             }
             debug!("event router shut down");
         })
+    }
+
+    /// Convert a correlated event into a [`ClusterEvent`] for the SLM pipeline.
+    fn correlated_to_cluster_event(event: &CorrelatedEvent) -> ClusterEvent {
+        let server_name = "unknown".to_string();
+        let timestamp = event
+            .mcp_event
+            .as_ref()
+            .map(|e| e.timestamp)
+            .or_else(|| event.os_events.first().map(|e| e.timestamp))
+            .unwrap_or_else(chrono::Utc::now);
+
+        let (event_type, tool_name, target) = if let Some(ref mcp) = event.mcp_event {
+            match &mcp.kind {
+                McpEventKind::ToolCall(tc) => (
+                    "tool_call".to_string(),
+                    Some(tc.tool_name.clone()),
+                    tc.arguments
+                        .get("path")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                ),
+                McpEventKind::ResourceRead(rr) => (
+                    "resource_read".to_string(),
+                    None,
+                    Some(rr.uri.clone()),
+                ),
+                McpEventKind::SamplingRequest(_) => (
+                    "sampling".to_string(),
+                    None,
+                    None,
+                ),
+                _ => (
+                    format!("{:?}", mcp.kind),
+                    None,
+                    None,
+                ),
+            }
+        } else if let Some(os) = event.os_events.first() {
+            match &os.kind {
+                OsEventKind::Open { path, .. } => (
+                    "file_open".to_string(),
+                    None,
+                    Some(path.clone()),
+                ),
+                OsEventKind::Connect { address, .. } => (
+                    "network_connect".to_string(),
+                    None,
+                    Some(address.clone()),
+                ),
+                OsEventKind::Exec { target_path, .. } => (
+                    "exec".to_string(),
+                    None,
+                    Some(target_path.clone()),
+                ),
+                _ => (
+                    "os_event".to_string(),
+                    None,
+                    None,
+                ),
+            }
+        } else {
+            ("unknown".to_string(), None, None)
+        };
+
+        ClusterEvent {
+            timestamp,
+            event_type,
+            tool_name,
+            target,
+            anomaly_score: 0.0, // Anomaly score is computed by behavioral engines separately
+            server_name,
+        }
     }
 
     /// Run SLM analysis (and optionally swarm) for an escalated event.
@@ -260,6 +439,7 @@ impl EventRouter {
     async fn run_escalation_analysis(
         slm: Arc<SlmService>,
         swarm: Option<Arc<Commander>>,
+        cloud_agent: Option<Arc<AgentSessionManager>>,
         event: CorrelatedEvent,
         audit_tx: mpsc::Sender<AuditRecord>,
     ) {
@@ -485,6 +665,450 @@ impl EventRouter {
                         );
                     }
                 }
+            }
+        }
+
+        // --- Phase 2: Cloud agent escalation ---
+        // When the SLM flags an event as suspicious (risk >= High) and a cloud agent
+        // manager is configured, automatically create an Investigate session so the
+        // cloud LLM can perform deeper analysis with full tool access.
+        // This is advisory-only and does not block event routing.
+        let slm_is_high_or_above = slm_result
+            .as_ref()
+            .is_some_and(|r| r.risk_level >= RiskLevel::High);
+
+        if slm_is_high_or_above {
+            if let Some(ref agent_mgr) = cloud_agent {
+                let slm_explanation = slm_result
+                    .as_ref()
+                    .map(|r| r.explanation.clone())
+                    .unwrap_or_default();
+                let slm_risk = slm_result
+                    .as_ref()
+                    .map(|r| r.risk_level.to_string())
+                    .unwrap_or_default();
+
+                let event_id = event.id.to_string();
+                let briefing = format!(
+                    "AUTO-ESCALATION from SLM triage.\n\
+                     Event ID: {}\n\
+                     SLM Risk: {}\n\
+                     SLM Explanation: {}\n\
+                     Event severity: {:?}\n\n\
+                     Investigate this event thoroughly. Determine if this is a true \
+                     positive or false positive. If true positive, assess the blast \
+                     radius and recommend remediation steps.",
+                    event_id,
+                    slm_risk,
+                    slm_explanation,
+                    event.severity(),
+                );
+
+                use clawdefender_swarm::agent_session::SessionType as AgentSessionType;
+
+                let query = format!(
+                    "Investigate event {} — SLM flagged as {} risk: {}",
+                    event_id, slm_risk, slm_explanation
+                );
+
+                match agent_mgr
+                    .start_session(
+                        AgentSessionType::Investigate { event_id: event_id.clone() },
+                        briefing,
+                        Some(query),
+                    )
+                    .await
+                {
+                    Ok(session_id) => {
+                        info!(
+                            event_id = %event_id,
+                            session_id = %session_id,
+                            slm_risk = %slm_risk,
+                            "Cloud agent Investigate session auto-created for suspicious event"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            event_id = %event_id,
+                            error = %e,
+                            "Failed to auto-create cloud Investigate session, continuing without"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Run dual-backend escalation analysis using the AiBackendManager.
+    ///
+    /// Step 1: Local triage (fast, always attempted via TaskType::Triage)
+    /// Step 2: If local triage returns High+ risk and cloud is available,
+    ///         spawn async deep analysis via TaskType::DeepAnalysis
+    /// Step 3: Write enriched audit records for both results
+    ///
+    /// Also escalates to swarm/cloud agent for critical events (same as legacy path).
+    /// SAFETY: This is advisory-only and runs asynchronously without blocking event routing.
+    async fn run_dual_escalation_analysis(
+        ai_manager: Arc<AiBackendManager>,
+        swarm: Option<Arc<Commander>>,
+        cloud_agent: Option<Arc<AgentSessionManager>>,
+        event: CorrelatedEvent,
+        audit_tx: mpsc::Sender<AuditRecord>,
+    ) {
+        let server_name = "unknown".to_string();
+        let client_name = "unknown".to_string();
+
+        // Build the analysis prompt from the event.
+        let request = Self::build_analysis_request(&event, &server_name, &client_name);
+        let prompt = build_user_prompt(&request);
+
+        // --- Step 1: Local triage (fast path) ---
+        let triage_request = AiRequest {
+            task_type: TaskType::Triage,
+            prompt: prompt.clone(),
+            context: None,
+        };
+
+        let triage_result = ai_manager.analyze(triage_request).await;
+
+        let slm_result = if let Some(ref resp) = triage_result.response {
+            info!(
+                id = %event.id,
+                risk = %resp.risk_level,
+                confidence = resp.confidence,
+                latency_ms = resp.latency_ms,
+                backend = %triage_result.backend_used,
+                "AI triage analysis complete (advisory only)"
+            );
+
+            // Write triage result to audit log
+            let model_name = triage_result.backend_used.clone();
+            let mut audit_record = event.to_audit_record();
+            audit_record.slm_analysis = Some(SlmAnalysisRecord {
+                risk_level: resp.risk_level.to_string(),
+                explanation: resp.explanation.clone(),
+                confidence: resp.confidence,
+                latency_ms: resp.latency_ms,
+                model: model_name,
+            });
+
+            if let Some(details) = audit_record.event_details.as_object_mut() {
+                details.insert(
+                    "slm_analysis".to_string(),
+                    serde_json::json!({
+                        "risk_level": resp.risk_level.to_string(),
+                        "explanation": resp.explanation,
+                        "confidence": resp.confidence,
+                        "backend": triage_result.backend_used,
+                    }),
+                );
+            }
+
+            if let Err(e) = audit_tx.try_send(audit_record) {
+                warn!(error = %e, "failed to send triage enrichment to audit logger");
+            }
+
+            Some(resp.clone())
+        } else {
+            warn!(
+                id = %event.id,
+                message = ?triage_result.message,
+                "AI triage analysis unavailable, continuing without"
+            );
+
+            // Log the unavailability
+            let mut audit_record = event.to_audit_record();
+            audit_record.slm_analysis = Some(SlmAnalysisRecord {
+                risk_level: "analysis_unavailable".to_string(),
+                explanation: triage_result
+                    .message
+                    .unwrap_or_else(|| "No AI backend available".to_string()),
+                confidence: 0.0,
+                latency_ms: 0,
+                model: "none".to_string(),
+            });
+            if let Err(e) = audit_tx.try_send(audit_record) {
+                warn!(error = %e, "failed to send AI unavailable record to audit logger");
+            }
+
+            None
+        };
+
+        // --- Step 2: Cloud deep analysis for high-risk events ---
+        if let Some(ref triage_resp) = slm_result {
+            if triage_resp.risk_level >= RiskLevel::High {
+                let deep_request = AiRequest {
+                    task_type: TaskType::DeepAnalysis,
+                    prompt: format!(
+                        "DEEP ANALYSIS REQUEST\n\
+                         Local triage result: {} risk (confidence: {:.2})\n\
+                         Triage explanation: {}\n\n\
+                         Original event:\n{}",
+                        triage_resp.risk_level,
+                        triage_resp.confidence,
+                        triage_resp.explanation,
+                        prompt,
+                    ),
+                    context: Some(format!(
+                        "Local triage: {} risk",
+                        triage_resp.risk_level
+                    )),
+                };
+
+                let deep_result = ai_manager.analyze(deep_request).await;
+
+                if let Some(ref deep_resp) = deep_result.response {
+                    info!(
+                        id = %event.id,
+                        risk = %deep_resp.risk_level,
+                        confidence = deep_resp.confidence,
+                        backend = %deep_result.backend_used,
+                        fallback = deep_result.fallback_used,
+                        "AI deep analysis complete (advisory only)"
+                    );
+
+                    // Enrich audit record with deep analysis
+                    let mut audit_record = event.to_audit_record();
+                    if let Some(details) = audit_record.event_details.as_object_mut() {
+                        details.insert(
+                            "deep_analysis".to_string(),
+                            serde_json::json!({
+                                "risk_level": deep_resp.risk_level.to_string(),
+                                "explanation": deep_resp.explanation,
+                                "confidence": deep_resp.confidence,
+                                "backend": deep_result.backend_used,
+                                "fallback_used": deep_result.fallback_used,
+                            }),
+                        );
+                    }
+                    if let Err(e) = audit_tx.try_send(audit_record) {
+                        warn!(error = %e, "failed to send deep analysis enrichment to audit logger");
+                    }
+                } else {
+                    debug!(
+                        id = %event.id,
+                        message = ?deep_result.message,
+                        "AI deep analysis unavailable (cloud not configured or failed)"
+                    );
+                }
+            }
+        }
+
+        // --- Step 3: Swarm escalation for critical events (same as legacy) ---
+        let slm_is_critical = slm_result
+            .as_ref()
+            .is_some_and(|r| r.risk_level >= RiskLevel::Critical);
+        let event_is_critical = event.severity() >= Severity::Critical;
+
+        if slm_is_critical || event_is_critical {
+            if let Some(ref commander) = swarm {
+                let slm_risk = slm_result
+                    .as_ref()
+                    .map(|r| r.risk_level.to_string())
+                    .unwrap_or_else(|| "UNKNOWN".to_string());
+                let slm_explanation = slm_result
+                    .as_ref()
+                    .map(|r| r.explanation.clone())
+                    .unwrap_or_else(|| "AI analysis unavailable".to_string());
+
+                let swarm_event = SwarmEventData {
+                    server_name: server_name.clone(),
+                    client_name: client_name.clone(),
+                    tool_name: None,
+                    arguments: None,
+                    resource_uri: None,
+                    sampling_content: None,
+                    recent_events: vec![],
+                    slm_risk,
+                    slm_explanation,
+                };
+
+                match commander.analyze(&swarm_event).await {
+                    Ok(verdict) => {
+                        info!(
+                            id = %event.id,
+                            risk = %verdict.risk_level,
+                            confidence = verdict.confidence,
+                            cost_usd = verdict.estimated_cost_usd,
+                            "Swarm escalation analysis complete (advisory only)"
+                        );
+
+                        let mut audit_record = event.to_audit_record();
+                        audit_record.swarm_analysis = Some(SwarmAnalysisRecord {
+                            risk_level: verdict.risk_level,
+                            explanation: verdict.explanation,
+                            recommended_action: verdict.recommended_action,
+                            confidence: verdict.confidence,
+                            specialist_summaries: verdict
+                                .specialist_reports
+                                .iter()
+                                .map(|r| r.verdict.clone())
+                                .collect(),
+                            total_tokens: verdict.total_input_tokens
+                                + verdict.total_output_tokens,
+                            estimated_cost_usd: verdict.estimated_cost_usd,
+                            latency_ms: verdict.total_latency_ms,
+                        });
+
+                        if let Err(e) = audit_tx.try_send(audit_record) {
+                            warn!(error = %e, "failed to send swarm enrichment to audit logger");
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            id = %event.id,
+                            error = %e,
+                            "Swarm escalation analysis failed, continuing without"
+                        );
+                    }
+                }
+            }
+        }
+
+        // --- Step 4: Cloud agent auto-escalation for high-risk events ---
+        let slm_is_high_or_above = slm_result
+            .as_ref()
+            .is_some_and(|r| r.risk_level >= RiskLevel::High);
+
+        if slm_is_high_or_above {
+            if let Some(ref agent_mgr) = cloud_agent {
+                let slm_explanation = slm_result
+                    .as_ref()
+                    .map(|r| r.explanation.clone())
+                    .unwrap_or_default();
+                let slm_risk = slm_result
+                    .as_ref()
+                    .map(|r| r.risk_level.to_string())
+                    .unwrap_or_default();
+
+                let event_id = event.id.to_string();
+                let briefing = format!(
+                    "AUTO-ESCALATION from AI dual-backend triage.\n\
+                     Event ID: {}\n\
+                     Triage Risk: {}\n\
+                     Triage Explanation: {}\n\
+                     Event severity: {:?}\n\n\
+                     Investigate this event thoroughly. Determine if this is a true \
+                     positive or false positive. If true positive, assess the blast \
+                     radius and recommend remediation steps.",
+                    event_id,
+                    slm_risk,
+                    slm_explanation,
+                    event.severity(),
+                );
+
+                use clawdefender_swarm::agent_session::SessionType as AgentSessionType;
+
+                let query = format!(
+                    "Investigate event {} — AI flagged as {} risk: {}",
+                    event_id, slm_risk, slm_explanation
+                );
+
+                match agent_mgr
+                    .start_session(
+                        AgentSessionType::Investigate {
+                            event_id: event_id.clone(),
+                        },
+                        briefing,
+                        Some(query),
+                    )
+                    .await
+                {
+                    Ok(session_id) => {
+                        info!(
+                            event_id = %event_id,
+                            session_id = %session_id,
+                            slm_risk = %slm_risk,
+                            "Cloud agent Investigate session auto-created for suspicious event"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            event_id = %event_id,
+                            error = %e,
+                            "Failed to auto-create cloud Investigate session, continuing without"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Build an AnalysisRequest from a correlated event (shared by both legacy and dual paths).
+    fn build_analysis_request(
+        event: &CorrelatedEvent,
+        server_name: &str,
+        client_name: &str,
+    ) -> AnalysisRequest {
+        if let Some(ref mcp) = event.mcp_event {
+            match &mcp.kind {
+                McpEventKind::ToolCall(tc) => AnalysisRequest {
+                    event_type: AnalysisEventType::McpToolCall {
+                        tool_name: tc.tool_name.clone(),
+                        arguments: tc.arguments.clone(),
+                    },
+                    server_name: server_name.to_string(),
+                    client_name: client_name.to_string(),
+                    context: AnalysisContext {
+                        recent_events: vec![],
+                        server_reputation: ServerReputation::default(),
+                    },
+                },
+                McpEventKind::ResourceRead(rr) => AnalysisRequest {
+                    event_type: AnalysisEventType::McpResourceRead {
+                        uri: rr.uri.clone(),
+                    },
+                    server_name: server_name.to_string(),
+                    client_name: client_name.to_string(),
+                    context: AnalysisContext {
+                        recent_events: vec![],
+                        server_reputation: ServerReputation::default(),
+                    },
+                },
+                McpEventKind::SamplingRequest(sr) => AnalysisRequest {
+                    event_type: AnalysisEventType::McpSampling {
+                        content: serde_json::to_string(&sr.messages)
+                            .unwrap_or_else(|_| "sampling request".to_string()),
+                    },
+                    server_name: server_name.to_string(),
+                    client_name: client_name.to_string(),
+                    context: AnalysisContext {
+                        recent_events: vec![],
+                        server_reputation: ServerReputation::default(),
+                    },
+                },
+                _ => {
+                    let description = format!("{:?}", mcp.kind);
+                    AnalysisRequest {
+                        event_type: AnalysisEventType::UncorrelatedOsActivity { description },
+                        server_name: server_name.to_string(),
+                        client_name: client_name.to_string(),
+                        context: AnalysisContext {
+                            recent_events: vec![],
+                            server_reputation: ServerReputation::default(),
+                        },
+                    }
+                }
+            }
+        } else {
+            let description = if event.os_events.is_empty() {
+                "Unknown uncorrelated OS activity".to_string()
+            } else {
+                event
+                    .os_events
+                    .iter()
+                    .map(|e| format!("{:?}", e))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
+            AnalysisRequest {
+                event_type: AnalysisEventType::UncorrelatedOsActivity { description },
+                server_name: server_name.to_string(),
+                client_name: client_name.to_string(),
+                context: AnalysisContext {
+                    recent_events: vec![],
+                    server_reputation: ServerReputation::default(),
+                },
             }
         }
     }

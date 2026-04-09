@@ -258,41 +258,30 @@ pub fn compute_threat_intel() -> ScoreFactor {
 pub fn compute_ai_analysis(state: &AppState) -> ScoreFactor {
     const MAX: u32 = 15;
 
-    let model_info = state
-        .active_model_info
-        .lock()
-        .ok()
-        .and_then(|guard| guard.clone());
+    let handle = tokio::runtime::Handle::current();
+    let local_available = handle.block_on(state.ai_backends.local_available());
+    let cloud_available = handle.block_on(state.ai_backends.cloud_available());
+    let local_info = handle.block_on(state.ai_backends.local_model_info());
+    let cloud_info = handle.block_on(state.ai_backends.cloud_info());
 
-    let (points, description, fix_actions) = match model_info {
-        Some(ref info) if info.model_type == "local_catalog" || info.model_type == "local_custom" => {
-            if info.mock_mode {
-                (0, "AI model is in mock mode.".into(), vec![FixAction {
-                    label: "Set up AI analysis".into(),
-                    action_type: "navigate".into(),
-                    target: "/settings".into(),
-                    params: Some(serde_json::json!({ "section": "ai" })),
-                }])
-            } else {
-                (MAX, format!("Local AI model active: {}.", info.model_name), vec![])
-            }
-        }
-        Some(ref info) if info.model_type == "cloud_api" => {
-            (5, format!("Cloud AI provider active: {}. Local model recommended for privacy.", info.model_name), vec![FixAction {
-                label: "Download local model".into(),
-                action_type: "navigate".into(),
-                target: "/settings".into(),
-                params: Some(serde_json::json!({ "section": "ai" })),
-            }])
-        }
-        _ => {
-            (0, "No AI model configured.".into(), vec![FixAction {
-                label: "Set up AI analysis".into(),
-                action_type: "navigate".into(),
-                target: "/settings".into(),
-                params: Some(serde_json::json!({ "section": "ai" })),
-            }])
-        }
+    let (points, description, fix_actions, details) = if local_available {
+        let name = local_info.map(|i| i.model_name).unwrap_or_else(|| "Local model".into());
+        (MAX, format!("Local AI model active: {}.", name), vec![], name.clone())
+    } else if cloud_available {
+        let name = cloud_info.map(|(_, m)| m).unwrap_or_else(|| "Cloud API".into());
+        (5, format!("Cloud AI provider active: {}. Local model recommended for privacy.", name), vec![FixAction {
+            label: "Download local model".into(),
+            action_type: "navigate".into(),
+            target: "/settings".into(),
+            params: Some(serde_json::json!({ "section": "ai" })),
+        }], name)
+    } else {
+        (0, "No AI model configured.".into(), vec![FixAction {
+            label: "Set up AI analysis".into(),
+            action_type: "navigate".into(),
+            target: "/settings".into(),
+            params: Some(serde_json::json!({ "section": "ai" })),
+        }], "None".into())
     };
 
     ScoreFactor {
@@ -303,9 +292,7 @@ pub fn compute_ai_analysis(state: &AppState) -> ScoreFactor {
         current_points: points,
         status: factor_status(points, MAX).into(),
         fix_actions,
-        details: model_info
-            .map(|i| i.model_name)
-            .unwrap_or_else(|| "None".into()),
+        details,
     }
 }
 

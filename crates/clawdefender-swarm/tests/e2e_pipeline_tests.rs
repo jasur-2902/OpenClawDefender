@@ -255,6 +255,7 @@ async fn e2e_budget_enforcement_blocks_analysis_when_exhausted() {
 
     let (dir, db_path) = temp_db();
     let tiny_budget = BudgetConfig {
+        session_limit_usd: 100.0,
         daily_limit_usd: 0.0001, // Extremely low budget
         monthly_limit_usd: 100.0,
     };
