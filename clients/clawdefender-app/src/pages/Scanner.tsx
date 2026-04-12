@@ -482,10 +482,15 @@ function QuickScanTab() {
     });
 
     try {
-      const response = await invoke<string>("ask_claw_ai", { input: prompt, contextJson });
+      const raw = await invoke<string>("ask_claw_ai", { input: prompt, contextJson });
+      let message = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        message = parsed.message ?? parsed.explanation ?? raw;
+      } catch { /* use raw string if not JSON */ }
       setAskClawState((prev) => {
         const next = new Map(prev);
-        next.set(findingKey, { loading: false, response, followUp: "" });
+        next.set(findingKey, { loading: false, response: message, followUp: "" });
         return next;
       });
     } catch (e) {
@@ -1134,10 +1139,15 @@ function ScanHistoryTab() {
     });
 
     try {
-      const response = await invoke<string>("ask_claw_ai", { input: prompt, contextJson });
+      const raw = await invoke<string>("ask_claw_ai", { input: prompt, contextJson });
+      let message = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        message = parsed.message ?? parsed.explanation ?? raw;
+      } catch { /* use raw string if not JSON */ }
       setAskClawState((prev) => {
         const next = new Map(prev);
-        next.set(findingKey, { loading: false, response, followUp: "" });
+        next.set(findingKey, { loading: false, response: message, followUp: "" });
         return next;
       });
     } catch (e) {

@@ -114,8 +114,13 @@ export function AiFindingCard({ finding, scanId, animate }: Props) {
     });
 
     try {
-      const response = await invoke<string>("ask_claw_ai", { input: prompt, contextJson });
-      setAskClaw({ loading: false, response, followUp: "" });
+      const raw = await invoke<string>("ask_claw_ai", { input: prompt, contextJson });
+      let message = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        message = parsed.message ?? parsed.explanation ?? raw;
+      } catch { /* use raw string if not JSON */ }
+      setAskClaw({ loading: false, response: message, followUp: "" });
     } catch (e) {
       setAskClaw({ loading: false, response: `Error: ${String(e)}`, followUp: "" });
     }
