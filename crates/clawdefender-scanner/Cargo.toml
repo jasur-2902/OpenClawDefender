@@ -19,6 +19,13 @@ tempfile = "3"
 async-trait = "0.1"
 libc = "0.2"
 rand = "0.8"
+yara-x = "0.12"
+walkdir = "2"
+plist = "1"
+sha2 = "0.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+sysinfo = "0.33"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

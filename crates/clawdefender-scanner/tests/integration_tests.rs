@@ -316,7 +316,7 @@ fn test_exit_code_medium_with_threshold() {
 #[test]
 fn test_default_modules_list() {
     let modules = Scanner::default_modules();
-    assert_eq!(modules.len(), 6);
+    assert_eq!(modules.len(), 8);
     let names: Vec<&str> = modules.iter().map(|m| m.name()).collect();
     assert!(names.contains(&"path-traversal"));
     assert!(names.contains(&"prompt-injection"));
@@ -324,6 +324,8 @@ fn test_default_modules_list() {
     assert!(names.contains(&"capability-escalation"));
     assert!(names.contains(&"dependency-audit"));
     assert!(names.contains(&"fuzzing"));
+    assert!(names.contains(&"persistence-detection"));
+    assert!(names.contains(&"pattern-detection"));
 }
 
 // --- JSON Report Round-Trip ---

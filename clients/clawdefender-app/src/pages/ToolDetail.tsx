@@ -123,9 +123,9 @@ export function ToolDetail() {
   const quickStats = useMemo(() => {
     if (!tool) return [];
     return [
-      { label: "Events today", value: String(tool.event_count_today) },
-      { label: "Blocked today", value: String(tool.blocked_count_today), color: tool.blocked_count_today > 0 ? "var(--color-danger)" : undefined },
-      { label: "Status", value: tool.behavioral_status === "learning" ? `Learning (${Math.round(tool.learning_progress * 100)}%)` : tool.behavioral_status },
+      { label: "Events today", value: String(tool.event_count_today ?? 0) },
+      { label: "Blocked today", value: String(tool.blocked_count_today ?? 0), color: (tool.blocked_count_today ?? 0) > 0 ? "var(--color-danger)" : undefined },
+      { label: "Status", value: tool.behavioral_status === "learning" ? `Learning (${Math.round((tool.learning_progress ?? 0) * 100)}%)` : (tool.behavioral_status ?? "unknown") },
     ];
   }, [tool]);
 
@@ -232,9 +232,9 @@ export function ToolDetail() {
       </div>
 
       {/* Health warnings */}
-      {tool.health_warnings.length > 0 && (
+      {(tool.health_warnings?.length ?? 0) > 0 && (
         <div className="space-y-2">
-          {tool.health_warnings.map((warning, i) => (
+          {tool.health_warnings!.map((warning: any, i: number) => (
             <div
               key={i}
               role={warning.severity === "critical" ? "alert" : "status"}
@@ -319,7 +319,7 @@ export function ToolDetail() {
               <TrustLevelSelector
                 serverName={tool.server_name}
                 currentLevel={tool.trust_level}
-                customized={tool.trust_customized}
+                customized={tool.trust_customized ?? false}
                 onLevelChanged={fetchDetail}
               />
             </div>
@@ -342,8 +342,8 @@ export function ToolDetail() {
         {activeSection === "behavior" && (
           <BehavioralProfile
             serverName={tool.server_name}
-            behavioralStatus={tool.behavioral_status}
-            learningProgress={tool.learning_progress}
+            behavioralStatus={tool.behavioral_status ?? "unknown"}
+            learningProgress={tool.learning_progress ?? 0}
           />
         )}
 

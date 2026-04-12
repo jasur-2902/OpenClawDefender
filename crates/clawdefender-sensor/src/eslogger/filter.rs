@@ -105,6 +105,76 @@ impl EventPreFilter {
             return false;
         }
 
+        // --- New high-value events: always pass (they are rare and always significant) ---
+        match &event.kind {
+            OsEventKind::Kextload { .. }
+            | OsEventKind::BtmLaunchItemAdd { .. }
+            | OsEventKind::XpMalwareDetected { .. }
+            | OsEventKind::GatekeeperUserOverride { .. } => {
+                return true; // Never filter these
+            }
+            _ => {}
+        }
+
+        // Authentication / login events: apply debounce (same user within 5s)
+        match &event.kind {
+            OsEventKind::Authentication { .. }
+            | OsEventKind::LoginLogin
+            | OsEventKind::LoginLogout => {
+                return self.dedupe_authentication(event);
+            }
+            _ => {}
+        }
+
+        // Privilege events (setuid/setgid): only from user processes
+        match &event.kind {
+            OsEventKind::Setuid { .. } | OsEventKind::Setgid { .. } => {
+                // Skip system processes (PID < 100) or Apple-signed
+                if event.pid < 100 {
+                    return false;
+                }
+                if is_apple_signed(event) {
+                    return false;
+                }
+                return true;
+            }
+            _ => {}
+        }
+
+        // Task/trace/proc_check: only non-system, non-debugger
+        match &event.kind {
+            OsEventKind::GetTask { .. }
+            | OsEventKind::Trace { .. }
+            | OsEventKind::ProcCheck { .. } => {
+                let name = event
+                    .process_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&event.process_path);
+                // Allow known debuggers/profilers — they're expected to use these
+                if name.contains("lldb")
+                    || name.contains("dtrace")
+                    || name.contains("sample")
+                    || name.contains("instruments")
+                {
+                    return false;
+                }
+                if event.pid < 100 {
+                    return false;
+                }
+                return true;
+            }
+            _ => {}
+        }
+
+        // Link/symlink: only in sensitive directories
+        match &event.kind {
+            OsEventKind::Link { ref path } | OsEventKind::Symlink { ref path } => {
+                return is_sensitive_area(path);
+            }
+            _ => {}
+        }
+
         // Drop events from known system processes (by executable basename)
         let basename = event
             .process_path
@@ -116,10 +186,8 @@ impl EventPreFilter {
         }
 
         // Drop events from Apple-signed processes
-        if let Some(ref signing_id) = event.signing_id {
-            if signing_id.starts_with("com.apple.") {
-                return false;
-            }
+        if is_apple_signed(event) {
+            return false;
         }
 
         // Drop events from ignored path prefixes (unless allowlisted)
@@ -170,19 +238,47 @@ impl EventPreFilter {
         true
     }
 
+    /// Deduplicate authentication/login events: allow at most one per 5 seconds
+    /// from the same PID.
+    fn dedupe_authentication(&mut self, event: &OsEvent) -> bool {
+        let key = (event.pid, "auth_dedup".to_string());
+        let now = Instant::now();
+        if let Some(last) = self.debounce_map.get(&key) {
+            if now.duration_since(*last) < Duration::from_secs(5) {
+                return false;
+            }
+        }
+        self.debounce_map.insert(key, now);
+        true
+    }
+
     /// Extract the relevant path from an event for debounce keying.
     fn event_path(&self, event: &OsEvent) -> Option<String> {
         match &event.kind {
             OsEventKind::Exec { target_path, .. } => Some(target_path.clone()),
-            OsEventKind::Open { path, .. } => Some(path.clone()),
-            OsEventKind::Close { path } => Some(path.clone()),
+            OsEventKind::Open { path, .. }
+            | OsEventKind::Close { path }
+            | OsEventKind::Unlink { path }
+            | OsEventKind::Setuid { path }
+            | OsEventKind::Setgid { path }
+            | OsEventKind::Link { path }
+            | OsEventKind::Symlink { path }
+            | OsEventKind::GatekeeperUserOverride { path } => Some(path.clone()),
             OsEventKind::Rename { source, .. } => Some(source.clone()),
-            OsEventKind::Unlink { path } => Some(path.clone()),
             OsEventKind::Connect { address, port, .. } => Some(format!("{address}:{port}")),
+            OsEventKind::Kextload { identifier } => Some(identifier.clone()),
+            OsEventKind::BtmLaunchItemAdd { item_url, .. } => Some(item_url.clone()),
+            OsEventKind::XpMalwareDetected { name } => Some(name.clone()),
+            OsEventKind::GetTask { target_pid }
+            | OsEventKind::Trace { target_pid }
+            | OsEventKind::ProcCheck { target_pid } => Some(format!("pid:{target_pid}")),
             OsEventKind::Fork { .. }
             | OsEventKind::Exit { .. }
             | OsEventKind::PtyGrant { .. }
-            | OsEventKind::SetMode { .. } => None,
+            | OsEventKind::SetMode { .. }
+            | OsEventKind::Authentication { .. }
+            | OsEventKind::LoginLogin
+            | OsEventKind::LoginLogout => None,
         }
     }
 
@@ -191,6 +287,45 @@ impl EventPreFilter {
         self.debounce_map
             .retain(|_, last| now.duration_since(*last) < Duration::from_secs(5));
     }
+}
+
+/// Check if an event originated from an Apple-signed process.
+fn is_apple_signed(event: &OsEvent) -> bool {
+    if let Some(ref signing_id) = event.signing_id {
+        signing_id.starts_with("com.apple.")
+    } else {
+        false
+    }
+}
+
+/// Sensitive areas where link/symlink creation should be monitored.
+const SENSITIVE_AREA_PREFIXES: &[&str] = &[
+    "/etc/",
+    "/private/etc/",
+    "/Library/LaunchAgents/",
+    "/Library/LaunchDaemons/",
+    "/usr/local/bin/",
+    "/usr/local/sbin/",
+];
+
+/// Check if a path is in a sensitive area (for link/symlink filtering).
+fn is_sensitive_area(path: &str) -> bool {
+    for prefix in SENSITIVE_AREA_PREFIXES {
+        if path.starts_with(prefix) {
+            return true;
+        }
+    }
+    // Also check home-directory sensitive areas
+    if path.contains("/.ssh/")
+        || path.contains("/LaunchAgents/")
+        || path.contains("/LaunchDaemons/")
+        || path.contains("/.gnupg/")
+        || path.contains("/.aws/")
+        || path.contains("/Library/Keychains/")
+    {
+        return true;
+    }
+    false
 }
 
 /// Sensitive path prefixes where even read-only access should be monitored.
@@ -423,5 +558,193 @@ mod tests {
         let mut filter = EventPreFilter::new(&[], &["/opt/internal/".to_string()]);
         let ev = make_event(500, "/opt/internal/worker", exec_kind("/bin/ls"));
         assert!(!filter.should_pass(&ev));
+    }
+
+    // --- Tests for new event types ---
+
+    #[test]
+    fn kextload_always_passes() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        // kextload should pass even from system paths
+        let ev = make_event(
+            50,
+            "/System/Library/Extensions/kextd",
+            OsEventKind::Kextload {
+                identifier: "com.malware.rootkit".to_string(),
+            },
+        );
+        assert!(filter.should_pass(&ev), "kextload must always pass");
+    }
+
+    #[test]
+    fn xp_malware_always_passes() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        let ev = make_event(
+            50,
+            "/usr/libexec/XProtectService",
+            OsEventKind::XpMalwareDetected {
+                name: "OSX.Trojan".to_string(),
+            },
+        );
+        assert!(filter.should_pass(&ev), "xp_malware_detected must always pass");
+    }
+
+    #[test]
+    fn btm_launch_item_always_passes() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        let ev = make_event(
+            50,
+            "/usr/sbin/installer",
+            OsEventKind::BtmLaunchItemAdd {
+                item_url: "/Library/LaunchDaemons/evil.plist".to_string(),
+                item_type: "daemon".to_string(),
+            },
+        );
+        assert!(filter.should_pass(&ev), "btm_launch_item_add must always pass");
+    }
+
+    #[test]
+    fn gatekeeper_override_always_passes() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        let ev = make_event(
+            50,
+            "/usr/sbin/syspolicyd",
+            OsEventKind::GatekeeperUserOverride {
+                path: "/Downloads/sketchy.app".to_string(),
+            },
+        );
+        assert!(
+            filter.should_pass(&ev),
+            "gatekeeper_user_override must always pass"
+        );
+    }
+
+    #[test]
+    fn setuid_filtered_for_system_processes() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        // PID < 100 should be filtered
+        let ev = make_event(
+            50,
+            "/usr/sbin/sysctl",
+            OsEventKind::Setuid {
+                path: "/usr/sbin/something".to_string(),
+            },
+        );
+        assert!(!filter.should_pass(&ev), "setuid from PID < 100 should be dropped");
+
+        // Apple-signed should be filtered
+        let mut ev2 = make_event(
+            500,
+            "/usr/local/bin/something",
+            OsEventKind::Setuid {
+                path: "/tmp/test".to_string(),
+            },
+        );
+        ev2.signing_id = Some("com.apple.security".to_string());
+        assert!(
+            !filter.should_pass(&ev2),
+            "setuid from Apple-signed should be dropped"
+        );
+
+        // Normal user process should pass
+        let ev3 = make_event(
+            500,
+            "/usr/local/bin/malware",
+            OsEventKind::Setuid {
+                path: "/tmp/escalate".to_string(),
+            },
+        );
+        assert!(filter.should_pass(&ev3), "setuid from user process should pass");
+    }
+
+    #[test]
+    fn get_task_filtered_for_debuggers() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        // lldb should be filtered (known debugger)
+        let ev = make_event(
+            500,
+            "/usr/bin/lldb",
+            OsEventKind::GetTask { target_pid: 1234 },
+        );
+        assert!(
+            !filter.should_pass(&ev),
+            "get_task from lldb should be dropped"
+        );
+
+        // Unknown process should pass
+        let ev2 = make_event(
+            500,
+            "/tmp/injector",
+            OsEventKind::GetTask { target_pid: 1234 },
+        );
+        assert!(filter.should_pass(&ev2), "get_task from unknown process should pass");
+
+        // System process (PID < 100) should be filtered
+        let ev3 = make_event(
+            50,
+            "/usr/sbin/something",
+            OsEventKind::GetTask { target_pid: 1234 },
+        );
+        assert!(
+            !filter.should_pass(&ev3),
+            "get_task from PID < 100 should be dropped"
+        );
+    }
+
+    #[test]
+    fn link_filtered_outside_sensitive_areas() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        // Link in non-sensitive area should be filtered
+        let ev = make_event(
+            500,
+            "/usr/local/bin/node",
+            OsEventKind::Link {
+                path: "/tmp/some_link".to_string(),
+            },
+        );
+        assert!(
+            !filter.should_pass(&ev),
+            "link in /tmp should be dropped"
+        );
+
+        // Link in sensitive area should pass
+        let ev2 = make_event(
+            500,
+            "/usr/local/bin/node",
+            OsEventKind::Link {
+                path: "/etc/sudoers_link".to_string(),
+            },
+        );
+        assert!(filter.should_pass(&ev2), "link in /etc should pass");
+
+        // Symlink in LaunchAgents should pass
+        let ev3 = make_event(
+            500,
+            "/usr/local/bin/node",
+            OsEventKind::Symlink {
+                path: "/Users/dev/Library/LaunchAgents/evil.plist".to_string(),
+            },
+        );
+        assert!(
+            filter.should_pass(&ev3),
+            "symlink in LaunchAgents should pass"
+        );
+    }
+
+    #[test]
+    fn authentication_deduplication() {
+        let mut filter = EventPreFilter::new(&[], &[]);
+        let ev = make_event(
+            500,
+            "/usr/bin/sudo",
+            OsEventKind::Authentication { success: true },
+        );
+        // First should pass
+        assert!(filter.should_pass(&ev), "first auth event should pass");
+        // Rapid duplicate should be filtered (within 5s)
+        assert!(
+            !filter.should_pass(&ev),
+            "rapid duplicate auth should be filtered"
+        );
     }
 }

@@ -9,12 +9,23 @@ use crate::evidence::EvidenceCollector;
 use crate::finding::{Finding, ModuleCategory};
 use crate::sandbox::Sandbox;
 
+pub mod browser_audit;
 pub mod capability_escalation;
+pub mod cis_benchmark;
+pub mod clamav;
+pub mod clipboard_monitor;
 pub mod dependency_audit;
 pub mod exfiltration;
+pub mod file_integrity;
 pub mod fuzzing;
+pub mod memory_scanner;
 pub mod path_traversal;
+pub mod pattern_detection;
+pub mod persistence;
 pub mod prompt_injection;
+pub mod signature_detection;
+pub mod tcc_audit;
+pub mod yara_rules;
 
 /// Context provided to each scan module.
 pub struct ScanContext {
@@ -33,4 +44,12 @@ pub trait ScanModule: Send + Sync {
     fn description(&self) -> &str;
     fn category(&self) -> ModuleCategory;
     async fn run(&self, ctx: &mut ScanContext) -> Result<Vec<Finding>>;
+
+    /// Run this module without an MCP scan context.
+    /// Host-scanning modules (YARA, persistence, patterns, ClamAV) override this
+    /// to perform their work directly. Modules that require MCP context return
+    /// an error by default.
+    async fn run_standalone(&self) -> Result<Vec<Finding>> {
+        anyhow::bail!("Module '{}' requires an MCP scan context", self.name())
+    }
 }

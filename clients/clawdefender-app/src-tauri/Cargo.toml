@@ -28,9 +28,12 @@ tracing = "0.1"
 toml = "0.8"
 libc = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
+clawdefender-core = { path = "../../../crates/clawdefender-core" }
+clawdefender-scanner = { path = "../../../crates/clawdefender-scanner" }
 clawdefender-slm = { path = "../../../crates/clawdefender-slm", features = ["cloud", "download", "gguf"] }
 clawdefender-swarm = { path = "../../../crates/clawdefender-swarm" }
 dirs = "5"
+sha2 = "0.10"
 uuid = { version = "1", features = ["serde", "v4"] }
 
 [dev-dependencies]

@@ -504,10 +504,12 @@ fn test_e2e_auto_block_enabled_blocks_high_anomaly() {
             window_seconds: 60,
             explanation: "Test kill chain".to_string(),
             steps: vec![],
+            mitre_id: Some("T1059.004".to_string()),
         },
         matched_events: vec![],
         explanation: "Test kill chain matched".to_string(),
         severity: killchain::Severity::Critical,
+        mitre_id: Some("T1059.004".to_string()),
     };
 
     let decision = engine.decide(

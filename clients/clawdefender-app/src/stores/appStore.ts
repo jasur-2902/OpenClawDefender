@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProtectionScore, ScoreSnapshot } from "../types";
 import { tauriStorage } from "./tauriStorage";
@@ -139,10 +139,10 @@ export const useAppStore = create<AppStore>()(
 }),
     {
       name: "app-store",
-      storage: tauriStorage,
+      storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,
-      }),
+      }) as unknown as AppStore,
     }
   )
 );

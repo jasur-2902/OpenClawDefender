@@ -317,7 +317,7 @@ export function Timeline() {
   const [serverFilter, setServerFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [onlyBlocks, setOnlyBlocks] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [isLive, setIsLive] = useState(true);
 
@@ -327,13 +327,13 @@ export function Timeline() {
 
   useEffect(() => {
     invoke<AuditEvent[]>("get_recent_events")
-      .then((evts) => setEvents(evts))
+      .then((evts) => setEvents(evts as any))
       .catch(() => {});
   }, [setEvents]);
 
   const handleNewEvent = useCallback(
     (payload: AuditEvent) => {
-      addEvent(payload);
+      addEvent(payload as any);
       setIsLive(true);
     },
     [addEvent]

@@ -193,7 +193,7 @@ export function LiveScanView({ scanId, onComplete, onCancel }: Props) {
 
   const progressPercent = progress?.progress_percent ?? 0;
   const stagesTotal = progress?.stages_total ?? 0;
-  const stagesCompleted = progress?.stages_completed ?? completedStages.length;
+  const stagesCompletedCount = progress?.stages_completed?.length ?? completedStages.length;
   const toolCallsUsed = progress?.tool_calls_used ?? 0;
   const findingsCount = progress?.findings_count ?? findings.length;
 
@@ -274,7 +274,7 @@ export function LiveScanView({ scanId, onComplete, onCancel }: Props) {
         {/* Progress bar */}
         <div>
           <div className="flex justify-between text-xs text-[var(--color-text-secondary)] mb-1">
-            <span>Stages: {stagesCompleted}/{stagesTotal}</span>
+            <span>Stages: {stagesCompletedCount}/{stagesTotal}</span>
             <span>{Math.round(progressPercent)}%</span>
           </div>
           <div className="w-full h-2 rounded-full bg-[var(--color-bg-primary)]">
@@ -292,9 +292,9 @@ export function LiveScanView({ scanId, onComplete, onCancel }: Props) {
               <div
                 key={i}
                 className={`h-1.5 flex-1 rounded-full min-w-[20px] transition-colors ${
-                  i < stagesCompleted
+                  i < stagesCompletedCount
                     ? "bg-[var(--color-accent)]"
-                    : i === stagesCompleted && !scanComplete
+                    : i === stagesCompletedCount && !scanComplete
                       ? "bg-[var(--color-accent)]/40 animate-pulse"
                       : "bg-[var(--color-bg-tertiary)]"
                 }`}

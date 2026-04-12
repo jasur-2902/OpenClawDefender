@@ -206,6 +206,20 @@ pub struct AppSettings {
     pub behavioral_threshold: f64,
     pub analysis_frequency: String,
     pub security_level: String,
+    /// Clipboard ClickFix monitor: opt-in, off by default.
+    pub clipboard_monitor_enabled: bool,
+}
+
+// --- Clipboard Monitor types ---
+
+/// An in-memory clipboard threat entry. NEVER persisted to disk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipboardThreatEntry {
+    pub detected_at: String,
+    pub threat_level: String,
+    pub patterns_matched: Vec<String>,
+    pub content_preview: String,
+    pub content_length: usize,
 }
 
 // --- Threat Intelligence types ---
@@ -480,6 +494,11 @@ pub struct AppState {
     pub data_portability: Mutex<Option<DataPortabilityManager>>,
     /// Phase 6: Transparency dashboard for full agent visibility.
     pub transparency_dashboard: Mutex<Option<TransparencyDashboard>>,
+    /// Clipboard monitor: recent threats detected by the background poller.
+    /// Kept in memory only — clipboard content is NEVER persisted to disk.
+    pub clipboard_threats: Mutex<Vec<ClipboardThreatEntry>>,
+    /// Whether the clipboard monitor background loop is currently active.
+    pub clipboard_monitor_active: Mutex<bool>,
 }
 
 impl AppState {
@@ -569,6 +588,8 @@ impl Default for AppState {
             threshold_calibrator: Mutex::new(Some(ThresholdCalibrator::new())),
             data_portability: Mutex::new(Some(DataPortabilityManager::new())),
             transparency_dashboard: Mutex::new(Some(TransparencyDashboard::new())),
+            clipboard_threats: Mutex::new(Vec::new()),
+            clipboard_monitor_active: Mutex::new(false),
         }
     }
 }

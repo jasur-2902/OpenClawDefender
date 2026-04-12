@@ -95,6 +95,72 @@ pub enum OsEventKind {
         /// New POSIX mode bits.
         mode: u32,
     },
+    /// Kernel extension load.
+    Kextload {
+        /// Bundle identifier of the kext.
+        identifier: String,
+    },
+    /// Set-UID bit change.
+    Setuid {
+        /// Path of the affected file.
+        path: String,
+    },
+    /// Set-GID bit change.
+    Setgid {
+        /// Path of the affected file.
+        path: String,
+    },
+    /// Hard link creation.
+    Link {
+        /// Path of the new hard link.
+        path: String,
+    },
+    /// Symbolic link creation.
+    Symlink {
+        /// Path of the new symbolic link.
+        path: String,
+    },
+    /// Background Task Management login item added (macOS 13+).
+    BtmLaunchItemAdd {
+        /// Path or URL of the launch item.
+        item_url: String,
+        /// Type of item: "agent", "daemon", "login_item", etc.
+        item_type: String,
+    },
+    /// User login event.
+    LoginLogin,
+    /// User logout event.
+    LoginLogout,
+    /// Authentication event (e.g. sudo, unlock).
+    Authentication {
+        /// Whether the authentication succeeded.
+        success: bool,
+    },
+    /// XProtect malware detection.
+    XpMalwareDetected {
+        /// Description or name of the detected malware.
+        name: String,
+    },
+    /// User bypassed Gatekeeper warning.
+    GatekeeperUserOverride {
+        /// Path of the file that was allowed.
+        path: String,
+    },
+    /// Task port acquisition (process injection vector).
+    GetTask {
+        /// PID of the target process.
+        target_pid: u32,
+    },
+    /// Process tracing (debugger/injection).
+    Trace {
+        /// PID of the target process.
+        target_pid: u32,
+    },
+    /// Process inspection/check.
+    ProcCheck {
+        /// PID of the target process.
+        target_pid: u32,
+    },
 }
 
 impl Event for OsEvent {
@@ -108,16 +174,31 @@ impl Event for OsEvent {
 
     fn severity(&self) -> Severity {
         match &self.kind {
-            OsEventKind::Exec { .. } => Severity::Medium,
-            OsEventKind::Connect { .. } => Severity::Medium,
-            OsEventKind::Unlink { .. } => Severity::Medium,
-            OsEventKind::Rename { .. } => Severity::Low,
-            OsEventKind::SetMode { .. } => Severity::Low,
-            OsEventKind::Open { .. } => Severity::Info,
-            OsEventKind::Close { .. } => Severity::Info,
-            OsEventKind::Fork { .. } => Severity::Info,
-            OsEventKind::Exit { .. } => Severity::Info,
-            OsEventKind::PtyGrant { .. } => Severity::Low,
+            OsEventKind::Kextload { .. } | OsEventKind::XpMalwareDetected { .. } => {
+                Severity::Critical
+            }
+            OsEventKind::GatekeeperUserOverride { .. }
+            | OsEventKind::Setuid { .. }
+            | OsEventKind::Setgid { .. }
+            | OsEventKind::GetTask { .. } => Severity::High,
+            OsEventKind::Exec { .. }
+            | OsEventKind::Connect { .. }
+            | OsEventKind::Unlink { .. }
+            | OsEventKind::BtmLaunchItemAdd { .. }
+            | OsEventKind::Trace { .. }
+            | OsEventKind::Link { .. }
+            | OsEventKind::Symlink { .. } => Severity::Medium,
+            OsEventKind::Rename { .. }
+            | OsEventKind::SetMode { .. }
+            | OsEventKind::PtyGrant { .. }
+            | OsEventKind::Authentication { .. }
+            | OsEventKind::LoginLogin
+            | OsEventKind::LoginLogout
+            | OsEventKind::ProcCheck { .. } => Severity::Low,
+            OsEventKind::Open { .. }
+            | OsEventKind::Close { .. }
+            | OsEventKind::Fork { .. }
+            | OsEventKind::Exit { .. } => Severity::Info,
         }
     }
 
@@ -142,6 +223,39 @@ impl Event for OsEvent {
                 OsEventKind::Exit { status } => format!("exit: status={status}"),
                 OsEventKind::PtyGrant { path } => format!("pty_grant: {path}"),
                 OsEventKind::SetMode { path, mode } => format!("setmode: {path} -> {mode:#o}"),
+                OsEventKind::Kextload { identifier } => {
+                    format!("kextload: {identifier}")
+                }
+                OsEventKind::Setuid { path } => format!("setuid: {path}"),
+                OsEventKind::Setgid { path } => format!("setgid: {path}"),
+                OsEventKind::Link { path } => format!("link: {path}"),
+                OsEventKind::Symlink { path } => format!("symlink: {path}"),
+                OsEventKind::BtmLaunchItemAdd {
+                    item_url,
+                    item_type,
+                } => {
+                    format!("btm_launch_item_add: {item_type} {item_url}")
+                }
+                OsEventKind::LoginLogin => "login_login".to_string(),
+                OsEventKind::LoginLogout => "login_logout".to_string(),
+                OsEventKind::Authentication { success } => {
+                    format!("authentication: success={success}")
+                }
+                OsEventKind::XpMalwareDetected { name } => {
+                    format!("xp_malware_detected: {name}")
+                }
+                OsEventKind::GatekeeperUserOverride { path } => {
+                    format!("gatekeeper_user_override: {path}")
+                }
+                OsEventKind::GetTask { target_pid } => {
+                    format!("get_task: target_pid={target_pid}")
+                }
+                OsEventKind::Trace { target_pid } => {
+                    format!("trace: target_pid={target_pid}")
+                }
+                OsEventKind::ProcCheck { target_pid } => {
+                    format!("proc_check: target_pid={target_pid}")
+                }
             },
             event_details: serde_json::to_value(self).unwrap_or_default(),
             rule_matched: None,

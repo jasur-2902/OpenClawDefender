@@ -127,9 +127,12 @@ pub struct AiScanProgress {
     pub stages_completed: Vec<String>,
     pub stages_total: usize,
     pub findings_count: usize,
+    #[serde(rename = "tool_calls_used")]
     pub tool_calls_count: usize,
     pub elapsed_secs: u64,
     pub estimated_total_secs: u64,
+    /// Calculated progress percentage (0-100).
+    pub progress_percent: f64,
 }
 
 /// A request from the model that needs user confirmation.
@@ -266,6 +269,7 @@ impl ScanOrchestrator {
             tool_calls_count: 0,
             elapsed_secs: 0,
             estimated_total_secs: playbook.estimated_duration_secs,
+            progress_percent: 0.0,
         };
 
         let mut scans = self.scans.lock().await;
@@ -352,6 +356,14 @@ impl ScanOrchestrator {
                 .num_seconds()
                 .unsigned_abs();
 
+            let total = state.playbook.stages.len();
+            let completed = state.stages_completed.len();
+            let progress_percent = if total > 0 {
+                (completed as f64 / total as f64) * 100.0
+            } else {
+                0.0
+            };
+
             return Ok(AiScanProgress {
                 scan_id: scan_id.to_string(),
                 status: state.status.clone(),
@@ -359,11 +371,12 @@ impl ScanOrchestrator {
                 playbook_name: state.playbook.name.clone(),
                 current_stage: state.current_stage.clone(),
                 stages_completed: state.stages_completed.clone(),
-                stages_total: state.playbook.stages.len(),
+                stages_total: total,
                 findings_count: state.findings.len(),
                 tool_calls_count: state.total_tool_calls,
                 elapsed_secs: elapsed,
                 estimated_total_secs: state.playbook.estimated_duration_secs,
+                progress_percent,
             });
         }
         drop(scans);
@@ -383,6 +396,7 @@ impl ScanOrchestrator {
                 tool_calls_count: result.total_tool_calls,
                 elapsed_secs: result.duration_secs,
                 estimated_total_secs: 0,
+                progress_percent: 100.0,
             });
         }
         drop(results);
@@ -401,6 +415,7 @@ impl ScanOrchestrator {
             tool_calls_count: result.total_tool_calls,
             elapsed_secs: 0,
             estimated_total_secs: 0,
+            progress_percent: 100.0,
         })
     }
 
@@ -932,26 +947,49 @@ fn extract_stage_completions(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Extract a summary from the final scan output.
+/// Extract a clean, concise summary from the final scan output.
 fn extract_summary(text: &str) -> String {
     // Look for text after "SCAN COMPLETE" as the summary
     if let Some(idx) = text.find("SCAN COMPLETE") {
         let after = text[idx + 13..].trim();
         if !after.is_empty() {
-            let summary = if after.len() > 500 {
-                format!("{}...", &after[..500])
+            // Strip common prefixes like ":" or "-"
+            let cleaned = after.trim_start_matches(|c: char| c == ':' || c == '-' || c == '\n' || c.is_whitespace());
+            // Take only the first paragraph (up to double newline or 200 chars)
+            let first_para = cleaned
+                .split("\n\n")
+                .next()
+                .unwrap_or(cleaned);
+            let summary = if first_para.len() > 200 {
+                // Find a sentence boundary near 200 chars
+                let truncated = &first_para[..200];
+                if let Some(end) = truncated.rfind(". ") {
+                    format!("{}.", &truncated[..end])
+                } else {
+                    format!("{}...", truncated)
+                }
             } else {
-                after.to_string()
+                first_para.to_string()
             };
             return summary;
         }
     }
 
-    // Fall back to last 500 chars
-    if text.len() > 500 {
-        format!("{}...", &text[text.len() - 500..])
+    // Fall back: take last paragraph, capped at 200 chars
+    let last_para = text
+        .rsplit("\n\n")
+        .next()
+        .unwrap_or(text)
+        .trim();
+    if last_para.len() > 200 {
+        let truncated = &last_para[..200];
+        if let Some(end) = truncated.rfind(". ") {
+            format!("{}.", &truncated[..end])
+        } else {
+            format!("{}...", truncated)
+        }
     } else {
-        text.to_string()
+        last_para.to_string()
     }
 }
 

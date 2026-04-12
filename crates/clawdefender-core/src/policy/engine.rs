@@ -205,6 +205,12 @@ impl DefaultPolicyEngine {
                 method: None,
                 event_type: Some("setmode".to_string()),
             },
+            other => EventContext {
+                tool_name: None,
+                resource_path: None,
+                method: None,
+                event_type: Some(format!("{:?}", other).split_whitespace().next().unwrap_or("unknown").to_lowercase()),
+            },
         }
     }
 }

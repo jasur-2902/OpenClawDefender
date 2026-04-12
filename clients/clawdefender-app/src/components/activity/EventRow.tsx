@@ -77,6 +77,66 @@ function RiskBadge({ level }: { level: HumanizedEvent["risk_level"] }) {
   );
 }
 
+function SourceBadge({ sourceType }: { sourceType?: string }) {
+  if (sourceType !== "os") return null;
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wider"
+      style={{
+        backgroundColor: "var(--color-info-subtle)",
+        color: "var(--color-text-secondary)",
+        border: "1px solid var(--color-info-border)",
+      }}
+    >
+      OS
+    </span>
+  );
+}
+
+function SlmBadge({ details }: { details: string }) {
+  const classification = (() => {
+    try {
+      const parsed = JSON.parse(details);
+      const slm = parsed.slm_analysis ?? parsed.analysis;
+      if (!slm) return null;
+      const level = typeof slm === "object" ? slm.risk_level : null;
+      return level ?? null;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!classification) return null;
+
+  const lower = classification.toLowerCase();
+  let label: string;
+  let bg: string;
+  let color: string;
+
+  if (lower === "suspicious" || lower === "high" || lower === "critical") {
+    label = "Suspicious";
+    bg = "var(--color-danger-subtle)";
+    color = "var(--color-danger)";
+  } else if (lower === "notable" || lower === "medium") {
+    label = "Notable";
+    bg = "var(--color-warning-subtle)";
+    color = "var(--color-warning)";
+  } else {
+    label = "Routine";
+    bg = "var(--color-bg-tertiary)";
+    color = "var(--color-text-secondary)";
+  }
+
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+      style={{ backgroundColor: bg, color }}
+    >
+      {label}
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // SLM Analysis extraction (for technical detail level)
 // ---------------------------------------------------------------------------
@@ -147,10 +207,21 @@ export const EventRow = memo(function EventRow({ event, defaultExpanded = false 
   const slmAnalysis = extractSlmAnalysis(event.raw_event.details);
   const policyRule = extractPolicyRule(event.raw_event.details);
 
-  // Notable events get subtle highlight
-  const notableBg = event.is_notable
-    ? "bg-[var(--color-warning-subtle)]/10"
-    : "";
+  // Notable events get subtle highlight; suspicious SLM classification gets red tint
+  const slmSuspicious = (() => {
+    try {
+      const parsed = JSON.parse(event.raw_event.details);
+      const level = parsed?.slm_analysis?.risk_level?.toLowerCase();
+      return level === "suspicious" || level === "high" || level === "critical";
+    } catch {
+      return false;
+    }
+  })();
+  const notableBg = slmSuspicious
+    ? "bg-[var(--color-danger-subtle)]/10"
+    : event.is_notable
+      ? "bg-[var(--color-warning-subtle)]/10"
+      : "";
 
   return (
     <div
@@ -186,7 +257,9 @@ export const EventRow = memo(function EventRow({ event, defaultExpanded = false 
           {event.one_liner}
         </span>
 
-        {/* Right: action badge */}
+        {/* Right: source + SLM + action badges */}
+        <SourceBadge sourceType={event.source_type} />
+        <SlmBadge details={event.raw_event.details} />
         <ActionBadge action={event.action_taken} />
       </div>
 

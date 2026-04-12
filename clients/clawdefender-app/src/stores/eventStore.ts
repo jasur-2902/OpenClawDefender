@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { AuditEvent, HumanizedEvent, PendingPrompt } from "../types";
 import { tauriStorage } from "./tauriStorage";
 
@@ -40,6 +40,11 @@ interface EventStore {
 
 /** Convert a raw AuditEvent to a minimal HumanizedEvent for live display. */
 function wrapRawEvent(event: AuditEvent): HumanizedEvent {
+  const isOs =
+    event.event_type === "eslogger" ||
+    event.event_type === "fsevents" ||
+    event.event_type === "correlation";
+
   const actionTaken = (() => {
     const d = event.decision.toLowerCase();
     if (d === "prompted" || d === "prompt") return "Prompted" as const;
@@ -56,12 +61,18 @@ function wrapRawEvent(event: AuditEvent): HumanizedEvent {
     event.risk_level === "high" ||
     event.risk_level === "critical";
 
+  // OS events: use just the action (already humanized by backend)
+  // MCP events: "tool on server" format
+  const oneLiner = isOs
+    ? event.action
+    : `${event.tool_name ?? event.action} on ${event.server_name}`;
+
   return {
     event_id: event.id,
     timestamp: event.timestamp,
     server_display_name: event.server_name,
     client_name: null,
-    one_liner: `${event.tool_name ?? event.action} on ${event.server_name}`,
+    one_liner: oneLiner,
     expanded_explanation: event.details,
     educational_aside: null,
     behavioral_context: "",
@@ -73,6 +84,16 @@ function wrapRawEvent(event: AuditEvent): HumanizedEvent {
     correlation_id: null,
     kill_chain_id: null,
     raw_event: event,
+    source_type: isOs ? "os" : "mcp",
+    // Mirror raw_event fields for direct access
+    id: event.id,
+    server_name: event.server_name,
+    event_type: event.event_type,
+    tool_name: event.tool_name ?? null,
+    action: event.action,
+    decision: event.decision || actionTaken,
+    resource: event.resource ?? null,
+    details: event.details,
   };
 }
 
@@ -147,7 +168,7 @@ export const useEventStore = create<EventStore>()(
 }),
     {
       name: "event-store",
-      storage: tauriStorage,
+      storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({
         onlyNotable: state.onlyNotable,
         searchText: state.searchText,
@@ -156,7 +177,7 @@ export const useEventStore = create<EventStore>()(
         riskFilter: state.riskFilter,
         timeRange: state.timeRange,
         correlationFilter: state.correlationFilter,
-      }),
+      }) as unknown as EventStore,
     }
   )
 );

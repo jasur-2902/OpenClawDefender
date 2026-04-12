@@ -1,11 +1,17 @@
 //! Comprehensive multi-module security scanner for ClawDefender.
 //!
-//! Runs 5 scanner modules in-process:
+//! Runs 11 scanner modules in-process:
 //! 1. MCP Configuration Audit
 //! 2. Policy Strength Analysis
 //! 3. Server Reputation Check
 //! 4. System Security Posture
 //! 5. Behavioral Anomaly Review
+//! 6. TCC Permission Audit
+//! 7. File Integrity Monitor
+//! 8. Clipboard Security Check
+//! 9. Process Memory Scan
+//! 10. CIS Benchmark Compliance
+//! 11. Browser Extension Audit
 
 use crate::state::{ScanFinding, ScanFixAction, ScanModuleResult};
 use std::path::{Path, PathBuf};
@@ -1196,5 +1202,221 @@ pub fn scan_behavioral_anomalies() -> ScanModuleResult {
         status: "completed".to_string(),
         findings,
         summary,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared helper: convert clawdefender_scanner Finding → ScanFinding
+// ---------------------------------------------------------------------------
+
+fn finding_to_scan_finding(
+    f: &clawdefender_scanner::finding::Finding,
+    module_id: &str,
+) -> ScanFinding {
+    let severity = match f.severity {
+        clawdefender_scanner::finding::Severity::Critical => "critical",
+        clawdefender_scanner::finding::Severity::High => "high",
+        clawdefender_scanner::finding::Severity::Medium => "medium",
+        clawdefender_scanner::finding::Severity::Low => "low",
+        clawdefender_scanner::finding::Severity::Info => "info",
+    };
+
+    let category = f.category.to_string().to_lowercase().replace(' ', "-");
+
+    ScanFinding {
+        severity: severity.to_string(),
+        category,
+        module: module_id.to_string(),
+        description: format!("{}: {}", f.title, f.description),
+        affected_resource: f
+            .evidence
+            .files_modified
+            .first()
+            .cloned()
+            .unwrap_or_else(|| f.id.clone()),
+        fix_suggestion: f.remediation.clone(),
+        fix_action: None,
+        ai_analysis: None,
+    }
+}
+
+fn make_module_result(
+    module_id: &str,
+    module_name: &str,
+    findings: Vec<ScanFinding>,
+    empty_msg: &str,
+) -> ScanModuleResult {
+    let summary = if findings.is_empty() {
+        empty_msg.to_string()
+    } else {
+        format!("{} issue(s) found", findings.len())
+    };
+    ScanModuleResult {
+        module_id: module_id.to_string(),
+        module_name: module_name.to_string(),
+        status: "completed".to_string(),
+        findings,
+        summary,
+    }
+}
+
+fn module_error_result(module_id: &str, module_name: &str, err: anyhow::Error) -> ScanModuleResult {
+    ScanModuleResult {
+        module_id: module_id.to_string(),
+        module_name: module_name.to_string(),
+        status: "completed".to_string(),
+        findings: vec![],
+        summary: format!("Skipped: {}", err),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module 6: TCC Permission Audit
+// ---------------------------------------------------------------------------
+
+pub async fn scan_tcc_permissions() -> ScanModuleResult {
+    use clawdefender_scanner::modules::tcc_audit::TccAuditModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = TccAuditModule::new();
+    match module.run_standalone().await {
+        Ok(findings) => {
+            let sf: Vec<ScanFinding> = findings
+                .iter()
+                .map(|f| finding_to_scan_finding(f, "tcc-audit"))
+                .collect();
+            make_module_result("tcc-audit", "TCC Permission Audit", sf, "No TCC permission issues found")
+        }
+        Err(e) => module_error_result("tcc-audit", "TCC Permission Audit", e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module 7: File Integrity Monitor
+// ---------------------------------------------------------------------------
+
+pub async fn scan_file_integrity() -> ScanModuleResult {
+    use clawdefender_scanner::modules::file_integrity::FileIntegrityModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = FileIntegrityModule::new();
+    match module.run_standalone().await {
+        Ok(findings) => {
+            let sf: Vec<ScanFinding> = findings
+                .iter()
+                .map(|f| finding_to_scan_finding(f, "file-integrity"))
+                .collect();
+            make_module_result(
+                "file-integrity",
+                "File Integrity Monitor",
+                sf,
+                "No file integrity violations found",
+            )
+        }
+        Err(e) => module_error_result("file-integrity", "File Integrity Monitor", e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module 8: Clipboard Security Check
+// ---------------------------------------------------------------------------
+
+pub async fn scan_clipboard() -> ScanModuleResult {
+    use clawdefender_scanner::modules::clipboard_monitor::ClipboardMonitorModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = ClipboardMonitorModule::new();
+    match module.run_standalone().await {
+        Ok(findings) => {
+            let sf: Vec<ScanFinding> = findings
+                .iter()
+                .map(|f| finding_to_scan_finding(f, "clipboard-check"))
+                .collect();
+            make_module_result(
+                "clipboard-check",
+                "Clipboard Security Check",
+                sf,
+                "Clipboard content is safe",
+            )
+        }
+        Err(e) => module_error_result("clipboard-check", "Clipboard Security Check", e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module 9: Process Memory Scan
+// ---------------------------------------------------------------------------
+
+pub async fn scan_process_memory() -> ScanModuleResult {
+    use clawdefender_scanner::modules::memory_scanner::MemoryScanModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = MemoryScanModule::new();
+    match module.run_standalone().await {
+        Ok(findings) => {
+            let sf: Vec<ScanFinding> = findings
+                .iter()
+                .map(|f| finding_to_scan_finding(f, "memory-scan"))
+                .collect();
+            make_module_result(
+                "memory-scan",
+                "Process Memory Scan",
+                sf,
+                "No suspicious process memory patterns found",
+            )
+        }
+        Err(e) => module_error_result("memory-scan", "Process Memory Scan", e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module 10: CIS Benchmark Compliance
+// ---------------------------------------------------------------------------
+
+pub async fn scan_cis_benchmark() -> ScanModuleResult {
+    use clawdefender_scanner::modules::cis_benchmark::CisBenchmarkModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = CisBenchmarkModule::new();
+    match module.run_standalone().await {
+        Ok(findings) => {
+            let sf: Vec<ScanFinding> = findings
+                .iter()
+                .map(|f| finding_to_scan_finding(f, "cis-benchmark"))
+                .collect();
+            make_module_result(
+                "cis-benchmark",
+                "CIS Benchmark Compliance",
+                sf,
+                "All CIS benchmark checks passed",
+            )
+        }
+        Err(e) => module_error_result("cis-benchmark", "CIS Benchmark Compliance", e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module 11: Browser Extension Audit
+// ---------------------------------------------------------------------------
+
+pub async fn scan_browser_extensions() -> ScanModuleResult {
+    use clawdefender_scanner::modules::browser_audit::BrowserAuditModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = BrowserAuditModule::new();
+    match module.run_standalone().await {
+        Ok(findings) => {
+            let sf: Vec<ScanFinding> = findings
+                .iter()
+                .map(|f| finding_to_scan_finding(f, "browser-audit"))
+                .collect();
+            make_module_result(
+                "browser-audit",
+                "Browser Extension Audit",
+                sf,
+                "No browser extension issues found",
+            )
+        }
+        Err(e) => module_error_result("browser-audit", "Browser Extension Audit", e),
     }
 }

@@ -398,7 +398,7 @@ pub struct EsloggerSensorConfig {
 }
 
 /// FSEvents sensor config.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FsEventsSensorConfig {
     /// Whether FSEvents monitoring is enabled.
     #[serde(default = "default_true")]
@@ -406,6 +406,15 @@ pub struct FsEventsSensorConfig {
     /// Paths to watch.
     #[serde(default)]
     pub watch_paths: Vec<PathBuf>,
+}
+
+impl Default for FsEventsSensorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            watch_paths: Vec::new(),
+        }
+    }
 }
 
 /// Correlation engine config.
@@ -635,6 +644,7 @@ fn default_max_files() -> u32 {
 
 fn default_es_events() -> Vec<String> {
     vec![
+        // Core events
         "exec".into(),
         "open".into(),
         "close".into(),
@@ -643,6 +653,24 @@ fn default_es_events() -> Vec<String> {
         "connect".into(),
         "fork".into(),
         "exit".into(),
+        "pty_grant".into(),
+        "setmode".into(),
+        // High-value, low-noise events
+        "kextload".into(),
+        "setuid".into(),
+        "setgid".into(),
+        "link".into(),
+        "symlink".into(),
+        "btm_launch_item_add".into(),
+        "login_login".into(),
+        "login_logout".into(),
+        "authentication".into(),
+        "xp_malware_detected".into(),
+        "gatekeeper_user_override".into(),
+        // Medium-value events (filtered aggressively)
+        "get_task".into(),
+        "trace".into(),
+        "proc_check".into(),
     ]
 }
 

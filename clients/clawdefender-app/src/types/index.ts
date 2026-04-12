@@ -362,6 +362,24 @@ export interface HumanizedEvent {
   correlation_id: string | null;
   kill_chain_id: string | null;
   raw_event: AuditEvent;
+  source_type?: "os" | "mcp";
+  // Fields mirrored from raw_event for direct access
+  id: string;
+  server_name: string;
+  event_type: string;
+  tool_name: string | null;
+  action: string;
+  decision: string;
+  resource: string | null;
+  details: string;
+}
+
+export interface SensorHealth {
+  fda_granted: boolean;
+  eslogger_available: boolean;
+  os_version_ok: boolean;
+  daemon_running: boolean;
+  events_flowing: boolean;
 }
 
 // --- Correlation types ---
@@ -476,14 +494,26 @@ export interface TrustLevelInfo {
 export interface ToolCardData {
   server_name: string;
   client_name: string;
+  client_app?: string;
   display_name: string;
   wrapped: boolean;
+  is_wrapped?: boolean;
   status: string;
   trust_level: TrustLevel;
+  trust_customized?: boolean;
   event_count: number;
   anomaly_score: number;
   capabilities: ServerCapabilities;
   last_activity: string | null;
+  scan_findings_count?: number;
+  scan_status?: string;
+  behavioral_status?: string;
+  learning_progress?: number;
+  health_warnings?: any[];
+  guard_name?: string;
+  guard_enabled?: boolean;
+  event_count_today?: number;
+  blocked_count_today?: number;
 }
 
 export interface NewToolInfo {
@@ -534,13 +564,16 @@ export interface ServerSummary {
 export interface AiScanProgress {
   scan_id: string;
   status: string;
-  progress_percent: number;
-  stages_completed: number;
+  playbook_id: string;
+  playbook_name: string;
+  current_stage: string | null;
+  stages_completed: string[];
   stages_total: number;
   findings_count: number;
   tool_calls_used: number;
   elapsed_secs: number;
-  current_stage: string | null;
+  estimated_total_secs: number;
+  progress_percent: number;
 }
 
 export interface AiScanResult {

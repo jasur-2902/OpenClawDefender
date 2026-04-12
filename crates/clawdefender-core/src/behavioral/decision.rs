@@ -469,10 +469,12 @@ mod tests {
                 window_seconds: 60,
                 explanation: "Test kill chain pattern".to_string(),
                 steps: vec![],
+                mitre_id: Some("T1059.004".to_string()),
             },
             matched_events: vec![],
             explanation: "Test kill chain matched".to_string(),
             severity: Severity::High,
+            mitre_id: Some("T1059.004".to_string()),
         }
     }
 

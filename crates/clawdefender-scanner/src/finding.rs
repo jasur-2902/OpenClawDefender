@@ -191,6 +191,22 @@ impl CvssVector {
                     Self::configuration_info()
                 }
             }
+            ModuleCategory::SignatureDetection => Self::signature_detection(),
+        }
+    }
+
+    /// Predefined vector for signature-based malware detection.
+    /// AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H = 7.8
+    pub fn signature_detection() -> Self {
+        Self {
+            attack_vector: AttackVector::Local,
+            attack_complexity: AttackComplexity::Low,
+            privileges_required: PrivilegesRequired::None,
+            user_interaction: UserInteraction::Required,
+            scope: Scope::Unchanged,
+            confidentiality: Impact::High,
+            integrity: Impact::High,
+            availability: Impact::High,
         }
     }
 }
@@ -511,6 +527,16 @@ pub fn fix_suggestion(category: ModuleCategory, _finding_title: &str) -> Option<
              - Restrict tool permissions to minimum required scope\n\
              - Review and test configuration changes before deployment"
         }
+        ModuleCategory::SignatureDetection => {
+            "## Signature Detection\n\n\
+             **A known malware signature was detected.**\n\n\
+             **Recommended actions:**\n\
+             - Quarantine or delete the flagged file immediately\n\
+             - Investigate how the file arrived on the system\n\
+             - Check other files in the same directory for related threats\n\
+             - Run a full system scan with updated signatures\n\
+             - Review system logs for signs of execution or persistence"
+        }
     };
     Some(suggestion.to_string())
 }
@@ -579,6 +605,7 @@ pub enum ModuleCategory {
     DependencyAudit,
     Fuzzing,
     Configuration,
+    SignatureDetection,
 }
 
 impl fmt::Display for ModuleCategory {
@@ -591,6 +618,7 @@ impl fmt::Display for ModuleCategory {
             ModuleCategory::DependencyAudit => write!(f, "Dependency Audit"),
             ModuleCategory::Fuzzing => write!(f, "Fuzzing"),
             ModuleCategory::Configuration => write!(f, "Configuration"),
+            ModuleCategory::SignatureDetection => write!(f, "Signature Detection"),
         }
     }
 }

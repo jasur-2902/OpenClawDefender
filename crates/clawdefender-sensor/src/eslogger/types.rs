@@ -110,6 +110,92 @@ pub struct SetModeEventData {
     pub mode: u32,
 }
 
+/// Data for a `kextload` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KextloadEventData {
+    #[serde(default)]
+    pub identifier: String,
+}
+
+/// Data for a `setuid` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SetuidEventData {
+    #[serde(default)]
+    pub path: String,
+}
+
+/// Data for a `setgid` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SetgidEventData {
+    #[serde(default)]
+    pub path: String,
+}
+
+/// Data for a `link` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LinkEventData {
+    #[serde(default)]
+    pub path: String,
+}
+
+/// Data for a `symlink` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SymlinkEventData {
+    #[serde(default)]
+    pub path: String,
+}
+
+/// Data for a `btm_launch_item_add` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BtmLaunchItemData {
+    #[serde(default)]
+    pub item_url: String,
+    #[serde(default)]
+    pub item_type: String,
+}
+
+/// Data for an `authentication` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthenticationEventData {
+    #[serde(default)]
+    pub success: bool,
+}
+
+/// Data for an `xp_malware_detected` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct XpMalwareDetectedData {
+    #[serde(default)]
+    pub name: String,
+}
+
+/// Data for a `gatekeeper_user_override` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GatekeeperUserOverrideData {
+    #[serde(default)]
+    pub path: String,
+}
+
+/// Data for a `get_task` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetTaskEventData {
+    #[serde(default)]
+    pub target_pid: u32,
+}
+
+/// Data for a `trace` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TraceEventData {
+    #[serde(default)]
+    pub target_pid: u32,
+}
+
+/// Data for a `proc_check` event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProcCheckEventData {
+    #[serde(default)]
+    pub target_pid: u32,
+}
+
 /// Truncate a string field to [`MAX_FIELD_LENGTH`] bytes on a char boundary.
 fn truncate_field(s: &str) -> String {
     if s.len() <= MAX_FIELD_LENGTH {
@@ -289,6 +375,119 @@ impl From<EsloggerEvent> for OsEvent {
                 OsEventKind::SetMode {
                     path: sanitize_path(&data.path),
                     mode: data.mode,
+                }
+            }
+            "kextload" => {
+                let data: KextloadEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(KextloadEventData {
+                        identifier: String::new(),
+                    });
+                OsEventKind::Kextload {
+                    identifier: truncate_field(&data.identifier),
+                }
+            }
+            "setuid" => {
+                let data: SetuidEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(SetuidEventData {
+                        path: String::new(),
+                    });
+                OsEventKind::Setuid {
+                    path: sanitize_path(&data.path),
+                }
+            }
+            "setgid" => {
+                let data: SetgidEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(SetgidEventData {
+                        path: String::new(),
+                    });
+                OsEventKind::Setgid {
+                    path: sanitize_path(&data.path),
+                }
+            }
+            "link" => {
+                let data: LinkEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(LinkEventData {
+                        path: String::new(),
+                    });
+                OsEventKind::Link {
+                    path: sanitize_path(&data.path),
+                }
+            }
+            "symlink" => {
+                let data: SymlinkEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(SymlinkEventData {
+                        path: String::new(),
+                    });
+                OsEventKind::Symlink {
+                    path: sanitize_path(&data.path),
+                }
+            }
+            "btm_launch_item_add" => {
+                let data: BtmLaunchItemData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(BtmLaunchItemData {
+                        item_url: String::new(),
+                        item_type: String::new(),
+                    });
+                OsEventKind::BtmLaunchItemAdd {
+                    item_url: truncate_field(&data.item_url),
+                    item_type: truncate_field(&data.item_type),
+                }
+            }
+            "login_login" => OsEventKind::LoginLogin,
+            "login_logout" => OsEventKind::LoginLogout,
+            "authentication" => {
+                let data: AuthenticationEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(AuthenticationEventData {
+                        success: false,
+                    });
+                OsEventKind::Authentication {
+                    success: data.success,
+                }
+            }
+            "xp_malware_detected" => {
+                let data: XpMalwareDetectedData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(XpMalwareDetectedData {
+                        name: String::new(),
+                    });
+                OsEventKind::XpMalwareDetected {
+                    name: truncate_field(&data.name),
+                }
+            }
+            "gatekeeper_user_override" => {
+                let data: GatekeeperUserOverrideData =
+                    serde_json::from_value(ev.event.clone())
+                        .unwrap_or(GatekeeperUserOverrideData {
+                            path: String::new(),
+                        });
+                OsEventKind::GatekeeperUserOverride {
+                    path: sanitize_path(&data.path),
+                }
+            }
+            "get_task" => {
+                let data: GetTaskEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(GetTaskEventData {
+                        target_pid: 0,
+                    });
+                OsEventKind::GetTask {
+                    target_pid: data.target_pid,
+                }
+            }
+            "trace" => {
+                let data: TraceEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(TraceEventData {
+                        target_pid: 0,
+                    });
+                OsEventKind::Trace {
+                    target_pid: data.target_pid,
+                }
+            }
+            "proc_check" => {
+                let data: ProcCheckEventData =
+                    serde_json::from_value(ev.event.clone()).unwrap_or(ProcCheckEventData {
+                        target_pid: 0,
+                    });
+                OsEventKind::ProcCheck {
+                    target_pid: data.target_pid,
                 }
             }
             // Unknown event types map to Exec with empty fields as a fallback.

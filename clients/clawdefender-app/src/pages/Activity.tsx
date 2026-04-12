@@ -56,6 +56,83 @@ function getTimeRangeCutoff(range: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// Stats Bar
+// ---------------------------------------------------------------------------
+
+function ActivityStatsBar({ events }: { events: HumanizedEvent[] }) {
+  const stats = useMemo(() => {
+    let os = 0;
+    let mcp = 0;
+    let routine = 0;
+    let notable = 0;
+    let suspicious = 0;
+
+    for (const e of events) {
+      // Source type
+      const isOs =
+        e.source_type === "os" ||
+        e.raw_event.event_type === "eslogger" ||
+        e.raw_event.event_type === "fsevents" ||
+        e.raw_event.event_type === "correlation";
+      if (isOs) os++;
+      else mcp++;
+
+      // SLM classification
+      try {
+        const parsed = JSON.parse(e.raw_event.details);
+        const level = parsed?.slm_analysis?.risk_level?.toLowerCase();
+        if (level === "suspicious" || level === "high" || level === "critical") {
+          suspicious++;
+        } else if (level === "notable" || level === "medium") {
+          notable++;
+        } else if (level) {
+          routine++;
+        }
+      } catch {
+        // No SLM data
+      }
+    }
+
+    return { os, mcp, routine, notable, suspicious };
+  }, [events]);
+
+  const hasSlm = stats.routine + stats.notable + stats.suspicious > 0;
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-1.5 text-xs text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)]">
+      <span className="flex items-center gap-1.5">
+        <span
+          className="inline-block w-2 h-2 rounded-full"
+          style={{ backgroundColor: "var(--color-accent)" }}
+        />
+        MCP: {stats.mcp}
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="inline-block w-2 h-2 rounded-full"
+          style={{ backgroundColor: "var(--color-info-border)" }}
+        />
+        OS: {stats.os}
+      </span>
+      {hasSlm && (
+        <>
+          <span className="text-[var(--color-border)]">|</span>
+          <span style={{ color: "var(--color-text-secondary)" }}>
+            Routine: {stats.routine}
+          </span>
+          <span style={{ color: "var(--color-warning)" }}>
+            Notable: {stats.notable}
+          </span>
+          <span style={{ color: "var(--color-danger)" }}>
+            Suspicious: {stats.suspicious}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Activity Page
 // ---------------------------------------------------------------------------
 
@@ -373,6 +450,9 @@ export function Activity() {
         correlationFilter={correlationFilter}
         onCorrelationFilterChange={setCorrelationFilter}
       />
+
+      {/* Stats bar */}
+      <ActivityStatsBar events={filteredEvents} />
 
       {/* Feed */}
       <div

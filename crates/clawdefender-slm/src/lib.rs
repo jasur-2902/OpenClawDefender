@@ -42,7 +42,7 @@ use tracing::{info, warn};
 
 #[cfg(any(not(feature = "gguf"), test))]
 use crate::engine::MockSlmBackend;
-use crate::engine::{RiskLevel, SlmBackend, SlmConfig, SlmEngine, SlmResponse, SlmStats};
+use crate::engine::{HeuristicSlmBackend, RiskLevel, SlmBackend, SlmConfig, SlmEngine, SlmResponse, SlmStats};
 
 pub use backend_manager::{
     AiBackendManager, AiRequest, AiResponse, AiStatus, BackendStatus, LocalModelInfo, TaskType,
@@ -102,9 +102,17 @@ impl SlmService {
         if !config.model_path.exists() {
             info!(
                 path = %config.model_path.display(),
-                "SLM model file not found, running in disabled mode"
+                "SLM model file not found, using heuristic analyzer (no download required)"
             );
-            return Self::disabled(config);
+            let backend: Box<dyn SlmBackend> = Box::new(HeuristicSlmBackend::new());
+            let engine = Arc::new(SlmEngine::new(backend, config.clone()));
+            return Self {
+                engine: Some(engine),
+                fallback_engine: None,
+                config,
+                enabled: true,
+                mock_mode: false,
+            };
         }
 
         #[cfg(feature = "gguf")]
@@ -129,9 +137,17 @@ impl SlmService {
                     tracing::warn!(
                         error = %e,
                         path = %config.model_path.display(),
-                        "Failed to load GGUF model, falling back to disabled mode"
+                        "Failed to load GGUF model, falling back to heuristic analyzer"
                     );
-                    return Self::disabled(config);
+                    let backend: Box<dyn SlmBackend> = Box::new(HeuristicSlmBackend::new());
+                    let engine = Arc::new(SlmEngine::new(backend, config.clone()));
+                    return Self {
+                        engine: Some(engine),
+                        fallback_engine: None,
+                        config,
+                        enabled: true,
+                        mock_mode: false,
+                    };
                 }
             }
         }
@@ -404,13 +420,16 @@ mod tests {
     }
 
     #[test]
-    fn new_with_missing_model_path_is_disabled() {
+    fn new_with_missing_model_path_uses_heuristic() {
         let config = SlmConfig {
             model_path: "/nonexistent/model.gguf".into(),
             ..Default::default()
         };
         let svc = SlmService::new(config, true);
-        assert!(!svc.is_enabled());
+        // Now uses heuristic analyzer instead of disabled mode
+        assert!(svc.is_enabled());
+        let stats = svc.stats().unwrap();
+        assert_eq!(stats.model_name, "heuristic-analyzer");
     }
 
     #[test]

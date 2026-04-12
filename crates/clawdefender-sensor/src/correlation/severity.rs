@@ -40,7 +40,10 @@ const CRITICAL_PATHS: &[&str] = &[
 /// Rate the severity of an uncorrelated OS event.
 pub fn rate_uncorrelated(event: &OsEvent, project_dir: Option<&str>) -> Severity {
     match &event.kind {
-        // Critical: outbound network to external IP without MCP match
+        // Critical: kext loads, XProtect malware, external network
+        OsEventKind::Kextload { .. } | OsEventKind::XpMalwareDetected { .. } => {
+            Severity::Critical
+        }
         OsEventKind::Connect { address, .. } => {
             if is_external_address(address) {
                 Severity::Critical
@@ -48,8 +51,17 @@ pub fn rate_uncorrelated(event: &OsEvent, project_dir: Option<&str>) -> Severity
                 Severity::Low
             }
         }
-        // High: exec without MCP shell tool match
+        // High: exec, privilege escalation, process injection, Gatekeeper bypass
         OsEventKind::Exec { .. } => Severity::High,
+        OsEventKind::GatekeeperUserOverride { .. }
+        | OsEventKind::Setuid { .. }
+        | OsEventKind::Setgid { .. }
+        | OsEventKind::GetTask { .. } => Severity::High,
+        // Medium: persistence, tracing, links
+        OsEventKind::BtmLaunchItemAdd { .. }
+        | OsEventKind::Trace { .. }
+        | OsEventKind::Link { .. }
+        | OsEventKind::Symlink { .. } => Severity::Medium,
         // File operations: depends on path sensitivity
         OsEventKind::Open { path, .. } => rate_file_access(path, project_dir),
         OsEventKind::Unlink { path } => rate_file_access(path, project_dir),
@@ -57,11 +69,16 @@ pub fn rate_uncorrelated(event: &OsEvent, project_dir: Option<&str>) -> Severity
             rate_file_access(source, project_dir).max(rate_file_access(dest, project_dir))
         }
         OsEventKind::SetMode { path, .. } => rate_file_access(path, project_dir),
-        // Low: other events
-        OsEventKind::Close { .. } => Severity::Info,
-        OsEventKind::Fork { .. } => Severity::Info,
-        OsEventKind::Exit { .. } => Severity::Info,
-        OsEventKind::PtyGrant { .. } => Severity::Low,
+        // Low: auth, login, proc_check
+        OsEventKind::Authentication { .. }
+        | OsEventKind::LoginLogin
+        | OsEventKind::LoginLogout
+        | OsEventKind::ProcCheck { .. }
+        | OsEventKind::PtyGrant { .. } => Severity::Low,
+        // Info: lifecycle events
+        OsEventKind::Close { .. } | OsEventKind::Fork { .. } | OsEventKind::Exit { .. } => {
+            Severity::Info
+        }
     }
 }
 

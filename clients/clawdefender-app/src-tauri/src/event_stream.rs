@@ -167,8 +167,283 @@ fn normalize_risk_level(raw: &str) -> &'static str {
     }
 }
 
+/// Check if an event source is an OS-level sensor (not MCP proxy).
+fn is_os_event_source(source: &str) -> bool {
+    matches!(source, "eslogger" | "fsevents" | "correlation")
+}
+
+/// Extract OS event kind and path from a correlation engine record.
+///
+/// The correlation engine writes records with `event_details.os_events[]`
+/// containing nested OS events like `{"kind":{"Open":{"path":"..."}}}`
+/// instead of the simpler eslogger format.
+fn extract_correlation_os_event(record: &DaemonAuditRecord) -> Option<(&'static str, String)> {
+    let details = record.event_details.as_ref()?;
+    let os_events = details.get("os_events")?.as_array()?;
+    let first = os_events.first()?;
+    let kind = first.get("kind")?;
+
+    if let Some(open) = kind.get("Open") {
+        let path = open.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        let flags = open.get("flags").and_then(|v| v.as_u64()).unwrap_or(0);
+        // flags & 0x3 != 0 means write (not O_RDONLY)
+        if flags & 0x3 != 0 {
+            Some(("modified", path.to_string()))
+        } else {
+            Some(("open", path.to_string()))
+        }
+    } else if let Some(exec) = kind.get("Exec") {
+        let path = exec.get("target_path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("exec", path.to_string()))
+    } else if let Some(connect) = kind.get("Connect") {
+        let addr = connect.get("address").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("connect", addr.to_string()))
+    } else if let Some(unlink) = kind.get("Unlink") {
+        let path = unlink.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("unlink", path.to_string()))
+    } else if let Some(rename) = kind.get("Rename") {
+        // FSEvents renames often have empty dest; use source as fallback
+        let dest = rename.get("dest").and_then(|v| v.as_str()).unwrap_or("");
+        let path = if dest.is_empty() {
+            rename.get("source").and_then(|v| v.as_str()).unwrap_or("")
+        } else {
+            dest
+        };
+        Some(("rename", path.to_string()))
+    } else {
+        None
+    }
+}
+
+/// Derive a user-friendly source label from a file path.
+/// e.g. "~/Downloads/file.txt" → "Downloads", "~/Library/Keychains/..." → "Keychain"
+fn label_from_path(path: &str) -> Option<&'static str> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let relative = if !home.is_empty() && path.starts_with(&home) {
+        &path[home.len()..]
+    } else {
+        path
+    };
+    // Match on the first meaningful path component after $HOME
+    if relative.starts_with("/Downloads") {
+        Some("Downloads")
+    } else if relative.starts_with("/Desktop") {
+        Some("Desktop")
+    } else if relative.starts_with("/Documents") {
+        Some("Documents")
+    } else if relative.starts_with("/Library/Keychains") {
+        Some("Keychain")
+    } else if relative.starts_with("/Library/LaunchAgents") {
+        Some("LaunchAgents")
+    } else if relative.starts_with("/.ssh") {
+        Some("SSH")
+    } else if relative.starts_with("/.aws") {
+        Some("AWS")
+    } else if relative.starts_with("/.gnupg") || relative.starts_with("/.gpg") {
+        Some("GPG")
+    } else if relative.starts_with("/.config") {
+        Some("Config")
+    } else if relative.starts_with("/.docker") {
+        Some("Docker")
+    } else if relative.starts_with("/.kube") {
+        Some("Kubernetes")
+    } else {
+        None
+    }
+}
+
+/// Extract the process name from an OS event record.
+fn extract_os_process_name(record: &DaemonAuditRecord) -> String {
+    // Try event_details.process_name first
+    if let Some(ref details) = record.event_details {
+        if let Some(name) = details.get("process_name").and_then(|v| v.as_str()) {
+            if !name.is_empty() {
+                return name.to_string();
+            }
+        }
+    }
+    // Try to extract from correlation os_events[0].process_path
+    if let Some(ref details) = record.event_details {
+        if let Some(os_events) = details.get("os_events").and_then(|v| v.as_array()) {
+            if let Some(first) = os_events.first() {
+                let proc_path = first.get("process_path").and_then(|v| v.as_str()).unwrap_or("");
+                if !proc_path.is_empty() {
+                    if let Some(basename) = proc_path.rsplit('/').next() {
+                        if !basename.is_empty() {
+                            return basename.to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // For correlation records: derive a label from the file path in the OS event
+    if record.source == "correlation" {
+        if let Some((_, target)) = extract_correlation_os_event(record) {
+            if let Some(label) = label_from_path(&target) {
+                return label.to_string();
+            }
+        }
+        return "File Activity".to_string();
+    }
+    // Parse from event_summary: "exec: /usr/bin/python3 (pid=1234)" -> "python3"
+    if let Some(rest) = record.event_summary.split(": ").nth(1) {
+        let path = rest.split(" (pid=").next().unwrap_or(rest);
+        if let Some(basename) = path.rsplit('/').next() {
+            if !basename.is_empty() {
+                return basename.to_string();
+            }
+        }
+    }
+    "System".to_string()
+}
+
+/// Abbreviate a path for display (replace $HOME with ~).
+fn abbreviate_path(path: &str) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    if !home.is_empty() && path.starts_with(&home) {
+        format!("~{}", &path[home.len()..])
+    } else {
+        path.to_string()
+    }
+}
+
+/// Format a humanized action string from an event kind and target path.
+fn format_os_action(kind: &str, target: &str) -> String {
+    let sanitized = abbreviate_path(target);
+    match kind {
+        "exec" => {
+            let name = sanitized.rsplit('/').next().unwrap_or(&sanitized);
+            format!("Executed {name}")
+        }
+        "open" => format!("Opened {sanitized}"),
+        "connect" => format!("Connected to {sanitized}"),
+        "unlink" => format!("Deleted {sanitized}"),
+        "rename" => format!("Moved {sanitized}"),
+        "write" | "modified" => format!("Modified {sanitized}"),
+        "create" => format!("Created {sanitized}"),
+        // New ES event types
+        "kextload" => format!("Kernel extension loaded: {sanitized}"),
+        "setuid" => format!("Set-UID changed on {sanitized}"),
+        "setgid" => format!("Set-GID changed on {sanitized}"),
+        "link" => format!("Hard link created: {sanitized}"),
+        "symlink" => format!("Symbolic link created: {sanitized}"),
+        "btm_launch_item_add" => format!("Login item added: {sanitized}"),
+        "login_login" => "User login".to_string(),
+        "login_logout" => "User logout".to_string(),
+        "authentication" => "Authentication event".to_string(),
+        "xp_malware_detected" => format!("XProtect detected malware: {sanitized}"),
+        "gatekeeper_user_override" => format!("Gatekeeper warning bypassed for {sanitized}"),
+        "get_task" => format!("Process inspection: {sanitized}"),
+        "trace" => format!("Process tracing: {sanitized}"),
+        "proc_check" => format!("Process check: {sanitized}"),
+        _ => {
+            if kind.is_empty() {
+                return sanitized;
+            }
+            let capitalized = format!(
+                "{}{}",
+                kind[..1].to_uppercase(),
+                &kind[1..]
+            );
+            format!("{capitalized} {sanitized}")
+        }
+    }
+}
+
+/// Humanize an OS event summary into a user-friendly action string.
+fn humanize_os_action(record: &DaemonAuditRecord) -> String {
+    // For correlation engine records, extract the actual OS event from nested data
+    if record.source == "correlation" {
+        if let Some((kind, target)) = extract_correlation_os_event(record) {
+            return format_os_action(kind, &target);
+        }
+    }
+
+    // Parse prefix and target from event_summary: "exec: /usr/bin/python3 (pid=1234)"
+    let (prefix, raw_target) = if let Some(colon_pos) = record.event_summary.find(": ") {
+        let p = &record.event_summary[..colon_pos];
+        let rest = &record.event_summary[colon_pos + 2..];
+        let target = rest.split(" (pid=").next().unwrap_or(rest);
+        (p, target)
+    } else {
+        return record.event_summary.clone();
+    };
+
+    // Try to get a richer target from event_details
+    let target = record
+        .event_details
+        .as_ref()
+        .and_then(|d| {
+            d.get("path")
+                .or_else(|| d.get("address"))
+                .or_else(|| d.get("destination"))
+                .and_then(|v| v.as_str())
+        })
+        .unwrap_or(raw_target);
+
+    format_os_action(prefix, target)
+}
+
+/// Check if a path touches a security-sensitive location.
+/// Note: keychain is excluded here because FSEvents keychain events (without
+/// process attribution) are normal securityd background activity, not threats.
+/// eslogger events WITH process info can still flag keychain access as suspicious.
+fn is_sensitive_path(path: &str) -> bool {
+    path.contains(".ssh")
+        || path.contains(".aws")
+        || path.contains(".gnupg")
+        || path.contains(".gpg")
+        || path.contains("/etc/shadow")
+        || path.contains("/etc/passwd")
+}
+
+/// Determine risk level for OS events based on the event type and target path.
+fn os_event_risk_level(record: &DaemonAuditRecord) -> &'static str {
+    // For correlation engine records, extract the actual OS event data
+    if record.source == "correlation" {
+        if let Some((kind, target)) = extract_correlation_os_event(record) {
+            if is_sensitive_path(&target) {
+                return "high";
+            }
+            return match kind {
+                "exec" | "connect" | "unlink" | "rename" => "medium",
+                _ => "low",
+            };
+        }
+    }
+
+    let summary = record.event_summary.as_str();
+    let prefix = summary.split(':').next().unwrap_or("");
+
+    if is_sensitive_path(summary) {
+        return "high";
+    }
+
+    match prefix {
+        // Critical: kernel extensions and malware detections
+        "kextload" | "xp_malware_detected" => "critical",
+        // High: privilege escalation and process injection
+        "gatekeeper_user_override" | "setuid" | "setgid" | "get_task" => "high",
+        // Medium: persistence, tracing, links
+        "exec" | "connect" | "unlink" | "rename" | "btm_launch_item_add" | "trace" | "link"
+        | "symlink" => "medium",
+        // Low: informational
+        "authentication" | "login_login" | "login_logout" | "proc_check" => "low",
+        _ => "low",
+    }
+}
+
 /// Build a human-readable description from a daemon audit record.
 fn build_human_details(record: &DaemonAuditRecord) -> String {
+    // OS events: use humanized descriptions
+    if is_os_event_source(&record.source) {
+        let process = extract_os_process_name(record);
+        let action = humanize_os_action(record);
+        return format!("{process} — {action}");
+    }
+
+    // MCP events: existing logic
     let server = record.server_name.as_deref().unwrap_or("unknown");
     let tool = record.tool_name.as_deref();
     let method = record.jsonrpc_method.as_deref();
@@ -212,22 +487,33 @@ fn build_human_details(record: &DaemonAuditRecord) -> String {
 
 /// Convert a daemon audit record to the GUI's AuditEvent.
 pub fn to_audit_event(record: &DaemonAuditRecord, seq: u64) -> AuditEvent {
-    let decision = record
-        .policy_action
-        .as_deref()
-        .unwrap_or(&record.action_taken)
-        .to_string();
+    let is_os = is_os_event_source(&record.source);
 
-    let raw_risk = record
-        .classification
-        .as_deref()
-        .unwrap_or("info");
-    let risk_level = normalize_risk_level(raw_risk).to_string();
+    // Decision: OS events with empty policy_action/action_taken default to "allowed"
+    let decision = {
+        let raw = record
+            .policy_action
+            .as_deref()
+            .unwrap_or(&record.action_taken);
+        if raw.is_empty() && is_os {
+            "allowed".to_string()
+        } else {
+            raw.to_string()
+        }
+    };
 
-    // Use event_summary which now contains human-readable labels from the proxy
-    // (e.g. "File Read", "Shell Command"), falling back to jsonrpc_method.
-    // Session events get human-friendly names instead of raw identifiers.
-    let action = if record.event_summary == "session-start" {
+    // Risk level: OS events with no classification get contextual risk
+    let raw_risk = record.classification.as_deref().unwrap_or("info");
+    let risk_level = if is_os && raw_risk == "info" && record.classification.is_none() {
+        os_event_risk_level(record).to_string()
+    } else {
+        normalize_risk_level(raw_risk).to_string()
+    };
+
+    // Action: OS events get humanized descriptions
+    let action = if is_os {
+        humanize_os_action(record)
+    } else if record.event_summary == "session-start" {
         "Session Started".to_string()
     } else if record.event_summary == "session-end" {
         "Session Ended".to_string()
@@ -239,6 +525,19 @@ pub fn to_audit_event(record: &DaemonAuditRecord, seq: u64) -> AuditEvent {
             .as_deref()
             .unwrap_or(&record.event_summary)
             .to_string()
+    };
+
+    // Server name: OS events use process name instead of "unknown"
+    let server_name = if is_os {
+        record
+            .server_name
+            .clone()
+            .unwrap_or_else(|| extract_os_process_name(record))
+    } else {
+        record
+            .server_name
+            .clone()
+            .unwrap_or_else(|| "unknown".into())
     };
 
     // Build details: if SLM analysis is present, encode as JSON so the
@@ -270,7 +569,7 @@ pub fn to_audit_event(record: &DaemonAuditRecord, seq: u64) -> AuditEvent {
         id: format!("evt-{}", seq),
         timestamp: record.timestamp.clone(),
         event_type: record.source.clone(),
-        server_name: record.server_name.clone().unwrap_or_else(|| "unknown".into()),
+        server_name,
         tool_name: record.tool_name.clone(),
         action,
         decision,

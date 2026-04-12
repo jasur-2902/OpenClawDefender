@@ -243,7 +243,7 @@ export function Dashboard() {
   const activeGuards = guards.filter((g) => g.enabled).length;
 
   // Filter and sort recent events: prioritize tool-call events over session events
-  const isSessionEvent = (e: AuditEvent) =>
+  const isSessionEvent = (e: any) =>
     e.action === "Session Started" || e.action === "Session Ended";
   const toolCallEvents = events.filter((e) => !isSessionEvent(e));
   const eventsToShow = toolCallEvents.length > 0 ? toolCallEvents : events;

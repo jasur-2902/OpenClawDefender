@@ -107,19 +107,8 @@ fn find_daemon_binary() -> Option<PathBuf> {
         }
     }
 
-    // 2. System install locations
-    let system_paths = vec![
-        PathBuf::from("/usr/local/bin/clawdefender-daemon"),
-        PathBuf::from(&home).join(".cargo/bin/clawdefender-daemon"),
-    ];
-    for p in &system_paths {
-        if p.exists() {
-            return Some(p.clone());
-        }
-    }
-
-    // 3. Workspace target directories (development mode)
-    // Walk up from exe to find workspace root's target/debug/
+    // 2. Workspace target directories (development mode — checked BEFORE system
+    //    installs so that `cargo tauri dev` always picks up the latest build)
     if let Some(exe_dir) = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
@@ -138,6 +127,17 @@ fn find_daemon_binary() -> Option<PathBuf> {
                 Some(parent) => search = parent,
                 None => break,
             }
+        }
+    }
+
+    // 3. System install locations (fallback for production)
+    let system_paths = vec![
+        PathBuf::from("/usr/local/bin/clawdefender-daemon"),
+        PathBuf::from(&home).join(".cargo/bin/clawdefender-daemon"),
+    ];
+    for p in &system_paths {
+        if p.exists() {
+            return Some(p.clone());
         }
     }
 

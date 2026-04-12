@@ -108,6 +108,8 @@ impl Scanner {
             Box::new(crate::modules::capability_escalation::CapabilityEscalationModule::new()),
             Box::new(crate::modules::dependency_audit::DependencyAuditModule::new()),
             Box::new(crate::modules::fuzzing::FuzzingModule::new()),
+            Box::new(crate::modules::persistence::PersistenceModule::new()),
+            Box::new(crate::modules::pattern_detection::PatternDetectionModule::new()),
         ]
     }
 

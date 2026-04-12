@@ -111,6 +111,7 @@ pub fn default_watch_paths() -> Vec<PathBuf> {
     };
 
     let paths = [
+        // Security-sensitive directories
         ".ssh",
         ".gnupg",
         ".aws",
@@ -119,6 +120,14 @@ pub fn default_watch_paths() -> Vec<PathBuf> {
         "Library/Keychains",
         "Library/LaunchAgents",
         ".config/clawdefender",
+        // Common user directories (broader monitoring)
+        "Downloads",
+        "Documents",
+        "Desktop",
+        ".config",
+        ".env",
+        ".npmrc",
+        ".docker",
     ];
 
     paths
@@ -217,6 +226,28 @@ impl From<FsEvent> for OsEvent {
             team_id: None,
         }
     }
+}
+
+/// Filter out known-noisy filesystem events that are normal macOS background
+/// activity and not security-relevant without process attribution.
+///
+/// These patterns produce constant event streams that drown out real activity:
+/// - securityd atomic writes: `login.keychain-db.sb-XXXX-XXXX` temp files
+/// - securityd atomic swaps: constant renames of `login.keychain-db`
+fn is_os_noise(path: &std::path::Path, kind: &FsEventKind) -> bool {
+    let name = match path.file_name().and_then(|n| n.to_str()) {
+        Some(n) => n,
+        None => return false,
+    };
+    // securityd temp files: login.keychain-db.sb-XXXXXXXX-XXXXXX
+    if name.contains(".keychain-db.sb-") {
+        return true;
+    }
+    // securityd atomic swaps: constant rename of login.keychain-db
+    if name.ends_with(".keychain-db") && matches!(kind, FsEventKind::Renamed) {
+        return true;
+    }
+    false
 }
 
 /// Convert a notify EventKind to our FsEventKind, returning None for
@@ -343,6 +374,10 @@ impl EnhancedFsWatcher {
                 Ok(event) => {
                     if let Some(fs_kind) = convert_event_kind(&event.kind) {
                         for path in &event.paths {
+                            // Drop known-noisy events (securityd keychain atomics, etc.)
+                            if is_os_noise(path, &fs_kind) {
+                                continue;
+                            }
                             let sensitivity = classify_path(path, project_root.as_deref());
                             let fs_event = FsEvent {
                                 path: path.clone(),

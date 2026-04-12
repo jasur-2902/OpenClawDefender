@@ -346,17 +346,25 @@ export function AskClaw() {
   const [lastToolCalls, setLastToolCalls] = useState<ToolCallInfo[]>([]);
   const [lastSuggestedActions, setLastSuggestedActions] = useState<SuggestedAction[]>([]);
   const [lastContextRefs, setLastContextRefs] = useState<ContextReference[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
 
   const daemonRunning = useEventStore((s) => s.daemonRunning);
   const { status: aiStatus, cloudActive, localActive } = useAiStatus();
   const {
     messages,
     isLoading,
+    conversationId,
+    conversations,
     loadLatestConversation,
     startNewConversation,
     addUserMessage,
     addClawResponse,
     setCurrentPage,
+    loadConversation,
+    listConversations,
+    deleteConversation,
+    searchConversations,
   } = useConversationStore();
 
   // Track current page in context
@@ -638,7 +646,7 @@ export function AskClaw() {
   // Handle file drop
   const handleFileDrop = useCallback(
     async (path: string) => {
-      await addUserMessage(`[Dropped file: ${path}]`);
+      await addUserMessage(`Analyze this file for security risks:\n${path}`);
       setIsThinking(true);
 
       try {
@@ -789,231 +797,331 @@ export function AskClaw() {
               Ask anything about your security — Cmd+K from anywhere
             </p>
           </div>
-          <button
-            onClick={() => {
-              startNewConversation();
-              setPendingConfirmations(new Map());
-            }}
-            className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
-          >
-            {ASK_CLAW.newConversation}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setShowHistory((prev) => !prev);
+                if (!showHistory) {
+                  listConversations();
+                }
+              }}
+              className={`rounded-md border px-3 py-1.5 text-xs transition-colors duration-150 ${
+                showHistory
+                  ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+                  : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)]"
+              }`}
+            >
+              History
+            </button>
+            <button
+              onClick={() => {
+                startNewConversation();
+                setPendingConfirmations(new Map());
+              }}
+              className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
+            >
+              {ASK_CLAW.newConversation}
+            </button>
+          </div>
         </header>
 
-        {/* Daemon warning */}
-        {showDaemonWarning && (
-          <div
-            className="mx-6 mt-4 px-4 py-3 rounded-md bg-[var(--color-warning-light)] border border-[var(--color-warning)] text-sm text-[var(--color-text-primary)]"
-            role="alert"
-          >
-            {ASK_CLAW.offlineMessage}
-          </div>
-        )}
+        {/* Body: optional sidebar + main chat area */}
+        <div className="flex flex-1 min-h-0">
+          {/* History sidebar */}
+          {showHistory && (
+            <aside
+              className="flex flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]"
+              style={{ width: 280, minWidth: 280 }}
+            >
+              {/* Search */}
+              <div className="px-3 py-3 border-b border-[var(--color-border)]">
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={historySearch}
+                  onChange={(e) => {
+                    setHistorySearch(e.target.value);
+                    const q = e.target.value.trim();
+                    if (q) {
+                      searchConversations(q);
+                    } else {
+                      listConversations();
+                    }
+                  }}
+                  className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] text-xs px-3 py-1.5 placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-colors duration-150"
+                />
+              </div>
 
-        {/* Conversation feed */}
-        <div
-          ref={feedRef}
-          className="flex-1 overflow-y-auto px-6 py-4 space-y-4 scroll-smooth"
-          role="log"
-          aria-label="Conversation with Claw"
-          aria-live="polite"
-        >
-          {isLoading && (
-            <div className="flex items-center justify-center py-12 text-[var(--color-text-secondary)]">
-              Loading conversation...
-            </div>
+              {/* Conversation list */}
+              <div className="flex-1 overflow-y-auto">
+                {conversations.length === 0 && (
+                  <p className="px-3 py-6 text-xs text-[var(--color-text-muted)] text-center">
+                    No conversations yet
+                  </p>
+                )}
+                {conversations.map((conv) => {
+                  const isActive = conv.id === conversationId;
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => {
+                        loadConversation(conv.id);
+                        setPendingConfirmations(new Map());
+                      }}
+                      className={`group relative cursor-pointer px-3 py-2.5 border-b border-[var(--color-border)] transition-colors duration-100 hover:bg-[var(--color-bg-tertiary)] ${
+                        isActive
+                          ? "border-l-2 border-l-[var(--color-accent)] bg-[var(--color-bg-tertiary)]"
+                          : "border-l-2 border-l-transparent"
+                      }`}
+                    >
+                      <p className="text-xs text-[var(--color-text-primary)] truncate pr-5">
+                        {conv.lastMessagePreview || conv.summary || "Empty conversation"}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] text-[var(--color-text-muted)]">
+                          {conv.messageCount} message{conv.messageCount !== 1 ? "s" : ""}
+                        </span>
+                        <span className="text-[10px] text-[var(--color-text-muted)]">
+                          {formatRelativeTime(conv.updatedAt)}
+                        </span>
+                      </div>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteConversation(conv.id);
+                        }}
+                        className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--color-danger)] hover:bg-[var(--color-bg-primary)] transition-all duration-100"
+                        aria-label="Delete conversation"
+                      >
+                        {"\u00D7"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </aside>
           )}
 
-          {/* Empty / first-time state */}
-          {isEmpty && !isLoading && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-12 h-12 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center mb-4">
-                <span className="text-lg text-[var(--color-accent)]">{"\u25C8"}</span>
-              </div>
-              <p className="text-[var(--color-text-primary)] text-base mb-2">
-                {ASK_CLAW.firstTimeGreeting}
-              </p>
-              <div className="flex flex-wrap justify-center gap-2 mt-6" role="group" aria-label="Suggested questions">
-                {ASK_CLAW.suggestions.default.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => submitMessage(suggestion)}
-                    className="px-3 py-1.5 text-sm rounded-full border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Messages */}
-          {messages.map((msg) => {
-            const actions = parseActions(msg);
-            const richData = parseRichData(msg);
-            const isUser = msg.role === "user";
-            const hasConfirmation = pendingConfirmations.has(msg.id);
-
-            return (
+          {/* Main chat column */}
+          <div className="flex flex-col flex-1 min-w-0">
+            {/* Daemon warning */}
+            {showDaemonWarning && (
               <div
-                key={msg.id}
-                className={`flex ${isUser ? "justify-end" : "justify-start gap-2"}`}
-                aria-label={isUser ? `You said: ${msg.contentText}` : `Claw said: ${msg.contentText}`}
+                className="mx-6 mt-4 px-4 py-3 rounded-md bg-[var(--color-warning-light)] border border-[var(--color-warning)] text-sm text-[var(--color-text-primary)]"
+                role="alert"
               >
-                {/* Claw avatar */}
-                {!isUser && (
+                {ASK_CLAW.offlineMessage}
+              </div>
+            )}
+
+            {/* Conversation feed */}
+            <div
+              ref={feedRef}
+              className="flex-1 overflow-y-auto px-6 py-4 space-y-4 scroll-smooth"
+              role="log"
+              aria-label="Conversation with Claw"
+              aria-live="polite"
+            >
+              {isLoading && (
+                <div className="flex items-center justify-center py-12 text-[var(--color-text-secondary)]">
+                  Loading conversation...
+                </div>
+              )}
+
+              {/* Empty / first-time state */}
+              {isEmpty && !isLoading && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-12 h-12 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center mb-4">
+                    <span className="text-lg text-[var(--color-accent)]">{"\u25C8"}</span>
+                  </div>
+                  <p className="text-[var(--color-text-primary)] text-base mb-2">
+                    {ASK_CLAW.firstTimeGreeting}
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2 mt-6" role="group" aria-label="Suggested questions">
+                    {ASK_CLAW.suggestions.default.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => submitMessage(suggestion)}
+                        className="px-3 py-1.5 text-sm rounded-full border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Messages */}
+              {messages.map((msg) => {
+                const actions = parseActions(msg);
+                const richData = parseRichData(msg);
+                const isUser = msg.role === "user";
+                const hasConfirmation = pendingConfirmations.has(msg.id);
+
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex ${isUser ? "justify-end" : "justify-start gap-2"}`}
+                    aria-label={isUser ? `You said: ${msg.contentText}` : `Claw said: ${msg.contentText}`}
+                  >
+                    {/* Claw avatar */}
+                    {!isUser && (
+                      <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
+                        <span className="text-xs text-[var(--color-accent)]">C</span>
+                      </div>
+                    )}
+
+                    <div className={`max-w-[75%] space-y-1`}>
+                      <div
+                        className={`rounded-lg px-4 py-3 text-sm ${
+                          isUser
+                            ? "bg-[var(--color-accent-subtle)] text-[var(--color-text-primary)]"
+                            : "bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{renderMarkdown(msg.contentText)}</p>
+
+                        {/* Structured rich data */}
+                        {richData && <StructuredDataCard data={richData} />}
+
+                        {/* Action buttons */}
+                        {actions.length > 0 && !hasConfirmation && (
+                          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Suggested actions">
+                            {actions.map((action) => (
+                              <button
+                                key={action.id}
+                                onClick={() =>
+                                  handleAction(action.action, action.requires_confirmation, msg.id)
+                                }
+                                className={`px-3 py-1 text-xs rounded-md transition-colors duration-150 ${
+                                  actionStyleClasses[action.style] ?? actionStyleClasses.secondary
+                                }`}
+                              >
+                                {action.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Confirmation card */}
+                      {hasConfirmation && (
+                        <ConfirmationCard
+                          description={msg.contentText}
+                          onConfirm={() => handleConfirm(msg.id)}
+                          onCancel={() => handleCancelConfirm(msg.id)}
+                        />
+                      )}
+
+                      {/* Timestamp */}
+                      <p className={`text-xs text-[var(--color-text-muted)] ${isUser ? "text-right" : ""}`}>
+                        {formatRelativeTime(msg.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Thinking indicator */}
+              {isThinking && (
+                <div className="flex justify-start gap-2" role="status" aria-label="Claw is thinking">
                   <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
                     <span className="text-xs text-[var(--color-accent)]">C</span>
                   </div>
-                )}
-
-                <div className={`max-w-[75%] space-y-1`}>
-                  <div
-                    className={`rounded-lg px-4 py-3 text-sm ${
-                      isUser
-                        ? "bg-[var(--color-accent-subtle)] text-[var(--color-text-primary)]"
-                        : "bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text-primary)]"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{renderMarkdown(msg.contentText)}</p>
-
-                    {/* Structured rich data */}
-                    {richData && <StructuredDataCard data={richData} />}
-
-                    {/* Action buttons */}
-                    {actions.length > 0 && !hasConfirmation && (
-                      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Suggested actions">
-                        {actions.map((action) => (
-                          <button
-                            key={action.id}
-                            onClick={() =>
-                              handleAction(action.action, action.requires_confirmation, msg.id)
-                            }
-                            className={`px-3 py-1 text-xs rounded-md transition-colors duration-150 ${
-                              actionStyleClasses[action.style] ?? actionStyleClasses.secondary
-                            }`}
-                          >
-                            {action.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                  <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-accent)] animate-analysis-pulse" aria-hidden="true" />
+                      {ASK_CLAW.thinkingIndicator}
+                    </span>
                   </div>
+                </div>
+              )}
 
-                  {/* Confirmation card */}
-                  {hasConfirmation && (
-                    <ConfirmationCard
-                      description={msg.contentText}
-                      onConfirm={() => handleConfirm(msg.id)}
-                      onCancel={() => handleCancelConfirm(msg.id)}
-                    />
-                  )}
+              {/* Error state */}
+              {error && (
+                <div className="flex justify-start gap-2" role="alert">
+                  <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
+                    <span className="text-xs text-[var(--color-accent)]">C</span>
+                  </div>
+                  <div className="bg-[var(--color-bg-secondary)] rounded-lg px-4 py-3 text-sm text-[var(--color-text-primary)] border border-[var(--color-danger)]">
+                    <p>{ASK_CLAW.errorGeneric}</p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => {
+                          setError(null);
+                          if (messageHistory.length > 0) {
+                            submitMessage(messageHistory[messageHistory.length - 1]);
+                          }
+                        }}
+                        className="px-3 py-1 text-xs rounded-md bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity duration-150"
+                      >
+                        {ASK_CLAW.errorRetry}
+                      </button>
+                      <button
+                        onClick={() => setError(null)}
+                        className="px-3 py-1 text-xs rounded-md border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors duration-150"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
-                  {/* Timestamp */}
-                  <p className={`text-xs text-[var(--color-text-muted)] ${isUser ? "text-right" : ""}`}>
-                    {formatRelativeTime(msg.timestamp)}
-                  </p>
+            {/* Context-sensitive suggestions */}
+            {messages.length > 0 && !isThinking && (
+              <div className="px-6 py-2 border-t border-[var(--color-border)]">
+                <div className="flex flex-wrap gap-2">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => submitMessage(s)}
+                      disabled={isThinking}
+                      className="rounded-full border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
+                    >
+                      {s}
+                    </button>
+                  ))}
                 </div>
               </div>
-            );
-          })}
+            )}
 
-          {/* Thinking indicator */}
-          {isThinking && (
-            <div className="flex justify-start gap-2" role="status" aria-label="Claw is thinking">
-              <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
-                <span className="text-xs text-[var(--color-accent)]">C</span>
-              </div>
-              <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-4 py-3 text-sm text-[var(--color-text-secondary)]">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-accent)] animate-analysis-pulse" aria-hidden="true" />
-                  {ASK_CLAW.thinkingIndicator}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Error state */}
-          {error && (
-            <div className="flex justify-start gap-2" role="alert">
-              <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
-                <span className="text-xs text-[var(--color-accent)]">C</span>
-              </div>
-              <div className="bg-[var(--color-bg-secondary)] rounded-lg px-4 py-3 text-sm text-[var(--color-text-primary)] border border-[var(--color-danger)]">
-                <p>{ASK_CLAW.errorGeneric}</p>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={() => {
-                      setError(null);
-                      if (messageHistory.length > 0) {
-                        submitMessage(messageHistory[messageHistory.length - 1]);
-                      }
-                    }}
-                    className="px-3 py-1 text-xs rounded-md bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity duration-150"
-                  >
-                    {ASK_CLAW.errorRetry}
-                  </button>
-                  <button
-                    onClick={() => setError(null)}
-                    className="px-3 py-1 text-xs rounded-md border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors duration-150"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Context-sensitive suggestions */}
-        {messages.length > 0 && !isThinking && (
-          <div className="px-6 py-2 border-t border-[var(--color-border)]">
-            <div className="flex flex-wrap gap-2">
-              {suggestions.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => submitMessage(s)}
+            {/* Input area */}
+            <div className="border-t border-[var(--color-border)] px-6 py-4">
+              <div className="flex items-end gap-3">
+                <label htmlFor="ask-claw-input" className="sr-only">
+                  Message Claw
+                </label>
+                <textarea
+                  ref={inputRef}
+                  id="ask-claw-input"
+                  data-ask-claw-input
+                  rows={1}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleInputKeyDown}
+                  placeholder={ASK_CLAW.inputPlaceholder}
                   disabled={isThinking}
-                  className="rounded-full border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
+                  className="flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm px-4 py-2.5 placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] disabled:opacity-50 transition-colors duration-150"
+                  aria-label="Ask Claw a question"
+                />
+                <button
+                  onClick={() => submitMessage(inputValue)}
+                  disabled={!inputValue.trim() || isThinking}
+                  className="px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity duration-150"
+                  aria-label="Send message"
                 >
-                  {s}
+                  Send
                 </button>
-              ))}
+              </div>
+              <p className="mt-1.5 text-xs text-[var(--color-text-secondary)]">
+                Enter to send, Shift+Enter for new line, Escape to clear
+              </p>
             </div>
           </div>
-        )}
-
-        {/* Input area */}
-        <div className="border-t border-[var(--color-border)] px-6 py-4">
-          <div className="flex items-end gap-3">
-            <label htmlFor="ask-claw-input" className="sr-only">
-              Message Claw
-            </label>
-            <textarea
-              ref={inputRef}
-              id="ask-claw-input"
-              data-ask-claw-input
-              rows={1}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              placeholder={ASK_CLAW.inputPlaceholder}
-              disabled={isThinking}
-              className="flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm px-4 py-2.5 placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] disabled:opacity-50 transition-colors duration-150"
-              aria-label="Ask Claw a question"
-            />
-            <button
-              onClick={() => submitMessage(inputValue)}
-              disabled={!inputValue.trim() || isThinking}
-              className="px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity duration-150"
-              aria-label="Send message"
-            >
-              Send
-            </button>
-          </div>
-          <p className="mt-1.5 text-xs text-[var(--color-text-secondary)]">
-            Enter to send, Shift+Enter for new line, Escape to clear
-          </p>
         </div>
       </div>
     </DragDropZone>

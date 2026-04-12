@@ -21,6 +21,7 @@ import type {
   PendingPrompt,
   ProtectionScore,
   ScoreSnapshot,
+  SensorHealth,
 } from "../types";
 
 const POLL_INTERVAL = 30_000;
@@ -139,6 +140,9 @@ export function Home() {
   const [defenseScore, setDefenseScore] = useState<number | null>(null);
   const [knowledgeStats, setKnowledgeStats] = useState<any>(null);
 
+  // Sensor health (FDA detection)
+  const [sensorHealth, setSensorHealth] = useState<SensorHealth | null>(null);
+
   // Non-score home data (daemon, clients, guards, events)
   const [clients, setClients] = useState<McpClient[]>([]);
   const [guards, setGuards] = useState<GuardSummary[]>([]);
@@ -169,6 +173,22 @@ export function Home() {
       .then((s) => { if (s.mock_mode) setSlmMockMode(true); else setSlmMockMode(false); })
       .catch(() => {});
   }, []);
+
+  // Sensor health: fetch on mount, poll every 10s while FDA not granted
+  useEffect(() => {
+    let cancelled = false;
+    const fetchHealth = () => {
+      invoke<SensorHealth>("get_sensor_health")
+        .then((h) => { if (!cancelled) setSensorHealth(h); })
+        .catch(() => {});
+    };
+    fetchHealth();
+    const interval = setInterval(() => {
+      if (sensorHealth && sensorHealth.fda_granted) return;
+      fetchHealth();
+    }, 10_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [sensorHealth?.fda_granted]);
 
   // Load proactive monitoring data
   useEffect(() => {
@@ -329,6 +349,44 @@ export function Home() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <h1 className="sr-only">Home — ClawDefender</h1>
+
+      {/* FDA Setup Banner */}
+      {sensorHealth && !sensorHealth.fda_granted && (
+        <section
+          aria-label="Sensor setup required"
+          className="rounded-xl border border-[var(--color-warning-border)] bg-[var(--color-warning-subtle)] p-4"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold text-[var(--color-warning)] mb-1">
+                Full Disk Access Required
+              </h2>
+              <p className="text-sm text-[var(--color-text-primary)] mb-2">
+                {sensorHealth.daemon_running
+                  ? "Limited monitoring active. Grant Full Disk Access for complete OS-level visibility."
+                  : "Grant Full Disk Access to enable OS-level security monitoring."}
+              </p>
+              <ol className="text-xs text-[var(--color-text-secondary)] space-y-1 mb-3 list-decimal list-inside">
+                <li>Open System Settings &rarr; Privacy &amp; Security &rarr; Full Disk Access</li>
+                <li>Click the lock to make changes</li>
+                <li>Add ClawDefender (or the daemon) to the list</li>
+                <li>Restart ClawDefender if needed</li>
+              </ol>
+              <button
+                onClick={() => invoke("open_system_settings_fda").catch(() => {})}
+                className="text-sm font-medium text-white bg-[var(--color-warning)] hover:opacity-90 px-4 py-1.5 rounded-lg transition-opacity"
+              >
+                Open System Settings
+              </button>
+            </div>
+            <div className="text-xs text-[var(--color-text-secondary)] space-y-1 shrink-0">
+              <p>Daemon: {sensorHealth.daemon_running ? "Running" : "Stopped"}</p>
+              <p>macOS {sensorHealth.os_version_ok ? "13+" : "< 13"}</p>
+              <p>Events: {sensorHealth.events_flowing ? "Flowing" : "None"}</p>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Section 1: Protection Status Hero */}
       <section

@@ -582,7 +582,11 @@ impl Daemon {
                                 watch_paths.len()
                             );
                             let corr_tx = correlation_input_tx.clone();
+                            // IMPORTANT: Move `watcher` into the async task to keep
+                            // the underlying RecommendedWatcher alive. If dropped,
+                            // the notify background thread stops and no events are produced.
                             let handle = tokio::spawn(async move {
+                                let _watcher = watcher; // prevent drop
                                 while let Some(fs_event) = fs_rx.recv().await {
                                     let os_event =
                                         clawdefender_core::event::os::OsEvent::from(fs_event);

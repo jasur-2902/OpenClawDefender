@@ -58,6 +58,9 @@ pub struct AttackPattern {
     pub window_seconds: u64,
     pub explanation: String,
     pub steps: Vec<PatternStep>,
+    /// MITRE ATT&CK technique ID(s), e.g. "T1059.004" or "T1552+T1041".
+    #[serde(default)]
+    pub mitre_id: Option<String>,
 }
 
 /// A timestamped event in the sliding window.
@@ -83,6 +86,8 @@ pub struct KillChainMatch {
     pub matched_events: Vec<TimestampedEvent>,
     pub explanation: String,
     pub severity: Severity,
+    /// MITRE ATT&CK technique ID(s) from the matched pattern.
+    pub mitre_id: Option<String>,
 }
 
 impl KillChainMatch {
@@ -108,6 +113,10 @@ struct PatternsFile {
 
 fn builtin_patterns() -> Vec<AttackPattern> {
     vec![
+        // ---------------------------------------------------------------
+        // Original 6 patterns (now with MITRE IDs)
+        // ---------------------------------------------------------------
+
         // Pattern 1 — Credential Theft + Exfiltration
         AttackPattern {
             name: "credential_theft_exfiltration".into(),
@@ -116,6 +125,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             explanation: "Credential file was read followed by an external network connection — \
                           possible credential exfiltration."
                 .into(),
+            mitre_id: Some("T1552+T1041".into()),
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileRead,
@@ -139,6 +149,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             explanation: "Broad directory listing followed by credential file access — \
                           possible reconnaissance leading to credential theft."
                 .into(),
+            mitre_id: Some("T1083+T1552".into()),
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileList,
@@ -162,6 +173,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             explanation: "File written to a startup/persistence location followed by shell \
                           execution — possible persistence mechanism being installed."
                 .into(),
+            mitre_id: Some("T1543.001".into()),
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileWrite,
@@ -188,6 +200,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             explanation: "Multiple sensitive file reads followed by a write to /tmp and network \
                           or shell activity — possible data staging and exfiltration."
                 .into(),
+            mitre_id: Some("T1074+T1041".into()),
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileRead,
@@ -217,6 +230,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             explanation: "An MCP tool call was immediately followed by an uncorrelated shell \
                           execution — possible container/sandbox escape."
                 .into(),
+            mitre_id: Some("T1059.004".into()),
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::AnyToolCall,
@@ -240,6 +254,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             explanation: "A sampling/createMessage response was followed by an anomalous action — \
                           possible prompt injection follow-through."
                 .into(),
+            mitre_id: Some("T1059.004".into()),
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::SamplingResponse,
@@ -251,6 +266,201 @@ fn builtin_patterns() -> Vec<AttackPattern> {
                     event_type: StepEventType::ShellExec,
                     path_pattern: None,
                     destination_pattern: None,
+                    min_count: None,
+                },
+            ],
+        },
+
+        // ---------------------------------------------------------------
+        // Wazuh-derived MITRE ATT&CK patterns (7–14)
+        // ---------------------------------------------------------------
+
+        // Pattern 7 — T1059.004: Unix Shell Execution from MCP
+        AttackPattern {
+            name: "mitre-t1059-004-shell-exec".into(),
+            severity: Severity::High,
+            window_seconds: 30,
+            explanation: "MCP server spawned a shell command (MITRE T1059.004).".into(),
+            mitre_id: Some("T1059.004".into()),
+            steps: vec![
+                PatternStep {
+                    event_type: StepEventType::AnyToolCall,
+                    path_pattern: None,
+                    destination_pattern: None,
+                    min_count: None,
+                },
+                PatternStep {
+                    event_type: StepEventType::ShellExec,
+                    path_pattern: Some("*bash*,*sh*,*zsh*,*osascript*".into()),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+            ],
+        },
+        // Pattern 8 — T1027: Obfuscated Files or Information
+        AttackPattern {
+            name: "mitre-t1027-obfuscation".into(),
+            severity: Severity::High,
+            window_seconds: 15,
+            explanation: "Base64-encoded payload detected in tool arguments followed by \
+                          execution or file write (MITRE T1027)."
+                .into(),
+            mitre_id: Some("T1027".into()),
+            steps: vec![
+                PatternStep {
+                    event_type: StepEventType::ShellExec,
+                    path_pattern: Some("*base64*,*--encode*,*openssl enc*".into()),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+                PatternStep {
+                    event_type: StepEventType::FileWrite,
+                    path_pattern: None,
+                    destination_pattern: None,
+                    min_count: None,
+                },
+            ],
+        },
+        // Pattern 9 — T1543.001: Create or Modify LaunchAgent
+        AttackPattern {
+            name: "mitre-t1543-001-persistence".into(),
+            severity: Severity::Critical,
+            window_seconds: 60,
+            explanation: "Persistence mechanism installed via LaunchAgent (MITRE T1543.001)."
+                .into(),
+            mitre_id: Some("T1543.001".into()),
+            steps: vec![
+                PatternStep {
+                    event_type: StepEventType::FileWrite,
+                    path_pattern: Some(
+                        "~/Library/LaunchAgents/*,/Library/LaunchAgents/*,/Library/LaunchDaemons/*"
+                            .into(),
+                    ),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+                PatternStep {
+                    event_type: StepEventType::ShellExec,
+                    path_pattern: Some("*launchctl*".into()),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+            ],
+        },
+        // Pattern 10 — T1555: Credentials from Password Stores
+        AttackPattern {
+            name: "mitre-t1555-credential-access".into(),
+            severity: Severity::Critical,
+            window_seconds: 30,
+            explanation: "Keychain or credential store access detected followed by \
+                          external network connection (MITRE T1555)."
+                .into(),
+            mitre_id: Some("T1555".into()),
+            steps: vec![
+                PatternStep {
+                    event_type: StepEventType::ShellExec,
+                    path_pattern: Some(
+                        "*security find-*,*security dump-keychain*,*security export*".into(),
+                    ),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+                PatternStep {
+                    event_type: StepEventType::NetworkConnect,
+                    path_pattern: None,
+                    destination_pattern: Some("!localhost,!127.0.0.1,!::1".into()),
+                    min_count: None,
+                },
+            ],
+        },
+        // Pattern 11 — T1005: Data from Local System
+        AttackPattern {
+            name: "mitre-t1005-data-collection".into(),
+            severity: Severity::High,
+            window_seconds: 120,
+            explanation: "Systematic data collection from local system — many files read \
+                          then staged to temp directory (MITRE T1005)."
+                .into(),
+            mitre_id: Some("T1005".into()),
+            steps: vec![
+                PatternStep {
+                    event_type: StepEventType::FileRead,
+                    path_pattern: None,
+                    destination_pattern: None,
+                    min_count: Some(5),
+                },
+                PatternStep {
+                    event_type: StepEventType::FileWrite,
+                    path_pattern: Some("/tmp/*,/var/tmp/*".into()),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+            ],
+        },
+        // Pattern 12 — T1071.001: Application Layer Protocol: Web (C2 beaconing)
+        AttackPattern {
+            name: "mitre-t1071-001-web-c2".into(),
+            severity: Severity::Medium,
+            window_seconds: 300,
+            explanation: "Repeated outbound connections to same external host — \
+                          possible C2 beaconing (MITRE T1071.001)."
+                .into(),
+            mitre_id: Some("T1071.001".into()),
+            steps: vec![PatternStep {
+                event_type: StepEventType::NetworkConnect,
+                path_pattern: None,
+                destination_pattern: Some("!localhost,!127.0.0.1,!::1".into()),
+                min_count: Some(10),
+            }],
+        },
+        // Pattern 13 — T1140: Deobfuscate/Decode then Execute
+        AttackPattern {
+            name: "mitre-t1140-decode-execute".into(),
+            severity: Severity::Critical,
+            window_seconds: 15,
+            explanation: "Decoded payload then executed — possible staged malware \
+                          activation (MITRE T1140)."
+                .into(),
+            mitre_id: Some("T1140".into()),
+            steps: vec![
+                PatternStep {
+                    event_type: StepEventType::ShellExec,
+                    path_pattern: Some(
+                        "*base64 -d*,*base64 --decode*,*openssl enc -d*,*python -c*,*python3 -c*"
+                            .into(),
+                    ),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+                PatternStep {
+                    event_type: StepEventType::ShellExec,
+                    path_pattern: None,
+                    destination_pattern: None,
+                    min_count: None,
+                },
+            ],
+        },
+        // Pattern 14 — T1048: Exfiltration Over Alternative Protocol
+        AttackPattern {
+            name: "mitre-t1048-alt-exfil".into(),
+            severity: Severity::High,
+            window_seconds: 60,
+            explanation: "Sensitive file read followed by connection to DNS or non-standard \
+                          port — possible data exfiltration over alternative protocol \
+                          (MITRE T1048)."
+                .into(),
+            mitre_id: Some("T1048".into()),
+            steps: vec![
+                PatternStep {
+                    event_type: StepEventType::FileRead,
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*,~/.env,*/.env,*/secrets*,*credentials*,*token*".into()),
+                    destination_pattern: None,
+                    min_count: None,
+                },
+                PatternStep {
+                    event_type: StepEventType::NetworkConnect,
+                    path_pattern: None,
+                    destination_pattern: Some("*:53,*:4443,*:8443,*:8080,*:9090".into()),
                     min_count: None,
                 },
             ],
@@ -550,6 +760,7 @@ impl KillChainDetector {
         Some(KillChainMatch {
             severity: pattern.severity.clone(),
             explanation: pattern.explanation.clone(),
+            mitre_id: pattern.mitre_id.clone(),
             pattern: pattern.clone(),
             matched_events,
         })
@@ -1224,8 +1435,8 @@ event_type = "network_connect"
         .unwrap();
 
         let mut det = KillChainDetector::with_custom_patterns(&path);
-        // 6 built-in + 1 custom
-        assert_eq!(det.pattern_count(), 7);
+        // 14 built-in + 1 custom
+        assert_eq!(det.pattern_count(), 15);
 
         let now = Utc::now();
         det.ingest(
@@ -1247,7 +1458,7 @@ event_type = "network_connect"
         std::fs::write(&path, "").unwrap();
 
         let mut det = KillChainDetector::with_custom_patterns(&path);
-        assert_eq!(det.pattern_count(), 6);
+        assert_eq!(det.pattern_count(), 14);
 
         // Write a new pattern
         std::fs::write(
@@ -1268,7 +1479,7 @@ event_type = "shell_exec"
         // Force modified time change (filesystem granularity)
         std::thread::sleep(std::time::Duration::from_millis(50));
         det.try_hot_reload();
-        assert_eq!(det.pattern_count(), 7);
+        assert_eq!(det.pattern_count(), 15);
     }
 
     // -- Anomaly boost --
@@ -1282,10 +1493,12 @@ event_type = "shell_exec"
                 window_seconds: 10,
                 explanation: "test".into(),
                 steps: vec![],
+                mitre_id: None,
             },
             matched_events: vec![],
             explanation: "test".into(),
             severity: Severity::High,
+            mitre_id: None,
         };
         assert!((m.anomaly_boost() - 0.3).abs() < f64::EPSILON);
     }
@@ -1342,7 +1555,7 @@ event_type = "shell_exec"
     #[test]
     fn test_builtin_pattern_count() {
         let det = KillChainDetector::new();
-        assert_eq!(det.pattern_count(), 6);
+        assert_eq!(det.pattern_count(), 14);
     }
 
     // -- Clear methods --

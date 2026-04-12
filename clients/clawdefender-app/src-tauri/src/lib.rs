@@ -61,6 +61,8 @@ pub fn run() {
                 let ai_backends = app_state.ai_backends.clone();
                 match clawdefender_slm::config_migration::load_dual_config() {
                     Ok(dual_config) => {
+                        let mut local_loaded = false;
+
                         // Load local backend if configured
                         if let Some(ref local) = dual_config.local {
                             let slm_config = clawdefender_slm::engine::SlmConfig {
@@ -95,6 +97,7 @@ pub fn run() {
                             };
                             let svc = std::sync::Arc::new(service);
                             ai_backends.set_local(svc, local_info);
+                            local_loaded = true;
                             tracing::info!("Loaded saved local AI model on startup");
                         }
 
@@ -127,9 +130,49 @@ pub fn run() {
                                 tracing::warn!("Cloud model configured but API key missing for {}, skipping", cloud.provider);
                             }
                         }
+
+                        // Always ensure a local backend is available: use heuristic analyzer
+                        // when no GGUF model or cloud API is configured. This gives users
+                        // real security analysis from day 1 without any setup.
+                        if !local_loaded {
+                            let backend: Box<dyn clawdefender_slm::engine::SlmBackend> =
+                                Box::new(clawdefender_slm::engine::HeuristicSlmBackend::new());
+                            let config = clawdefender_slm::engine::SlmConfig::default();
+                            let engine = std::sync::Arc::new(
+                                clawdefender_slm::engine::SlmEngine::new(backend, config.clone()),
+                            );
+                            let service = clawdefender_slm::SlmService::with_engine(engine, config);
+                            let local_info = clawdefender_slm::LocalModelInfo {
+                                model_name: "Heuristic Analyzer".to_string(),
+                                model_id: Some("heuristic".to_string()),
+                                file_path: None,
+                                size_bytes: None,
+                                using_gpu: false,
+                            };
+                            let svc = std::sync::Arc::new(service);
+                            ai_backends.set_local(svc, local_info);
+                            tracing::info!("No AI model configured — activated heuristic analyzer (works without download)");
+                        }
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to load AI model config: {}", e);
+                        tracing::warn!("Failed to load AI model config: {}, using heuristic analyzer", e);
+                        // Fall back to heuristic analyzer so AI is always available
+                        let backend: Box<dyn clawdefender_slm::engine::SlmBackend> =
+                            Box::new(clawdefender_slm::engine::HeuristicSlmBackend::new());
+                        let config = clawdefender_slm::engine::SlmConfig::default();
+                        let engine = std::sync::Arc::new(
+                            clawdefender_slm::engine::SlmEngine::new(backend, config.clone()),
+                        );
+                        let service = clawdefender_slm::SlmService::with_engine(engine, config);
+                        let local_info = clawdefender_slm::LocalModelInfo {
+                            model_name: "Heuristic Analyzer".to_string(),
+                            model_id: Some("heuristic".to_string()),
+                            file_path: None,
+                            size_bytes: None,
+                            using_gpu: false,
+                        };
+                        let svc = std::sync::Arc::new(service);
+                        ai_backends.set_local(svc, local_info);
                     }
                 }
             }
@@ -375,6 +418,32 @@ pub fn run() {
                         let _ = windows::hide_main_window(&app_handle);
                     }
                 });
+            }
+
+            // Start clipboard monitor if enabled in settings (opt-in)
+            {
+                let clip_handle = app.handle().clone();
+                // Read the setting; default is false (off)
+                let clipboard_enabled = {
+                    let home = dirs::home_dir().unwrap_or_default();
+                    let config_path = home.join(".config/clawdefender/config.toml");
+                    if config_path.exists() {
+                        std::fs::read_to_string(&config_path)
+                            .ok()
+                            .and_then(|c| c.parse::<toml::Value>().ok())
+                            .and_then(|t| {
+                                t.get("monitoring")
+                                    .and_then(|m| m.get("clipboard_monitor_enabled"))
+                                    .and_then(|v| v.as_bool())
+                            })
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                };
+                if clipboard_enabled {
+                    commands::start_clipboard_monitor(clip_handle);
+                }
             }
 
             // Auto-scan on first launch: if no previous scan results exist, trigger a scan
@@ -682,6 +751,26 @@ pub fn run() {
             commands::get_ui_state,
             commands::set_ui_state,
             commands::remove_ui_state,
+            // Sensor Health & FDA Setup commands
+            commands::get_sensor_health,
+            commands::open_system_settings_fda,
+            // Unified Detection Pipeline
+            commands::run_detection_scan,
+            // Memory Scanner
+            commands::run_memory_scan,
+            // Clipboard Monitor
+            commands::check_clipboard_now,
+            commands::get_clipboard_threats,
+            // TCC Permission Audit
+            commands::run_tcc_audit,
+            // File Integrity Monitor
+            commands::run_integrity_check,
+            commands::reset_integrity_baseline,
+            // CIS Benchmark Compliance
+            commands::run_cis_compliance,
+            // Browser Extension Audit & Login Anomalies
+            commands::run_browser_audit,
+            commands::get_login_anomalies,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

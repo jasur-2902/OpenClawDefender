@@ -1533,6 +1533,12 @@ pub async fn start_scan(
         "server-reputation",
         "system-posture",
         "behavioral-anomaly",
+        "tcc-audit",
+        "file-integrity",
+        "clipboard-check",
+        "memory-scan",
+        "cis-benchmark",
+        "browser-audit",
     ];
     let selected: Vec<String> = if modules.is_empty() {
         all_modules.iter().map(|s| s.to_string()).collect()
@@ -1592,6 +1598,12 @@ pub async fn start_scan(
                 "server-reputation" => crate::scanner::scan_server_reputation(),
                 "system-posture" => crate::scanner::scan_system_posture(daemon_connected),
                 "behavioral-anomaly" => crate::scanner::scan_behavioral_anomalies(),
+                "tcc-audit" => crate::scanner::scan_tcc_permissions().await,
+                "file-integrity" => crate::scanner::scan_file_integrity().await,
+                "clipboard-check" => crate::scanner::scan_clipboard().await,
+                "memory-scan" => crate::scanner::scan_process_memory().await,
+                "cis-benchmark" => crate::scanner::scan_cis_benchmark().await,
+                "browser-audit" => crate::scanner::scan_browser_extensions().await,
                 other => crate::state::ScanModuleResult {
                     module_id: other.to_string(),
                     module_name: other.to_string(),
@@ -1613,6 +1625,32 @@ pub async fn start_scan(
                         .sum();
                 }
             }
+
+            // Emit finding events for each new finding in the just-completed module
+            let last_result = module_results.last().unwrap();
+            for (i, finding) in last_result.findings.iter().enumerate() {
+                crate::events::emit_scan_finding(
+                    &handle,
+                    &crate::events::ScanFindingPayload {
+                        scan_id: id.clone(),
+                        finding_id: format!("{}-{}", last_result.module_id, i),
+                        severity: finding.severity.clone(),
+                        title: finding.description.clone(),
+                        stage: last_result.module_name.clone(),
+                    },
+                );
+            }
+
+            // Emit module (stage) complete event
+            crate::events::emit_scan_stage_complete(
+                &handle,
+                &crate::events::ScanStageCompletePayload {
+                    scan_id: id.clone(),
+                    stage_name: module_name_for_id(module_id),
+                    stages_completed: completed as usize,
+                    stages_total: modules_total as usize,
+                },
+            );
         }
 
         // Enrich critical/high findings with AI analysis via backend manager
@@ -1686,6 +1724,20 @@ pub async fn start_scan(
             }
         }
 
+        // Emit scan-complete event
+        crate::events::emit_scan_complete(
+            &handle,
+            &crate::events::ScanCompletePayload {
+                scan_id: id.clone(),
+                status: "completed".to_string(),
+                findings_count: total_findings as usize,
+                summary: format!(
+                    "{} findings across {} modules",
+                    total_findings, modules_total
+                ),
+            },
+        );
+
         tracing::info!("Scan {} completed with {} findings", id, total_findings);
     });
 
@@ -1704,6 +1756,12 @@ fn module_name_for_id(id: &str) -> String {
         "server-reputation" => "Server Reputation Check".to_string(),
         "system-posture" => "System Security Posture".to_string(),
         "behavioral-anomaly" => "Behavioral Anomaly Review".to_string(),
+        "tcc-audit" => "TCC Permission Audit".to_string(),
+        "file-integrity" => "File Integrity Monitor".to_string(),
+        "clipboard-check" => "Clipboard Security Check".to_string(),
+        "memory-scan" => "Process Memory Scan".to_string(),
+        "cis-benchmark" => "CIS Benchmark Compliance".to_string(),
+        "browser-audit" => "Browser Extension Audit".to_string(),
         other => other.to_string(),
     }
 }
@@ -2355,6 +2413,7 @@ fn default_settings() -> AppSettings {
         behavioral_threshold: 0.7,
         analysis_frequency: "all".to_string(),
         security_level: "balanced".to_string(),
+        clipboard_monitor_enabled: false,
     }
 }
 
@@ -2424,11 +2483,13 @@ pub async fn get_settings() -> Result<AppSettings, String> {
         behavioral_threshold: get_f64(&table, "behavioral", "anomaly_threshold", defaults.behavioral_threshold),
         analysis_frequency: get_str(&table, "slm", "analysis_frequency", &defaults.analysis_frequency),
         security_level,
+        clipboard_monitor_enabled: get_bool(&table, "monitoring", "clipboard_monitor_enabled", defaults.clipboard_monitor_enabled),
     })
 }
 
 #[tauri::command]
 pub async fn update_settings(
+    app: tauri::AppHandle,
     settings: AppSettings,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
@@ -2513,6 +2574,20 @@ pub async fn update_settings(
 
     slm.insert("analysis_frequency".to_string(), toml::Value::String(settings.analysis_frequency.clone()));
 
+    // Ensure [monitoring] section exists for clipboard monitor toggle
+    if table.get("monitoring").is_none() {
+        table
+            .as_table_mut()
+            .ok_or("Config is not a TOML table")?
+            .insert("monitoring".to_string(), toml::Value::Table(Default::default()));
+    }
+    let monitoring = table
+        .get_mut("monitoring")
+        .and_then(|v| v.as_table_mut())
+        .ok_or("Failed to access [monitoring] section")?;
+
+    monitoring.insert("clipboard_monitor_enabled".to_string(), toml::Value::Boolean(settings.clipboard_monitor_enabled));
+
     // Create parent directories if needed
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
@@ -2531,6 +2606,19 @@ pub async fn update_settings(
 
     // If daemon is connected, trigger a config/policy reload
     try_reload_daemon(&state);
+
+    // Start or stop clipboard monitor based on the new setting
+    let currently_active = state
+        .clipboard_monitor_active
+        .lock()
+        .map(|a| *a)
+        .unwrap_or(false);
+
+    if settings.clipboard_monitor_enabled && !currently_active {
+        start_clipboard_monitor(app);
+    } else if !settings.clipboard_monitor_enabled && currently_active {
+        stop_clipboard_monitor(&state);
+    }
 
     Ok(())
 }
@@ -4683,17 +4771,41 @@ pub async fn get_humanized_events(
         .skip(offset)
         .take(count)
         .map(|e| {
+            let is_os = matches!(
+                e.event_type.as_str(),
+                "eslogger" | "fsevents" | "correlation"
+            );
+            // OS events: use just the humanized action (server is redundant)
+            // MCP events: "server — action" format
+            let one_liner = if is_os {
+                e.action.clone()
+            } else {
+                format!("{} — {}", e.server_name, e.action)
+            };
+            // Map raw decision strings to display-friendly values
+            let action_taken = match e.decision.to_lowercase().as_str() {
+                "blocked" | "denied" | "block" => "Blocked",
+                "prompted" | "prompt" => "Prompted",
+                "" => "Allowed",
+                _ => "Allowed",
+            };
             serde_json::json!({
                 "event_id": e.id,
-                "one_liner": format!("{} — {}", e.server_name, e.action),
+                "one_liner": one_liner,
                 "expanded_explanation": e.details,
                 "risk_level": e.risk_level,
-                "action_taken": e.decision,
+                "action_taken": action_taken,
+                "server_display_name": e.server_name,
                 "server_name": e.server_name,
+                "client_name": null,
                 "tool_name": e.tool_name,
                 "timestamp": e.timestamp,
-                "is_notable": e.risk_level == "high" || e.risk_level == "critical" || e.decision == "blocked",
-                "behavioral_context": null,
+                "source_type": if is_os { "os" } else { "mcp" },
+                "is_notable": e.risk_level == "high" || e.risk_level == "critical" || action_taken == "Blocked",
+                "educational_aside": null,
+                "behavioral_context": "",
+                "risk_explanation": "",
+                "action_reason": "",
                 "correlation_id": null,
                 "kill_chain_id": null,
                 "raw_event": e,
@@ -5002,17 +5114,154 @@ pub async fn get_pending_prompts(
 // Conversation management commands (Ask Claw persistence)
 // ---------------------------------------------------------------------------
 
+/// Return the path to the conversations storage directory, creating it if needed.
+fn conversations_dir() -> Result<std::path::PathBuf, String> {
+    let home = dirs::home_dir().ok_or("No home directory found")?;
+    let dir = home.join(".local/share/clawdefender/conversations");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create conversations directory: {}", e))?;
+    Ok(dir)
+}
+
+/// Sanitize a conversation ID to prevent path traversal.
+fn sanitize_conversation_id(id: &str) -> Result<String, String> {
+    let safe: String = id
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if safe.is_empty() {
+        return Err("Invalid conversation ID".to_string());
+    }
+    Ok(safe)
+}
+
+/// Write a conversation JSON file with owner-only permissions.
+fn write_conversation_file(
+    path: &std::path::Path,
+    json: &str,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|e| format!("Failed to create conversation file: {}", e))?;
+        std::io::Write::write_all(&mut file, json.as_bytes())
+            .map_err(|e| format!("Failed to write conversation file: {}", e))?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, json)
+            .map_err(|e| format!("Failed to write conversation file: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Build a summary object for a conversation value.
+fn conversation_summary(conv: &serde_json::Value) -> serde_json::Value {
+    let messages = conv.get("messages").and_then(|m| m.as_array());
+    let message_count = messages.map(|m| m.len()).unwrap_or(0);
+    let last_message_preview = messages
+        .and_then(|m| m.last())
+        .and_then(|msg| msg.get("content_text"))
+        .and_then(|t| t.as_str())
+        .map(|t| {
+            if t.len() > 100 {
+                format!("{}...", &t[..100])
+            } else {
+                t.to_string()
+            }
+        })
+        .unwrap_or_default();
+    serde_json::json!({
+        "id": conv.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+        "created_at": conv.get("created_at").and_then(|v| v.as_str()).unwrap_or(""),
+        "updated_at": conv.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""),
+        "message_count": message_count,
+        "last_message_preview": last_message_preview,
+        "summary": if message_count == 0 {
+            "Empty conversation".to_string()
+        } else {
+            format!("{} message{}", message_count, if message_count == 1 { "" } else { "s" })
+        }
+    })
+}
+
 #[tauri::command]
 pub async fn get_latest_conversation_id() -> Result<String, String> {
-    // Return null (no persistent conversations yet)
-    Ok("null".to_string())
+    let dir = conversations_dir()?;
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Ok("null".to_string()),
+    };
+
+    let mut latest_id: Option<String> = None;
+    let mut latest_time: Option<String> = None;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let conv: serde_json::Value = match serde_json::from_str(&contents) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let updated_at = conv
+            .get("updated_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let id = conv
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if id.is_empty() {
+            continue;
+        }
+        if latest_time.is_none() || updated_at > *latest_time.as_ref().unwrap() {
+            latest_time = Some(updated_at);
+            latest_id = Some(id);
+        }
+    }
+
+    match latest_id {
+        Some(id) => Ok(serde_json::to_string(&id).map_err(|e| e.to_string())?),
+        None => Ok("null".to_string()),
+    }
 }
 
 #[tauri::command]
 pub async fn create_new_conversation() -> Result<String, String> {
-    let id = format!("conv-{}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis()).unwrap_or(0));
+    let dir = conversations_dir()?;
+    let id = format!(
+        "conv-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    let now = chrono::Utc::now().to_rfc3339();
+    let conv = serde_json::json!({
+        "id": id,
+        "created_at": now,
+        "updated_at": now,
+        "messages": []
+    });
+    let json = serde_json::to_string_pretty(&conv).map_err(|e| e.to_string())?;
+    let safe_id = sanitize_conversation_id(&id)?;
+    let file_path = dir.join(format!("{}.json", safe_id));
+    write_conversation_file(&file_path, &json)?;
+    tracing::info!("Created conversation {}", id);
     Ok(serde_json::to_string(&id).map_err(|e| e.to_string())?)
 }
 
@@ -5020,7 +5269,54 @@ pub async fn create_new_conversation() -> Result<String, String> {
 pub async fn save_conversation_message(
     message_json: String,
 ) -> Result<(), String> {
-    let _ = message_json;
+    let msg: serde_json::Value =
+        serde_json::from_str(&message_json).map_err(|e| format!("Invalid message JSON: {}", e))?;
+
+    let conversation_id = msg
+        .get("conversation_id")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing conversation_id in message")?
+        .to_string();
+
+    let dir = conversations_dir()?;
+    let safe_id = sanitize_conversation_id(&conversation_id)?;
+    let file_path = dir.join(format!("{}.json", safe_id));
+
+    let mut conv: serde_json::Value = if file_path.exists() {
+        let contents = std::fs::read_to_string(&file_path)
+            .map_err(|e| format!("Failed to read conversation: {}", e))?;
+        serde_json::from_str(&contents)
+            .map_err(|e| format!("Failed to parse conversation: {}", e))?
+    } else {
+        let now = chrono::Utc::now().to_rfc3339();
+        serde_json::json!({
+            "id": conversation_id,
+            "created_at": now,
+            "updated_at": now,
+            "messages": []
+        })
+    };
+
+    // Append the message to the messages array
+    if let Some(messages) = conv.get_mut("messages").and_then(|m| m.as_array_mut()) {
+        // Strip conversation_id from the stored message to avoid redundancy
+        let mut stored_msg = msg.clone();
+        if let Some(obj) = stored_msg.as_object_mut() {
+            obj.remove("conversation_id");
+        }
+        messages.push(stored_msg);
+    } else {
+        return Err("Conversation file has invalid messages field".to_string());
+    }
+
+    // Update the updated_at timestamp
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Some(obj) = conv.as_object_mut() {
+        obj.insert("updated_at".to_string(), serde_json::Value::String(now));
+    }
+
+    let json = serde_json::to_string_pretty(&conv).map_err(|e| e.to_string())?;
+    write_conversation_file(&file_path, &json)?;
     Ok(())
 }
 
@@ -5028,23 +5324,79 @@ pub async fn save_conversation_message(
 pub async fn load_conversation(
     conversation_id: String,
 ) -> Result<String, String> {
-    let _ = conversation_id;
-    Ok("[]".to_string())
+    let dir = conversations_dir()?;
+    let safe_id = sanitize_conversation_id(&conversation_id)?;
+    let file_path = dir.join(format!("{}.json", safe_id));
+
+    if !file_path.exists() {
+        return Ok("[]".to_string());
+    }
+
+    let contents = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read conversation: {}", e))?;
+    let conv: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse conversation: {}", e))?;
+
+    let messages = conv.get("messages").cloned().unwrap_or(serde_json::json!([]));
+    serde_json::to_string(&messages).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_conversations(
     limit: Option<u32>,
 ) -> Result<String, String> {
-    let _ = limit;
-    Ok("[]".to_string())
+    let dir = conversations_dir()?;
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Ok("[]".to_string()),
+    };
+
+    let mut summaries: Vec<serde_json::Value> = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let conv: serde_json::Value = match serde_json::from_str(&contents) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        summaries.push(conversation_summary(&conv));
+    }
+
+    // Sort by updated_at descending
+    summaries.sort_by(|a, b| {
+        let a_time = a.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        let b_time = b.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        b_time.cmp(a_time)
+    });
+
+    // Apply limit
+    if let Some(lim) = limit {
+        summaries.truncate(lim as usize);
+    }
+
+    serde_json::to_string(&summaries).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_conversation(
     conversation_id: String,
 ) -> Result<(), String> {
-    let _ = conversation_id;
+    let dir = conversations_dir()?;
+    let safe_id = sanitize_conversation_id(&conversation_id)?;
+    let file_path = dir.join(format!("{}.json", safe_id));
+
+    if file_path.exists() {
+        std::fs::remove_file(&file_path)
+            .map_err(|e| format!("Failed to delete conversation: {}", e))?;
+        tracing::info!("Deleted conversation {}", conversation_id);
+    }
     Ok(())
 }
 
@@ -5052,8 +5404,56 @@ pub async fn delete_conversation(
 pub async fn search_conversations(
     query: String,
 ) -> Result<String, String> {
-    let _ = query;
-    Ok("[]".to_string())
+    let dir = conversations_dir()?;
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Ok("[]".to_string()),
+    };
+
+    let query_lower = query.to_lowercase();
+    let mut results: Vec<serde_json::Value> = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let conv: serde_json::Value = match serde_json::from_str(&contents) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Search through all message content_text fields (case-insensitive)
+        let matches = conv
+            .get("messages")
+            .and_then(|m| m.as_array())
+            .map(|messages| {
+                messages.iter().any(|msg| {
+                    msg.get("content_text")
+                        .and_then(|t| t.as_str())
+                        .map(|t| t.to_lowercase().contains(&query_lower))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        if matches {
+            results.push(conversation_summary(&conv));
+        }
+    }
+
+    // Sort by updated_at descending
+    results.sort_by(|a, b| {
+        let a_time = a.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        let b_time = b.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        b_time.cmp(a_time)
+    });
+
+    serde_json::to_string(&results).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -5108,32 +5508,273 @@ pub async fn analyze_file(
     state: tauri::State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
-    let file_name = std::path::Path::new(&path)
+    use sha2::Digest;
+
+    let file_path = std::path::Path::new(&path);
+    let file_name = file_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.clone());
 
-    let prompt = format!(
-        "Analyze this file for security risks: {}",
-        file_name
-    );
-    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
-        task_type: clawdefender_slm::TaskType::QuickRiskAssessment,
-        prompt,
-        context: None,
-    }).await;
+    // 1. Check if file exists
+    if !file_path.exists() {
+        return Err(format!("File not found: {}", path));
+    }
 
-    let analysis = match ai_resp.response {
-        Some(resp) => resp.explanation,
-        None => format!("File '{}' noted. Enable an AI model in Settings for analysis.", file_name),
+    let mut factors: Vec<String> = Vec::new();
+    let mut risk_level = "low";
+
+    // 2. Get file metadata
+    let metadata = std::fs::metadata(&path)
+        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    let file_size = metadata.len();
+
+    let modified_time = metadata
+        .modified()
+        .ok()
+        .map(|t| {
+            let dt: chrono::DateTime<chrono::Utc> = t.into();
+            dt.to_rfc3339()
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Unix permissions
+    #[cfg(unix)]
+    let permissions_str = {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = metadata.permissions().mode();
+        let perm_str = format!("{:o}", mode & 0o7777);
+        // Check for overly permissive files
+        if mode & 0o002 != 0 {
+            factors.push("File is world-writable".to_string());
+            risk_level = "medium";
+        }
+        if mode & 0o4000 != 0 {
+            factors.push("File has setuid bit set".to_string());
+            risk_level = "high";
+        }
+        if mode & 0o2000 != 0 {
+            factors.push("File has setgid bit set".to_string());
+            risk_level = "high";
+        }
+        perm_str
+    };
+    #[cfg(not(unix))]
+    let permissions_str = if metadata.permissions().readonly() {
+        "readonly".to_string()
+    } else {
+        "read-write".to_string()
     };
 
+    // 3. Read first 16 bytes for magic number detection
+    let magic_bytes = {
+        use std::io::Read;
+        let mut file = std::fs::File::open(&path)
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut buf = [0u8; 16];
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("Failed to read file header: {}", e))?;
+        buf[..n].to_vec()
+    };
+
+    let magic_hex: String = magic_bytes.iter().map(|b| format!("{:02X}", b)).collect();
+
+    let file_type = if magic_bytes.len() >= 2 && magic_bytes[0] == 0x4D && magic_bytes[1] == 0x5A {
+        factors.push("Windows executable (MZ header) detected".to_string());
+        risk_level = "high";
+        "Windows executable (MZ)"
+    } else if magic_bytes.len() >= 4
+        && magic_bytes[0] == 0xCF
+        && magic_bytes[1] == 0xFA
+        && magic_bytes[2] == 0xED
+        && magic_bytes[3] == 0xFE
+    {
+        factors.push("Mach-O binary detected".to_string());
+        if risk_level != "high" {
+            risk_level = "medium";
+        }
+        "Mach-O binary"
+    } else if magic_bytes.len() >= 4
+        && magic_bytes[0] == 0x7F
+        && magic_bytes[1] == 0x45
+        && magic_bytes[2] == 0x4C
+        && magic_bytes[3] == 0x46
+    {
+        factors.push("ELF binary detected".to_string());
+        if risk_level != "high" {
+            risk_level = "medium";
+        }
+        "ELF binary"
+    } else if magic_bytes.len() >= 4
+        && magic_bytes[0] == 0x50
+        && magic_bytes[1] == 0x4B
+        && magic_bytes[2] == 0x03
+        && magic_bytes[3] == 0x04
+    {
+        factors.push("ZIP/JAR archive detected".to_string());
+        "ZIP/JAR archive"
+    } else if magic_bytes.len() >= 4
+        && magic_bytes[0] == 0x25
+        && magic_bytes[1] == 0x50
+        && magic_bytes[2] == 0x44
+        && magic_bytes[3] == 0x46
+    {
+        "PDF document"
+    } else if magic_bytes.len() >= 4
+        && magic_bytes[0] == 0x89
+        && magic_bytes[1] == 0x50
+        && magic_bytes[2] == 0x4E
+        && magic_bytes[3] == 0x47
+    {
+        "PNG image"
+    } else {
+        "Unknown"
+    };
+
+    // 4. Compute SHA-256 hash for files under 100MB
+    let sha256_hash = if file_size <= 100 * 1024 * 1024 {
+        let file_bytes = std::fs::read(&path)
+            .map_err(|e| format!("Failed to read file for hashing: {}", e))?;
+        let hash = sha2::Sha256::digest(&file_bytes);
+        format!("{:x}", hash)
+    } else {
+        factors.push(format!("File is very large ({} bytes), hash skipped", file_size));
+        "skipped (file > 100MB)".to_string()
+    };
+
+    // 5. Check macOS extended attributes (quarantine flag)
+    let xattr_output = tokio::process::Command::new("xattr")
+        .arg("-l")
+        .arg(&path)
+        .output()
+        .await
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+
+    let has_quarantine = xattr_output.contains("com.apple.quarantine");
+    if has_quarantine {
+        factors.push("File has quarantine flag (downloaded from internet)".to_string());
+    }
+
+    // 6. Check macOS code signature
+    let codesign_output = tokio::process::Command::new("codesign")
+        .arg("-dvv")
+        .arg(&path)
+        .output()
+        .await
+        .ok();
+
+    let (code_signed, codesign_info) = match &codesign_output {
+        Some(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let combined = format!("{}{}", stdout, stderr);
+            if output.status.success() {
+                if combined.contains("Authority=Apple") || combined.contains("Authority=Software Signing") {
+                    factors.push("Signed by Apple".to_string());
+                    (true, combined)
+                } else if combined.contains("Authority=Developer ID") {
+                    factors.push("Signed with Developer ID".to_string());
+                    (true, combined)
+                } else {
+                    factors.push("Code signed (check authority)".to_string());
+                    (true, combined)
+                }
+            } else {
+                if combined.contains("not signed") {
+                    factors.push("File is not code-signed".to_string());
+                    if file_type == "Mach-O binary" || file_type == "Windows executable (MZ)" {
+                        risk_level = "high";
+                    }
+                }
+                (false, combined)
+            }
+        }
+        None => {
+            (false, "codesign command not available".to_string())
+        }
+    };
+
+    // Build detailed message
+    let mut detail_lines = Vec::new();
+    detail_lines.push(format!("File: {}", path));
+    detail_lines.push(format!("Type: {}", file_type));
+    detail_lines.push(format!("Size: {} bytes", file_size));
+    detail_lines.push(format!("Permissions: {}", permissions_str));
+    detail_lines.push(format!("Modified: {}", modified_time));
+    detail_lines.push(format!("SHA-256: {}", sha256_hash));
+    detail_lines.push(format!("Magic bytes: {}", if magic_hex.len() > 32 { &magic_hex[..32] } else { &magic_hex }));
+    detail_lines.push(format!("Quarantine flag: {}", if has_quarantine { "yes" } else { "no" }));
+    detail_lines.push(format!("Code signed: {}", if code_signed { "yes" } else { "no" }));
+
+    if !factors.is_empty() {
+        detail_lines.push(String::new());
+        detail_lines.push("Risk factors:".to_string());
+        for f in &factors {
+            detail_lines.push(format!("  - {}", f));
+        }
+    }
+
+    // 7. Optional AI analysis with the collected data
+    let ai_prompt = format!(
+        "Provide a brief security assessment of this file based on the following metadata:\n\
+         File: {}\nType: {}\nSize: {} bytes\nPermissions: {}\n\
+         SHA-256: {}\nQuarantine: {}\nCode signed: {}\n\
+         Risk factors: {}",
+        file_name,
+        file_type,
+        file_size,
+        permissions_str,
+        sha256_hash,
+        has_quarantine,
+        code_signed,
+        if factors.is_empty() { "none".to_string() } else { factors.join(", ") }
+    );
+
+    let ai_resp = state
+        .ai_backends
+        .analyze(clawdefender_slm::AiRequest {
+            task_type: clawdefender_slm::TaskType::QuickRiskAssessment,
+            prompt: ai_prompt,
+            context: None,
+        })
+        .await;
+
+    if let Some(resp) = &ai_resp.response {
+        detail_lines.push(String::new());
+        detail_lines.push("AI Analysis:".to_string());
+        detail_lines.push(resp.explanation.clone());
+    }
+
+    let detailed_message = detail_lines.join("\n");
+    let summary = format!("Security analysis of {}", path);
+
     Ok(serde_json::json!({
-        "summary": analysis,
-        "message": analysis,
-        "structured_data": null,
+        "summary": summary,
+        "message": detailed_message,
+        "structured_data": {
+            "type": "risk_assessment",
+            "risk_level": risk_level,
+            "subject": file_name,
+            "explanation": detailed_message,
+            "factors": factors,
+            "metadata": {
+                "file_type": file_type,
+                "file_size": file_size,
+                "permissions": permissions_str,
+                "modified": modified_time,
+                "sha256": sha256_hash,
+                "magic_hex": magic_hex,
+                "quarantine_flag": has_quarantine,
+                "code_signed": code_signed,
+                "codesign_info": codesign_info
+            }
+        },
         "actions": []
-    }).to_string())
+    })
+    .to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -7607,6 +8248,576 @@ pub async fn remove_ui_state(key: String) -> Result<(), String> {
     let mut state = load_ui_state(&path);
     state.remove(&key);
     save_ui_state(&path, &state)
+}
+
+// ---------------------------------------------------------------------------
+// Sensor Health & FDA Setup
+// ---------------------------------------------------------------------------
+
+/// Sensor health status for the setup banner.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SensorHealth {
+    pub fda_granted: bool,
+    pub eslogger_available: bool,
+    pub os_version_ok: bool,
+    pub daemon_running: bool,
+    pub events_flowing: bool,
+}
+
+/// Check macOS version >= 13 (Ventura) for eslogger support.
+fn is_macos_13_or_later() -> bool {
+    let output = std::process::Command::new("sw_vers")
+        .arg("-productVersion")
+        .output();
+    match output {
+        Ok(out) => {
+            let version = String::from_utf8_lossy(&out.stdout);
+            let major: u32 = version
+                .trim()
+                .split('.')
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            major >= 13
+        }
+        Err(_) => false,
+    }
+}
+
+/// Get sensor health status (FDA, eslogger, daemon, event flow).
+#[tauri::command]
+pub async fn get_sensor_health() -> Result<SensorHealth, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+
+    // Daemon running: check IPC socket or pid file
+    let socket_path =
+        std::path::PathBuf::from(&home).join(".local/share/clawdefender/daemon.sock");
+    let daemon_running = socket_path.exists() || crate::daemon::is_daemon_running();
+
+    // Events flowing: audit.jsonl was modified recently (within 120 seconds)
+    let audit_path = crate::event_stream::audit_log_path();
+    let events_flowing = std::fs::metadata(&audit_path)
+        .and_then(|m| m.modified())
+        .map(|t| t.elapsed().map(|d| d.as_secs() < 120).unwrap_or(false))
+        .unwrap_or(false);
+
+    // Check if audit.jsonl has any content at all (events were recorded at some point).
+    // This means the daemon had FDA at some point and eslogger worked.
+    let audit_has_content = std::fs::metadata(&audit_path)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false);
+
+    // FDA granted: The daemon (not the app) needs FDA for eslogger.
+    // Consider FDA working if:
+    //   1. Events are actively flowing (daemon has FDA and eslogger is running), OR
+    //   2. Audit log has content (daemon had FDA and recorded events before), OR
+    //   3. This process can read TCC-protected directories directly
+    let fda_granted = if events_flowing || (daemon_running && audit_has_content) {
+        true
+    } else {
+        // Check if this process has FDA by probing TCC-protected directories
+        let tcc_paths = [
+            "Library/Mail",
+            "Library/Messages",
+            "Library/Safari",
+            "Library/Cookies",
+        ];
+        let home_path = std::path::PathBuf::from(&home);
+        let mut granted = false;
+        for rel in &tcc_paths {
+            let path = home_path.join(rel);
+            match std::fs::read_dir(&path) {
+                Ok(_) => {
+                    granted = true;
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    continue;
+                }
+                Err(_) => {
+                    // Permission denied — FDA not granted to this process.
+                    // But don't break; try remaining paths in case this one
+                    // has a non-TCC error.
+                    continue;
+                }
+            }
+        }
+        granted
+    };
+
+    // eslogger available: binary exists + FDA granted
+    let eslogger_available =
+        std::path::Path::new("/usr/bin/eslogger").exists() && fda_granted;
+
+    // OS version check
+    let os_version_ok = is_macos_13_or_later();
+
+    Ok(SensorHealth {
+        fda_granted,
+        eslogger_available,
+        os_version_ok,
+        daemon_running,
+        events_flowing,
+    })
+}
+
+/// Open System Settings to the Full Disk Access privacy pane.
+#[tauri::command]
+pub async fn open_system_settings_fda() -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+        .spawn()
+        .map_err(|e| format!("Failed to open System Settings: {}", e))?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Unified Detection Pipeline
+// ---------------------------------------------------------------------------
+
+/// Run the unified detection scan.
+///
+/// `mode` selects which modules run:
+///   "full" (default), "signatures-only", "persistence-only",
+///   "patterns-only", "clamav-only"
+///
+/// When `ai_enrich` is true, critical/high findings are sent to the AI
+/// backend for deeper analysis after the deterministic scan completes.
+#[tauri::command]
+pub async fn run_detection_scan(
+    state: tauri::State<'_, AppState>,
+    mode: Option<String>,
+    ai_enrich: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    use clawdefender_scanner::detection_engine::{
+        DetectionEngine, DetectionMethod, ScanMode,
+    };
+
+    let scan_mode = match mode.as_deref() {
+        Some("signatures-only") => ScanMode::SignaturesOnly,
+        Some("persistence-only") => ScanMode::PersistenceOnly,
+        Some("patterns-only") => ScanMode::PatternsOnly,
+        Some("clamav-only") => ScanMode::ClamavOnly,
+        Some("memory-only") => ScanMode::MemoryOnly,
+        _ => ScanMode::Full,
+    };
+
+    let engine = DetectionEngine::with_mode(scan_mode);
+    let mut report = engine.run_all().await.map_err(|e| e.to_string())?;
+
+    // --- AI enrichment: deterministic first, then AI investigates ---
+    let do_ai = ai_enrich.unwrap_or(true);
+    if do_ai {
+        for ef in &mut report.findings {
+            let sev = &ef.finding.severity;
+            if !matches!(
+                sev,
+                clawdefender_scanner::finding::Severity::Critical
+                    | clawdefender_scanner::finding::Severity::High
+            ) {
+                continue;
+            }
+
+            let prompt = format!(
+                "You are a macOS security analyst. Analyze this detection finding and assess \
+                 whether it represents a genuine security risk or is likely a false positive.\n\n\
+                 Title: {}\nSeverity: {:?}\nCategory: {}\nCVSS: {:.1}\n\
+                 Detection methods: {}\n\nDescription:\n{}\n\n\
+                 Provide a brief assessment (2-3 sentences): is this a real threat? \
+                 What should the user do?",
+                ef.finding.title,
+                ef.finding.severity,
+                ef.finding.category,
+                ef.finding.cvss,
+                ef.detection_methods
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ef.finding.description,
+            );
+
+            let ai_resp = state
+                .ai_backends
+                .analyze(clawdefender_slm::AiRequest {
+                    task_type: clawdefender_slm::TaskType::ScanAnalysis,
+                    prompt,
+                    context: None,
+                })
+                .await;
+
+            if let Some(result) = ai_resp.response {
+                ef.ai_analysis = Some(result.explanation);
+                if !ef.detection_methods.contains(&DetectionMethod::AiAnalysis) {
+                    ef.detection_methods.push(DetectionMethod::AiAnalysis);
+                }
+            }
+        }
+    }
+
+    // --- Build kill chain summary from active patterns ---
+    let killchain_detector = clawdefender_core::behavioral::killchain::KillChainDetector::new();
+    let killchain_patterns: Vec<serde_json::Value> = killchain_detector
+        .patterns()
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "name": p.name,
+                "severity": format!("{:?}", p.severity),
+                "mitre_id": p.mitre_id,
+                "steps": p.steps.len(),
+                "window_seconds": p.window_seconds,
+            })
+        })
+        .collect();
+
+    // --- Serialize findings with detection method badges ---
+    let findings_json: Vec<serde_json::Value> = report
+        .findings
+        .iter()
+        .map(|ef| {
+            serde_json::json!({
+                "id": ef.finding.id,
+                "title": ef.finding.title,
+                "severity": format!("{:?}", ef.finding.severity),
+                "cvss": ef.finding.cvss,
+                "category": format!("{}", ef.finding.category),
+                "description": ef.finding.description,
+                "remediation": ef.finding.remediation,
+                "detection_methods": ef.detection_methods.iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>(),
+                "ai_analysis": ef.ai_analysis,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "findings": findings_json,
+        "modules_run": report.modules_run,
+        "duration_secs": report.duration_secs,
+        "summary": report.summary,
+        "killchain_patterns_active": killchain_patterns.len(),
+        "killchain_patterns": killchain_patterns,
+    }))
+}
+
+// --- Memory Scanner ---
+
+#[tauri::command]
+pub async fn run_memory_scan() -> Result<serde_json::Value, String> {
+    use clawdefender_scanner::modules::memory_scanner::MemoryScanModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = MemoryScanModule::new();
+    let findings = module.run_standalone().await.map_err(|e| e.to_string())?;
+
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or_default())
+        .collect();
+
+    Ok(serde_json::json!({
+        "findings": findings_json,
+        "total_findings": findings.len(),
+        "scanned_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+// --- Clipboard Monitor ---
+
+/// One-shot clipboard check (does not require the monitor to be enabled).
+#[tauri::command]
+pub async fn check_clipboard_now() -> Result<serde_json::Value, String> {
+    use clawdefender_scanner::modules::clipboard_monitor::ClipboardMonitorModule;
+    use clawdefender_scanner::modules::ScanModule;
+
+    let module = ClipboardMonitorModule::new();
+    let findings = module.run_standalone().await.map_err(|e| e.to_string())?;
+
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or_default())
+        .collect();
+
+    Ok(serde_json::json!({
+        "findings": findings_json,
+        "total_findings": findings.len(),
+        "checked_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+/// Return recent clipboard threats detected by the background polling loop.
+/// Threats are kept in-memory only and never persisted to disk.
+#[tauri::command]
+pub async fn get_clipboard_threats(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let threats = state
+        .clipboard_threats
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+
+    let is_active = state
+        .clipboard_monitor_active
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+
+    Ok(serde_json::json!({
+        "monitor_active": is_active,
+        "threats": threats,
+        "total_threats": threats.len(),
+    }))
+}
+
+/// Start the clipboard monitor background polling loop.
+/// Uses 500ms polling with SHA-256 hash change detection.
+/// This is opt-in — the user must explicitly enable it in Settings.
+pub fn start_clipboard_monitor(app: tauri::AppHandle) {
+    use clawdefender_scanner::modules::clipboard_monitor::{
+        analyze_clipboard_content, clipboard_content_hash, ClipboardThreatLevel,
+    };
+    use tauri::Manager;
+
+    let state = app.state::<AppState>();
+
+    // Check if already active
+    if let Ok(active) = state.clipboard_monitor_active.lock() {
+        if *active {
+            tracing::info!("Clipboard monitor already running");
+            return;
+        }
+    }
+
+    // Mark as active
+    if let Ok(mut active) = state.clipboard_monitor_active.lock() {
+        *active = true;
+    }
+
+    tracing::info!("Starting clipboard monitor (500ms polling)");
+
+    std::thread::spawn(move || {
+        use tauri::Manager;
+
+        let mut last_hash: Option<String> = None;
+        // Maximum number of in-memory threat entries (ring buffer)
+        const MAX_THREATS: usize = 50;
+
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+
+            let app_state: tauri::State<'_, AppState> = app.state::<AppState>();
+
+            // Check if monitor was deactivated
+            if let Ok(active) = app_state.clipboard_monitor_active.lock() {
+                if !*active {
+                    tracing::info!("Clipboard monitor stopped");
+                    return;
+                }
+            }
+
+            // Read clipboard via pbpaste
+            let content = match std::process::Command::new("pbpaste")
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        String::from_utf8(o.stdout).ok()
+                    } else {
+                        None
+                    }
+                }) {
+                Some(c) if !c.is_empty() => c,
+                _ => continue,
+            };
+
+            // Only analyze when content changes (hash-based change detection)
+            let current_hash = clipboard_content_hash(&content);
+            if last_hash.as_ref() == Some(&current_hash) {
+                continue;
+            }
+            last_hash = Some(current_hash);
+
+            // Analyze the new clipboard content
+            let analysis = analyze_clipboard_content(&content);
+            // content is dropped after this scope — never persisted
+            drop(content);
+
+            if analysis.threat_level == ClipboardThreatLevel::Safe {
+                continue;
+            }
+
+            let threat_level_str = match analysis.threat_level {
+                ClipboardThreatLevel::Critical => "critical",
+                ClipboardThreatLevel::Suspicious => "suspicious",
+                ClipboardThreatLevel::Safe => "safe",
+            };
+
+            let entry = crate::state::ClipboardThreatEntry {
+                detected_at: chrono::Utc::now().to_rfc3339(),
+                threat_level: threat_level_str.to_string(),
+                patterns_matched: analysis.patterns_matched.clone(),
+                content_preview: analysis.content_preview.clone(),
+                content_length: analysis.content_length,
+            };
+
+            tracing::warn!(
+                "Clipboard threat detected: level={}, patterns=[{}]",
+                threat_level_str,
+                analysis.patterns_matched.join(", ")
+            );
+
+            // Store in-memory (ring buffer, capped)
+            if let Ok(mut threats) = app_state.clipboard_threats.lock() {
+                threats.push(entry.clone());
+                let len = threats.len();
+                if len > MAX_THREATS {
+                    threats.drain(..len - MAX_THREATS);
+                }
+            }
+
+            // Emit frontend event so the UI can react immediately
+            use tauri::Emitter;
+            let _ = app.emit(
+                "clawdefender://clipboard-threat",
+                serde_json::json!({
+                    "threat_level": threat_level_str,
+                    "patterns_matched": analysis.patterns_matched,
+                    "content_preview": analysis.content_preview,
+                    "content_length": analysis.content_length,
+                    "detected_at": entry.detected_at,
+                }),
+            );
+        }
+    });
+}
+
+/// Stop the clipboard monitor background polling loop.
+pub fn stop_clipboard_monitor(state: &AppState) {
+    if let Ok(mut active) = state.clipboard_monitor_active.lock() {
+        *active = false;
+        tracing::info!("Clipboard monitor deactivated");
+    }
+}
+
+// --- TCC Permission Audit ---
+
+#[tauri::command]
+pub async fn run_tcc_audit() -> Result<serde_json::Value, String> {
+    let module = clawdefender_scanner::modules::tcc_audit::TccAuditModule::new();
+    let (audit_result, findings) = module.audit().await.map_err(|e| e.to_string())?;
+
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or_default())
+        .collect();
+
+    let entries_json: Vec<serde_json::Value> = audit_result
+        .entries
+        .iter()
+        .map(|e| serde_json::to_value(e).unwrap_or_default())
+        .collect();
+
+    Ok(serde_json::json!({
+        "entries": entries_json,
+        "findings": findings_json,
+        "total_entries": audit_result.entries.len(),
+        "total_findings": findings.len(),
+    }))
+}
+
+// --- File Integrity Monitor ---
+
+#[tauri::command]
+pub async fn run_integrity_check() -> Result<serde_json::Value, String> {
+    let findings = clawdefender_scanner::modules::file_integrity::run_integrity_check_sync()
+        .map_err(|e| e.to_string())?;
+
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or_default())
+        .collect();
+
+    Ok(serde_json::json!({
+        "findings": findings_json,
+        "total_findings": findings.len(),
+        "checked_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+#[tauri::command]
+pub async fn reset_integrity_baseline() -> Result<serde_json::Value, String> {
+    let file_count = clawdefender_scanner::modules::file_integrity::reset_baseline_sync()
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "success": true,
+        "files_baselined": file_count,
+        "reset_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+// --- CIS Benchmark Compliance ---
+
+#[tauri::command]
+pub async fn run_cis_compliance() -> Result<serde_json::Value, String> {
+    let report = clawdefender_scanner::modules::cis_benchmark::run_cis_compliance_report();
+    serde_json::to_value(&report).map_err(|e| e.to_string())
+}
+
+// --- Browser Extension Audit ---
+
+#[tauri::command]
+pub async fn run_browser_audit() -> Result<serde_json::Value, String> {
+    let (risks, findings) = clawdefender_scanner::modules::browser_audit::run_full_browser_audit()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let risks_json: Vec<serde_json::Value> = risks
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap_or_default())
+        .collect();
+
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or_default())
+        .collect();
+
+    Ok(serde_json::json!({
+        "extensions": risks_json,
+        "findings": findings_json,
+        "total_extensions": risks.len(),
+        "total_findings": findings.len(),
+        "checked_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+#[tauri::command]
+pub async fn get_login_anomalies() -> Result<serde_json::Value, String> {
+    let (anomalies, findings) =
+        clawdefender_scanner::modules::browser_audit::run_login_anomaly_detection()
+            .await
+            .map_err(|e| e.to_string())?;
+
+    let anomalies_json: Vec<serde_json::Value> = anomalies
+        .iter()
+        .map(|a| serde_json::to_value(a).unwrap_or_default())
+        .collect();
+
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or_default())
+        .collect();
+
+    Ok(serde_json::json!({
+        "anomalies": anomalies_json,
+        "findings": findings_json,
+        "total_anomalies": anomalies.len(),
+        "total_findings": findings.len(),
+        "checked_at": chrono::Utc::now().to_rfc3339(),
+    }))
 }
 
 #[cfg(test)]

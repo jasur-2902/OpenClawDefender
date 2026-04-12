@@ -17,6 +17,22 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
     "exit",
     "pty_grant",
     "setmode",
+    // High-value, low-noise events
+    "kextload",
+    "setuid",
+    "setgid",
+    "link",
+    "symlink",
+    "btm_launch_item_add",
+    "login_login",
+    "login_logout",
+    "authentication",
+    "xp_malware_detected",
+    "gatekeeper_user_override",
+    // Medium-value events (filtered aggressively)
+    "get_task",
+    "trace",
+    "proc_check",
 ];
 
 /// Maximum JSON line length we will attempt to parse (1 MB).
@@ -228,6 +244,150 @@ mod tests {
                 assert_eq!(*flags, 0);
             }
             other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn new_event_types_are_known() {
+        let new_types = [
+            "kextload",
+            "setuid",
+            "setgid",
+            "link",
+            "symlink",
+            "btm_launch_item_add",
+            "login_login",
+            "login_logout",
+            "authentication",
+            "xp_malware_detected",
+            "gatekeeper_user_override",
+            "get_task",
+            "trace",
+            "proc_check",
+        ];
+        for event_type in &new_types {
+            assert!(
+                KNOWN_EVENT_TYPES.contains(event_type),
+                "{event_type} should be in KNOWN_EVENT_TYPES"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_kextload_event() {
+        let json = r#"{
+            "event_type": "kextload",
+            "process": { "pid": 100, "ppid": 1, "executable": "/usr/sbin/kextd" },
+            "event": { "identifier": "com.malware.rootkit" },
+            "timestamp": "2026-01-15T10:00:00Z"
+        }"#;
+        let event = parse_event(json).unwrap();
+        let os: OsEvent = event.into();
+        match &os.kind {
+            OsEventKind::Kextload { identifier } => {
+                assert_eq!(identifier, "com.malware.rootkit");
+            }
+            other => panic!("expected Kextload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_btm_launch_item_add_event() {
+        let json = r#"{
+            "event_type": "btm_launch_item_add",
+            "process": { "pid": 200, "ppid": 1, "executable": "/usr/bin/installer" },
+            "event": { "item_url": "/Library/LaunchDaemons/com.evil.daemon.plist", "item_type": "daemon" },
+            "timestamp": "2026-01-15T10:00:00Z"
+        }"#;
+        let event = parse_event(json).unwrap();
+        let os: OsEvent = event.into();
+        match &os.kind {
+            OsEventKind::BtmLaunchItemAdd {
+                item_url,
+                item_type,
+            } => {
+                assert_eq!(
+                    item_url,
+                    "/Library/LaunchDaemons/com.evil.daemon.plist"
+                );
+                assert_eq!(item_type, "daemon");
+            }
+            other => panic!("expected BtmLaunchItemAdd, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_authentication_event() {
+        let json = r#"{
+            "event_type": "authentication",
+            "process": { "pid": 300, "ppid": 1, "executable": "/usr/bin/sudo" },
+            "event": { "success": true },
+            "timestamp": "2026-01-15T10:00:00Z"
+        }"#;
+        let event = parse_event(json).unwrap();
+        let os: OsEvent = event.into();
+        match &os.kind {
+            OsEventKind::Authentication { success } => {
+                assert!(*success);
+            }
+            other => panic!("expected Authentication, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_get_task_event() {
+        let json = r#"{
+            "event_type": "get_task",
+            "process": { "pid": 400, "ppid": 1, "executable": "/tmp/injector" },
+            "event": { "target_pid": 12345 },
+            "timestamp": "2026-01-15T10:00:00Z"
+        }"#;
+        let event = parse_event(json).unwrap();
+        let os: OsEvent = event.into();
+        match &os.kind {
+            OsEventKind::GetTask { target_pid } => {
+                assert_eq!(*target_pid, 12345);
+            }
+            other => panic!("expected GetTask, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_xp_malware_detected_event() {
+        let json = r#"{
+            "event_type": "xp_malware_detected",
+            "process": { "pid": 500, "ppid": 1, "executable": "/usr/libexec/XProtectService" },
+            "event": { "name": "OSX.Trojan.Generic" },
+            "timestamp": "2026-01-15T10:00:00Z"
+        }"#;
+        let event = parse_event(json).unwrap();
+        let os: OsEvent = event.into();
+        match &os.kind {
+            OsEventKind::XpMalwareDetected { name } => {
+                assert_eq!(name, "OSX.Trojan.Generic");
+            }
+            other => panic!("expected XpMalwareDetected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_login_events() {
+        for event_type in &["login_login", "login_logout"] {
+            let json = format!(
+                r#"{{
+                    "event_type": "{event_type}",
+                    "process": {{ "pid": 600, "ppid": 1, "executable": "/usr/sbin/loginwindow" }},
+                    "event": {{}},
+                    "timestamp": "2026-01-15T10:00:00Z"
+                }}"#
+            );
+            let event = parse_event(&json).unwrap();
+            let os: OsEvent = event.into();
+            match (&os.kind, *event_type) {
+                (OsEventKind::LoginLogin, "login_login") => {}
+                (OsEventKind::LoginLogout, "login_logout") => {}
+                other => panic!("expected login event for {event_type}, got {other:?}"),
+            }
         }
     }
 }

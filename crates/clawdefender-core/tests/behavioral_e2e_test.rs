@@ -462,10 +462,12 @@ fn test_e2e_audit_data_complete_auto_block() {
             window_seconds: 60,
             explanation: "Credential theft detected".to_string(),
             steps: vec![],
+            mitre_id: Some("T1552+T1041".to_string()),
         },
         matched_events: vec![],
         explanation: "Cred theft + exfil".to_string(),
         severity: killchain::Severity::Critical,
+        mitre_id: Some("T1552+T1041".to_string()),
     };
 
     let decision = engine.decide(

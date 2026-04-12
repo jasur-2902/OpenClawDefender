@@ -1,4 +1,5 @@
 pub mod client;
+pub mod detection_engine;
 pub mod evidence;
 pub mod finding;
 pub mod modules;
