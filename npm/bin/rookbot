@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Stub — replaced by the real binary during postinstall.
+# If you see this message, the postinstall script didn't run.
+echo "Error: rookbot binary not installed. Run 'npm rebuild rookbot' or reinstall." >&2
+exit 1

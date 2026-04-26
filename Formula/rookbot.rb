@@ -6,7 +6,7 @@ class Rookbot < Formula
 
   on_macos do
     url "https://github.com/rookbot-io/rookbot/releases/download/v#{version}/rookbot-macos-universal.tar.gz"
-    sha256 "PLACEHOLDER"
+    sha256 "a7e063c2f3676ef0c33b4bc6885cf08fe6b971933677f71c601dd23c93ad5d2f"
   end
 
   on_linux do
@@ -15,7 +15,7 @@ class Rookbot < Formula
       sha256 "PLACEHOLDER"
     else
       url "https://github.com/rookbot-io/rookbot/releases/download/v#{version}/rookbot-linux-x86_64.tar.gz"
-      sha256 "PLACEHOLDER"
+      sha256 "a91b772cd805464ee1c68210dfed25149abc30ab70061dc48ca5c2f554db577d"
     end
   end
 
