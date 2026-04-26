@@ -335,7 +335,7 @@ fn compare_against_baseline(
 fn violations_to_findings(violations: Vec<IntegrityViolation>) -> Vec<Finding> {
     let mut findings = Vec::new();
 
-    for (id_counter, violation) in (1_u32..).zip(violations.into_iter()) {
+    for (id_counter, violation) in (1_u32..).zip(violations) {
         let (severity, title, description, file_path) = match &violation {
             IntegrityViolation::HashChanged { path, old, new } => {
                 let old_short = if old.len() >= 12 { &old[..12] } else { old };

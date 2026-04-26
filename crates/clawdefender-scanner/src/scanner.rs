@@ -236,7 +236,7 @@ pub fn deduplicate_findings(findings: Vec<Finding>) -> Vec<Finding> {
                 existing
                     .evidence
                     .os_events
-                    .extend(finding.evidence.os_events.into_iter());
+                    .extend(finding.evidence.os_events);
                 existing
                     .evidence
                     .files_modified
