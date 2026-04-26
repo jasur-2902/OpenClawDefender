@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -104,6 +104,7 @@ impl ModelManager {
     where
         F: Fn(u64, u64) + Send + 'static,
     {
+        use anyhow::bail;
         use sha2::{Digest, Sha256};
 
         self.ensure_dir()?;
