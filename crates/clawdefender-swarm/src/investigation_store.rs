@@ -523,13 +523,12 @@ impl InvestigationParser {
             match *key {
                 "what_happened" => answers.what_happened = content,
                 "why" => answers.why_it_happened = content,
-                "part_of_larger" => {
+                "part_of_larger"
                     if !content.is_empty()
                         && !content.to_lowercase().starts_with("no")
-                        && !content.to_lowercase().starts_with("n/a")
-                    {
-                        answers.part_of_larger = Some(content);
-                    }
+                        && !content.to_lowercase().starts_with("n/a") =>
+                {
+                    answers.part_of_larger = Some(content);
                 }
                 "impact" => answers.impact_description = content,
                 "recommendations" => {

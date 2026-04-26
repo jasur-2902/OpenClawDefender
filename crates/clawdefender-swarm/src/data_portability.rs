@@ -418,14 +418,12 @@ fn check_large_strings(value: &serde_json::Value, warnings: &mut Vec<String>, pa
                 check_large_strings(item, warnings, &format!("{}[{}]", path, i));
             }
         }
-        serde_json::Value::String(s) => {
-            if s.len() > 100_000 {
-                warnings.push(format!(
-                    "Suspiciously large string ({} bytes) at {}",
-                    s.len(),
-                    path
-                ));
-            }
+        serde_json::Value::String(s) if s.len() > 100_000 => {
+            warnings.push(format!(
+                "Suspiciously large string ({} bytes) at {}",
+                s.len(),
+                path
+            ));
         }
         _ => {}
     }

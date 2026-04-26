@@ -234,17 +234,14 @@ impl CostDashboard {
         }
 
         for entry in by_type.values_mut() {
-            if entry.count > 0 {
-                entry.avg_duration_ms = entry.total_duration_ms / entry.count;
-            }
+            entry.avg_duration_ms = entry
+                .total_duration_ms
+                .checked_div(entry.count)
+                .unwrap_or(0);
         }
 
         let total_operations = self.operation_costs.len() as u64;
-        let avg_duration_ms = if total_operations > 0 {
-            total_duration_ms / total_operations
-        } else {
-            0
-        };
+        let avg_duration_ms = total_duration_ms.checked_div(total_operations).unwrap_or(0);
 
         CostSummary {
             total_operations,
