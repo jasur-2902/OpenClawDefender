@@ -632,14 +632,12 @@ fn check_codesign(binary: &Path) -> SigningStatus {
 
 fn classify_and_report(items: &[PersistenceItem]) -> Vec<Finding> {
     let mut findings = Vec::new();
-    let mut id_counter: u32 = 1;
 
-    for item in items {
+    for (id_counter, item) in (1_u32..).zip(items.iter()) {
         let (severity, cvss) = classify_item(item);
 
         let prefix = severity.finding_id_prefix();
         let id = format!("PERSIST-{prefix}-{:03}", id_counter);
-        id_counter += 1;
 
         let title = format!(
             "{}: {}",

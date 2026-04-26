@@ -240,15 +240,12 @@ pub fn deduplicate_findings(findings: Vec<Finding>) -> Vec<Finding> {
                 existing
                     .evidence
                     .files_modified
-                    .extend(finding.evidence.files_modified.into_iter());
+                    .extend(finding.evidence.files_modified);
                 existing
                     .evidence
                     .network_connections
-                    .extend(finding.evidence.network_connections.into_iter());
-                existing
-                    .evidence
-                    .messages
-                    .extend(finding.evidence.messages.into_iter());
+                    .extend(finding.evidence.network_connections);
+                existing.evidence.messages.extend(finding.evidence.messages);
                 if finding.evidence.canary_detected {
                     existing.evidence.canary_detected = true;
                 }

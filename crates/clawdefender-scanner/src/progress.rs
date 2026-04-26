@@ -77,19 +77,11 @@ impl ScanProgress {
             "estimating...".to_string()
         };
 
-        let pct = if total > 0 {
-            (completed * 100) / total
-        } else {
-            0
-        };
+        let pct = (completed * 100).checked_div(total).unwrap_or(0);
 
         // Progress bar
         let bar_width = 30;
-        let filled = if total > 0 {
-            (completed * bar_width) / total
-        } else {
-            0
-        };
+        let filled = (completed * bar_width).checked_div(total).unwrap_or(0);
         let bar_color = if completed == total { GREEN } else { CYAN };
         let bar = format!(
             "{BOLD}{bar_color}[{}{}]{RESET} {pct}% ({completed}/{total})",

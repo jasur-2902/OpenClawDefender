@@ -1163,12 +1163,10 @@ fn detect_login_issues() -> Vec<Finding> {
     let anomalies = detect_login_anomalies(&login_events, &sudo_events);
 
     let mut findings = Vec::new();
-    let mut id_counter: u32 = 1;
 
-    for anomaly in &anomalies {
+    for (id_counter, anomaly) in (1_u32..).zip(anomalies.iter()) {
         let prefix = anomaly.severity.finding_id_prefix();
         let id = format!("LOGIN-{prefix}-{:03}", id_counter);
-        id_counter += 1;
 
         let cvss = match anomaly.severity {
             Severity::Critical => 9.0,
