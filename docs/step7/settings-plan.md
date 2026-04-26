@@ -97,7 +97,7 @@ The mode toggle persists in `appStore` (not in settings file -- it is a UI prefe
 +--------------------------------------------------+
 
 +--------------------------------------------------+
-|  About ClawDefender                               |
+|  About Rookbot                               |
 |  Version 0.5.0-beta                               |
 |  [Send Feedback] [GitHub] [Documentation]         |
 +--------------------------------------------------+

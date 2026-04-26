@@ -1,6 +1,6 @@
 # @clawdefender/agent
 
-Agent Self-Protection API for ClawDefender. This package provides runtime guardrails for JavaScript/TypeScript AI agents — path restrictions, network allowlists, shell policies, and tool-level access control.
+Agent Self-Protection API for Rookbot. This package provides runtime guardrails for JavaScript/TypeScript AI agents — path restrictions, network allowlists, shell policies, and tool-level access control.
 
 ## Installation
 
@@ -84,7 +84,7 @@ const suggested = guard.suggestPermissions();
 
 ## Fallback Mode
 
-When the ClawDefender daemon is unavailable, the guard runs in embedded mode with:
+When the Rookbot daemon is unavailable, the guard runs in embedded mode with:
 - Path matching against allowedPaths/blockedPaths
 - Tool name checking against allowedTools
 - Network host checking against networkAllowlist

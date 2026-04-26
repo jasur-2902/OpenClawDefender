@@ -1,6 +1,6 @@
-# ClawDefender Developer Guide
+# Rookbot Developer Guide
 
-This guide explains how to use the design system infrastructure when building ClawDefender UI components.
+This guide explains how to use the design system infrastructure when building Rookbot UI components.
 
 ---
 

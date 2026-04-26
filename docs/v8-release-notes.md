@@ -1,8 +1,8 @@
-# ClawDefender v0.8 Release Notes
+# Rookbot v0.8 Release Notes
 
 ## Security Scanner -- General Availability
 
-Phase 8 completes the ClawDefender Security Scanner with production-ready reporting, CLI integration, and CI/CD support. The scanner can now be used as a standalone tool to audit MCP servers for security vulnerabilities before deployment.
+Phase 8 completes the Rookbot Security Scanner with production-ready reporting, CLI integration, and CI/CD support. The scanner can now be used as a standalone tool to audit MCP servers for security vulnerabilities before deployment.
 
 ### New Features
 

@@ -45,7 +45,7 @@ Some Cursor versions use `"servers"` instead of `"mcpServers"`:
 }
 ```
 
-ClawDefender auto-detects which key is in use, preferring `"mcpServers"` when both exist.
+Rookbot auto-detects which key is in use, preferring `"mcpServers"` when both exist.
 
 ## MCP Protocol Details
 
@@ -55,7 +55,7 @@ All clients use the MCP protocol over stdio JSON-RPC 2.0. The protocol version i
 
 ### Initialize Handshake
 
-The client sends an `initialize` request, and the server responds with capabilities. ClawDefender's proxy passes this through transparently (Classification::Pass).
+The client sends an `initialize` request, and the server responds with capabilities. Rookbot's proxy passes this through transparently (Classification::Pass).
 
 ```json
 // Client -> Server
@@ -74,11 +74,11 @@ The client sends an `initialize` request, and the server responds with capabilit
 | VS Code | ~30s | Depends on extension implementation |
 | Windsurf | ~30s | Similar to Cursor |
 
-ClawDefender's default `prompt_timeout` is 30 seconds, which is compatible with all clients. For Cursor, if ClawDefender needs user approval (Prompt action), the approval must arrive before the client's own timeout.
+Rookbot's default `prompt_timeout` is 30 seconds, which is compatible with all clients. For Cursor, if Rookbot needs user approval (Prompt action), the approval must arrive before the client's own timeout.
 
 ### Error Handling
 
-When ClawDefender blocks a request, it returns a JSON-RPC error response:
+When Rookbot blocks a request, it returns a JSON-RPC error response:
 
 ```json
 {
@@ -86,7 +86,7 @@ When ClawDefender blocks a request, it returns a JSON-RPC error response:
   "id": 1,
   "error": {
     "code": -32001,
-    "message": "Blocked by ClawDefender policy"
+    "message": "Blocked by Rookbot policy"
   }
 }
 ```
@@ -102,11 +102,11 @@ Error code `-32001` is in the server-defined range (-32000 to -32099). Client di
 
 ### Batch Request Behavior
 
-JSON-RPC 2.0 supports batch requests (array of messages). ClawDefender processes each message individually in the order received. If one message in a sequence is blocked, others are still forwarded/evaluated independently.
+JSON-RPC 2.0 supports batch requests (array of messages). Rookbot processes each message individually in the order received. If one message in a sequence is blocked, others are still forwarded/evaluated independently.
 
 ### Keepalive / Ping
 
-The `ping` method is classified as `Pass` and forwarded transparently. All clients may send periodic pings to check server health. ClawDefender does not interfere with these.
+The `ping` method is classified as `Pass` and forwarded transparently. All clients may send periodic pings to check server health. Rookbot does not interfere with these.
 
 ### Reconnection Behavior
 
@@ -117,7 +117,7 @@ The `ping` method is classified as `Pass` and forwarded transparently. All clien
 | VS Code | Depends on extension | Most extensions restart on disconnect |
 | Windsurf | Restarts the MCP server process | Similar to Cursor |
 
-When ClawDefender's proxy process exits (or the wrapped server exits), the client will restart the entire command, which re-launches ClawDefender's proxy.
+When Rookbot's proxy process exits (or the wrapped server exits), the client will restart the entire command, which re-launches Rookbot's proxy.
 
 ## Client-Specific Quirks
 
@@ -145,7 +145,7 @@ When ClawDefender's proxy process exits (or the wrapped server exits), the clien
 
 ## Wrap/Unwrap Behavior
 
-When ClawDefender wraps a server, it:
+When Rookbot wraps a server, it:
 
 1. Backs up the config file to `*.json.bak`
 2. Replaces the `command` with the absolute path to `clawdefender`

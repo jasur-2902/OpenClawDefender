@@ -1,6 +1,6 @@
-# ClawDefender Network Extension
+# Rookbot Network Extension
 
-macOS System Extension that hosts a Network Extension content filter and DNS proxy for ClawDefender. It intercepts network flows from AI agent processes and applies network policy (allow/block/prompt).
+macOS System Extension that hosts a Network Extension content filter and DNS proxy for Rookbot. It intercepts network flows from AI agent processes and applies network policy (allow/block/prompt).
 
 ## Architecture
 
@@ -13,7 +13,7 @@ The extension consists of three NEProvider subclasses:
 Supporting modules:
 
 - **ProcessResolver** -- Converts `audit_token_t` to PID, caches agent-status lookups with 1-second TTL.
-- **DaemonBridge** -- XPC/Unix socket IPC to the ClawDefender daemon with automatic reconnection (5s retry). Fail-open when daemon is unavailable.
+- **DaemonBridge** -- XPC/Unix socket IPC to the Rookbot daemon with automatic reconnection (5s retry). Fail-open when daemon is unavailable.
 - **PolicyEvaluator** -- Local fast-path evaluation: always-allow localhost, always-block IoC hosts, cache daemon decisions with 30s TTL.
 - **FlowLogger** -- Structured logging via `os_log` and forwarding to daemon for audit records.
 
@@ -57,7 +57,7 @@ Note: SPM builds will compile the code but the resulting binary cannot be used a
 For development without Apple entitlements, run in mock mode:
 
 ```bash
-swift run ClawDefenderNetwork --mock
+swift run RookbotNetwork --mock
 ```
 
 This starts an interactive session where you can enter JSON flow events:
@@ -67,7 +67,7 @@ This starts an interactive session where you can enter JSON flow events:
 {"pid": 5678, "host": "evil.example.com", "port": 80}
 ```
 
-The mock mode queries the ClawDefender daemon via the same IPC protocol and logs decisions, but cannot actually intercept real network traffic.
+The mock mode queries the Rookbot daemon via the same IPC protocol and logs decisions, but cannot actually intercept real network traffic.
 
 ### Rust-Side Mock
 
@@ -75,7 +75,7 @@ The daemon also includes a `--mock-network-extension` flag that simulates extens
 
 ## IPC Protocol
 
-The extension communicates with the ClawDefender daemon via XPC using the `ClawDefenderNetworkProtocol`:
+The extension communicates with the Rookbot daemon via XPC using the `RookbotNetworkProtocol`:
 
 - `isAgentProcess(pid) -> (Bool, String?)` -- Check if a PID is an agent process
 - `evaluateNetworkPolicy(pid, host, port) -> (String, String?)` -- Get policy decision

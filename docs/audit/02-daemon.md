@@ -2,7 +2,7 @@
 
 ## 2.1 Overview
 
-The `clawdefender-daemon` crate is the main orchestrator of the ClawDefender system. It ties together all subsystems: MCP proxy, policy engine, audit logger, sensor subsystem (process tree, eslogger, FSEvents), correlation engine, event router, behavioral engine, threat intelligence, network policy, guard registry, SLM service, swarm analysis, TUI/headless mode, and signal handling.
+The `clawdefender-daemon` crate is the main orchestrator of the Rookbot system. It ties together all subsystems: MCP proxy, policy engine, audit logger, sensor subsystem (process tree, eslogger, FSEvents), correlation engine, event router, behavioral engine, threat intelligence, network policy, guard registry, SLM service, swarm analysis, TUI/headless mode, and signal handling.
 
 **Crate type**: Binary (`clawdefender-daemon`) + Library (`clawdefender_daemon`)
 
@@ -53,7 +53,7 @@ The `clawdefender-daemon` crate is the main orchestrator of the ClawDefender sys
 
 | Step | Classification | Notes |
 |---|---|---|
-| PID file write | ✅ REAL | Writes PID to `~/.local/share/clawdefender/clawdefender.pid` |
+| PID file write | ✅ REAL | Writes PID to `~/.local/share/rookbot/clawdefender.pid` |
 | Channel creation | ✅ REAL | Creates mpsc channels for prompts, events, audit, correlated events |
 | MCP server spawn | ✅ REAL | Spawns HTTP MCP server on configured port (if enabled) |
 | Guard PID cleanup task | ✅ REAL | Background task every 5s calling `cleanup_dead_pids()` |
@@ -95,7 +95,7 @@ The `clawdefender-daemon` crate is the main orchestrator of the ClawDefender sys
 |---|---|---|
 | `spawn_policy_watcher()` | ✅ REAL | Uses `notify` crate, debounces 200ms, calls `engine.reload()` |
 | `spawn_file_watcher()` | ⚠️ PARTIAL | Watches file changes but only logs "reload pending" -- does not actually reload sensor config |
-| `pid_file_path()` | ✅ REAL | Returns `~/.local/share/clawdefender/clawdefender.pid` |
+| `pid_file_path()` | ✅ REAL | Returns `~/.local/share/rookbot/clawdefender.pid` |
 | `write_pid_file()` | ✅ REAL | Writes PID, creates parent dirs |
 | `remove_pid_file()` | ✅ REAL | Removes PID file |
 

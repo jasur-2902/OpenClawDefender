@@ -1,6 +1,6 @@
 # Menu Bar App Guide
 
-ClawDefender includes a native macOS menu bar application built with SwiftUI for real-time monitoring and prompt handling.
+Rookbot includes a native macOS menu bar application built with SwiftUI for real-time monitoring and prompt handling.
 
 ## Installation
 
@@ -17,17 +17,17 @@ cd clients/clawdefender-menubar
 swift build -c release
 ```
 
-The built binary is at `.build/release/ClawDefenderMenuBar`.
+The built binary is at `.build/release/RookbotMenuBar`.
 
 ### Launch
 
 Double-click the built app or run from the terminal:
 
 ```bash
-./ClawDefenderMenuBar
+./RookbotMenuBar
 ```
 
-The menu bar icon appears in the macOS menu bar. The app connects to the ClawDefender daemon automatically via the Unix domain socket at `~/.local/share/clawdefender/clawdefender.sock`.
+The menu bar icon appears in the macOS menu bar. The app connects to the Rookbot daemon automatically via the Unix domain socket at `~/.local/share/rookbot/clawdefender.sock`.
 
 ## Usage
 
@@ -83,4 +83,4 @@ The menu bar app connects to the daemon via IPC. The connection is established a
 
 ### Connection configuration
 
-The socket path defaults to `~/.local/share/clawdefender/clawdefender.sock`. This matches the daemon's default socket path configured in `~/.config/clawdefender/clawdefender.toml`.
+The socket path defaults to `~/.local/share/rookbot/clawdefender.sock`. This matches the daemon's default socket path configured in `~/.config/rookbot/clawdefender.toml`.

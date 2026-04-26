@@ -1,6 +1,6 @@
-# Contributing to ClawDefender Threat Intelligence
+# Contributing to Rookbot Threat Intelligence
 
-Thank you for your interest in contributing to the ClawDefender threat feed. This guide explains how to submit new threat data, rule packs, and behavioral profiles.
+Thank you for your interest in contributing to the Rookbot threat feed. This guide explains how to submit new threat data, rule packs, and behavioral profiles.
 
 ## Types of Contributions
 

@@ -2,15 +2,15 @@
 
 ## What's new
 
-### Project rename: ClawAI -> ClawDefender
+### Project rename: Rookbot -> Rookbot
 
-The project has been renamed from ClawAI to ClawDefender to better reflect its
+The project has been renamed from Rookbot to Rookbot to better reflect its
 purpose as a defensive security tool. All crate names, configuration paths,
 binary names, and documentation have been updated.
 
 ### AI-powered risk analysis (SLM integration)
 
-ClawDefender now includes an on-device Small Language Model for analyzing tool
+Rookbot now includes an on-device Small Language Model for analyzing tool
 calls and assigning risk levels. The SLM evaluates events that hit `prompt`
 policy rules and provides advisory risk assessments (LOW / MEDIUM / HIGH /
 CRITICAL) with explanations.
@@ -31,7 +31,7 @@ A new noise filtering system suppresses benign developer activity before it
 reaches the SLM. Built-in profiles cover compilers, git operations, IDE/LSP
 activity, test runners, and package managers. Frequency-based suppression
 prevents the same (server, tool) pair from generating excessive SLM calls.
-Custom rules can be added via `~/.config/clawdefender/noise.toml`.
+Custom rules can be added via `~/.config/rookbot/noise.toml`.
 
 ### Prompt injection hardening
 
@@ -46,11 +46,11 @@ Multi-layer defense against prompt injection in SLM analysis:
 
 ### Model management CLI
 
-New `clawdefender model` subcommands:
-- `clawdefender model download` -- download a recommended GGUF model
-- `clawdefender model list` -- list installed and available models
-- `clawdefender model toggle on|off` -- enable/disable SLM analysis
-- `clawdefender model stats` -- view inference statistics
+New `rookbot model` subcommands:
+- `rookbot model download` -- download a recommended GGUF model
+- `rookbot model list` -- list installed and available models
+- `rookbot model toggle on|off` -- enable/disable SLM analysis
+- `rookbot model stats` -- view inference statistics
 
 ### TUI enhancements
 
@@ -69,9 +69,9 @@ New `clawdefender model` subcommands:
 
 | V1                              | V2                                 |
 |---------------------------------|------------------------------------|
-| `clawai` binary                 | `clawdefender` binary              |
-| `~/.config/clawai/`             | `~/.config/clawdefender/`          |
-| `~/.local/share/clawai/`        | `~/.local/share/clawdefender/`     |
+| `clawai` binary                 | `rookbot` binary                   |
+| `~/.config/clawai/`             | `~/.config/rookbot/`               |
+| `~/.local/share/clawai/`        | `~/.local/share/rookbot/`          |
 | `clawai-core` crate             | `clawdefender-core` crate          |
 | `clawai-mcp-proxy` crate        | `clawdefender-mcp-proxy` crate     |
 
@@ -79,27 +79,27 @@ New `clawdefender model` subcommands:
 
 1. **Rename configuration directory:**
    ```bash
-   mv ~/.config/clawai ~/.config/clawdefender
+   mv ~/.config/clawai ~/.config/rookbot
    ```
 
 2. **Rename data directory:**
    ```bash
-   mv ~/.local/share/clawai ~/.local/share/clawdefender
+   mv ~/.local/share/clawai ~/.local/share/rookbot
    ```
 
 3. **Update MCP client configuration:**
    ```bash
-   clawdefender unwrap <server-name>
-   clawdefender wrap <server-name>
+   rookbot unwrap <server-name>
+   rookbot wrap <server-name>
    ```
    Or manually update `claude_desktop_config.json` to replace `clawai` with
-   `clawdefender` in server command paths.
+   `rookbot` in server command paths.
 
 4. **Update shell aliases and scripts:**
-   Replace any references to `clawai` with `clawdefender`.
+   Replace any references to `clawai` with `rookbot`.
 
-The `clawdefender unwrap` command supports both legacy `_clawai_original` and
-new `_clawdefender_original` keys for backward compatibility during migration.
+The `rookbot unwrap` command supports both legacy `_clawai_original` and
+new `_rookbot_original` keys for backward compatibility during migration.
 
 ## Crate versions
 

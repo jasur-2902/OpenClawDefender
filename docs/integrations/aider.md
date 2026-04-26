@@ -1,6 +1,6 @@
 # Aider Integration
 
-ClawDefender can monitor and control tool calls made by Aider when it operates
+Rookbot can monitor and control tool calls made by Aider when it operates
 through MCP servers.
 
 ## How Aider uses MCP
@@ -9,7 +9,7 @@ Aider can connect to MCP servers for file editing, git operations, and shell
 command execution. When configured with MCP, Aider sends tool calls through
 the standard MCP JSON-RPC protocol.
 
-## Wrapping with ClawDefender
+## Wrapping with Rookbot
 
 Aider's MCP configuration can be wrapped using `clawdefender proxy`:
 
@@ -17,7 +17,7 @@ Aider's MCP configuration can be wrapped using `clawdefender proxy`:
 # Instead of running:
 aider --mcp-server "npx -y @modelcontextprotocol/server-filesystem /home/user"
 
-# Run with ClawDefender:
+# Run with Rookbot:
 aider --mcp-server "clawdefender proxy -- npx -y @modelcontextprotocol/server-filesystem /home/user"
 ```
 

@@ -1,14 +1,14 @@
-# ClawDefender v0.7.0 Release Notes
+# Rookbot v0.7.0 Release Notes
 
 ## Overview
 
-ClawDefender v0.7.0 introduces an **autonomous behavioral defense engine** that learns per-server behavioral baselines and detects anomalies, multi-step attack patterns, and prompt injection attempts in real time. This is a major security upgrade that moves ClawDefender from purely rule-based defense to adaptive, behavior-aware protection.
+Rookbot v0.7.0 introduces an **autonomous behavioral defense engine** that learns per-server behavioral baselines and detects anomalies, multi-step attack patterns, and prompt injection attempts in real time. This is a major security upgrade that moves Rookbot from purely rule-based defense to adaptive, behavior-aware protection.
 
 ## New Features
 
 ### Behavioral Baselines
 
-ClawDefender now automatically builds behavioral profiles for each MCP server by observing tool calls, file access patterns, network connections, and temporal behavior during a configurable learning phase. After learning, any deviation from the established baseline generates anomaly scores.
+Rookbot now automatically builds behavioral profiles for each MCP server by observing tool calls, file access patterns, network connections, and temporal behavior during a configurable learning phase. After learning, any deviation from the established baseline generates anomaly scores.
 
 ### Anomaly Detection (9 Dimensions)
 
@@ -43,7 +43,7 @@ Kill chain matches add a +0.3 boost to the anomaly score.
 
 When enabled, events exceeding the auto-block threshold (default 0.9) are automatically blocked without user intervention. Auto-block is **OFF by default** -- it must be explicitly enabled in configuration.
 
-A feedback loop tracks the override rate: if users override more than 10% of auto-blocks (after 10+ blocks), ClawDefender recommends raising the threshold.
+A feedback loop tracks the override rate: if users override more than 10% of auto-blocks (after 10+ blocks), Rookbot recommends raising the threshold.
 
 ### Prompt Injection Detection
 
@@ -80,7 +80,7 @@ clawdefender profile export <name># Export profile as JSON
 
 ### Behavioral Engine
 
-Add to `~/.config/clawdefender/clawdefender.toml`:
+Add to `~/.config/rookbot/clawdefender.toml`:
 
 ```toml
 [behavioral]
@@ -154,7 +154,7 @@ This release is **backward compatible** with Phase 6 configurations. No breaking
 
 ## Upgrade Guide
 
-1. Update ClawDefender to v0.7.0.
+1. Update Rookbot to v0.7.0.
 2. No configuration changes required -- the behavioral engine starts in learning mode automatically.
 3. Optionally add `[behavioral]` and `[injection_detector]` sections to your config file.
 4. Wait for the learning phase to complete (100 events, 30 minutes by default).

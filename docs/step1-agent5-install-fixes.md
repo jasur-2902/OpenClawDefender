@@ -9,8 +9,8 @@
 **After:** Full local-from-source install script that:
 - Builds release binaries for `clawdefender-cli` and `clawdefender-daemon` via `cargo build --release`
 - Copies binaries to `/usr/local/bin/` (or `$CLAWDEFENDER_INSTALL_DIR`) with `0755` permissions
-- Creates config directory `~/.config/clawdefender/` with `0755` permissions
-- Creates data directory `~/.local/share/clawdefender/` with `0755` permissions
+- Creates config directory `~/.config/rookbot/` with `0755` permissions
+- Creates data directory `~/.local/share/rookbot/` with `0755` permissions
 - Creates subdirectories: `models/`, `threat-intel/`, `crashes/`, `scans/`
 - Writes default `config.toml` (skip if exists) with `0644` permissions
 - Copies `policies/default.toml` to `policy.toml` (skip if exists) with `0644` permissions
@@ -62,8 +62,8 @@ The original GitHub-release-based installer was preserved as `scripts/install-re
 |---|---|
 | Builds release binaries for CLI and daemon | Done |
 | Copies binaries to PATH location | Done (`/usr/local/bin/`) |
-| Creates `~/.config/clawdefender/` | Done |
-| Creates `~/.local/share/clawdefender/` | Done |
+| Creates `~/.config/rookbot/` | Done |
+| Creates `~/.local/share/rookbot/` | Done |
 | Creates subdirs: models, threat-intel, crashes, scans | Done |
 | Copies default config.toml | Done |
 | Copies default policy.toml from `policies/default.toml` | Done |

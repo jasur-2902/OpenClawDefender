@@ -1,4 +1,4 @@
-# ClawDefender Performance Guide
+# Rookbot Performance Guide
 
 ## Performance Targets
 

@@ -1,6 +1,6 @@
 # SLM Guide
 
-ClawDefender includes an on-device Small Language Model (SLM) that provides
+Rookbot includes an on-device Small Language Model (SLM) that provides
 AI-powered risk analysis for tool calls intercepted by the proxy.
 
 ## Overview
@@ -23,16 +23,16 @@ rules remain the enforcement mechanism.
 ### Download a recommended model
 
 ```bash
-clawdefender model download
+rookbot model download
 ```
 
 This downloads the default recommended model to
-`~/.local/share/clawdefender/models/`.
+`~/.local/share/rookbot/models/`.
 
 ### List available and installed models
 
 ```bash
-clawdefender model list
+rookbot model list
 ```
 
 ### Manual installation
@@ -40,18 +40,18 @@ clawdefender model list
 Place any GGUF model file in the models directory:
 
 ```bash
-mkdir -p ~/.local/share/clawdefender/models
-cp /path/to/your-model.gguf ~/.local/share/clawdefender/models/
+mkdir -p ~/.local/share/rookbot/models
+cp /path/to/your-model.gguf ~/.local/share/rookbot/models/
 ```
 
 ## Configuration
 
-The SLM is configured in `~/.config/clawdefender/clawdefender.toml`:
+The SLM is configured in `~/.config/rookbot/rookbot.toml`:
 
 ```toml
 [slm]
 enabled = true
-model_path = "~/.local/share/clawdefender/models/default.gguf"
+model_path = "~/.local/share/rookbot/models/default.gguf"
 context_size = 2048        # Context window in tokens
 max_output_tokens = 256    # Max tokens per inference
 temperature = 0.1          # Lower = more deterministic
@@ -63,14 +63,14 @@ batch_size = 512           # Prompt evaluation batch size
 ### Toggle on/off
 
 ```bash
-clawdefender model toggle on
-clawdefender model toggle off
+rookbot model toggle on
+rookbot model toggle off
 ```
 
 ### View statistics
 
 ```bash
-clawdefender model stats
+rookbot model stats
 ```
 
 Shows total inferences, average latency, token usage, and GPU status.
@@ -109,7 +109,7 @@ The noise filter suppresses common developer activity to reduce SLM overhead:
 | Test Runners     | cargo test, pytest, jest, npm test, go test      |
 | Package Managers | npm install, pip install, cargo install, brew    |
 
-Custom noise rules can be added in `~/.config/clawdefender/noise.toml`.
+Custom noise rules can be added in `~/.config/rookbot/noise.toml`.
 
 ### Security hardening
 
@@ -132,24 +132,24 @@ attacks and defenses.
 
 Check that:
 1. The model file exists at the configured path
-2. `enabled = true` is set in the `[slm]` section of `clawdefender.toml`
-3. Run `clawdefender model list` to verify the model is installed
+2. `enabled = true` is set in the `[slm]` section of `rookbot.toml`
+3. Run `rookbot model list` to verify the model is installed
 
 ### High latency
 
 - Enable GPU acceleration: set `use_gpu = true` in config
 - Reduce `context_size` or `max_output_tokens`
 - Use a smaller quantized model (Q4 instead of Q8)
-- Check `clawdefender model stats` for average latency
+- Check `rookbot model stats` for average latency
 
 ### Too many events reaching SLM
 
 - The noise filter should handle most benign activity automatically
-- Add custom rules to `~/.config/clawdefender/noise.toml` for your workflow
-- Check `clawdefender model stats` to see inference counts
+- Add custom rules to `~/.config/rookbot/noise.toml` for your workflow
+- Check `rookbot model stats` to see inference counts
 
 ### Model download fails
 
 - Check network connectivity
-- Verify disk space in `~/.local/share/clawdefender/models/`
+- Verify disk space in `~/.local/share/rookbot/models/`
 - Try manual download and placement (see Installation section)

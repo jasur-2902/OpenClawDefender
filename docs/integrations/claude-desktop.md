@@ -1,10 +1,10 @@
 # Claude Desktop Integration
 
-ClawDefender integrates with Claude Desktop by wrapping MCP servers in its
-security proxy. Every tool call from Claude passes through ClawDefender's
+Rookbot integrates with Claude Desktop by wrapping MCP servers in its
+security proxy. Every tool call from Claude passes through Rookbot's
 policy engine before reaching the server.
 
-ClawDefender supports both configuration formats used by Claude Desktop:
+Rookbot supports both configuration formats used by Claude Desktop:
 
 - **Traditional config** (`mcpServers` in `claude_desktop_config.json` or `config.json`)
 - **DXT extensions** (`extensions-installations.json`) — used by Claude Desktop for extensions installed from the extension registry
@@ -40,7 +40,7 @@ Claude Desktop installs extensions from the extension registry into:
 ```
 
 Each extension's MCP config is nested at
-`extensions.<id>.manifest.server.mcp_config`. ClawDefender discovers and wraps
+`extensions.<id>.manifest.server.mcp_config`. Rookbot discovers and wraps
 these automatically.
 
 ## Wrapping a server
@@ -58,7 +58,7 @@ clawdefender wrap ant.dir.ant.anthropic.chrome-control
 clawdefender wrap filesystem --client claude
 ```
 
-ClawDefender tries the traditional `mcpServers` config first. If the server is
+Rookbot tries the traditional `mcpServers` config first. If the server is
 not found there, it searches DXT extensions by name, display name, or extension
 id (case-insensitive).
 
@@ -133,7 +133,7 @@ After wrapping:
 The `${__dirname}` token is preserved as-is — Claude Desktop resolves it at
 runtime before spawning the process.
 
-ClawDefender creates a `.bak` backup of the config file before modifying it.
+Rookbot creates a `.bak` backup of the config file before modifying it.
 
 ## Restart Claude Desktop
 
@@ -142,10 +142,10 @@ do this from the system tray icon or by quitting and relaunching the app.
 
 ## User experience
 
-When ClawDefender is active:
+When Rookbot is active:
 
 1. **Allowed actions** pass through silently. You will not notice any difference.
-2. **Prompted actions** trigger a notification from the ClawDefender menubar app.
+2. **Prompted actions** trigger a notification from the Rookbot menubar app.
    You see what the agent wants to do and can approve or deny it.
 3. **Blocked actions** are denied before they reach the server. Claude receives
    an error response explaining that the action was blocked by policy.
@@ -238,7 +238,7 @@ tool_name = ["brave_web_search", "brave_local_search"]
 
 ## Unwrapping
 
-To remove ClawDefender from a server:
+To remove Rookbot from a server:
 
 ```bash
 # Unwrap a traditional MCP server
@@ -269,7 +269,7 @@ clawdefender log --server filesystem
 - Check the backup at `claude_desktop_config.json.bak` or `extensions-installations.json.bak`
 
 **Tool calls are slow:**
-- ClawDefender adds minimal latency (<5ms for policy evaluation)
+- Rookbot adds minimal latency (<5ms for policy evaluation)
 - If prompts are enabled, latency depends on how fast you respond
 
 **Server not found:**

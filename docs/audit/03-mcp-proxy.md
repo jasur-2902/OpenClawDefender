@@ -151,7 +151,7 @@ This is the main proxy implementation. Spawns an MCP server as a child process a
   - LOW: file reads, listing
 - `human_readable_action()`: Maps tool names to user-friendly labels
 - `build_session_allow_rule()`: Creates policy rules from user decisions
-- `default_audit_log_path()`: Returns `~/.local/share/clawdefender/audit.jsonl` with symlink check
+- `default_audit_log_path()`: Returns `~/.local/share/rookbot/audit.jsonl` with symlink check
 
 **Security features:**
 - Symlink check on audit log path (refuses symlinks, falls back to temp path)
@@ -221,7 +221,7 @@ HTTP reverse proxy for MCP servers using HTTP+SSE transport.
 
 - Clap-based CLI with:
   - `server_cmd` (trailing var arg for stdio mode)
-  - `--policy` (default `~/.config/clawdefender/policy.toml`)
+  - `--policy` (default `~/.config/rookbot/policy.toml`)
   - `--http` mode toggle
   - `--remote` URL for HTTP mode
   - `--listen` address (default `127.0.0.1:3100`)
@@ -372,7 +372,7 @@ HTTP reverse proxy for MCP servers using HTTP+SSE transport.
 
 **Status: REAL**
 
-- `generate_and_store_token()`: Generates 256-bit random token, writes to `~/.local/share/clawdefender/server-token`
+- `generate_and_store_token()`: Generates 256-bit random token, writes to `~/.local/share/rookbot/server-token`
 - Unix: Sets 0600 permissions on token file
 - `validate_bearer_token()`: Constant-time comparison (prevents timing attacks)
 - `read_token()`: Reads from disk
@@ -449,7 +449,7 @@ HTTP reverse proxy for MCP servers using HTTP+SSE transport.
 - `PolicyAction::Log` -> forward + audit
 
 ### Q4: Does it log enriched audit events?
-**YES.** Audit records include: timestamp, source, event_summary, event_details, rule_matched, action_taken, direction, server_name, client_name, jsonrpc_method, tool_name, arguments, classification (risk level), policy_rule, policy_action, user_decision, proxy_latency_us, slm_analysis, swarm_analysis, threat_intel, network_connection. The `FileAuditLogger` writes to `~/.local/share/clawdefender/audit.jsonl`.
+**YES.** Audit records include: timestamp, source, event_summary, event_details, rule_matched, action_taken, direction, server_name, client_name, jsonrpc_method, tool_name, arguments, classification (risk level), policy_rule, policy_action, user_decision, proxy_latency_us, slm_analysis, swarm_analysis, threat_intel, network_connection. The `FileAuditLogger` writes to `~/.local/share/rookbot/audit.jsonl`.
 
 ### Q5: Does it communicate with the daemon?
 **PARTIALLY.** The proxy does not directly communicate with the daemon via IPC. Instead:

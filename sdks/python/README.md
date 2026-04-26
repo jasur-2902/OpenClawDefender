@@ -1,6 +1,6 @@
-# ClawDefender Python SDK
+# Rookbot Python SDK
 
-Python SDK for integrating [ClawDefender](https://github.com/clawai/clawdefender) guardrails into MCP server tools. ClawDefender enforces safety policies on AI agent actions — file access, shell execution, network requests, and more.
+Python SDK for integrating [Rookbot](https://github.com/clawai/clawdefender) guardrails into MCP server tools. Rookbot enforces safety policies on AI agent actions — file access, shell execution, network requests, and more.
 
 ## Installation
 
@@ -11,9 +11,9 @@ pip install clawdefender-sdk
 ## Quick Start
 
 ```python
-from clawdefender import ClawDefender
+from clawdefender import Rookbot
 
-claw = ClawDefender()
+claw = Rookbot()
 result = claw.check_intent(
     description="Read user config",
     action_type="file_read",
@@ -24,7 +24,7 @@ print(result.allowed, result.risk_level)
 
 ## Connection Modes
 
-The SDK communicates with ClawDefender via the MCP protocol.
+The SDK communicates with Rookbot via the MCP protocol.
 
 | Mode    | Description                                         |
 | ------- | --------------------------------------------------- |
@@ -34,24 +34,24 @@ The SDK communicates with ClawDefender via the MCP protocol.
 
 ```python
 # Explicit HTTP
-claw = ClawDefender(mode="http", http_url="http://localhost:3201")
+claw = Rookbot(mode="http", http_url="http://localhost:3201")
 
 # Explicit stdio with custom binary
-claw = ClawDefender(mode="stdio", command="/usr/local/bin/clawdefender")
+claw = Rookbot(mode="stdio", command="/usr/local/bin/clawdefender")
 ```
 
 ### Fail-Open Behaviour
 
-By default the SDK operates in **fail-open** mode: if ClawDefender is not installed or the daemon is not running, all `check_intent` calls return `allowed=True` and the host MCP server continues working normally. This ensures your server never crashes due to a missing guardrail dependency.
+By default the SDK operates in **fail-open** mode: if Rookbot is not installed or the daemon is not running, all `check_intent` calls return `allowed=True` and the host MCP server continues working normally. This ensures your server never crashes due to a missing guardrail dependency.
 
 ```python
 # Disable fail-open (strict mode — raises on connection failure)
-claw = ClawDefender(fail_open=False)
+claw = Rookbot(fail_open=False)
 ```
 
 ## API Reference
 
-### `ClawDefender`
+### `Rookbot`
 
 #### `check_intent(description, action_type, target, reason=None) -> CheckIntentResponse`
 
@@ -204,9 +204,9 @@ from clawdefender import (
 ### MCP Server Tool with Guardrails
 
 ```python
-from clawdefender import ClawDefender, requires_permission, reports_action
+from clawdefender import Rookbot, requires_permission, reports_action
 
-claw = ClawDefender()
+claw = Rookbot()
 
 @requires_permission(operation="execute", justification="User requested shell command")
 @reports_action(action_type="shell_execute")

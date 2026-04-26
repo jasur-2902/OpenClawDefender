@@ -1,8 +1,8 @@
-# Phase 10 Release Notes — ClawDefender GUI Application
+# Phase 10 Release Notes — Rookbot GUI Application
 
 ## Summary
 
-Phase 10 delivers the **ClawDefender desktop GUI application**, a native Tauri v2 app built with React 19, TypeScript, and Tailwind CSS. The app provides a graphical interface for all ClawDefender functionality: real-time event monitoring, security policy management, prompt/alert handling, behavioral analysis, vulnerability scanning, and system health diagnostics.
+Phase 10 delivers the **Rookbot desktop GUI application**, a native Tauri v2 app built with React 19, TypeScript, and Tailwind CSS. The app provides a graphical interface for all Rookbot functionality: real-time event monitoring, security policy management, prompt/alert handling, behavioral analysis, vulnerability scanning, and system health diagnostics.
 
 ## New features
 
@@ -122,7 +122,7 @@ Phase 10 delivers the **ClawDefender desktop GUI application**, a native Tauri v
 ## Known limitations
 
 - Linux and Windows builds are not yet available; macOS only for this release
-- The GUI requires the ClawDefender daemon to be installed separately (bundled in the `.dmg`)
+- The GUI requires the Rookbot daemon to be installed separately (bundled in the `.dmg`)
 - Behavioral profile visualization is limited to summary cards; detailed charts are planned
 - Audit log search does not yet support date range filtering in the UI (available via CLI)
 - Custom themes beyond Dark/Light/System are not supported

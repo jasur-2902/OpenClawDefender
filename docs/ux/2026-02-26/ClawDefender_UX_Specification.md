@@ -1,4 +1,4 @@
-# ClawDefender Mac GUI — UX Specification
+# Rookbot Mac GUI — UX Specification
 ## For the UX/UI Design Team
 ## Date: 2026-02-26
 ## Version: 0.5.0-beta
@@ -25,9 +25,9 @@
 
 # 1. App Overview & Identity
 
-## What is ClawDefender?
+## What is Rookbot?
 
-ClawDefender is a **macOS desktop security application** that monitors and controls AI agents communicating via the Model Context Protocol (MCP). It sits between AI assistants (Claude Desktop, Cursor, VS Code, Windsurf) and MCP tool servers, intercepting every request to enforce security policies.
+Rookbot is a **macOS desktop security application** that monitors and controls AI agents communicating via the Model Context Protocol (MCP). It sits between AI assistants (Claude Desktop, Cursor, VS Code, Windsurf) and MCP tool servers, intercepting every request to enforce security policies.
 
 ## Design Philosophy
 
@@ -76,7 +76,7 @@ The app has been redesigned around three principles:
 ## Site Map
 
 ```
-ClawDefender
+Rookbot
 ├── / (Home) ← Default landing
 │
 ├── /ask (Ask Claw) ← AI Conversational Assistant
@@ -908,7 +908,7 @@ Width: 8px, Border-radius: 4px
 ```
 ┌─────────────────────────────────────────────┐
 │                                              │
-│           🛡️ Welcome to ClawDefender         │
+│           🛡️ Welcome to Rookbot         │
 │                                              │
 │     Protect your AI tools with intelligent   │
 │     security monitoring                      │
@@ -940,7 +940,7 @@ Width: 8px, Border-radius: 4px
 
 ### Migration Screen (conditional)
 - Shows when existing installation detected from older version
-- "We detected an existing ClawDefender installation"
+- "We detected an existing Rookbot installation"
 - Option to migrate settings or start fresh
 
 ---
@@ -1328,7 +1328,7 @@ When daemon connection is lost:
 ## 9.2 System Tray Menu
 
 ```
-ClawDefender
+Rookbot
 ├── Show Window
 ├── ─────────────
 ├── Status: Running (●)
@@ -1340,10 +1340,10 @@ ClawDefender
 ├── ─────────────
 ├── Start Daemon / Stop Daemon
 ├── ─────────────
-└── Quit ClawDefender
+└── Quit Rookbot
 ```
 
-**Tray icon**: Shows ClawDefender logo. May show badge for unresolved alerts.
+**Tray icon**: Shows Rookbot logo. May show badge for unresolved alerts.
 
 ## 9.3 Window Behavior
 
@@ -1353,7 +1353,7 @@ ClawDefender
 | Minimize (yellow) | Minimizes to dock |
 | Fullscreen (green) | Standard macOS fullscreen |
 | Reopen from tray | "Show Window" or click tray icon |
-| Quit | Cmd+Q or tray "Quit ClawDefender" |
+| Quit | Cmd+Q or tray "Quit Rookbot" |
 | Geometry | Saved on close/move/resize, restored on next launch |
 
 ---
@@ -1553,7 +1553,7 @@ Key data types the UX team needs to design for:
 
 ## 13.2 Suggested Enhancements
 
-1. **Onboarding video/animation** — Short animated intro showing what ClawDefender does
+1. **Onboarding video/animation** — Short animated intro showing what Rookbot does
 2. **Keyboard command palette** — Cmd+K opens command palette (not just search) for power users
 3. **Notification center** — Slide-out panel showing all recent notifications
 4. **Quick actions from tray** — Right-click tray for common actions (pause monitoring, open alerts)

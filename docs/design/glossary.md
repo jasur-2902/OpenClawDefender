@@ -1,4 +1,4 @@
-# ClawDefender Glossary
+# Rookbot Glossary
 
 Single source of truth for every user-facing term. If a term is not in this glossary, it should not appear in user-facing copy without being added here first.
 
@@ -8,8 +8,8 @@ Single source of truth for every user-facing term. If a term is not in this glos
 
 | Term | Definition | Usage Notes |
 |------|-----------|-------------|
-| **Claw** | The personality and voice of ClawDefender. Claw speaks as "I" in all user-facing messages. | Use "Claw" in third-person contexts (settings descriptions, documentation). Never "we." |
-| **ClawDefender** | The full product name. | Use in formal contexts: documentation titles, system prompts, about screen. In casual messages, use "Claw." |
+| **Claw** | The personality and voice of Rookbot. Claw speaks as "I" in all user-facing messages. | Use "Claw" in third-person contexts (settings descriptions, documentation). Never "we." |
+| **Rookbot** | The full product name. | Use in formal contexts: documentation titles, system prompts, about screen. In casual messages, use "Claw." |
 | **Dashboard** | The main screen showing status overview, stats, and recent activity. | Always capitalized as a page name. |
 | **Ask Claw** | The conversational interface where users can ask Claw questions in natural language. | Always "Ask Claw," not "Chat" or "Assistant." |
 | **My Tools** | The page listing all MCP servers and their status. | Always "My Tools," not "Servers" or "Server List." |

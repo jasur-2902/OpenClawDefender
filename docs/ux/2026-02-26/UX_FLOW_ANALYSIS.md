@@ -1,4 +1,4 @@
-# ClawDefender Mac GUI — Complete UX Flow Analysis
+# Rookbot Mac GUI — Complete UX Flow Analysis
 
 **Date:** February 2026
 **Version:** 1.0
@@ -132,7 +132,7 @@ Screen 5: Complete
 │  ├─ Protection level label
 │  ├─ FDA status (if granted)
 │  └─ Restart reminder (if tools were wrapped)
-├─ "Open ClawDefender":
+├─ "Open Rookbot":
 │  ├─ Call complete_onboarding
 │  ├─ Call enable_autostart
 │  ├─ Clear sessionStorage
@@ -265,7 +265,7 @@ Overlay appears (modal, z-50, higher than alerts, blurred background):
 
 PromptWindow (active prompt):
 ├─ Risk indicator (color: low/medium/high/critical)
-├─ High-risk warning banner (dark red, "ClawDefender recommends DENYING")
+├─ High-risk warning banner (dark red, "Rookbot recommends DENYING")
 ├─ Timer bar at top (animated, color shifts with remaining time)
 │  ├─ Green (remaining > 10s)
 │  ├─ Amber (5-10s)
@@ -599,7 +599,7 @@ Visibility check: el.offsetParent !== null (hidden elements excluded)
 ### Menu Hierarchy
 
 ```
-▼ ClawDefender — Score: 65 (Protected)
+▼ Rookbot — Score: 65 (Protected)
   ├─ 4 servers protected [info item, disabled]
   ├─ Protection Score: 65/100 [info item, disabled]
   ├─ ⚠ 2 prompts waiting [info item, disabled, if pending > 0]
@@ -614,7 +614,7 @@ Visibility check: el.offsetParent !== null (hidden elements excluded)
   ├─ ──────────────────── [separator]
   ├─ Pause Protection (or "Resume Protection" if stopped)
   ├─ ──────────────────── [separator]
-  └─ Quit ClawDefender
+  └─ Quit Rookbot
 
 Menu actions:
 ├─ Open Dashboard → show main window, navigate to "/"
@@ -630,7 +630,7 @@ Tray icon (Retina 44×44 shield):
 ├─ Shape: Shield with flat top, tapered bottom, pointed tip
 ├─ Anti-aliasing: 2px edges (smooth on Retina)
 
-Tooltip: "ClawDefender — Score: 65. Protected" (or "Warning" / "Not Running")
+Tooltip: "Rookbot — Score: 65. Protected" (or "Warning" / "Not Running")
 
 Tray click behavior: Show/focus main window
 
@@ -651,7 +651,7 @@ Background poller:
 
 ```
 Initial creation (if not exists):
-├─ Title: "ClawDefender"
+├─ Title: "Rookbot"
 ├─ Size: 1200×800 (min: 800×600)
 ├─ Position: centered on screen
 ├─ Resizable: yes
@@ -663,7 +663,7 @@ Window actions:
 ├─ .hide() — minimize to tray (not close)
 
 Geometry persistence:
-├─ File: ~/.config/clawdefender/window-geometry.json
+├─ File: ~/.config/rookbot/window-geometry.json
 ├─ Saved on every resize/move event
 ├─ Loaded on app startup
 ├─ Validation: rejects insane sizes (< 400×300 or > 10000×10000)
@@ -737,7 +737,7 @@ Priority 4: BANNER (Connection, Update, Restart Reminder)
 ├─ Dismiss button optional
 ├─ Examples:
 │  ├─ ConnectionStatus (orange, "Reconnecting to monitoring service…")
-│  ├─ UpdateBanner (blue, "ClawDefender v0.5.1 is available")
+│  ├─ UpdateBanner (blue, "Rookbot v0.5.1 is available")
 │  ├─ RestartReminderBanner (blue, "AI apps need to restart to pick up protection")
 │  └─ ErrorBanner (red/orange, "Something went wrong")
 
@@ -1167,7 +1167,7 @@ if (prefersReduced) {
 
 ## End of Analysis
 
-This document captures the complete UX architecture of ClawDefender's Mac GUI as of the current codebase snapshot. Refer to this for:
+This document captures the complete UX architecture of Rookbot's Mac GUI as of the current codebase snapshot. Refer to this for:
 - **Design team:** Interaction flows, accessibility standards, notification patterns
 - **QA & Testing:** User journeys, edge cases (offline, migration, timeouts)
 - **Developers:** Routing structure, event flow, focus management, backward compatibility

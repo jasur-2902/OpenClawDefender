@@ -2,7 +2,7 @@
 
 ## Design Philosophy
 
-ClawDefender's behavioral engine follows a **defense-in-depth** approach:
+Rookbot's behavioral engine follows a **defense-in-depth** approach:
 
 1. **Learning Phase** — Observe normal behavior to build a baseline profile per MCP server
 2. **Anomaly Scoring** — Score events against the baseline across 9 dimensions

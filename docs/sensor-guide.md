@@ -5,7 +5,7 @@ The OS-level sensor monitors system activity from AI agent processes using macOS
 ## Prerequisites
 
 - **macOS 13.0 (Ventura)** or later
-- **Full Disk Access** for the ClawDefender daemon process
+- **Full Disk Access** for the Rookbot daemon process
 - **sudo access** for running `eslogger`
 
 ## Setup
@@ -13,7 +13,7 @@ The OS-level sensor monitors system activity from AI agent processes using macOS
 ### 1. Check system readiness
 
 ```bash
-clawdefender doctor
+rookbot doctor
 ```
 
 This checks for:
@@ -25,20 +25,20 @@ This checks for:
 
 1. Open **System Settings** > **Privacy & Security** > **Full Disk Access**
 2. Click the lock to make changes
-3. Add the ClawDefender daemon binary (or Terminal.app if running from source)
+3. Add the Rookbot daemon binary (or Terminal.app if running from source)
 4. Restart the daemon
 
 ### 3. Start the daemon
 
 ```bash
-clawdefender daemon start
+rookbot daemon start
 ```
 
 The sensor subsystem starts automatically. If FDA is not granted, the daemon logs a warning and continues without eslogger (the MCP proxy still works).
 
 ## Configuration
 
-Edit `~/.config/clawdefender/sensor.toml`:
+Edit `~/.config/rookbot/sensor.toml`:
 
 ```toml
 [eslogger]
@@ -75,7 +75,7 @@ refresh_interval_secs = 5
 
 ## Reading Correlation Data
 
-Correlated events appear in the audit log at `~/.local/share/clawdefender/audit.jsonl`. Each correlation record includes:
+Correlated events appear in the audit log at `~/.local/share/rookbot/audit.jsonl`. Each correlation record includes:
 
 - **Matched events**: MCP tool call linked to one or more OS events
 - **Uncorrelated events**: OS events from agent processes with no matching MCP request
@@ -83,7 +83,7 @@ Correlated events appear in the audit log at `~/.local/share/clawdefender/audit.
 Query correlation events:
 
 ```bash
-clawdefender log --source correlation
+rookbot log --source correlation
 ```
 
 ### Correlation rules
@@ -119,7 +119,7 @@ Severity levels for uncorrelated events:
 ### eslogger not starting
 
 - Verify FDA is granted: check System Settings > Privacy & Security > Full Disk Access
-- Check the daemon log: `clawdefender log --source eslogger`
+- Check the daemon log: `rookbot log --source eslogger`
 - Try running eslogger manually: `sudo eslogger exec open connect`
 
 ### FDA not granted

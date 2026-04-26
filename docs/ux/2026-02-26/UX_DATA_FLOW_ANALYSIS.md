@@ -1,4 +1,4 @@
-# ClawDefender UX Data Flow Analysis
+# Rookbot UX Data Flow Analysis
 
 **For:** UX Team
 **Date:** February 26, 2026
@@ -8,7 +8,7 @@
 
 ## Overview
 
-ClawDefender's GUI uses Zustand for state management with five core stores: `appStore`, `eventStore`, `alertStore`, `conversationStore`, and `serverStore`. Data flows through Tauri IPC commands and real-time event listeners. This document maps every piece of data the UI needs, how it's fetched, cached, and what UX states emerge.
+Rookbot's GUI uses Zustand for state management with five core stores: `appStore`, `eventStore`, `alertStore`, `conversationStore`, and `serverStore`. Data flows through Tauri IPC commands and real-time event listeners. This document maps every piece of data the UI needs, how it's fetched, cached, and what UX states emerge.
 
 ---
 

@@ -1,6 +1,6 @@
 # SWE-agent Integration
 
-ClawDefender can monitor and control actions taken by SWE-agent, an AI agent
+Rookbot can monitor and control actions taken by SWE-agent, an AI agent
 designed to fix GitHub issues by editing code and running tests.
 
 ## SWE-agent patterns
@@ -17,7 +17,7 @@ in MCP.
 
 ## File editing and command execution monitoring
 
-SWE-agent makes heavy use of file editing and shell commands. ClawDefender
+SWE-agent makes heavy use of file editing and shell commands. Rookbot
 evaluates each of these against your policy:
 
 ```bash

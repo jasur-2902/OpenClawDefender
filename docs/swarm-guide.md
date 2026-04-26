@@ -1,16 +1,16 @@
 # Swarm Analysis Guide
 
-ClawDefender's swarm analysis provides cloud-powered deep analysis for events that the local SLM flags as ambiguous or high-risk. It uses a Bring Your Own Key (BYOK) model -- you provide your own API key, and all API calls go directly from your machine to the LLM provider.
+Rookbot's swarm analysis provides cloud-powered deep analysis for events that the local SLM flags as ambiguous or high-risk. It uses a Bring Your Own Key (BYOK) model -- you provide your own API key, and all API calls go directly from your machine to the LLM provider.
 
 ## Setup
 
 ### 1. Store your API key
 
 ```bash
-clawdefender chat setup
+rookbot chat setup
 ```
 
-This stores your API key in the macOS Keychain. ClawDefender auto-detects the provider from the key prefix:
+This stores your API key in the macOS Keychain. Rookbot auto-detects the provider from the key prefix:
 
 - `sk-ant-*` -- Anthropic
 - `sk-*` -- OpenAI
@@ -19,7 +19,7 @@ You can also configure a custom provider with any OpenAI-compatible API endpoint
 
 ### 2. Configure escalation
 
-Edit `~/.config/clawdefender/clawdefender.toml`:
+Edit `~/.config/rookbot/rookbot.toml`:
 
 ```toml
 [swarm]
@@ -39,7 +39,7 @@ monthly_budget_usd = 20.00
 ### 3. Restart the daemon
 
 ```bash
-clawdefender daemon restart
+rookbot daemon restart
 ```
 
 ## How it works
@@ -79,7 +79,7 @@ The chat UI lets you ask follow-up questions about flagged events.
 ### Start the server
 
 ```bash
-clawdefender chat serve
+rookbot chat serve
 ```
 
 This starts an Axum web server on `http://localhost:3000` with endpoints:
@@ -94,20 +94,20 @@ This starts an Axum web server on `http://localhost:3000` with endpoints:
 ### List sessions
 
 ```bash
-clawdefender chat sessions
+rookbot chat sessions
 ```
 
 ### Monitor usage
 
 ```bash
-clawdefender chat usage
+rookbot chat usage
 ```
 
 Shows token counts, estimated costs, and budget remaining for the current period.
 
 ## Budget management
 
-ClawDefender enforces hard spending caps:
+Rookbot enforces hard spending caps:
 
 - **Daily budget**: Resets at midnight UTC each day
 - **Monthly budget**: Resets on the 1st of each month
@@ -117,26 +117,26 @@ When a budget is exhausted, swarm analysis is automatically disabled until the n
 To check current usage:
 
 ```bash
-clawdefender chat usage
+rookbot chat usage
 ```
 
 ## Troubleshooting
 
 ### "No API key configured"
 
-Run `clawdefender chat setup` to store your API key. Verify with:
+Run `rookbot chat setup` to store your API key. Verify with:
 
 ```bash
-clawdefender chat status
+rookbot chat status
 ```
 
 ### "Budget exhausted"
 
-Your daily or monthly spending cap has been reached. Either wait for the next period or increase the budget in `clawdefender.toml`.
+Your daily or monthly spending cap has been reached. Either wait for the next period or increase the budget in `rookbot.toml`.
 
 ### Specialist timeouts
 
-If specialists do not respond within 10 seconds, ClawDefender uses fallback responses (MEDIUM risk, 0.5 confidence). This can happen during API outages or rate limiting. The verdict will have lower confidence to reflect the missing data.
+If specialists do not respond within 10 seconds, Rookbot uses fallback responses (MEDIUM risk, 0.5 confidence). This can happen during API outages or rate limiting. The verdict will have lower confidence to reflect the missing data.
 
 ### High costs
 
@@ -147,4 +147,4 @@ Each swarm analysis makes 3 API calls. To reduce costs:
 
 ### Injection artifacts in specialist responses
 
-If you see warnings about flagged specialist responses, this means ClawDefender's output sanitizer detected potential prompt injection in the cloud LLM's response. The flagged response is downweighted during synthesis. This is a safety feature working as intended.
+If you see warnings about flagged specialist responses, this means Rookbot's output sanitizer detected potential prompt injection in the cloud LLM's response. The flagged response is downweighted during synthesis. This is a safety feature working as intended.

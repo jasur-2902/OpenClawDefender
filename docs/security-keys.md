@@ -1,6 +1,6 @@
 # Security Key Management Guide
 
-ClawDefender uses multiple cryptographic keys to protect feed integrity, application updates, and API access. This document describes where each key lives, how to rotate them, and what to do if one is compromised.
+Rookbot uses multiple cryptographic keys to protect feed integrity, application updates, and API access. This document describes where each key lives, how to rotate them, and what to do if one is compromised.
 
 ## Key Inventory
 
@@ -8,13 +8,13 @@ ClawDefender uses multiple cryptographic keys to protect feed integrity, applica
 |-----|---------|-----------------|------------------|
 | Ed25519 feed signing key | Signs threat feed manifests | Embedded in `crates/clawdefender-threat-intel/src/signature.rs` (`EMBEDDED_PUBLIC_KEY_HEX`) | CI secret `CLAWDEFENDER_FEED_SIGNING_KEY` |
 | Tauri updater signing key | Signs desktop application updates | Embedded in `clients/clawdefender-app/src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) | CI secret `TAURI_SIGNING_PRIVATE_KEY` |
-| Guard API token | Authenticates local HTTP clients to the MCP guard server | Generated on first start, stored at `~/.local/share/clawdefender/server-token` | Same file (local only) |
+| Guard API token | Authenticates local HTTP clients to the MCP guard server | Generated on first start, stored at `~/.local/share/rookbot/server-token` | Same file (local only) |
 
 ## Ed25519 Feed Signing Key
 
 ### How it works
 
-Every threat feed manifest is signed with an Ed25519 private key. The corresponding public key is compiled into the binary so that ClawDefender can verify feed authenticity without any network trust.
+Every threat feed manifest is signed with an Ed25519 private key. The corresponding public key is compiled into the binary so that Rookbot can verify feed authenticity without any network trust.
 
 ### Where the keys live
 
@@ -74,7 +74,7 @@ The MCP guard HTTP server requires a bearer token for all API requests. This pre
 
 ### Lifecycle
 
-1. On first start, if no token file exists at `~/.local/share/clawdefender/server-token`, the daemon generates a cryptographically random 32-byte hex token and writes it there.
+1. On first start, if no token file exists at `~/.local/share/rookbot/server-token`, the daemon generates a cryptographically random 32-byte hex token and writes it there.
 2. The CLI and Tauri app read this file to authenticate API calls.
 3. The token is validated using constant-time comparison to prevent timing attacks.
 
@@ -82,8 +82,8 @@ The MCP guard HTTP server requires a bearer token for all API requests. This pre
 
 To rotate the Guard API token:
 
-1. Stop the ClawDefender daemon.
-2. Delete `~/.local/share/clawdefender/server-token`.
+1. Stop the Rookbot daemon.
+2. Delete `~/.local/share/rookbot/server-token`.
 3. Restart the daemon. A new token is generated automatically.
 4. Any external integrations that cached the old token will need the new value.
 

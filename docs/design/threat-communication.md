@@ -1,6 +1,6 @@
-# ClawDefender Threat Communication Guide
+# Rookbot Threat Communication Guide
 
-This document defines how ClawDefender translates internal security signals into user-facing language. Every message follows the voice defined in the [Character Brief](character-brief.md): calm, direct, honest, warm, and never alarmist.
+This document defines how Rookbot translates internal security signals into user-facing language. Every message follows the voice defined in the [Character Brief](character-brief.md): calm, direct, honest, warm, and never alarmist.
 
 The cardinal rule: **the user never sees anomaly score numbers, dimension names, kill chain pattern IDs, or policy rule syntax.** Internal metrics are translated into plain language and visual cues before they reach the screen.
 

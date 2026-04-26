@@ -1,6 +1,6 @@
 # OpenHands Integration
 
-ClawDefender can monitor and control actions taken by OpenHands (formerly
+Rookbot can monitor and control actions taken by OpenHands (formerly
 OpenDevin), an open-source AI software development agent.
 
 ## OpenHands architecture
@@ -12,19 +12,19 @@ OpenHands runs AI agents that can:
 - Browse the web
 - Interact with GitHub
 
-When OpenHands uses MCP servers for these operations, ClawDefender can
+When OpenHands uses MCP servers for these operations, Rookbot can
 intercept and evaluate each action against your security policy.
 
-## How to monitor with ClawDefender
+## How to monitor with Rookbot
 
 ### Container-based deployments
 
-If OpenHands runs inside a container, install ClawDefender inside the container
+If OpenHands runs inside a container, install Rookbot inside the container
 or run it as a sidecar that proxies MCP traffic:
 
 ```bash
 # In your Dockerfile or container setup:
-# Install ClawDefender
+# Install Rookbot
 curl -sSL https://clawdefender.dev/install.sh | sh
 
 # Wrap the MCP server that OpenHands connects to

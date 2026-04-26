@@ -1,4 +1,4 @@
-# ClawDefender Onboarding & Setup Copy
+# Rookbot Onboarding & Setup Copy
 
 All copy follows the voice defined in `character-brief.md` -- calm, observant, direct, honest, warm. Claw speaks as a knowledgeable friend, never as software.
 
@@ -102,7 +102,7 @@ Example: "3 servers protected | Stay Sharp mode"
 
 - Why it helps: "Full Disk Access lets me read the config files for your AI tools, so I can find and protect them automatically."
 - What happens if you skip: "Without it, I can still protect servers you add manually -- I just will not be able to discover them on my own."
-- System Settings guidance: "Open System Settings, go to Privacy & Security, then Full Disk Access, and toggle ClawDefender on. I will wait here."
+- System Settings guidance: "Open System Settings, go to Privacy & Security, then Full Disk Access, and toggle Rookbot on. I will wait here."
 
 ---
 

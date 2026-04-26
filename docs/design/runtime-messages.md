@@ -1,6 +1,6 @@
-# ClawDefender Runtime Messages
+# Rookbot Runtime Messages
 
-All copy the user encounters during normal ongoing use of ClawDefender. Every message follows the voice defined in `character-brief.md` and the grammar rules in `voice-guide.md` -- calm, direct, honest, warm.
+All copy the user encounters during normal ongoing use of Rookbot. Every message follows the voice defined in `character-brief.md` and the grammar rules in `voice-guide.md` -- calm, direct, honest, warm.
 
 ---
 
@@ -353,7 +353,7 @@ Each error includes the user-facing message, a recommended action, and an option
 
 > **My daemon isn't running.** I can't monitor your AI tools right now.
 >
-> Recommended: Open ClawDefender to start the daemon, or run `clawdefender daemon start` in your terminal.
+> Recommended: Open Rookbot to start the daemon, or run `clawdefender daemon start` in your terminal.
 >
 > `[Start daemon]` `[Learn more]`
 
@@ -369,7 +369,7 @@ Each error includes the user-facing message, a recommended action, and an option
 
 > **I lost connection to the daemon.** Trying to reconnect. Monitoring is paused until the connection is restored.
 >
-> Recommended: If this doesn't resolve in a few seconds, try restarting ClawDefender.
+> Recommended: If this doesn't resolve in a few seconds, try restarting Rookbot.
 >
 > `[Restart]` `[Learn more]`
 
@@ -393,7 +393,7 @@ Each error includes the user-facing message, a recommended action, and an option
 
 > **I don't have Full Disk Access.** This means I can't see some process activity, which creates blind spots in monitoring. Your protection score is lower than it could be.
 >
-> Recommended: Grant Full Disk Access to ClawDefender in System Settings > Privacy & Security.
+> Recommended: Grant Full Disk Access to Rookbot in System Settings > Privacy & Security.
 >
 > `[Open System Settings]` `[Learn more]`
 
@@ -441,7 +441,7 @@ Each error includes the user-facing message, a recommended action, and an option
 
 > **I couldn't set up monitoring for [server-name].** I don't have permission to modify its launch configuration.
 >
-> Recommended: Check that ClawDefender has write access to the MCP client's config file, or run the setup with elevated permissions.
+> Recommended: Check that Rookbot has write access to the MCP client's config file, or run the setup with elevated permissions.
 >
 > `[Fix permissions]` `[Learn more]`
 
@@ -449,7 +449,7 @@ Each error includes the user-facing message, a recommended action, and an option
 
 > **I couldn't set up monitoring for [server-name].** The MCP client's configuration format has changed and I don't recognize the new structure yet.
 >
-> Recommended: Check for a ClawDefender update. If none is available, you can configure the proxy manually.
+> Recommended: Check for a Rookbot update. If none is available, you can configure the proxy manually.
 >
 > `[Check for updates]` `[Learn more]`
 
@@ -507,7 +507,7 @@ These show how Claw responds to natural language questions using real data. Brac
 >
 > Full Disk Access is the single biggest improvement you can make right now.
 
-### 9. "What does ClawDefender actually do?"
+### 9. "What does Rookbot actually do?"
 
 > I sit between your AI tools and the servers they talk to. Every time Claude, Cursor, or any MCP client makes a tool call -- reading a file, running a command, connecting to a server -- it passes through me first. I check each call against security policies, behavioral patterns, and threat intelligence. If something looks wrong, I block it or ask you. If everything looks normal, I let it through and log it. I run entirely on your machine. I don't send your data anywhere unless you enable cloud analysis.
 

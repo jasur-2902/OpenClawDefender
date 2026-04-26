@@ -1,4 +1,4 @@
-# ClawDefender Audit Report: Settings, Configuration & Data Storage
+# Rookbot Audit Report: Settings, Configuration & Data Storage
 
 ## Section 13: Settings & Configuration
 
@@ -37,7 +37,7 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 ### 13.2 Settings Persistence Flow
 
 1. **UI changes** -> `invoke("update_settings", { settings })` or `invoke("update_network_settings", { settings })`
-2. **Tauri command** reads existing `~/.config/clawdefender/config.toml`, merges changes into the TOML table, writes back
+2. **Tauri command** reads existing `~/.config/rookbot/config.toml`, merges changes into the TOML table, writes back
 3. **Daemon** loads config at startup via `ClawConfig::load()`. Config changes do NOT trigger a live reload in the daemon -- the Tauri app notes "config reload will take effect on next query" but there is no actual reload mechanism beyond `try_reload_daemon` which sends a reload command over IPC for policy changes only.
 
 ### 13.3 Settings Issues Found
@@ -57,7 +57,7 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 
 ## Section 16: Configuration Files
 
-### 16.1 Core Configuration: `~/.config/clawdefender/config.toml`
+### 16.1 Core Configuration: `~/.config/rookbot/config.toml`
 
 - **Format**: TOML
 - **Created by**: Tauri `update_settings` / `update_network_settings` commands (auto-creates parent dirs)
@@ -70,10 +70,10 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 
 | Setting | Default |
 |---------|---------|
-| `daemon_socket_path` | `~/.local/share/clawdefender/clawdefender.sock` |
-| `audit_log_path` | `~/.local/share/clawdefender/audit.jsonl` |
-| `policy_path` | `~/.config/clawdefender/policy.toml` |
-| `sensor_config_path` | `~/.config/clawdefender/sensor.toml` |
+| `daemon_socket_path` | `~/.local/share/rookbot/clawdefender.sock` |
+| `audit_log_path` | `~/.local/share/rookbot/audit.jsonl` |
+| `policy_path` | `~/.config/rookbot/policy.toml` |
+| `sensor_config_path` | `~/.config/rookbot/sensor.toml` |
 | `log_rotation.max_size_mb` | 50 |
 | `log_rotation.max_files` | 10 |
 | `slm.context_size` | 2048 |
@@ -90,11 +90,11 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 | `behavioral.anomaly_threshold` | 0.7 |
 | `injection_detector.threshold` | 0.6 |
 
-### 16.2 Policy Configuration: `~/.config/clawdefender/policy.toml`
+### 16.2 Policy Configuration: `~/.config/rookbot/policy.toml`
 
 - **Format**: TOML
 - **Created by**: `apply_template` Tauri command, or manual copy from `policies/templates/`
-- **Read by**: MCP proxy (`--policy` flag, default `~/.config/clawdefender/policy.toml`), daemon policy engine
+- **Read by**: MCP proxy (`--policy` flag, default `~/.config/rookbot/policy.toml`), daemon policy engine
 - **Written by**: Tauri `apply_template`, `import_settings_from_content`
 - **Structure**: `[metadata]` + `[rules.<name>]` with fields: `description`, `action` (allow/block/prompt/log), `message`, `priority`, `[rules.<name>.match]` with `resource_path`, `tool_name`, `method`, `any`
 
@@ -110,7 +110,7 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 | `policies/templates/audit-only.toml` | Logs everything, blocks nothing |
 | `policies/templates/data-science.toml` | Allows Jupyter/pip/workspace, prompts network/shell |
 
-### 16.3 Sensor Configuration: `~/.config/clawdefender/sensor.toml`
+### 16.3 Sensor Configuration: `~/.config/rookbot/sensor.toml`
 
 - **Format**: TOML
 - **Created by**: Not auto-created; uses defaults if absent
@@ -118,7 +118,7 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 - **Sections**: `[eslogger]`, `[fsevents]`, `[correlation]`, `[process_tree]`
 - **Key defaults**: eslogger events = `["exec", "open", "close", "rename", "unlink", "connect", "fork", "exit"]`, correlation window = 500ms, process tree refresh = 5s
 
-### 16.4 Noise Filter Configuration: `~/.config/clawdefender/noise.toml`
+### 16.4 Noise Filter Configuration: `~/.config/rookbot/noise.toml`
 
 - **Format**: TOML
 - **Created by**: Not auto-created
@@ -129,7 +129,7 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 
 - **Location**: `clients/clawdefender-app/src-tauri/tauri.conf.json`
 - **Format**: JSON
-- **Key values**: productName="ClawDefender", version="0.3.0", identifier="com.clawdefender.desktop"
+- **Key values**: productName="Rookbot", version="0.3.0", identifier="com.clawdefender.desktop"
 - **CSP**: `default-src 'self'; connect-src 'self' http://localhost:* https://localhost:*; img-src 'self' asset: https://asset.localhost; style-src 'self' 'unsafe-inline'`
 - **Bundle targets**: DMG and app for macOS, minimum system version 13.0
 - **Updater**: Endpoint at GitHub releases, **pubkey is empty** (signatures not enforced)
@@ -153,7 +153,7 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 
 | File | Format | Purpose |
 |------|--------|---------|
-| `certified-servers.json` | JSON | Registry of certified MCP servers (3 entries: ClawDefender, Python example, TypeScript example) |
+| `certified-servers.json` | JSON | Registry of certified MCP servers (3 entries: Rookbot, Python example, TypeScript example) |
 
 ---
 
@@ -161,10 +161,10 @@ The Settings page (`clients/clawdefender-app/src/pages/Settings.tsx`) is organiz
 
 ### 17.1 Data Directory Layout
 
-All runtime data lives under `~/.local/share/clawdefender/`:
+All runtime data lives under `~/.local/share/rookbot/`:
 
 ```
-~/.local/share/clawdefender/
+~/.local/share/rookbot/
   audit.jsonl              # JSON Lines audit log
   audit.jsonl.1 ... .10    # Rotated audit logs
   clawdefender.sock        # Unix domain socket for daemon-UI IPC
@@ -184,7 +184,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 ### 17.2 Audit Log (`audit.jsonl`)
 
 - **Format**: JSON Lines (one JSON object per line)
-- **Location**: `~/.local/share/clawdefender/audit.jsonl` (configurable via `config.toml`)
+- **Location**: `~/.local/share/rookbot/audit.jsonl` (configurable via `config.toml`)
 - **Written by**: `FileAuditLogger` (channel-based async writer thread), MCP proxy `FileAuditLogger`
 - **Read by**: Tauri app event viewer, audit query engine (`AuditQueryEngine`)
 - **Rotation**: When file exceeds `max_size_mb` (default 50MB), rotated to `.1`, `.2`, etc., up to `max_files` (default 10)
@@ -211,7 +211,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 ### 17.3 Behavioral Profiles Database (`profiles.db`)
 
 - **Format**: SQLite
-- **Location**: `~/.local/share/clawdefender/profiles.db`
+- **Location**: `~/.local/share/rookbot/profiles.db`
 - **Created by**: `ProfileStore::open()` (auto-creates dir and schema)
 - **Read by**: Behavioral baseline engine in daemon
 - **Written by**: Behavioral baseline engine (upsert on profile update)
@@ -229,20 +229,20 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 ### 17.4 Swarm Usage Database (`swarm_usage.db`)
 
 - **Format**: SQLite
-- **Location**: `~/.local/share/clawdefender/swarm_usage.db`
+- **Location**: `~/.local/share/rookbot/swarm_usage.db`
 - **Created by**: Daemon at startup (`create_dir_all` + open)
 - **Purpose**: Track cloud API usage and costs for budget enforcement
 
 ### 17.5 Chat Database (`chat.db`)
 
 - **Format**: SQLite
-- **Location**: `~/.local/share/clawdefender/chat.db`
+- **Location**: `~/.local/share/rookbot/chat.db`
 - **Created by**: Daemon at startup
 - **Purpose**: Persist chat history for the security chat feature
 
 ### 17.6 AI Model Files
 
-- **Location**: `~/.local/share/clawdefender/models/`
+- **Location**: `~/.local/share/rookbot/models/`
 - **Format**: GGUF (quantized language model files)
 - **Created by**: `ModelManager::ensure_dir()` creates the directory; `download_model` downloads files
 - **Managed by**: `ModelManager` (list_installed, model_path, is_installed, download with SHA-256 verification)
@@ -250,7 +250,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 
 ### 17.7 Server Auth Token
 
-- **Location**: `~/.local/share/clawdefender/server-token`
+- **Location**: `~/.local/share/rookbot/server-token`
 - **Format**: Plain text token
 - **Created by**: MCP server at startup
 - **Read by**: HTTP clients authenticating to the MCP server, Guard API clients
@@ -258,7 +258,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 
 ### 17.8 Daemon PID File
 
-- **Location**: `~/.local/share/clawdefender/clawdefender.pid`
+- **Location**: `~/.local/share/rookbot/clawdefender.pid`
 - **Format**: Plain text (PID number)
 - **Created by**: Daemon at startup
 - **Read by**: CLI tools and GUI to detect running daemon
@@ -266,7 +266,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 ### 17.9 Cloud API Keys
 
 - **Storage**: macOS Keychain (via `security` CLI tool)
-- **Service name**: ClawDefender-specific keychain service
+- **Service name**: Rookbot-specific keychain service
 - **Operations**: `store_api_key` (add-generic-password), `delete_api_key` (delete-generic-password), `has_api_key`/`get_api_key` (find-generic-password)
 - **Security**: Provider names validated against known provider list before keychain operations
 
@@ -274,7 +274,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 
 **Source repository**: `threat-feed/` directory, published to `https://feed.clawdefender.io/v1/`
 
-**Runtime cache location**: `~/.local/share/clawdefender/threat-intel/`
+**Runtime cache location**: `~/.local/share/rookbot/threat-intel/`
 
 **Feed structure** (v1):
 
@@ -291,7 +291,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 **Feed update mechanism**:
 - `FeedClient` polls `feed_url` every `update_interval_hours` (default 6h)
 - Downloads are verified against manifest SHA-256 checksums
-- `FeedCache` manages local storage in `~/.local/share/clawdefender/threat-intel/`
+- `FeedCache` manages local storage in `~/.local/share/rookbot/threat-intel/`
 - Auto-apply settings control whether rules/blocklist/patterns/IoCs are applied automatically
 
 **Feed tools** (in `threat-feed/tools/`):
@@ -307,13 +307,13 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 
 ### 17.12 Honeypot Files
 
-- **Location**: `~/.config/clawdefender/honeypot/ssh/`, `~/.config/clawdefender/honeypot/aws/`, `~/.config/clawdefender/honeypot/env`
+- **Location**: `~/.config/rookbot/honeypot/ssh/`, `~/.config/rookbot/honeypot/aws/`, `~/.config/rookbot/honeypot/env`
 - **Purpose**: Decoy credential files to detect and trigger alerts when AI agents attempt credential access
 - **Referenced by**: Kill chain patterns and anomaly scorer in behavioral engine
 
 ### 17.13 Rule Pack Catalog
 
-- **Location**: `~/.local/share/clawdefender/threat-intel/rules/installed-packs.json`
+- **Location**: `~/.local/share/rookbot/threat-intel/rules/installed-packs.json`
 - **Format**: JSON
 - **Created by**: `RuleCatalog::new()` (auto-creates)
 - **Purpose**: Tracks which rule packs are installed and their versions
@@ -334,7 +334,7 @@ All runtime data lives under `~/.local/share/clawdefender/`:
 | ID | Issue | Severity | Detail |
 |----|-------|----------|--------|
 | D17-1 | **No config file validation on import** | Medium | `import_settings_from_content` validates JSON structure and version, but the TOML config/policy content is written directly without validating it parses as valid TOML or has safe values. |
-| D17-2 | **Server token stored as plain text** | Medium | `~/.local/share/clawdefender/server-token` is a plain text file. File permissions should be checked (should be 0600). |
+| D17-2 | **Server token stored as plain text** | Medium | `~/.local/share/rookbot/server-token` is a plain text file. File permissions should be checked (should be 0600). |
 | D17-3 | **No encryption at rest for profiles.db** | Low | Behavioral profile data (server activity patterns) is stored in unencrypted SQLite. |
 | D17-4 | **PID file not cleaned on crash** | Low | If daemon crashes, stale PID file remains. No lock-file or flock mechanism. |
 | D17-5 | **Updater pubkey empty** | High | The Tauri updater has an empty public key, meaning update signatures are not verified. This is a supply chain risk. |

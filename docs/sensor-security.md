@@ -1,7 +1,7 @@
 # Sensor Security Model
 
 This document describes the security properties, trust boundaries, evasion
-mitigations, and resource limits of the ClawDefender sensor layer.
+mitigations, and resource limits of the Rookbot sensor layer.
 
 ## Privilege Model
 

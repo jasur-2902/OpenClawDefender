@@ -4,7 +4,7 @@
 
 ## Context
 
-ClawDefender needs to intercept MCP communication between clients and servers to enforce security policies. We needed to decide *how* to intercept this communication.
+Rookbot needs to intercept MCP communication between clients and servers to enforce security policies. We needed to decide *how* to intercept this communication.
 
 MCP supports two transport mechanisms:
 1. **stdio** — the client spawns the server as a child process and communicates over stdin/stdout.
@@ -12,17 +12,17 @@ MCP supports two transport mechanisms:
 
 ## Decision
 
-For stdio-based MCP servers, ClawDefender operates as a **man-in-the-middle on stdio**: the MCP client spawns ClawDefender instead of the real server, and ClawDefender spawns the real server as its own child process, relaying messages in both directions after policy evaluation.
+For stdio-based MCP servers, Rookbot operates as a **man-in-the-middle on stdio**: the MCP client spawns Rookbot instead of the real server, and Rookbot spawns the real server as its own child process, relaying messages in both directions after policy evaluation.
 
-For HTTP-based MCP servers, ClawDefender operates as an **HTTP reverse proxy**: the client connects to ClawDefender's local HTTP endpoint, and ClawDefender forwards requests to the real server after policy evaluation.
+For HTTP-based MCP servers, Rookbot operates as an **HTTP reverse proxy**: the client connects to Rookbot's local HTTP endpoint, and Rookbot forwards requests to the real server after policy evaluation.
 
 ### Rationale
 
-**stdio MITM is transparent and requires no server modification.** The MCP client doesn't know ClawDefender exists — it just sees a process that speaks the MCP protocol. The MCP server doesn't know either — it just reads from stdin and writes to stdout as usual. This means ClawDefender works with *any* MCP server without changes.
+**stdio MITM is transparent and requires no server modification.** The MCP client doesn't know Rookbot exists — it just sees a process that speaks the MCP protocol. The MCP server doesn't know either — it just reads from stdin and writes to stdout as usual. This means Rookbot works with *any* MCP server without changes.
 
 **HTTP reverse proxy is the standard pattern for HTTP interception.** Well-understood, well-tested, and allows reuse of existing HTTP middleware for logging, rate limiting, etc.
 
-**Configuration is a one-line change.** `clawdefender wrap` modifies the MCP client config to launch `clawdefender proxy -- <original-command>` instead of the original command. One line, fully reversible.
+**Configuration is a one-line change.** `rookbot wrap` modifies the MCP client config to launch `rookbot proxy -- <original-command>` instead of the original command. One line, fully reversible.
 
 ### Rejected alternatives
 
@@ -36,6 +36,6 @@ For HTTP-based MCP servers, ClawDefender operates as an **HTTP reverse proxy**: 
 
 ## Consequences
 
-- ClawDefender must correctly handle the full JSON-RPC protocol, including notifications, batches, and edge cases. Bugs in the relay could break MCP functionality.
-- Process management (spawning, monitoring, and reaping the child server process) adds complexity. ClawDefender must handle server crashes, slow starts, and clean shutdown.
-- The stdio MITM approach means ClawDefender adds latency to every message. Measured overhead target: <1ms per message for policy evaluation.
+- Rookbot must correctly handle the full JSON-RPC protocol, including notifications, batches, and edge cases. Bugs in the relay could break MCP functionality.
+- Process management (spawning, monitoring, and reaping the child server process) adds complexity. Rookbot must handle server crashes, slow starts, and clean shutdown.
+- The stdio MITM approach means Rookbot adds latency to every message. Measured overhead target: <1ms per message for policy evaluation.

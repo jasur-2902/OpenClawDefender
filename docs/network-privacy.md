@@ -1,6 +1,6 @@
-# ClawDefender Network Extension: Privacy & Security Design
+# Rookbot Network Extension: Privacy & Security Design
 
-This document describes what the ClawDefender Network Extension can and cannot see, how it filters traffic, and how user privacy is protected.
+This document describes what the Rookbot Network Extension can and cannot see, how it filters traffic, and how user privacy is protected.
 
 ## What the Network Extension CAN See
 
@@ -14,33 +14,33 @@ The extension operates at the network metadata level only:
 
 ## What the Network Extension CANNOT See
 
-- **Encrypted content**: ClawDefender does NOT perform TLS interception, MITM proxying, or certificate injection. The contents of HTTPS connections are never decrypted or inspected.
+- **Encrypted content**: Rookbot does NOT perform TLS interception, MITM proxying, or certificate injection. The contents of HTTPS connections are never decrypted or inspected.
 - **HTTP request/response bodies**: even for plaintext HTTP, the extension does not read or store payload data. Only metadata (IP, port, domain, byte count) is logged.
 - **User credentials**: passwords, tokens, cookies, and authentication headers are never extracted or stored.
 - **Application-layer data**: the extension does not parse HTTP headers, WebSocket frames, gRPC messages, or any other application protocol beyond DNS.
 
 ## Filtering Scope: Agent Processes Only
 
-The Network Extension applies filtering ONLY to registered AI agent processes (MCP servers managed by ClawDefender). All other traffic is unconditionally allowed:
+The Network Extension applies filtering ONLY to registered AI agent processes (MCP servers managed by Rookbot). All other traffic is unconditionally allowed:
 
 - **Non-agent processes**: user browsers, email clients, system services, and all other applications are NEVER filtered, inspected, or logged.
-- **Agent identification**: a process is considered an agent only if it is registered with the ClawDefender daemon as a running MCP server. Unknown processes default to non-agent (allowed).
+- **Agent identification**: a process is considered an agent only if it is registered with the Rookbot daemon as a running MCP server. Unknown processes default to non-agent (allowed).
 - **Localhost traffic**: connections to 127.0.0.1, ::1, and `localhost` are always allowed for all processes, including agents.
 
 ## Fail-Open Design
 
-ClawDefender is designed to fail open — if any component is unavailable, all network connections are allowed:
+Rookbot is designed to fail open — if any component is unavailable, all network connections are allowed:
 
-- **Daemon unavailable**: if the ClawDefender daemon is not running or unreachable, the Network Extension allows all connections. The `DaemonBridge.permissiveOnDisconnect` flag defaults to `true`.
+- **Daemon unavailable**: if the Rookbot daemon is not running or unreachable, the Network Extension allows all connections. The `DaemonBridge.permissiveOnDisconnect` flag defaults to `true`.
 - **No blocklist loaded**: if the DNS filter has no blocklist entries, all DNS queries are allowed.
 - **Policy engine errors**: non-agent traffic is always allowed regardless of engine state. Agent traffic defaults to the configured action (prompt by default), never silent block.
 - **XPC communication failure**: if XPC calls to the daemon fail, the extension falls back to allow.
 
-This design ensures that ClawDefender never degrades the user's network connectivity, even during failures.
+This design ensures that Rookbot never degrades the user's network connectivity, even during failures.
 
 ## User Control
 
-- **Disable anytime**: the Network Extension can be disabled at any time in macOS System Settings > Network > Filters, or from the ClawDefender GUI settings.
+- **Disable anytime**: the Network Extension can be disabled at any time in macOS System Settings > Network > Filters, or from the Rookbot GUI settings.
 - **Per-rule control**: users can add allow/block rules for specific domains, IPs, or CIDR ranges through the GUI or CLI.
 - **Guard restrictions**: when Guard mode is active, only destinations in the allowlist are permitted for agent processes. This provides maximum restriction when needed.
 

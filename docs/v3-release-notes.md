@@ -4,7 +4,7 @@
 
 ### Cloud-Powered Deep Analysis (Swarm)
 
-ClawDefender v0.3.0 introduces a multi-agent swarm that escalates ambiguous or high-risk events to cloud LLMs for deeper analysis. When the local SLM flags an event above a configurable threshold, three specialist agents analyze it in parallel:
+Rookbot v0.3.0 introduces a multi-agent swarm that escalates ambiguous or high-risk events to cloud LLMs for deeper analysis. When the local SLM flags an event above a configurable threshold, three specialist agents analyze it in parallel:
 
 - **Hawk**: Network security and data exfiltration detection
 - **Forensics**: Command and code forensics (obfuscation, privilege escalation, persistence mechanisms)
@@ -14,7 +14,7 @@ The Commander synthesizes their findings into a final verdict with risk level, e
 
 ### Bring Your Own Key (BYOK)
 
-API keys are stored securely in the macOS Keychain. ClawDefender auto-detects the provider from the key prefix and supports Anthropic, OpenAI, and custom OpenAI-compatible endpoints. Keys never touch disk or logs.
+API keys are stored securely in the macOS Keychain. Rookbot auto-detects the provider from the key prefix and supports Anthropic, OpenAI, and custom OpenAI-compatible endpoints. Keys never touch disk or logs.
 
 ### Budget Controls
 
@@ -22,11 +22,11 @@ Hard daily and monthly spending caps prevent runaway API costs. Token usage and 
 
 ### Chat UI
 
-A new web-based chat interface lets you investigate flagged events with follow-up questions. Start the server with `clawdefender chat serve` and interact through the REST API or browser. Conversation history is stored locally in SQLite.
+A new web-based chat interface lets you investigate flagged events with follow-up questions. Start the server with `rookbot chat serve` and interact through the REST API or browser. Conversation history is stored locally in SQLite.
 
 ### Data Minimization
 
-Before sending event data to cloud providers, ClawDefender strips known secret patterns (API keys, tokens, passwords, SSH keys, JWTs, emails, home directory paths) and replaces them with redacted placeholders.
+Before sending event data to cloud providers, Rookbot strips known secret patterns (API keys, tokens, passwords, SSH keys, JWTs, emails, home directory paths) and replaces them with redacted placeholders.
 
 ### Output Sanitization
 
@@ -53,14 +53,14 @@ Swarm analysis records are linked with SHA-256 chain hashing for tamper-evident 
 
 ## New CLI commands
 
-- `clawdefender chat setup` -- Store API key in Keychain
-- `clawdefender chat serve` -- Start the chat web server
-- `clawdefender chat sessions` -- List chat sessions
-- `clawdefender chat usage` -- Show token usage and costs
+- `rookbot chat setup` -- Store API key in Keychain
+- `rookbot chat serve` -- Start the chat web server
+- `rookbot chat sessions` -- List chat sessions
+- `rookbot chat usage` -- Show token usage and costs
 
 ## Configuration
 
-Add to `~/.config/clawdefender/clawdefender.toml`:
+Add to `~/.config/rookbot/rookbot.toml`:
 
 ```toml
 [swarm]
@@ -73,8 +73,8 @@ monthly_budget_usd = 20.00
 ## Upgrading from v0.2.0
 
 1. Run `cargo build --release` or install the new binary
-2. Run `clawdefender chat setup` to configure your API key (optional)
-3. Add the `[swarm]` section to your `clawdefender.toml` (optional)
-4. Restart the daemon: `clawdefender daemon restart`
+2. Run `rookbot chat setup` to configure your API key (optional)
+3. Add the `[swarm]` section to your `rookbot.toml` (optional)
+4. Restart the daemon: `rookbot daemon restart`
 
 No breaking changes to existing configuration. The swarm is disabled by default and all v0.2.0 features continue to work unchanged. The local SLM remains the primary analysis engine; the swarm is an optional escalation path.

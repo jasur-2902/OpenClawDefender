@@ -1,4 +1,4 @@
-# ClawDefender System Audit
+# Rookbot System Audit
 
 ## Date: 2026-02-23
 ## Audited by: 10 AI agents (workspace, daemon, mcp-proxy, core, slm, tauri-commands, frontend, config, build-test, synthesis)
@@ -21,7 +21,7 @@
 | Missing/not started | ~2% (Network Extension integration, some daemon-connected guard comms) |
 | Broken | 0% |
 
-**Narrative Summary:** ClawDefender is a substantially real, production-approaching security system for monitoring and controlling MCP (Model Context Protocol) AI agent tool use. The core proxy pipeline -- JSON-RPC interception, policy evaluation, audit logging, and user prompting -- is fully implemented and production-quality. The behavioral analysis engine, threat intelligence system, SLM integration, and cloud swarm analysis are all real implementations with meaningful logic. The Tauri GUI is functional with 84% of commands being fully real.
+**Narrative Summary:** Rookbot is a substantially real, production-approaching security system for monitoring and controlling MCP (Model Context Protocol) AI agent tool use. The core proxy pipeline -- JSON-RPC interception, policy evaluation, audit logging, and user prompting -- is fully implemented and production-quality. The behavioral analysis engine, threat intelligence system, SLM integration, and cloud swarm analysis are all real implementations with meaningful logic. The Tauri GUI is functional with 84% of commands being fully real.
 
 The primary gaps are: (1) several placeholder security values (all-zeros Ed25519 key, empty updater pubkey, empty Guard API auth token), (2) the macOS Network Extension is not integrated (mock only), (3) some frontend UI controls are local-only state without backend persistence, and (4) feed data contains synthetic test entries. No crates are dead or broken. Zero `todo!()` or `unimplemented!()` macros exist in the codebase.
 
@@ -493,7 +493,7 @@ The Tauri backend (`clients/clawdefender-app/src-tauri/`) has 75 registered comm
 
 ## 16. Configuration Files
 
-### Core Configuration (`~/.config/clawdefender/config.toml`)
+### Core Configuration (`~/.config/rookbot/config.toml`)
 
 18+ configurable sections: daemon socket, audit log, log rotation, eslogger, SLM, API keys, swarm, UI, telemetry, policy, sensor, MCP server, behavioral, injection detector, guard API, threat intel, network policy.
 
@@ -522,7 +522,7 @@ Key defaults: audit log rotation at 50MB (10 files), SLM context 2048 tokens, sw
 
 ## 17. Data Files & Storage
 
-### Runtime Data Layout (`~/.local/share/clawdefender/`)
+### Runtime Data Layout (`~/.local/share/rookbot/`)
 
 | File/Directory | Format | Purpose |
 |----------------|--------|---------|
@@ -564,7 +564,7 @@ Key defaults: audit log rotation at 50MB (10 files), SLM context 2048 tokens, sw
 
 ## 18. Security Posture
 
-### What ClawDefender Actually Provides
+### What Rookbot Actually Provides
 
 **Strong security properties:**
 
@@ -589,7 +589,7 @@ Key defaults: audit log rotation at 50MB (10 files), SLM context 2048 tokens, sw
 
 3. **Empty Tauri updater pubkey** (`clients/clawdefender-app/src-tauri/tauri.conf.json`): The updater plugin has `"pubkey": ""`, meaning update signature verification is disabled. Unsigned updates could be pushed to users. **Severity: HIGH**
 
-4. **Server token in plain text** (`~/.local/share/clawdefender/server-token`): The MCP server auth token is stored as a plain text file. While file permissions may restrict access, there is no explicit permission check in the code. **Severity: MEDIUM**
+4. **Server token in plain text** (`~/.local/share/rookbot/server-token`): The MCP server auth token is stored as a plain text file. While file permissions may restrict access, there is no explicit permission check in the code. **Severity: MEDIUM**
 
 5. **Model SHA-256 checksums are placeholders** (`crates/clawdefender-slm/src/model_registry.rs`): All model checksums are `"0".repeat(64)`. The downloader code explicitly skips verification when checksums are all-zeros. A compromised model download could execute arbitrary inference. **Severity: MEDIUM**
 
@@ -605,7 +605,7 @@ Key defaults: audit log rotation at 50MB (10 files), SLM context 2048 tokens, sw
 
 ### Security Assessment Verdict
 
-ClawDefender provides **real, meaningful security** for the MCP tool call interception use case. The proxy pipeline, policy engine, audit system, and behavioral analysis are production-quality. However, **three HIGH-severity placeholder values** (Ed25519 key, Guard API token, updater pubkey) must be fixed before any production deployment. These are the difference between a genuinely secured system and one that only appears secure.
+Rookbot provides **real, meaningful security** for the MCP tool call interception use case. The proxy pipeline, policy engine, audit system, and behavioral analysis are production-quality. However, **three HIGH-severity placeholder values** (Ed25519 key, Guard API token, updater pubkey) must be fixed before any production deployment. These are the difference between a genuinely secured system and one that only appears secure.
 
 ---
 
@@ -855,5 +855,5 @@ Only `clawdefender-slm` defines feature flags. All other crates have zero featur
 
 ---
 
-*End of ClawDefender System Audit*
+*End of Rookbot System Audit*
 *Generated: 2026-02-23 by synthesis agent from 9 sub-audit reports*

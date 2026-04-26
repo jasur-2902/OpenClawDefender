@@ -1,4 +1,4 @@
-# ClawDefender Design System -- Consistency Review
+# Rookbot Design System -- Consistency Review
 
 Reviewer: Agent 7 (QA)
 Documents reviewed:

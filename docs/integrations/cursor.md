@@ -1,6 +1,6 @@
 # Cursor Integration
 
-ClawDefender integrates with Cursor by wrapping its MCP servers, intercepting
+Rookbot integrates with Cursor by wrapping its MCP servers, intercepting
 all tool calls before they reach the server.
 
 ## Configuration
@@ -23,7 +23,7 @@ clawdefender wrap --client cursor filesystem
 clawdefender wrap --config ~/.cursor/mcp.json filesystem
 ```
 
-This rewrites the Cursor MCP config so that ClawDefender sits between Cursor
+This rewrites the Cursor MCP config so that Rookbot sits between Cursor
 and the MCP server.
 
 ## Cursor-specific notes
@@ -31,7 +31,7 @@ and the MCP server.
 ### Agent mode
 
 Cursor's Agent mode makes extensive use of MCP tools for file editing, terminal
-commands, and code search. When wrapping these servers with ClawDefender:
+commands, and code search. When wrapping these servers with Rookbot:
 
 - **File editing tools** -- Consider using the `development` policy template
   which allows reads in project directories and prompts on writes.

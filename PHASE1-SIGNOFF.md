@@ -44,7 +44,7 @@
 The install script (`scripts/install.sh`) was reviewed line-by-line:
 
 - **Binary names:** Correct — `clawdefender` (CLI) and `clawdefender-daemon` match Cargo.toml `[[bin]]` entries
-- **Directory creation:** Config dir (`~/.config/clawdefender/`), data dir (`~/.local/share/clawdefender/`), subdirs (models, threat-intel, crashes, scans) all created with `mkdir -p`
+- **Directory creation:** Config dir (`~/.config/rookbot/`), data dir (`~/.local/share/rookbot/`), subdirs (models, threat-intel, crashes, scans) all created with `mkdir -p`
 - **Default configs:** Inline `config.toml` is valid TOML with correct sections; `policies/default.toml` is copied as `policy.toml`
 - **Plist paths:** LaunchAgent written to `~/Library/LaunchAgents/com.clawdefender.daemon.plist`, label is `com.clawdefender.daemon`, binary path uses `$INSTALL_DIR/clawdefender-daemon`
 - **Permissions:** Binaries 0755, config files 0644, server-token 0600, directories 0755
@@ -59,16 +59,16 @@ All runtime paths are consistent across the codebase:
 
 | Path | settings.rs | daemon lib.rs | CLI init/commands | install.sh |
 |------|-------------|---------------|-------------------|------------|
-| `~/.config/clawdefender/` | `default_policy_path`, `default_sensor_config_path` | loads from config | `config_dir()`, init creates | `CONFIG_DIR` creates |
-| `~/.config/clawdefender/config.toml` | (loaded externally) | -- | `expand_tilde`, doctor checks | writes default |
-| `~/.config/clawdefender/policy.toml` | `default_policy_path()` | loads at startup | init writes default | copies from `policies/default.toml` |
-| `~/.local/share/clawdefender/` | `default_socket_path`, `default_audit_log_path` | data_dir pattern | `data_dir()` | `DATA_DIR` creates |
-| `~/.local/share/clawdefender/audit.jsonl` | `default_audit_log_path()` | `FileAuditLogger` | init comments | install comments |
-| `~/.local/share/clawdefender/clawdefender.sock` | `default_socket_path()` | IPC socket | -- | -- |
-| `~/.local/share/clawdefender/clawdefender.pid` | -- | `pid_path()` | `pid_path()` | -- |
-| `~/.local/share/clawdefender/models/` | -- | SLM model dir | -- | `mkdir -p` |
-| `~/.local/share/clawdefender/threat-intel/` | -- | `data_dir.join("threat-intel")` | `data_dir()` in threat_intel.rs | `mkdir -p` |
-| `~/.local/share/clawdefender/server-token` | -- | token auth | -- | generated with urandom |
+| `~/.config/rookbot/` | `default_policy_path`, `default_sensor_config_path` | loads from config | `config_dir()`, init creates | `CONFIG_DIR` creates |
+| `~/.config/rookbot/config.toml` | (loaded externally) | -- | `expand_tilde`, doctor checks | writes default |
+| `~/.config/rookbot/policy.toml` | `default_policy_path()` | loads at startup | init writes default | copies from `policies/default.toml` |
+| `~/.local/share/rookbot/` | `default_socket_path`, `default_audit_log_path` | data_dir pattern | `data_dir()` | `DATA_DIR` creates |
+| `~/.local/share/rookbot/audit.jsonl` | `default_audit_log_path()` | `FileAuditLogger` | init comments | install comments |
+| `~/.local/share/rookbot/clawdefender.sock` | `default_socket_path()` | IPC socket | -- | -- |
+| `~/.local/share/rookbot/clawdefender.pid` | -- | `pid_path()` | `pid_path()` | -- |
+| `~/.local/share/rookbot/models/` | -- | SLM model dir | -- | `mkdir -p` |
+| `~/.local/share/rookbot/threat-intel/` | -- | `data_dir.join("threat-intel")` | `data_dir()` in threat_intel.rs | `mkdir -p` |
+| `~/.local/share/rookbot/server-token` | -- | token auth | -- | generated with urandom |
 
 ---
 
@@ -157,7 +157,7 @@ crates/clawdefender-slm/src/model_manager.rs
 crates/clawdefender-slm/src/model_registry.rs
 crates/clawdefender-threat-intel/Cargo.toml
 crates/clawdefender-threat-intel/src/cache.rs
-docs/ClawDefender_System_Audit.md
+docs/Rookbot_System_Audit.md
 justfile
 scripts/install.sh
 scripts/uninstall.sh

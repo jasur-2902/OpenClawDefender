@@ -1,12 +1,12 @@
-# ClawDefender Visual Identity System
+# Rookbot Visual Identity System
 
-This document defines the complete visual language for ClawDefender. Every color, type choice, spacing value, and animation exists to express Claw's personality: calm, observant, direct, honest, warm. When in doubt, choose the quieter option.
+This document defines the complete visual language for Rookbot. Every color, type choice, spacing value, and animation exists to express Claw's personality: calm, observant, direct, honest, warm. When in doubt, choose the quieter option.
 
 ---
 
 ## 1. Color System
 
-ClawDefender follows a dark-first design (matching macOS developer preferences) with a carefully designed light mode. Colors are defined as CSS custom properties and extended into Tailwind.
+Rookbot follows a dark-first design (matching macOS developer preferences) with a carefully designed light mode. Colors are defined as CSS custom properties and extended into Tailwind.
 
 ### 1.1 Base Colors
 
@@ -66,7 +66,7 @@ Each status has five variants: primary (icons, bold text), light (background fil
 | Subtle | `--color-info-subtle` | `rgba(59,130,246,0.15)` | `rgba(37,99,235,0.12)` | Badge/pill backgrounds |
 | Border | `--color-info-border` | `#3b82f6` | `#2563eb` | Left accent on info alert cards |
 
-### 1.3 Accent Color -- ClawDefender Brand
+### 1.3 Accent Color -- Rookbot Brand
 
 The accent is a restrained teal-blue that reads as trustworthy and technical without being corporate. It sits between blue and cyan -- distinctive from the pure blue used for informational status.
 
@@ -251,7 +251,7 @@ export default {
 
 ### 2.1 Font Stack
 
-ClawDefender uses the system font stack. On macOS this resolves to San Francisco. No custom fonts are loaded.
+Rookbot uses the system font stack. On macOS this resolves to San Francisco. No custom fonts are loaded.
 
 ```css
 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -310,7 +310,7 @@ Rules:
 
 ## 3. Iconography
 
-ClawDefender uses **Lucide React** icons (`lucide-react` package). Lucide provides clean, consistent 24x24 SVG icons with 2px stroke width -- closely matching SF Symbols aesthetics.
+Rookbot uses **Lucide React** icons (`lucide-react` package). Lucide provides clean, consistent 24x24 SVG icons with 2px stroke width -- closely matching SF Symbols aesthetics.
 
 ### 3.1 Icon Sizing
 

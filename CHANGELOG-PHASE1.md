@@ -115,7 +115,7 @@ No source files modified by this agent.
 
 | File | Change |
 |------|--------|
-| `com.clawdefender.daemon.plist` | Fixed log paths from `/usr/local/var/log/` (nonexistent, requires root) to `~/.local/share/clawdefender/daemon.log`. Combined stdout/stderr into single log file. Added comment explaining that macOS plists do not expand `~` or `$HOME`. The repo file is now a template; `install.sh` generates the real plist with expanded absolute paths |
+| `com.clawdefender.daemon.plist` | Fixed log paths from `/usr/local/var/log/` (nonexistent, requires root) to `~/.local/share/rookbot/daemon.log`. Combined stdout/stderr into single log file. Added comment explaining that macOS plists do not expand `~` or `$HOME`. The repo file is now a template; `install.sh` generates the real plist with expanded absolute paths |
 
 ### Justfile fixes
 
@@ -139,7 +139,7 @@ No source files modified by this agent.
 
 | File | Change |
 |------|--------|
-| `clients/clawdefender-app/src-tauri/src/wrap_flow.rs` (new file) | Changed from `~/.clawdefender/known_servers.json` to `~/.local/share/clawdefender/known_servers.json` |
+| `clients/clawdefender-app/src-tauri/src/wrap_flow.rs` (new file) | Changed from `~/.clawdefender/known_servers.json` to `~/.local/share/rookbot/known_servers.json` |
 
 **Impact:** Servers wrapped via `wrap_flow` were invisible to `tools/detection` and vice versa.
 
@@ -147,7 +147,7 @@ No source files modified by this agent.
 
 | File | Change |
 |------|--------|
-| `clients/clawdefender-app/src-tauri/src/guidance/storage.rs` (new file) | Changed from `~/.clawdefender/guidance_state.json` to `~/.local/share/clawdefender/guidance_state.json` |
+| `clients/clawdefender-app/src-tauri/src/guidance/storage.rs` (new file) | Changed from `~/.clawdefender/guidance_state.json` to `~/.local/share/rookbot/guidance_state.json` |
 
 **Impact:** Guidance state stored in non-standard location, not cleaned up by uninstaller.
 
@@ -155,13 +155,13 @@ No source files modified by this agent.
 
 | File | Change |
 |------|--------|
-| `clients/clawdefender-app/src-tauri/src/commands.rs` | Changed from `~/.clawdefender/exports` to `~/.local/share/clawdefender/exports` |
+| `clients/clawdefender-app/src-tauri/src/commands.rs` | Changed from `~/.clawdefender/exports` to `~/.local/share/rookbot/exports` |
 
 **Impact:** Exports written to non-standard location.
 
 ### Issue 5: `dirs::data_dir()` returns wrong path on macOS
 
-The `dirs` crate returns macOS-native paths (`~/Library/Application Support/`) but the project convention is `~/.local/share/clawdefender/` and `~/.config/clawdefender/`. Five files were fixed:
+The `dirs` crate returns macOS-native paths (`~/Library/Application Support/`) but the project convention is `~/.local/share/rookbot/` and `~/.config/rookbot/`. Five files were fixed:
 
 | File | Change |
 |------|--------|
@@ -171,7 +171,7 @@ The `dirs` crate returns macOS-native paths (`~/Library/Application Support/`) b
 | `clients/clawdefender-app/src-tauri/src/conversation/storage.rs` (new file) | Replaced `dirs::data_dir()` with explicit `$HOME/.local/share/clawdefender/` |
 | `clients/clawdefender-app/src-tauri/src/windows.rs` | Replaced `dirs::config_dir()` with explicit `$HOME/.config/clawdefender/` |
 
-**Impact:** Server-token, conversations database, threat-intel cache, and window geometry were written to `~/Library/Application Support/clawdefender/` on macOS, while the daemon reads from `~/.local/share/clawdefender/`, causing authentication failures and data being unreachable.
+**Impact:** Server-token, conversations database, threat-intel cache, and window geometry were written to `~/Library/Application Support/clawdefender/` on macOS, while the daemon reads from `~/.local/share/rookbot/`, causing authentication failures and data being unreachable.
 
 ---
 
@@ -198,7 +198,7 @@ The following files appear in the git diff but were modified in prior phases (Ph
 - `crates/clawdefender-slm/src/gguf_backend.rs` (prior-phase GGUF changes)
 - `crates/clawdefender-slm/src/lib.rs` (prior-phase SLM changes)
 - `crates/clawdefender-slm/src/model_registry.rs` (prior-phase model registry)
-- `docs/ClawDefender_System_Audit.md` (prior-phase audit document)
+- `docs/Rookbot_System_Audit.md` (prior-phase audit document)
 
 ---
 

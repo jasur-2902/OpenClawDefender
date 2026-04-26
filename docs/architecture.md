@@ -1,8 +1,8 @@
-# ClawDefender Architecture
+# Rookbot Architecture
 
 ## Overview
 
-ClawDefender is a security firewall for AI agents on macOS. It intercepts and
+Rookbot is a security firewall for AI agents on macOS. It intercepts and
 inspects operations performed by AI coding assistants (Claude Code, Cursor,
 Windsurf, etc.) and enforces user-defined security policies in real time.
 
@@ -257,7 +257,7 @@ MCP Client (Claude Code, Cursor, etc.)
        |
        v
 +--------------------+         +--------------------+
-|   MCP Proxy        |  <--    |  ClawDefender      |  <-- SDK REPORTING
+|   MCP Proxy        |  <--    |  Rookbot      |  <-- SDK REPORTING
 |  (per-server)      |   |     |  MCP Server        |      Agents call
 |  BLOCKING layer    |   |     |  (clawdefender-    |      checkIntent,
 +--------+-----------+   |     |   mcp-server)      |      reportAction, etc.
@@ -285,9 +285,9 @@ MCP Client (Claude Code, Cursor, etc.)
 1. **Proxy Interception** (Source 1): The MCP proxy sits between client and server,
    intercepting every JSON-RPC message. This is the blocking enforcement point.
 
-2. **SDK Self-Reporting** (Source 2): MCP servers that integrate the ClawDefender
+2. **SDK Self-Reporting** (Source 2): MCP servers that integrate the Rookbot
    SDK (Python or TypeScript) voluntarily declare intent, request permission,
-   and report actions via the ClawDefender MCP server.
+   and report actions via the Rookbot MCP server.
 
 3. **OS Sensor** (Source 3): macOS eslogger and FSEvents observe actual system-level
    activity (file access, process execution, network connections) independently.
@@ -296,7 +296,7 @@ The correlation engine merges all three sources to detect discrepancies between
 declared behavior (SDK reports), observed MCP traffic (proxy), and actual system
 activity (OS sensor).
 
-### ClawDefender MCP Server
+### Rookbot MCP Server
 
 The MCP server (`clawdefender-mcp-server`) exposes four tools via the MCP protocol:
 
@@ -373,13 +373,13 @@ Policies are TOML files containing an ordered list of rules. Each rule has:
 - **priority**: lower numbers evaluate first; first match wins
 
 Rules can be:
-- **Permanent**: persisted in `~/.config/clawdefender/policy.toml`
+- **Permanent**: persisted in `~/.config/rookbot/policy.toml`
 - **Session**: created via the UI prompt flow, active until daemon restart
 
 ## IPC Protocol
 
 The daemon and UI communicate over a Unix domain socket at
-`~/.local/share/clawdefender/clawdefender.sock` using length-prefixed JSON frames.
+`~/.local/share/rookbot/rookbot.sock` using length-prefixed JSON frames.
 
 Message types:
 - `UiRequest::PromptUser` -- daemon asks user for a decision
@@ -392,7 +392,7 @@ Message types:
 ## Audit Trail
 
 Every event that passes through the policy engine is logged to a JSON-lines
-file at `~/.local/share/clawdefender/audit.jsonl`. Each line is a serialized
+file at `~/.local/share/rookbot/audit.jsonl`. Each line is a serialized
 `AuditRecord` containing the timestamp, source, event summary, full event
 details, matched rule, action taken, and response time.
 

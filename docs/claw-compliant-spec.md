@@ -6,33 +6,33 @@
 ## Overview
 
 The "Claw Compliant" certification program verifies that MCP servers work correctly
-with ClawDefender, the firewall for AI agents. Certification is divided into three
+with Rookbot, the firewall for AI agents. Certification is divided into three
 progressive levels, each building on the previous one.
 
 ## Compliance Levels
 
 ### Level 1 — Transparent
 
-The MCP server works correctly when placed behind a ClawDefender proxy. No code
+The MCP server works correctly when placed behind a Rookbot proxy. No code
 changes are required; the server simply needs to handle the conditions that
-ClawDefender introduces.
+Rookbot introduces.
 
 **Requirements:**
 
-1. **Survives blocked tool calls.** When ClawDefender blocks a `tools/call` request
+1. **Survives blocked tool calls.** When Rookbot blocks a `tools/call` request
    and returns a JSON-RPC error with code `-32001`, the server must not crash. It
    must continue processing subsequent requests normally.
 
-2. **Handles prompt delays.** When ClawDefender pauses a request to prompt the user
+2. **Handles prompt delays.** When Rookbot pauses a request to prompt the user
    (introducing up to 30 seconds of latency), the server must not time out or
    error. When the prompt is denied, the server must handle the resulting `-32001`
    error gracefully.
 
-3. **Tolerates added latency.** ClawDefender adds logging and policy evaluation
+3. **Tolerates added latency.** Rookbot adds logging and policy evaluation
    overhead. The server must continue to function when requests take longer than
    usual to complete.
 
-4. **Handles JSON-RPC errors gracefully.** Any error response from ClawDefender
+4. **Handles JSON-RPC errors gracefully.** Any error response from Rookbot
    (including `-32001 Blocked by policy`) must be handled without crashing or
    entering an inconsistent state.
 
@@ -42,7 +42,7 @@ ClawDefender introduces.
 
 ### Level 2 — Cooperative
 
-The MCP server actively integrates with ClawDefender using the SDK. This level
+The MCP server actively integrates with Rookbot using the SDK. This level
 requires code changes but provides a better user experience.
 
 **Requirements (in addition to Level 1):**
@@ -60,19 +60,19 @@ requires code changes but provides a better user experience.
    server calls `clawdefender/reportAction` to log what was done, enabling audit
    trails.
 
-4. **Operates without ClawDefender.** When ClawDefender is unavailable (connection
+4. **Operates without Rookbot.** When Rookbot is unavailable (connection
    refused, not running), the server starts normally and operates without security
    checks. It must not crash or refuse to start.
 
 ### Level 3 — Proactive
 
 The MCP server declares its security posture upfront and actively participates in
-the ClawDefender security model.
+the Rookbot security model.
 
 **Requirements (in addition to Level 2):**
 
 1. **Ships a `clawdefender.toml` manifest.** The server package includes a manifest
-   file declaring its permissions, risk profile, and ClawDefender support level.
+   file declaring its permissions, risk profile, and Rookbot support level.
 
 2. **Declares permissions.** The manifest lists all required and optional
    permissions with justifications.
@@ -115,7 +115,7 @@ sdk_version = "0.5.0"
 1. Run `clawdefender certify -- <server-command>`.
 2. The harness starts the target server as a child process over stdio.
 3. Level 1 tests run adversarial scenarios against the server.
-4. Level 2 tests instrument ClawDefender to observe SDK usage.
+4. Level 2 tests instrument Rookbot to observe SDK usage.
 5. Level 3 tests check for manifest and proactive security calls.
 6. A report is generated showing pass/fail for each test and the overall level.
 

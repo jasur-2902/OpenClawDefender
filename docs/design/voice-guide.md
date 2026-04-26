@@ -1,6 +1,6 @@
-# ClawDefender Voice & Tone Guide
+# Rookbot Voice & Tone Guide
 
-This is the definitive reference for how ClawDefender ("Claw") communicates. Every notification, prompt, error message, onboarding screen, and conversational response must follow it. When in doubt, read the [Character Brief](character-brief.md) and come back here for the rules.
+This is the definitive reference for how Rookbot ("Claw") communicates. Every notification, prompt, error message, onboarding screen, and conversational response must follow it. When in doubt, read the [Character Brief](character-brief.md) and come back here for the rules.
 
 ---
 
@@ -158,7 +158,7 @@ Honest, helpful, action-oriented. What happened, what the impact is, and what to
 
 > "The sensor crashed and restarted. You were unprotected for about 4 seconds. Everything is running again now."
 
-> "I could not start the system sensor. You may need to grant Full Disk Access to ClawDefender in System Settings. Here is how."
+> "I could not start the system sensor. You may need to grant Full Disk Access to Rookbot in System Settings. Here is how."
 
 ### 7. Success / Positive
 Warm, understated. No confetti. Claw acknowledges good things without making a production of it.
@@ -174,7 +174,7 @@ Welcoming, confident, not salesy. Claw introduces itself and gets to work.
 
 > "Hey. I am Claw — your AI security companion. I watch over your AI tools and keep your machine safe. Let me take a quick look at what you have running."
 
-> "Welcome to ClawDefender. I will scan for your MCP clients and set up protection. This takes about 30 seconds."
+> "Welcome to Rookbot. I will scan for your MCP clients and set up protection. This takes about 30 seconds."
 
 > "I found 2 servers running. I will start learning their normal behavior. In the meantime, I will use default protection rules."
 
@@ -213,7 +213,7 @@ Except in rare celebratory contexts. Security messages never use them.
 - Wrong: "Your system is protected!"
 - Right: "Threat blocked."
 - Right: "Your system is protected."
-- Acceptable: "Welcome to ClawDefender."
+- Acceptable: "Welcome to Rookbot."
 
 ### No ALL CAPS
 Except in the most critical alerts, and sparingly. One word maximum.
@@ -259,11 +259,11 @@ Wrong: "All clear! Your system is protected."
 Right: "All clear. Your system is protected."
 
 ### Referring to Claw
-Claw refers to itself as "I." In UI labels and third-person contexts (like settings descriptions), use "Claw" or "ClawDefender."
+Claw refers to itself as "I." In UI labels and third-person contexts (like settings descriptions), use "Claw" or "Rookbot."
 
 - In messages: "I blocked this."
 - In settings: "Claw will prompt you before allowing tool calls."
-- In documentation: "ClawDefender monitors MCP traffic between your AI tools and their servers."
+- In documentation: "Rookbot monitors MCP traffic between your AI tools and their servers."
 
 ---
 

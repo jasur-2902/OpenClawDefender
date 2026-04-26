@@ -1,4 +1,4 @@
-# ClawDefender Desktop App — Testing Guide
+# Rookbot Desktop App — Testing Guide
 
 ## Prerequisites
 - macOS 13.0+ (Ventura or later)
@@ -45,7 +45,7 @@ cd clients/clawdefender-app/src-tauri && cargo clippy -- -D warnings
 
 ### Tray Icon
 - [ ] Shield icon appears in menu bar with correct status color
-- [ ] Tooltip shows "ClawDefender — Protected (N servers)" or "Not Running"
+- [ ] Tooltip shows "Rookbot — Protected (N servers)" or "Not Running"
 - [ ] Tray menu shows: status, server count, prompts, blocks, navigation items, pause/resume, quit
 
 ### Window Management
@@ -78,8 +78,8 @@ cd clients/clawdefender-app/src-tauri && cargo clippy -- -D warnings
 - [ ] Relaunch app → toggle reflects actual OS state
 
 ## Build Output
-- `.app` bundle: `src-tauri/target/release/bundle/macos/ClawDefender.app`
-- `.dmg` installer: `src-tauri/target/release/bundle/dmg/ClawDefender_*.dmg`
+- `.app` bundle: `src-tauri/target/release/bundle/macos/Rookbot.app`
+- `.dmg` installer: `src-tauri/target/release/bundle/dmg/Rookbot_*.dmg`
 - Expected .dmg size: ~10MB
 
 ## Known Issues

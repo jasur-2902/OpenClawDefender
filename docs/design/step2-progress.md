@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document tracks the progress of all deliverables for Step 2 of the ClawDefender design process.
+This document tracks the progress of all deliverables for Step 2 of the Rookbot design process.
 
 ## Deliverables
 

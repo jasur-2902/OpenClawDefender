@@ -1,8 +1,8 @@
-# ClawDefender Security Scanner Guide
+# Rookbot Security Scanner Guide
 
 ## Overview
 
-ClawDefender Security Scanner is an automated security testing framework for MCP (Model Context Protocol) servers. It discovers vulnerabilities by simulating real attack scenarios against MCP server implementations in a sandboxed environment, providing actionable findings with CVSS scores and remediation guidance.
+Rookbot Security Scanner is an automated security testing framework for MCP (Model Context Protocol) servers. It discovers vulnerabilities by simulating real attack scenarios against MCP server implementations in a sandboxed environment, providing actionable findings with CVSS scores and remediation guidance.
 
 The scanner operates by launching the target MCP server, connecting as a client, and executing a series of attack modules that probe for common vulnerability classes including path traversal, prompt injection, data exfiltration, capability escalation, dependency issues, and resilience problems.
 
@@ -97,7 +97,7 @@ clawdefender scan --threshold critical -- npx server
 
 ### Severity Levels
 
-ClawDefender uses five severity levels aligned with industry standards:
+Rookbot uses five severity levels aligned with industry standards:
 
 - **CRITICAL** (CVSS 9.0-10.0): Immediate exploitation possible. Remote code execution, full credential theft, or complete system compromise. Requires immediate remediation.
 
@@ -152,7 +152,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ClawDefender
+      - name: Install Rookbot
         run: cargo install clawdefender-cli
 
       - name: Run Security Scan

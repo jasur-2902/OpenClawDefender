@@ -1,11 +1,11 @@
-# Contributing to ClawDefender
+# Contributing to Rookbot
 
 ## Build from source
 
 ```bash
 # Clone the repository
-git clone https://github.com/clawdefender/clawdefender.git
-cd clawdefender
+git clone https://github.com/rookbot-io/rookbot.git
+cd rookbot
 
 # Install Rust (if you don't have it)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -40,7 +40,7 @@ Requires Rust 1.75+ and macOS 13+ for OS monitoring features (the proxy and poli
 
 ## Good first issues
 
-Issues labeled [`good first issue`](https://github.com/clawdefender/clawdefender/labels/good%20first%20issue) are scoped, well-described tasks suitable for new contributors. They typically involve:
+Issues labeled [`good first issue`](https://github.com/rookbot-io/rookbot/labels/good%20first%20issue) are scoped, well-described tasks suitable for new contributors. They typically involve:
 
 - Adding a new policy rule type
 - Improving error messages
@@ -51,7 +51,7 @@ If you want to work on one, comment on the issue so others know it's taken.
 
 ## Architecture overview for contributors
 
-ClawDefender is a Cargo workspace. The dependency graph flows downward:
+Rookbot is a Cargo workspace. The dependency graph flows downward:
 
 ```
 clawdefender-cli

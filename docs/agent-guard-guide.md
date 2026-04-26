@@ -16,7 +16,7 @@ pip install clawdefender-agent
 npm install @clawdefender/agent
 ```
 
-Both packages are lightweight wrappers that communicate with the ClawDefender daemon when available, and fall back to in-process enforcement when it is not.
+Both packages are lightweight wrappers that communicate with the Rookbot daemon when available, and fall back to in-process enforcement when it is not.
 
 ## Quick start
 
@@ -124,7 +124,7 @@ new AgentGuard({
 
 ### activate()
 
-Connects to the ClawDefender daemon. If the daemon is unavailable, falls back to embedded enforcement (Python: `fallback=True`, TypeScript: `{ fallback: true }`).
+Connects to the Rookbot daemon. If the daemon is unavailable, falls back to embedded enforcement (Python: `fallback=True`, TypeScript: `{ fallback: true }`).
 
 ### deactivate()
 
@@ -281,7 +281,7 @@ await guard.activate({ fallback: true });
 
 ## REST API overview
 
-When the ClawDefender daemon is running, guards are managed via a REST API at `http://127.0.0.1:3202`. The Python and TypeScript packages use this API automatically.
+When the Rookbot daemon is running, guards are managed via a REST API at `http://127.0.0.1:3202`. The Python and TypeScript packages use this API automatically.
 
 Key endpoints:
 - `POST /api/v1/guards` - Create a guard
@@ -296,7 +296,7 @@ See the [REST API Guide](rest-api-guide.md) for full documentation.
 
 ## Auto-installation
 
-The Python and TypeScript packages can automatically install the ClawDefender daemon if it is not already present. When `activate()` is called and the daemon is not found, the package checks for the daemon binary and optionally downloads and installs it.
+The Python and TypeScript packages can automatically install the Rookbot daemon if it is not already present. When `activate()` is called and the daemon is not found, the package checks for the daemon binary and optionally downloads and installs it.
 
 To disable auto-installation, set `fallback=True` (Python) or `{ fallback: true }` (TypeScript) when calling `activate()`. The guard will use embedded enforcement instead.
 
@@ -327,7 +327,7 @@ The guard reports healthy when it is in `Active` or `Degraded` status. It report
 
 ### Guard fails to activate
 
-- Check that the ClawDefender daemon is running: `claw status`
+- Check that the Rookbot daemon is running: `claw status`
 - Use `fallback=True` to fall back to embedded mode
 - Check logs: the guard logs to `clawdefender.agent` (Python) or console (TypeScript)
 

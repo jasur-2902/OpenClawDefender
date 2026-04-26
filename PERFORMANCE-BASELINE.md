@@ -1,4 +1,4 @@
-# ClawDefender SLM Performance Baseline
+# Rookbot SLM Performance Baseline
 
 **Date**: 2026-03-29
 **Phase**: 3 (Post-QA, Pre-Integration)

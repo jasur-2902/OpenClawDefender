@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-tauri/src/`. The `commands.rs` file alone is ~4400 lines containing 60+ `#[tauri::command]` handlers registered in `lib.rs`. Supporting modules handle daemon lifecycle, IPC, event streaming, system tray, scanning, and window management.
+The Rookbot Tauri backend is implemented in `clients/clawdefender-app/src-tauri/src/`. The `commands.rs` file alone is ~4400 lines containing 60+ `#[tauri::command]` handlers registered in `lib.rs`. Supporting modules handle daemon lifecycle, IPC, event streaming, system tray, scanning, and window management.
 
 **Key finding: The vast majority of commands are REAL, functional implementations.** They read/write actual config files, communicate with the daemon over Unix domain sockets, read audit logs from disk, manage policy TOML files, interact with macOS keychain for API keys, download models, and run comprehensive security scans. Only a handful of features are stubbed or partially implemented.
 
@@ -20,7 +20,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 ### ipc_client.rs (324 lines)
 - **Classification: REAL**
-- Connects to daemon via Unix domain socket at `~/.local/share/clawdefender/clawdefender.sock`
+- Connects to daemon via Unix domain socket at `~/.local/share/rookbot/clawdefender.sock`
 - Protocol: send text line + newline, receive JSON line response
 - Supports `status`, `reload`, and arbitrary JSON requests
 - Fresh connection per request (avoids stale sockets)
@@ -35,7 +35,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 ### event_stream.rs (690 lines)
 - **Classification: REAL**
-- Watches `~/.local/share/clawdefender/audit.jsonl` via file polling (500ms interval)
+- Watches `~/.local/share/rookbot/audit.jsonl` via file polling (500ms interval)
 - Backfills last 100 lines on startup using a ring buffer
 - Converts daemon audit records to GUI `AuditEvent` format with risk normalization
 - Security features: symlink detection (`is_safe_audit_path`), path sanitization for notifications, fail-closed prompt timeout expiry
@@ -44,7 +44,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 ### daemon.rs (152 lines)
 - **Classification: REAL**
-- `socket_path()`: returns `~/.local/share/clawdefender/clawdefender.sock`
+- `socket_path()`: returns `~/.local/share/rookbot/clawdefender.sock`
 - `is_daemon_running()`: checks socket existence + connection test
 - `start_daemon_process()`: finds daemon binary (sidecar, system paths, workspace target dirs), spawns with stderr capture, checks for immediate exit
 - `stop_daemon_process()`: IPC shutdown via socket first, falls back to PID file + SIGTERM
@@ -110,7 +110,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 | # | Command | Classification | Details |
 |---|---------|---------------|---------|
-| 8 | `get_policy` | REAL | Reads `~/.config/clawdefender/policy.toml`, creates with defaults if missing. Parses TOML rules with action translation (block->deny, log->audit). Uses file metadata for timestamps. |
+| 8 | `get_policy` | REAL | Reads `~/.config/rookbot/policy.toml`, creates with defaults if missing. Parses TOML rules with action translation (block->deny, log->audit). Uses file metadata for timestamps. |
 | 9 | `add_rule` | REAL | Validates name, sanitizes to TOML key, checks for duplicates, writes to policy file with backup, triggers daemon reload via IPC. |
 | 10 | `update_rule` | REAL | Verifies rule exists, replaces in TOML, writes with backup, triggers daemon reload. |
 | 11 | `delete_rule` | REAL | Verifies rule exists, removes from TOML, writes with backup, triggers daemon reload. |
@@ -128,7 +128,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 | # | Command | Classification | Details |
 |---|---------|---------------|---------|
-| 16 | `get_profiles` | REAL | Reads from SQLite database at `~/.local/share/clawdefender/profiles.db` (read-only). Extracts server name, tool counts, learning mode, last activity from profile JSON stored in DB. Returns empty if DB doesn't exist. |
+| 16 | `get_profiles` | REAL | Reads from SQLite database at `~/.local/share/rookbot/profiles.db` (read-only). Extracts server name, tool counts, learning mode, last activity from profile JSON stored in DB. Returns empty if DB doesn't exist. |
 | 17 | `get_behavioral_status` | PARTIAL | Reads real profile data from DB. `enabled` is hardcoded to `true`. `total_anomalies` is hardcoded to `0` (no real anomaly counter aggregation). |
 | 18 | `list_guards` | STUBBED | Returns `vec![]`. Comment explains: "Guards are in-memory only in the daemon's GuardRegistry. There is no way to enumerate registered guards from outside the daemon." Frontend handles this with empty-state UI. |
 
@@ -136,7 +136,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 | # | Command | Classification | Details |
 |---|---------|---------------|---------|
-| 19 | `start_scan` | REAL | Limits to 1 concurrent scan. Spawns async task running 5 real scanner modules in-process. Tracks progress in `active_scans` HashMap. Saves results to disk at `~/.local/share/clawdefender/scans/<id>.json` with 0600 permissions. Path traversal prevention on scan ID. |
+| 19 | `start_scan` | REAL | Limits to 1 concurrent scan. Spawns async task running 5 real scanner modules in-process. Tracks progress in `active_scans` HashMap. Saves results to disk at `~/.local/share/rookbot/scans/<id>.json` with 0600 permissions. Path traversal prevention on scan ID. |
 | 20 | `get_scan_progress` | REAL | Reads from `active_scans` in-memory tracker. |
 | 21 | `get_scan_results` | REAL | Checks in-memory first, falls back to disk. Path traversal prevention on scan ID. |
 | 22 | `apply_scan_fix` | PARTIAL | Only handles `wrap_server` (delegates to `wrap_server` command) and `add_policy_rule` (returns navigation guidance). Other action types return error. |
@@ -165,7 +165,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 | # | Command | Classification | Details |
 |---|---------|---------------|---------|
-| 28 | `get_settings` | REAL | Reads `~/.config/clawdefender/config.toml`. Falls back to defaults. Reads from `[ui]` and `[network_policy]` sections. |
+| 28 | `get_settings` | REAL | Reads `~/.config/rookbot/config.toml`. Falls back to defaults. Reads from `[ui]` and `[network_policy]` sections. |
 | 29 | `update_settings` | REAL | Reads existing config to preserve unknown sections, writes `[ui]` and `[network_policy]` sections. Creates directories if needed. |
 | 30 | `export_settings` | REAL | Exports config.toml (with secrets stripped) and policy.toml as JSON to `~/Desktop/clawdefender-settings.json`. |
 | 31 | `import_settings_from_content` | REAL | Validates JSON structure, version field, TOML syntax. 1MB size limit. Creates backups of existing files. Writes validated content to disk. |
@@ -174,7 +174,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 | # | Command | Classification | Details |
 |---|---------|---------------|---------|
-| 32 | `get_feed_status` | REAL | Reads `~/.local/share/clawdefender/threat-intel/manifest.json`. Counts IoC entries from JSON files in `ioc/` subdirectory. Returns "not configured" if missing. |
+| 32 | `get_feed_status` | REAL | Reads `~/.local/share/rookbot/threat-intel/manifest.json`. Counts IoC entries from JSON files in `ioc/` subdirectory. Returns "not configured" if missing. |
 | 33 | `force_feed_update` | REAL | Shells out to `clawdefender feed update` CLI command. |
 | 34 | `get_blocklist_matches` | REAL | Reads `blocklist.json`, cross-references with actual MCP server names from all client configs. Case-insensitive matching. |
 | 35 | `get_rule_packs` | REAL | Reads JSON files from `threat-intel/rules/` directory. |
@@ -244,7 +244,7 @@ The ClawDefender Tauri backend is implemented in `clients/clawdefender-app/src-t
 
 | # | Command | Classification | Details |
 |---|---------|---------------|---------|
-| 62 | `download_model` | REAL | Delegates to `DownloadManager::start_download()` (actual HTTP download with progress tracking). Models stored in `~/.local/share/clawdefender/models/`. |
+| 62 | `download_model` | REAL | Delegates to `DownloadManager::start_download()` (actual HTTP download with progress tracking). Models stored in `~/.local/share/rookbot/models/`. |
 | 63 | `download_custom_model` | REAL | Downloads from arbitrary URL via `DownloadManager::start_custom_download()`. |
 | 64 | `get_download_progress` | REAL | Reads from `DownloadManager` progress tracker. |
 | 65 | `cancel_download` | REAL | Cancels active download via `DownloadManager::cancel()`. |

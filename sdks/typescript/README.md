@@ -1,6 +1,6 @@
 # @clawdefender/sdk
 
-TypeScript SDK for [ClawDefender](https://github.com/clawdefender/clawai) -- AI agent guardrails via MCP.
+TypeScript SDK for [Rookbot](https://github.com/clawdefender/clawai) -- AI agent guardrails via MCP.
 
 ## Installation
 
@@ -11,9 +11,9 @@ npm install @clawdefender/sdk
 ## Quick Start
 
 ```typescript
-import { ClawDefender } from '@clawdefender/sdk';
+import { Rookbot } from '@clawdefender/sdk';
 
-const claw = new ClawDefender();
+const claw = new Rookbot();
 
 // Check if an action is allowed
 const intent = await claw.checkIntent({
@@ -53,21 +53,21 @@ The client auto-detects the best connection method:
 
 ```typescript
 // Auto (default): tries HTTP, falls back to stdio
-const client = new ClawDefender();
+const client = new Rookbot();
 
 // HTTP only
-const client = new ClawDefender({ mode: 'http', httpUrl: 'http://127.0.0.1:3201' });
+const client = new Rookbot({ mode: 'http', httpUrl: 'http://127.0.0.1:3201' });
 
 // Stdio only (spawns `clawdefender serve`)
-const client = new ClawDefender({ mode: 'stdio' });
+const client = new Rookbot({ mode: 'stdio' });
 
 // Custom command
-const client = new ClawDefender({ mode: 'stdio', command: '/usr/local/bin/clawdefender' });
+const client = new Rookbot({ mode: 'stdio', command: '/usr/local/bin/clawdefender' });
 ```
 
 ## Fail-Open Behavior
 
-If ClawDefender is unavailable, the SDK **fails open** by default:
+If Rookbot is unavailable, the SDK **fails open** by default:
 
 - `checkIntent` returns `{ allowed: true }`
 - `requestPermission` returns `{ granted: true }`
@@ -78,7 +78,7 @@ A warning is logged to the console when this occurs.
 
 ## MCP Server Middleware
 
-Wrap your MCP tool handlers with ClawDefender checks:
+Wrap your MCP tool handlers with Rookbot checks:
 
 ```typescript
 import { clawdefenderMiddleware } from '@clawdefender/sdk';
@@ -137,7 +137,7 @@ const validated = CheckIntentRequestSchema.parse(untrustedInput);
 
 ## API Reference
 
-### `ClawDefender`
+### `Rookbot`
 
 | Method | Description |
 |--------|-------------|

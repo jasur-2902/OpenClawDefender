@@ -1,10 +1,10 @@
-# ClawDefender Behavioral Defense Guide
+# Rookbot Behavioral Defense Guide
 
-This guide explains how ClawDefender's autonomous behavioral defense engine works and how to configure it for your environment.
+This guide explains how Rookbot's autonomous behavioral defense engine works and how to configure it for your environment.
 
 ## How the Behavioral Engine Learns Baselines
 
-When ClawDefender first observes an MCP server, it enters a **learning phase**. During this phase:
+When Rookbot first observes an MCP server, it enters a **learning phase**. During this phase:
 
 - Every event (tool calls, file access, network connections) updates the server's behavioral profile directly.
 - **No anomaly scores are generated** -- all events pass through without warnings.
@@ -57,7 +57,7 @@ The composite score is a weighted average across all applicable dimensions.
 
 Auto-block is **opt-in and OFF by default**. When enabled, events with anomaly scores >= the auto-block threshold are automatically blocked without prompting the user.
 
-To enable auto-block, edit `~/.config/clawdefender/clawdefender.toml`:
+To enable auto-block, edit `~/.config/rookbot/rookbot.toml`:
 
 ```toml
 [behavioral]
@@ -76,7 +76,7 @@ When a kill chain pattern matches (e.g., credential read followed by network con
 Use the calibrate command to see what would happen at different thresholds based on recent event history:
 
 ```bash
-clawdefender behavioral calibrate
+rookbot behavioral calibrate
 ```
 
 This analyzes recent events and reports:
@@ -95,17 +95,17 @@ When auto-block fires, the event is logged with full audit data including:
 Review blocked events:
 
 ```bash
-clawdefender behavioral stats
+rookbot behavioral stats
 ```
 
-The engine tracks an **override rate** -- if more than 10% of auto-blocks are overridden by users (after 10+ blocks), ClawDefender recommends raising the threshold. This feedback loop prevents overly aggressive blocking.
+The engine tracks an **override rate** -- if more than 10% of auto-blocks are overridden by users (after 10+ blocks), Rookbot recommends raising the threshold. This feedback loop prevents overly aggressive blocking.
 
 ## How to Manage Profiles
 
 ### List all profiles
 
 ```bash
-clawdefender profile list
+rookbot profile list
 ```
 
 Shows all server profiles with their status (learning/active), observation count, and age.
@@ -113,7 +113,7 @@ Shows all server profiles with their status (learning/active), observation count
 ### Show a specific profile
 
 ```bash
-clawdefender profile show <server-name>
+rookbot profile show <server-name>
 ```
 
 Displays detailed profile data including tool frequencies, file territory, network history, and temporal statistics.
@@ -121,7 +121,7 @@ Displays detailed profile data including tool frequencies, file territory, netwo
 ### Reset a profile
 
 ```bash
-clawdefender profile reset <server-name>
+rookbot profile reset <server-name>
 ```
 
 Resets the profile back to learning mode. Use this when a server's behavior has legitimately changed and you want to re-learn its baseline.
@@ -129,7 +129,7 @@ Resets the profile back to learning mode. Use this when a server's behavior has 
 ### Export a profile
 
 ```bash
-clawdefender profile export <server-name>
+rookbot profile export <server-name>
 ```
 
 Exports the profile as JSON for backup or analysis.
@@ -194,7 +194,7 @@ auto_block = true
 
 ## Kill Chain Patterns
 
-ClawDefender ships with 6 built-in attack patterns:
+Rookbot ships with 6 built-in attack patterns:
 
 1. **credential_theft_exfiltration** (Critical) -- Credential file read followed by external network connection within 60s.
 2. **recon_credential_access** (High) -- Broad directory listing followed by credential file access within 120s.

@@ -1,12 +1,12 @@
-# ClawDefender v0.5.0 Release Notes
+# Rookbot v0.5.0 Release Notes
 
 ## Agentic Trust Layer
 
-v0.5.0 introduces the **Agentic Trust Layer** -- a fundamental shift from purely adversarial monitoring to cooperative security participation. MCP servers can now voluntarily declare intent, request permission, and report actions through the ClawDefender MCP server and SDKs.
+v0.5.0 introduces the **Agentic Trust Layer** -- a fundamental shift from purely adversarial monitoring to cooperative security participation. MCP servers can now voluntarily declare intent, request permission, and report actions through the Rookbot MCP server and SDKs.
 
 ## What's New
 
-### ClawDefender MCP Server
+### Rookbot MCP Server
 
 A new MCP server (`clawdefender-mcp-server`) that other MCP servers can call to participate in security monitoring. Exposes four tools:
 
@@ -19,12 +19,12 @@ The MCP server runs on both stdio and HTTP transports with rate limiting, input 
 
 ### Python SDK (`clawdefender-sdk`)
 
-A Python SDK for MCP server authors to integrate ClawDefender:
+A Python SDK for MCP server authors to integrate Rookbot:
 
 - Sync and async APIs (`check_intent`, `acheck_intent`, etc.)
 - `@clawdefender.guard` decorator for automatic intent checking
 - `GuardedAction` context manager for check-perform-report workflows
-- Graceful degradation when ClawDefender is unavailable (fail-open by default)
+- Graceful degradation when Rookbot is unavailable (fail-open by default)
 - Input validation (string length, null bytes, Unicode bidi control)
 - Auto-detection of connection mode (stdio/HTTP)
 
@@ -34,7 +34,7 @@ Install: `pip install clawdefender-sdk`
 
 A TypeScript SDK with the same feature set:
 
-- `ClawDefender` client with `checkIntent`, `requestPermission`, `reportAction`, `getPolicy`
+- `Rookbot` client with `checkIntent`, `requestPermission`, `reportAction`, `getPolicy`
 - Express/Koa middleware for automatic request guarding
 - `guardedAction` wrapper for check-perform-report workflows
 - Zod schema validation for all responses
@@ -69,7 +69,7 @@ New `clawdefender policy suggest` command analyzes audit logs and recommends pol
 
 ### Integration Guides
 
-Comprehensive guides for integrating ClawDefender into MCP servers:
+Comprehensive guides for integrating Rookbot into MCP servers:
 
 - `docs/mcp-server-author-guide.md` -- step-by-step integration tutorial
 - `docs/sdk-security.md` -- SDK security model and best practices
@@ -87,7 +87,7 @@ Complete example MCP servers demonstrating SDK integration:
 
 | Command | Description |
 |---------|-------------|
-| `clawdefender serve` | Start the ClawDefender MCP server (stdio or HTTP) |
+| `clawdefender serve` | Start the Rookbot MCP server (stdio or HTTP) |
 | `clawdefender certify <path>` | Run certification tests against an MCP server |
 | `clawdefender policy template list` | List available policy templates |
 | `clawdefender policy template apply <name>` | Apply a policy template |

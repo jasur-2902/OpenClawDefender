@@ -1,4 +1,4 @@
-# ClawDefender Guard for OpenClaw Bots
+# Rookbot Guard for OpenClaw Bots
 
 This guide explains how to add self-protection to your OpenClaw bot using the AgentGuard.
 

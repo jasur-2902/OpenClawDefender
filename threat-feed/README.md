@@ -1,6 +1,6 @@
-# ClawDefender Threat Feed
+# Rookbot Threat Feed
 
-This repository contains the threat intelligence feed for ClawDefender, providing blocklists, community rule packs, attack patterns, IoC indicators, and behavioral profiles for MCP server security.
+This repository contains the threat intelligence feed for Rookbot, providing blocklists, community rule packs, attack patterns, IoC indicators, and behavioral profiles for MCP server security.
 
 ## Structure
 

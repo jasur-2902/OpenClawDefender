@@ -119,7 +119,7 @@
 - `update_settings` (settings)
 - `complete_onboarding`
 
-**User question answered:** "How do I set up ClawDefender?"
+**User question answered:** "How do I set up Rookbot?"
 
 **Duplication:**
 - Security level definitions duplicated between here and SecurityLevelChooser component
@@ -210,7 +210,7 @@
 **Tauri events emitted:**
 - `theme-changed` (via emit())
 
-**User question answered:** "How do I configure ClawDefender?"
+**User question answered:** "How do I configure Rookbot?"
 
 **Duplication:**
 - Model management UI almost identical to Onboarding step 4
@@ -353,7 +353,7 @@
 - `open_url` (for system settings fix)
 - `start_daemon` (for "start daemon" fix)
 
-**User question answered:** "Is ClawDefender itself working correctly?"
+**User question answered:** "Is Rookbot itself working correctly?"
 
 **Duplication:**
 - Daemon start duplicated with Dashboard and Settings
@@ -389,7 +389,7 @@
 - `uninstall_rule_pack` (id)
 - `toggle_telemetry` (enabled)
 
-**User question answered:** "What threats does ClawDefender know about?"
+**User question answered:** "What threats does Rookbot know about?"
 
 **Duplication:**
 - Feed status + blocklist matches duplicated from Dashboard threat intel card
@@ -663,7 +663,7 @@
 
 ```
 +---------------------------+
-| ClawDefender              |   <- Brand, collapsible to icon
+| Rookbot              |   <- Brand, collapsible to icon
 |---------------------------|
 | [daemon dot] Running      |   <- Status indicator
 |---------------------------|

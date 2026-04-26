@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-Ask Claw is a conversational interface embedded in the ClawDefender Tauri desktop app. Users type natural-language questions or drag in files/URLs, and Claw responds using real data from the 82 existing Tauri commands. The design prioritizes deterministic, fast responses for common queries and reserves LLM inference for tasks that genuinely need language understanding.
+Ask Claw is a conversational interface embedded in the Rookbot Tauri desktop app. Users type natural-language questions or drag in files/URLs, and Claw responds using real data from the 82 existing Tauri commands. The design prioritizes deterministic, fast responses for common queries and reserves LLM inference for tasks that genuinely need language understanding.
 
 ### Design Principles
 
@@ -774,7 +774,7 @@ Template:
 | Field | Value |
 |-------|-------|
 | Category | Status |
-| Trigger phrases | "is the daemon running?", "daemon status", "is ClawDefender running?", "service status", "is protection active?", "are you running?" |
+| Trigger phrases | "is the daemon running?", "daemon status", "is Rookbot running?", "service status", "is protection active?", "are you running?" |
 | Backend commands | `get_daemon_status` |
 | Response strategy | Template-only |
 | Requires confirmation | No |
@@ -1176,7 +1176,7 @@ Template:
 | control.wrap | Template-only | N/A |
 | control.unwrap | Template-only | N/A |
 | explain.event | LLM-required | "I need an AI model loaded to explain events in detail. Here are the raw details: {data}." |
-| explain.concept | LLM-required | "I need an AI model loaded to explain that. Check the ClawDefender documentation for now." |
+| explain.concept | LLM-required | "I need an AI model loaded to explain that. Check the Rookbot documentation for now." |
 | explain.why_blocked | Template+LLM | Template with matching rule + event data |
 | explain.recommendation | LLM-required | "I need an AI model loaded to give personalized recommendations. In the meantime, try running a scan." |
 | navigate.page | Template-only | N/A |

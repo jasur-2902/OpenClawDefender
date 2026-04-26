@@ -1,4 +1,4 @@
-# ClawDefender Bug Triage Report
+# Rookbot Bug Triage Report
 
 Generated: 2026-02-25
 
@@ -39,7 +39,7 @@ Users visiting the Guards page always see "No Active Guards" even when guards ar
 
 - `clients/clawdefender-app/src-tauri/src/commands.rs` line 2384 -- `update_settings()` writes `ui.notifications` to config.toml.
 - `clients/clawdefender-app/src-tauri/src/commands.rs` line 2334 -- `get_settings()` reads `ui.notifications` back.
-- `clients/clawdefender-app/src-tauri/src/event_stream.rs` lines 313-327 -- `notifications_enabled_in_config()` reads `~/.config/clawdefender/config.toml`, parses `[ui].notifications`, and returns the boolean.
+- `clients/clawdefender-app/src-tauri/src/event_stream.rs` lines 313-327 -- `notifications_enabled_in_config()` reads `~/.config/rookbot/config.toml`, parses `[ui].notifications`, and returns the boolean.
 - `clients/clawdefender-app/src-tauri/src/event_stream.rs` lines 331-349 -- `send_native_notification()` calls `notifications_enabled_in_config()` as its first check and returns early if false.
 - `clients/clawdefender-app/src-tauri/src/event_stream.rs` lines 361, 421 -- Both alert and prompt notification paths call `send_native_notification()`.
 
@@ -133,12 +133,12 @@ Users can toggle network settings and they appear saved, but no network filterin
 
 - `clients/clawdefender-app/src-tauri/src/state.rs` lines 324-325 -- `active_model_info: Mutex<Option<ActiveModelInfo>>` is in-memory only.
 - `clients/clawdefender-app/src-tauri/src/commands.rs` line 4060 (in `activate_model`) -- Calls `save_active_config(&config_to_save)` to persist to disk.
-- `crates/clawdefender-slm/src/model_registry.rs` lines 417-437 -- `load_active_config()` reads from `~/.config/clawdefender/active_model.toml`, `save_active_config()` writes to it.
+- `crates/clawdefender-slm/src/model_registry.rs` lines 417-437 -- `load_active_config()` reads from `~/.config/rookbot/active_model.toml`, `save_active_config()` writes to it.
 - `clients/clawdefender-app/src-tauri/src/lib.rs` lines 60-177 -- On app startup, `load_active_config()` is called and the model is re-loaded from the persisted config. Handles `LocalCatalog`, `LocalCustom`, and `CloudApi` variants.
 
 ### Root Cause
 
-While `active_model_info` in `AppState` is in-memory, the model selection IS persisted to `~/.config/clawdefender/active_model.toml` via `model_registry::save_active_config()`. On startup, `lib.rs` reads this config and re-activates the model. This is working as designed.
+While `active_model_info` in `AppState` is in-memory, the model selection IS persisted to `~/.config/rookbot/active_model.toml` via `model_registry::save_active_config()`. On startup, `lib.rs` reads this config and re-activates the model. This is working as designed.
 
 ### Affected User Flow
 

@@ -1,4 +1,4 @@
-# ClawDefender v0.3.0-beta — Desktop App Release
+# Rookbot v0.3.0-beta — Desktop App Release
 
 ## What's New
 
@@ -22,8 +22,8 @@
 - Apple Silicon or Intel Mac
 
 ## Installation
-1. Open `ClawDefender_0.3.0_aarch64.dmg` (or x86_64 variant)
-2. Drag ClawDefender to Applications
+1. Open `Rookbot_0.3.0_aarch64.dmg` (or x86_64 variant)
+2. Drag Rookbot to Applications
 3. **First launch (unsigned build):** Right-click the app → Open → click "Open" in the dialog
 4. Complete the onboarding wizard
 5. The daemon starts automatically

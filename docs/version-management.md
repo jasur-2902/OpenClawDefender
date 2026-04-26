@@ -1,6 +1,6 @@
 # Version Management Guide
 
-ClawDefender maintains a single version number across all crates, configuration files, and distribution packages. This document describes how versions are managed and released.
+Rookbot maintains a single version number across all crates, configuration files, and distribution packages. This document describes how versions are managed and released.
 
 ## Current Version
 
@@ -32,7 +32,7 @@ This command updates all of the following locations automatically:
 
 ## Versioning Scheme
 
-ClawDefender follows semantic versioning with pre-release tags:
+Rookbot follows semantic versioning with pre-release tags:
 
 - **Major.Minor.Patch** for stable releases (e.g. `1.0.0`)
 - **Major.Minor.Patch-tag** for pre-releases (e.g. `0.5.0-beta`, `1.0.0-rc1`)

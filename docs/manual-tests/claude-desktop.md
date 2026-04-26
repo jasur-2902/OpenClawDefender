@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - macOS with Claude Desktop installed
-- ClawDefender built and in PATH: `cargo build --release`
+- Rookbot built and in PATH: `cargo build --release`
 - An MCP server configured in Claude Desktop (e.g. filesystem server)
 
 ## Test 1: Wrap command writes absolute path
@@ -61,7 +61,7 @@ cat /tmp/proxy-stderr.log  # Should contain tracing output
 2. Run `clawdefender wrap <server-name>` (second time)
 
 **Expected:**
-- Second wrap prints: `"<server>" is already wrapped by ClawDefender in Claude Desktop.`
+- Second wrap prints: `"<server>" is already wrapped by Rookbot in Claude Desktop.`
 - Config file is NOT modified the second time
 - No duplicate nesting of proxy commands
 
@@ -100,7 +100,7 @@ cat /tmp/proxy-stderr.log  # Should contain tracing output
 1. Run `clawdefender unwrap <server-name>` on a server that was never wrapped
 
 **Expected:**
-- Prints: `This server is not wrapped by ClawDefender.`
+- Prints: `This server is not wrapped by Rookbot.`
 - Config is NOT modified
 
 ## Test 7: Config backup creation

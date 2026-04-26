@@ -1,4 +1,4 @@
-# ClawDefender Phase 6 Final Status Report
+# Rookbot Phase 6 Final Status Report
 
 **Date:** 2026-03-30
 **Status:** SYSTEM OPERATIONAL
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-All 6 development phases are complete. ClawDefender is a fully operational AI agent firewall with MCP interception, policy enforcement, on-device AI risk analysis, OS-level monitoring, security scanning, and threat intelligence. The system has been hardened through 100+ bug fixes across all phases, with 1723 workspace tests passing and 1 pre-existing failure (zero regressions).
+All 6 development phases are complete. Rookbot is a fully operational AI agent firewall with MCP interception, policy enforcement, on-device AI risk analysis, OS-level monitoring, security scanning, and threat intelligence. The system has been hardened through 100+ bug fixes across all phases, with 1723 workspace tests passing and 1 pre-existing failure (zero regressions).
 
 ---
 
@@ -28,7 +28,7 @@ All 6 development phases are complete. ClawDefender is a fully operational AI ag
 - Feature flag builds verified (gguf, cloud, download, mock)
 - Install script reviewed and validated
 - Path consistency audit across all components (config, data, socket, PID, models)
-- Release binaries: clawdefender (5.6 MB) and clawdefender-daemon (5.8 MB)
+- Release binaries: rookbot (5.6 MB) and rookbot-daemon (5.8 MB)
 
 ---
 
@@ -258,7 +258,7 @@ MCP Proxy -> Correlation Engine -> EventRouter -> Behavioral Analysis
 ```
                     MCP Client (Claude, Cursor)
                            |
-                    ClawDefender Proxy (stdio/HTTP)
+                    Rookbot Proxy (stdio/HTTP)
                            |
                     Correlation Engine
                            |
@@ -299,6 +299,6 @@ MCP Proxy -> Correlation Engine -> EventRouter -> Behavioral Analysis
 
 ## Conclusion
 
-ClawDefender is operational across all subsystems. The MCP proxy intercepts tool calls, the policy engine enforces rules, the SLM pipeline provides AI risk analysis, the behavioral engine detects anomalies, the scanner identifies vulnerabilities, and the threat intelligence system provides IoC matching. All components are wired together through the EventRouter pipeline and surfaced through both the CLI and GUI.
+Rookbot is operational across all subsystems. The MCP proxy intercepts tool calls, the policy engine enforces rules, the SLM pipeline provides AI risk analysis, the behavioral engine detects anomalies, the scanner identifies vulnerabilities, and the threat intelligence system provides IoC matching. All components are wired together through the EventRouter pipeline and surfaced through both the CLI and GUI.
 
 **SYSTEM OPERATIONAL. ALL 6 PHASES COMPLETE.**

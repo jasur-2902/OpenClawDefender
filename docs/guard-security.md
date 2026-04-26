@@ -1,7 +1,7 @@
 # Guard Security Model
 
 This document describes the security properties, trust model, and limitations
-of the ClawDefender Agent Guard system.
+of the Rookbot Agent Guard system.
 
 ## Trust Model
 
@@ -62,7 +62,7 @@ prevent:
 
 ## Fallback Mode Limitations
 
-When the ClawDefender daemon is unavailable, the guard falls back to
+When the Rookbot daemon is unavailable, the guard falls back to
 embedded in-process enforcement. This mode has additional limitations:
 
 - **No OS-level monitoring.** The embedded enforcer only checks operations
@@ -134,7 +134,7 @@ requires Bearer token authentication. Attack vectors:
 
 - **Missing or weak token.** If the token is empty or predictable, any
   local process can create, modify, or delete guards. Mitigation: the
-  token is stored in `~/.local/share/clawdefender/server-token` with
+  token is stored in `~/.local/share/rookbot/server-token` with
   restrictive file permissions.
 - **Token timing attacks.** The API uses constant-time comparison for
   token validation to prevent timing-based token extraction.
@@ -186,7 +186,7 @@ client and could be leaked via logs or IPC.
 
 ### General
 
-- Keep the ClawDefender daemon and guard library up to date.
+- Keep the Rookbot daemon and guard library up to date.
 - Review and minimize declared permissions regularly.
 - Combine the guard with external sandboxing (containers, VMs, seccomp
   profiles) for defense in depth.

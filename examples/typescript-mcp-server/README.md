@@ -1,13 +1,13 @@
-# TypeScript MCP Server with ClawDefender (Level 3)
+# TypeScript MCP Server with Rookbot (Level 3)
 
 A complete example MCP server in TypeScript that integrates all three
-ClawDefender security checkpoints, achieving Level 3 Claw Compliance.
+Rookbot security checkpoints, achieving Level 3 Claw Compliance.
 
 ## What this server does
 
 Exposes three file-operation tools via MCP:
 
-| Tool | Risk | ClawDefender checkpoints |
+| Tool | Risk | Rookbot checkpoints |
 |---|---|---|
 | `read_file` | Low | checkIntent, reportAction |
 | `write_file` | Medium | checkIntent, requestPermission, reportAction |
@@ -69,7 +69,7 @@ npm start
 npm run dev
 ```
 
-## Using with ClawDefender
+## Using with Rookbot
 
 ```bash
 # Wrap for Claude Desktop

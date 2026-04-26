@@ -1,4 +1,4 @@
-# ClawDefender Build Diagnostics Report
+# Rookbot Build Diagnostics Report
 
 **Date:** 2026-03-29
 **Branch:** production

@@ -1,11 +1,11 @@
-# ClawDefender SDK Security Guide
+# Rookbot SDK Security Guide
 
 This document describes the security model, hardening measures, and known
-limitations of the ClawDefender MCP server and SDKs.
+limitations of the Rookbot MCP server and SDKs.
 
 ## Trust Model
 
-ClawDefender implements a **cooperative security** model. MCP servers and AI
+Rookbot implements a **cooperative security** model. MCP servers and AI
 agents voluntarily declare their intents, request permission for sensitive
 operations, and report actions for audit purposes. The daemon then enforces
 policy and logs all activity.
@@ -37,11 +37,11 @@ fatigue attacks.
 
 ## HTTP Authentication
 
-When the ClawDefender daemon starts with HTTP transport enabled, it generates
+When the Rookbot daemon starts with HTTP transport enabled, it generates
 a random 256-bit token and writes it to:
 
 ```
-~/.local/share/clawdefender/server-token
+~/.local/share/rookbot/server-token
 ```
 
 The file has `0600` permissions (owner read/write only).
@@ -94,12 +94,12 @@ to verify compliance. During certification:
 
 ### Fail-Open When Daemon Is Killed
 
-Both SDKs operate in **fail-open** mode by default: if the ClawDefender daemon
+Both SDKs operate in **fail-open** mode by default: if the Rookbot daemon
 is unreachable, all `checkIntent` calls return `allowed: true` and all
 `requestPermission` calls return `granted: true`.
 
 This is a deliberate design choice — MCP servers should continue functioning
-even if ClawDefender is temporarily unavailable. However, an attacker who can
+even if Rookbot is temporarily unavailable. However, an attacker who can
 kill the daemon process can bypass all policy enforcement.
 
 **Mitigations:**

@@ -1,4 +1,4 @@
-# ClawDefender v0.3 - Phase 11 Release Notes
+# Rookbot v0.3 - Phase 11 Release Notes
 
 ## Threat Intelligence System
 
@@ -68,7 +68,7 @@ Phase 11 introduces a comprehensive threat intelligence subsystem that provides 
 - Aggregated threat statistics only
 
 ### GUI Updates
-- New **Threat Intelligence** page in the ClawDefender app
+- New **Threat Intelligence** page in the Rookbot app
 - Feed status display with manual update button
 - Blocklist warnings with severity indicators
 - Community rule pack browser with install/uninstall

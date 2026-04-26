@@ -1,6 +1,6 @@
 # Guard REST API Guide
 
-The ClawDefender daemon exposes a REST API at `http://127.0.0.1:3202` for managing agent guards programmatically. All endpoints (except the OpenAPI spec) require Bearer token authentication.
+The Rookbot daemon exposes a REST API at `http://127.0.0.1:3202` for managing agent guards programmatically. All endpoints (except the OpenAPI spec) require Bearer token authentication.
 
 ## Authentication
 
@@ -10,7 +10,7 @@ Every request must include a Bearer token in the `Authorization` header:
 Authorization: Bearer <token>
 ```
 
-The token is generated when the daemon starts and is stored at `~/.local/share/clawdefender/api-token`. The Python and TypeScript packages read this file automatically.
+The token is generated when the daemon starts and is stored at `~/.local/share/rookbot/api-token`. The Python and TypeScript packages read this file automatically.
 
 ## Endpoints
 
@@ -53,7 +53,7 @@ Register a new guard for an agent.
 **curl example:**
 
 ```bash
-TOKEN=$(cat ~/.local/share/clawdefender/api-token)
+TOKEN=$(cat ~/.local/share/rookbot/api-token)
 curl -s -X POST http://127.0.0.1:3202/api/v1/guards \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -434,7 +434,7 @@ require 'net/http'
 require 'json'
 require 'uri'
 
-token = File.read(File.expand_path('~/.local/share/clawdefender/api-token')).strip
+token = File.read(File.expand_path('~/.local/share/rookbot/api-token')).strip
 
 uri = URI('http://127.0.0.1:3202/api/v1/guards')
 req = Net::HTTP::Post.new(uri)

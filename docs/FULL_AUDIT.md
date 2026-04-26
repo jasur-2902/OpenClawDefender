@@ -1,4 +1,4 @@
-# ClawDefender — Full System Audit
+# Rookbot — Full System Audit
 
 **Date:** 2026-03-29
 **Branch:** `production`
@@ -140,7 +140,7 @@ clawdefender-core  (foundation — no internal deps)
 | Feb 16 | 72ed639 | Initial commit: Phase 0 project scaffolding |
 | Feb 16 | fa407af | Phase 1: core features — proxy, sensor, TUI, daemon, CLI |
 | Feb 16 | 7ee3065 | V1: MCP Trust Layer — production proxy, TUI, CLI, security hardening |
-| Feb 16 | bd2bee1 | Phase 3-4: Rename to ClawDefender, local SLM, cloud swarm |
+| Feb 16 | bd2bee1 | Phase 3-4: Rename to Rookbot, local SLM, cloud swarm |
 | Feb 17 | c40afc5 | Phase 5: Agentic Trust Layer & SDK |
 | Feb 17 | 1b28e44 | Phase 6R: Reality Check — 49 bugs fixed, 50 regression tests |
 | Feb 17 | 0046127 | Phase 7: Autonomous Behavioral Defense Engine |
@@ -186,7 +186,7 @@ clawdefender-core  (foundation — no internal deps)
 
 | Command | Status | Notes |
 |---------|--------|-------|
-| `get_policy` | ✅ WORKING | Reads ~/.config/clawdefender/policy.toml, creates default if missing |
+| `get_policy` | ✅ WORKING | Reads ~/.config/rookbot/policy.toml, creates default if missing |
 | `add_rule` | ✅ WORKING | Validates, checks duplicates, atomic write, daemon reload |
 | `update_rule` | ✅ WORKING | Updates in place, atomic write |
 | `delete_rule` | ✅ WORKING | Removes from TOML, atomic write |
@@ -555,7 +555,7 @@ All event listeners use proper cleanup.
 
 ### 5.4 Config System (`config/`)
 - `ClawConfig` with 18 sections, all with serde defaults
-- Loads from `~/.config/clawdefender/config.toml`, returns defaults if missing
+- Loads from `~/.config/rookbot/config.toml`, returns defaults if missing
 - No `save()` method on ClawConfig (saving handled by atomic_write elsewhere)
 
 ### 5.5 Behavioral Engine (`behavioral/`) — Most Sophisticated Module
@@ -591,11 +591,11 @@ All event listeners use proper cleanup.
 ### 6.1 Startup
 - Foreground tokio process (no fork/daemonize — GUI manages lifecycle)
 - Two modes: `run` (standalone) and `proxy` (MCP proxy mode)
-- Single-instance guard via PID file at `~/.local/share/clawdefender/clawdefender.pid`
+- Single-instance guard via PID file at `~/.local/share/rookbot/clawdefender.pid`
 - Status: **FULLY WORKING**
 
 ### 6.2 IPC
-- Unix domain socket at `~/.local/share/clawdefender/clawdefender.sock`
+- Unix domain socket at `~/.local/share/rookbot/clawdefender.sock`
 - JSON-line protocol (one JSON message per line)
 - 7 command types: status, reload, guard_list, guard_toggle, GuardRequest variants, shutdown
 - Stale socket cleanup on startup
@@ -864,24 +864,24 @@ Only `clawdefender-slm` has `[features]`. All other 14 crates compile unconditio
 ### 17.1 Config Files
 | File | Purpose | Persistence |
 |------|---------|-------------|
-| `~/.config/clawdefender/config.toml` | App settings (18 sections) | Read on startup, atomic write on change |
-| `~/.config/clawdefender/policy.toml` | Policy rules | Read/write with backup, hot-reload |
-| `~/.config/clawdefender/noise.toml` | SLM noise filter rules | Hot-reloadable |
-| `~/.local/share/clawdefender/model_config.toml` | Active model config | Read/write |
+| `~/.config/rookbot/config.toml` | App settings (18 sections) | Read on startup, atomic write on change |
+| `~/.config/rookbot/policy.toml` | Policy rules | Read/write with backup, hot-reload |
+| `~/.config/rookbot/noise.toml` | SLM noise filter rules | Hot-reloadable |
+| `~/.local/share/rookbot/model_config.toml` | Active model config | Read/write |
 
 ### 17.2 Data Files
 | File | Purpose |
 |------|---------|
-| `~/.local/share/clawdefender/audit.jsonl` | Audit log (rotated at 50MB) |
-| `~/.local/share/clawdefender/profiles.db` | Behavioral profiles (SQLite) |
-| `~/.local/share/clawdefender/clawdefender.pid` | Daemon PID file |
-| `~/.local/share/clawdefender/clawdefender.sock` | Unix socket |
-| `~/.local/share/clawdefender/daemon.log` | Daemon log |
-| `~/.local/share/clawdefender/threat-intel/` | Cached threat feed data |
-| `~/.local/share/clawdefender/models/` | Downloaded GGUF models |
-| `~/.local/share/clawdefender/crashes/` | Crash reports |
-| `~/.local/share/clawdefender/scans/` | Scan results |
-| `~/.local/share/clawdefender/server-token` | Guard API bearer token (0600) |
+| `~/.local/share/rookbot/audit.jsonl` | Audit log (rotated at 50MB) |
+| `~/.local/share/rookbot/profiles.db` | Behavioral profiles (SQLite) |
+| `~/.local/share/rookbot/clawdefender.pid` | Daemon PID file |
+| `~/.local/share/rookbot/clawdefender.sock` | Unix socket |
+| `~/.local/share/rookbot/daemon.log` | Daemon log |
+| `~/.local/share/rookbot/threat-intel/` | Cached threat feed data |
+| `~/.local/share/rookbot/models/` | Downloaded GGUF models |
+| `~/.local/share/rookbot/crashes/` | Crash reports |
+| `~/.local/share/rookbot/scans/` | Scan results |
+| `~/.local/share/rookbot/server-token` | Guard API bearer token (0600) |
 | `~/.clawdefender/onboarding_complete` | Onboarding flag |
 
 ---

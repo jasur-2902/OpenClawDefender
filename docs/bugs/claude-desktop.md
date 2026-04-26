@@ -99,7 +99,7 @@ The `is_wrapped()` function correctly checks for `_clawdefender_original` key. I
 server is already wrapped, `wrap` prints a message and returns successfully (idempotent).
 
 ### Unwrap of non-wrapped server
-Returns a clear message: "This server is not wrapped by ClawDefender."
+Returns a clear message: "This server is not wrapped by Rookbot."
 
 ### Config backup
 `backup_config()` creates a `.json.bak` file before any modification.

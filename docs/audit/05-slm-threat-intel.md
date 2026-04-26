@@ -119,7 +119,7 @@ All feature flags are properly wired with `#[cfg(feature = "...")]` guards throu
 | Item | Classification | Notes |
 |------|---------------|-------|
 | Runtime model switching | **PARTIAL** | No dedicated hot-swap API. `ActiveModelConfig` is persisted to TOML and read at startup. Switching requires reconstructing `SlmService`. |
-| `ActiveModelConfig` persistence | **REAL** | Saved to `~/.local/share/clawdefender/model_config.toml` |
+| `ActiveModelConfig` persistence | **REAL** | Saved to `~/.local/share/rookbot/model_config.toml` |
 
 **Verdict: PARTIAL.** Config persistence exists but there is no live hot-swap mechanism -- changing models requires service restart or reconstruction.
 
@@ -141,7 +141,7 @@ All feature flags are properly wired with `#[cfg(feature = "...")]` guards throu
 |------|---------------|-------|
 | `sanitizer.rs` - Prompt injection prevention | **REAL** | Multi-layer: truncation, XML/HTML stripping, 9 injection pattern filters, special char escaping, random nonce delimiters, canary tokens |
 | `output_validator.rs` - Output validation | **REAL** | Echo attack detection (nonce in output), injection artifact detection (4 patterns), structural parsing, falls back to HIGH risk on failure |
-| `noise_filter.rs` - Noise reduction | **REAL** | 5 built-in profiles (compiler, package_manager, ide, git, test_runner), frequency suppression (5 events in 10min), custom rules from `~/.config/clawdefender/noise.toml` |
+| `noise_filter.rs` - Noise reduction | **REAL** | 5 built-in profiles (compiler, package_manager, ide, git, test_runner), frequency suppression (5 events in 10min), custom rules from `~/.config/rookbot/noise.toml` |
 | `context.rs` - Context tracking | **REAL** | Per-server ring buffer (max 20 events), reputation counters (allowed/blocked/prompted) |
 | `profiles.rs` - Activity profiles | **REAL** | Built-in profiles with regex tool/argument patterns and server glob patterns, custom TOML rules |
 

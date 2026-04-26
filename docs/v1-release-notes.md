@@ -1,10 +1,10 @@
-# ClawDefender V1 Release Notes
+# Rookbot V1 Release Notes
 
-## What is ClawDefender?
+## What is Rookbot?
 
-ClawDefender is a firewall for AI agents. It intercepts, inspects, and controls what AI tools can do on your machine by sitting between MCP (Model Context Protocol) clients and servers.
+Rookbot is a firewall for AI agents. It intercepts, inspects, and controls what AI tools can do on your machine by sitting between MCP (Model Context Protocol) clients and servers.
 
-When an AI agent asks to read a file, execute a command, or access a resource via MCP, ClawDefender evaluates the request against your policy rules before it reaches the server. Blocked requests never execute. Prompted requests wait for your explicit approval.
+When an AI agent asks to read a file, execute a command, or access a resource via MCP, Rookbot evaluates the request against your policy rules before it reaches the server. Blocked requests never execute. Prompted requests wait for your explicit approval.
 
 ## V1 Features
 
@@ -32,18 +32,18 @@ When an AI agent asks to read a file, execute a command, or access a resource vi
 ### Audit System
 
 - **Structured JSONL logging:** Every intercepted message, policy decision, and user response is logged.
-- **Query interface:** `clawdefender log` supports filtering by action, server, time range, and tool name.
-- **Aggregate statistics:** `clawdefender log --stats` shows summary counts of allowed, blocked, and prompted events.
+- **Query interface:** `rookbot log` supports filtering by action, server, time range, and tool name.
+- **Aggregate statistics:** `rookbot log --stats` shows summary counts of allowed, blocked, and prompted events.
 - **Log rotation:** Automatic rotation by file size with configurable retention.
 
 ### CLI
 
-- `clawdefender init` -- Generate a default policy file.
-- `clawdefender wrap <server>` -- Rewrite MCP client config to route through ClawDefender.
-- `clawdefender unwrap <server>` -- Restore original MCP client config.
-- `clawdefender tui` -- Launch the interactive terminal UI.
-- `clawdefender log` -- Query the audit log.
-- `clawdefender policy test` -- Test policy rules against fixture files.
+- `rookbot init` -- Generate a default policy file.
+- `rookbot wrap <server>` -- Rewrite MCP client config to route through Rookbot.
+- `rookbot unwrap <server>` -- Restore original MCP client config.
+- `rookbot tui` -- Launch the interactive terminal UI.
+- `rookbot log` -- Query the audit log.
+- `rookbot policy test` -- Test policy rules against fixture files.
 
 ### Security Hardening
 
@@ -70,27 +70,27 @@ When an AI agent asks to read a file, execute a command, or access a resource vi
 
 ```bash
 # Install script
-curl -sSL https://clawdefender.dev/install.sh | sh
+curl -sSL https://rookbot.dev/install.sh | sh
 
 # Homebrew
-brew install clawdefender
+brew install rookbot
 
 # From source
-git clone https://github.com/clawdefender/clawdefender.git
-cd clawdefender && cargo build --release
+git clone https://github.com/rookbot-io/rookbot.git
+cd rookbot && cargo build --release
 ```
 
 ## How to Get Started
 
 ```bash
-clawdefender init
-clawdefender wrap filesystem-server
+rookbot init
+rookbot wrap filesystem-server
 # Restart your MCP client (Claude Desktop, Cursor)
-clawdefender tui
+rookbot tui
 ```
 
 ## Reporting Issues
 
-File issues at: https://github.com/clawdefender/clawdefender/issues
+File issues at: https://github.com/rookbot-io/rookbot/issues
 
-Include the output of `clawdefender --version` and relevant sections of `clawdefender log` when reporting bugs.
+Include the output of `rookbot --version` and relevant sections of `rookbot log` when reporting bugs.

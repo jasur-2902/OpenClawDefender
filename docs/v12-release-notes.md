@@ -1,14 +1,14 @@
-# ClawDefender v0.3 Release Notes — Phase 12: Network Protection
+# Rookbot v0.3 Release Notes — Phase 12: Network Protection
 
 ## Summary
 
-Phase 12 adds **network-level prevention** to ClawDefender. Previous phases provided detection and monitoring of AI agent behavior. Phase 12 extends this to actively control outbound network connections from agent processes, including DNS filtering and connection blocking.
+Phase 12 adds **network-level prevention** to Rookbot. Previous phases provided detection and monitoring of AI agent behavior. Phase 12 extends this to actively control outbound network connections from agent processes, including DNS filtering and connection blocking.
 
 ## What's New
 
 ### Prevention vs Detection
 
-ClawDefender now operates in two modes:
+Rookbot now operates in two modes:
 
 - **Detection** (Phases 0-11): Monitor agent behavior, log events, generate alerts.
 - **Prevention** (Phase 12): Actively block malicious outbound connections before data leaves the machine.
@@ -91,7 +91,7 @@ clawdefender network rules     # List active network rules
 
 3. **IP-based C2 bypasses DNS filter**: If an agent connects directly by IP address, the DNS filter is not consulted. The network policy engine's IoC matching handles this case.
 
-4. **No TLS inspection**: ClawDefender never decrypts or inspects TLS traffic. Connection decisions are based on metadata only (destination IP, port, domain, process identity).
+4. **No TLS inspection**: Rookbot never decrypts or inspects TLS traffic. Connection decisions are based on metadata only (destination IP, port, domain, process identity).
 
 5. **System Extension sandbox**: The Network Extension runs in a sandboxed process and communicates with the daemon via XPC. If the daemon is unavailable, the extension fails open (allows all connections).
 

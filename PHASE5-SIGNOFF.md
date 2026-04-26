@@ -10,11 +10,11 @@
 
 | Test | Description | Status | Details |
 |------|-------------|--------|---------|
-| T1 | Threat Feed Update | PASS | CLI `feed update` uses real Ed25519 key (`e9b20cb3...`, not all-zeros), falls back to cache gracefully when remote unreachable, feed data persisted at `~/.local/share/clawdefender/threat-intel/` |
+| T1 | Threat Feed Update | PASS | CLI `feed update` uses real Ed25519 key (`e9b20cb3...`, not all-zeros), falls back to cache gracefully when remote unreachable, feed data persisted at `~/.local/share/rookbot/threat-intel/` |
 | T2 | Blocklist Loading | PASS | `reputation filesystem` loads blocklist from cache (not empty), reports clean for known-safe server, exits cleanly without crash |
-| T3 | IoC Add | PASS | `ioc add domain evil-mcp-server.com` accepted and persisted to `~/.local/share/clawdefender/threat-intel/ioc/local-iocs.json`. No "future version" stub. |
+| T3 | IoC Add | PASS | `ioc add domain evil-mcp-server.com` accepted and persisted to `~/.local/share/rookbot/threat-intel/ioc/local-iocs.json`. No "future version" stub. |
 | T4 | Full Scan (compile) | PASS | `cargo check --manifest-path clients/clawdefender-app/src-tauri/Cargo.toml` compiles successfully (20 warnings, 0 errors). All 5 scanner modules compile. |
-| T5 | Scan Results Persistence | PASS | Results saved to `~/.local/share/clawdefender/scans/{scan_id}.json` with 0600 permissions. Path traversal protection filters scan_id to `[a-zA-Z0-9_-]` only. |
+| T5 | Scan Results Persistence | PASS | Results saved to `~/.local/share/rookbot/scans/{scan_id}.json` with 0600 permissions. Path traversal protection filters scan_id to `[a-zA-Z0-9_-]` only. |
 | T6 | Config Audit Accuracy | PASS | All 4 client paths correct (Claude Desktop, Cursor, VS Code, Windsurf). JSONC strip_jsonc() handles `//`, `/* */`, and trailing commas. Security checks: insecure HTTP transport, 12 hardcoded credential patterns, 7 suspicious command patterns, sensitive path exposure. |
 | T7 | Policy Strength Accuracy | PASS | Proper TOML parsing via `toml::from_str`. 9 checks implemented: (1) no/few rules, (2) catch-all allow, (3) broad allow patterns, (4) missing sensitive event/tool coverage, (5) missing credential/system file protections, (6) disabled rules, (7) rule conflicts, (8) no server-specific rules, (9) stale/empty match criteria. 0-100 scoring via `compute_policy_score()`. |
 | T8 | System Posture Accuracy | PASS | All 7 macOS checks verified against real system output. SIP: `csrutil status` -> "enabled" (correct parse). Gatekeeper: `spctl --status` -> "assessments enabled" (correct parse). Firewall: `socketfilterfw --getglobalstate` -> "State = 1" (correct parse). FileVault: `fdesetup status` -> "On" (correct parse). Auto-updates: `defaults read`. SSH: `launchctl list`. FDA: TCC-protected path heuristic. |
@@ -31,7 +31,7 @@
 
 All 3 CLI bugs from Agent 3 are confirmed fixed:
 
-1. **Empty blocklist -> load from cache:** `reputation` command loads blocklist from `~/.local/share/clawdefender/threat-intel/blocklist.json` and does not crash with empty data.
+1. **Empty blocklist -> load from cache:** `reputation` command loads blocklist from `~/.local/share/rookbot/threat-intel/blocklist.json` and does not crash with empty data.
 2. **All-zeros key -> from_embedded():** Embedded Ed25519 public key is `e9b20cb34831fe44c9fa5001b9226d75ab2805ffb576e5186a88a0645c575844` (not all-zeros). `FeedVerifier::from_embedded()` properly parses this real key.
 3. **Stubbed ioc_add -> real implementation:** `ioc add domain evil-mcp-server.com` works, persists to JSON, reports indicator count.
 

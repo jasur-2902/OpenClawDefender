@@ -1,4 +1,4 @@
-# Minimal ClawDefender Integration
+# Minimal Rookbot Integration
 
 The simplest possible integration: a single `checkIntent` call before
 performing an action. Copy-paste into your MCP server to get started.
@@ -10,9 +10,9 @@ pip install clawdefender-sdk
 ```
 
 ```python
-from clawdefender import ClawDefenderClient
+from clawdefender import RookbotClient
 
-claw = ClawDefenderClient()
+claw = RookbotClient()
 
 intent = claw.check_intent_sync(
     description="Read config file",
@@ -35,9 +35,9 @@ npm install @clawdefender/sdk
 ```
 
 ```typescript
-import { ClawDefenderClient } from "@clawdefender/sdk";
+import { RookbotClient } from "@clawdefender/sdk";
 
-const claw = new ClawDefenderClient();
+const claw = new RookbotClient();
 
 const intent = await claw.checkIntent({
   description: "Read config file",
@@ -59,7 +59,7 @@ See `typescript_example.ts` for a runnable version.
 Even this single call provides:
 
 - **Policy enforcement** -- your server respects user-defined security policies
-- **Audit logging** -- ClawDefender records the intent check
+- **Audit logging** -- Rookbot records the intent check
 - **Level 1 compliance** -- qualifies for Claw Compliant Level 1 certification
 
 To reach higher compliance levels, add `requestPermission` (Level 2) and

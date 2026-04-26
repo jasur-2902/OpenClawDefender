@@ -1,6 +1,6 @@
 # Step 9 Performance Baseline Report
 
-Static analysis of the ClawDefender Tauri desktop app. Each section identifies the current implementation, bottlenecks, and recommended fixes ranked by impact.
+Static analysis of the Rookbot Tauri desktop app. Each section identifies the current implementation, bottlenecks, and recommended fixes ranked by impact.
 
 ---
 
@@ -185,7 +185,7 @@ Backfill: On startup, reads last 100 lines (`BACKFILL_LIMIT`, line 62) via `read
 
 | Issue | Severity | Location |
 |-------|----------|----------|
-| **`process_event` reads config.toml on EVERY event** | **HIGH** | `event_stream.rs:357` calls `notifications_enabled_in_config()` which reads and parses `~/.config/clawdefender/config.toml` from disk on every single event. Also called again at line 311 within the same function. |
+| **`process_event` reads config.toml on EVERY event** | **HIGH** | `event_stream.rs:357` calls `notifications_enabled_in_config()` which reads and parses `~/.config/rookbot/config.toml` from disk on every single event. Also called again at line 311 within the same function. |
 | **`process_event` clones entire event buffer for alert engine** | **HIGH** | `event_stream.rs:448-452` -- `state.event_buffer.lock().map(\|buf\| buf.clone())` clones up to 10,000 `AuditEvent` objects on every incoming event for the alert intelligence engine. |
 | File polling (500ms) vs filesystem watching | LOW | Polling is simple and reliable; `notify` crate would reduce latency but adds complexity. 500ms is acceptable for a security tool. |
 | Events processed one-by-one (no batching) | LOW | Each new line triggers a full `process_event()` pipeline. Batching would help during burst traffic. |

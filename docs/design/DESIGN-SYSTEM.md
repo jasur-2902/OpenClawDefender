@@ -1,10 +1,10 @@
-# ClawDefender Design System
+# Rookbot Design System
 
 **Version**: 1.0
 **Date**: 2026-02-24
 **Status**: Approved
 
-This is the authoritative reference for ClawDefender's personality, voice, visual identity, and message library. Every developer reads this before writing any UI text or designing any screen.
+This is the authoritative reference for Rookbot's personality, voice, visual identity, and message library. Every developer reads this before writing any UI text or designing any screen.
 
 ---
 
@@ -96,7 +96,7 @@ Full glossary: [glossary.md](glossary.md)
 **Colors**: CSS custom properties in `src/styles/tokens.css`, extended into Tailwind via `tailwind.config.js`.
 - Base: calm whites/grays (light), dark surfaces (dark mode)
 - Status: Green (safe), Red (dangerous), Amber (warning), Blue (info)
-- Accent: ClawDefender brand color for interactive elements
+- Accent: Rookbot brand color for interactive elements
 
 **Typography**: System font (San Francisco). Scale from text-xs to text-4xl. Regular/medium/semibold only.
 

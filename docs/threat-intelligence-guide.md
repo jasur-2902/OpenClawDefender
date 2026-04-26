@@ -1,8 +1,8 @@
-# ClawDefender Threat Intelligence Guide
+# Rookbot Threat Intelligence Guide
 
 ## Overview
 
-ClawDefender's threat intelligence system provides real-time protection against known threats targeting MCP (Model Context Protocol) servers. The system downloads and applies threat data from a centralized feed, keeping your installation protected against the latest threats without manual updates.
+Rookbot's threat intelligence system provides real-time protection against known threats targeting MCP (Model Context Protocol) servers. The system downloads and applies threat data from a centralized feed, keeping your installation protected against the latest threats without manual updates.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ The threat intelligence system consists of these components:
 
 ## Feed Configuration
 
-Configure the threat feed in your ClawDefender settings:
+Configure the threat feed in your Rookbot settings:
 
 ```toml
 [threat_intel]
@@ -137,7 +137,7 @@ Injection signatures detect prompt injection attempts in multiple languages and 
 
 ## Behavioral Profiles
 
-Pre-seeded profiles define expected behavior for known MCP servers. When a server deviates from its profile, ClawDefender raises an anomaly alert.
+Pre-seeded profiles define expected behavior for known MCP servers. When a server deviates from its profile, Rookbot raises an anomaly alert.
 
 Profiles are available for:
 - `@modelcontextprotocol/server-filesystem`
@@ -148,7 +148,7 @@ Profiles are available for:
 
 ## Feed Verification
 
-The threat feed uses Ed25519 signatures for integrity verification. The public key is embedded in the ClawDefender binary. Every feed update is verified before being applied.
+The threat feed uses Ed25519 signatures for integrity verification. The public key is embedded in the Rookbot binary. Every feed update is verified before being applied.
 
 ## Telemetry
 
@@ -158,7 +158,7 @@ No personal data, file contents, or identifying information is ever transmitted.
 
 ## GUI
 
-The Threat Intelligence page in the ClawDefender GUI shows:
+The Threat Intelligence page in the Rookbot GUI shows:
 
 - **Feed Status** - Current version, last update, next check
 - **Blocklist Warnings** - Active blocklist matches for monitored servers

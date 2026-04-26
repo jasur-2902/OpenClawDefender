@@ -1,4 +1,4 @@
-# ClawDefender Audit Report: Build System, CLI Tools & Test Coverage
+# Rookbot Audit Report: Build System, CLI Tools & Test Coverage
 
 ---
 
@@ -9,7 +9,7 @@
 **Binary name:** `clawdefender`
 **Entry point:** `clients/clawdefender-cli/src/main.rs`
 **Framework:** clap v4 (derive macros)
-**Global option:** `--config <PATH>` to override config file (default: `~/.config/clawdefender/config.toml`)
+**Global option:** `--config <PATH>` to override config file (default: `~/.config/rookbot/config.toml`)
 
 All logging goes to stderr (critical for proxy mode where stdout is JSON-RPC).
 
@@ -18,10 +18,10 @@ All logging goes to stderr (critical for proxy mode where stdout is JSON-RPC).
 | Command | Description | Implementation Status |
 |---------|-------------|----------------------|
 | `init` | Initialize config directory with defaults | Real (`commands/init.rs`) |
-| `wrap <server> [--client] [--all]` | Inject ClawDefender proxy into MCP client config | Real (`commands/wrap.rs`) |
+| `wrap <server> [--client] [--all]` | Inject Rookbot proxy into MCP client config | Real (`commands/wrap.rs`) |
 | `unwrap <server> [--client]` | Restore original MCP server config | Real (`commands/unwrap.rs`) |
 | `proxy -- <cmd> [args]` | Run as stdio MCP proxy (called by wrapped configs) | Real, async (`commands/proxy.rs`) |
-| `status` | Check ClawDefender and MCP client status | Real (`commands/status.rs`) |
+| `status` | Check Rookbot and MCP client status | Real (`commands/status.rs`) |
 | `policy {list,add,test,reload,template-list,template-apply,suggest}` | Manage policy rules | Real (`commands/policy.rs`) |
 | `log [--blocked] [--server] [--source] [--agent] [--stats] [-n]` | View audit log with filters | Real (`commands/log.rs`) |
 | `doctor` | Diagnostic checks on installation | Real (`commands/doctor.rs`) |
@@ -33,7 +33,7 @@ All logging goes to stderr (critical for proxy mode where stdout is JSON-RPC).
 | `behavioral {status,calibrate,stats}` | Manage behavioral baseline engine | Real (`commands/behavioral.rs`) |
 | `profile {list,show,reset,export}` | Manage behavioral profiles per server | Real (`commands/profile_cmd.rs`) |
 | `certify -- <cmd> [--json] [--output]` | Run Claw Compliant certification | Real, async (delegates to `clawdefender-certify`) |
-| `serve [--stdio] [--http-port]` | Start ClawDefender's own MCP server | Real, async (`commands/serve.rs`) |
+| `serve [--stdio] [--http-port]` | Start Rookbot's own MCP server | Real, async (`commands/serve.rs`) |
 | `guard {list,show,kill,test}` | Manage agent guards | Real (`commands/guard.rs`) |
 | `feed {status,update,verify}` | Manage threat intelligence feeds | Real (`commands/threat_intel.rs`) |
 | `rules {list,install,uninstall,update}` | Manage community rule packs | Real (`commands/threat_intel.rs`) |
@@ -74,7 +74,7 @@ Auto-detection handles both `mcpServers` and `servers` key formats for Cursor co
 
 | Argument | Description |
 |----------|-------------|
-| `-c / --config <PATH>` | Config file path (default: `~/.config/clawdefender/config.toml`) |
+| `-c / --config <PATH>` | Config file path (default: `~/.config/rookbot/config.toml`) |
 | `--tui` | Enable terminal UI dashboard |
 | `--policy <PATH>` | Override policy file path |
 
@@ -85,7 +85,7 @@ Auto-detection handles both `mcpServers` and `servers` key formats for Cursor co
 | `run` (default) | Run daemon in standalone mode (IPC server, sensors, audit) |
 | `proxy -- <cmd> [args]` | Proxy an MCP server, intercepting JSON-RPC messages |
 
-Logging behavior: when `--tui` is enabled, logs go to `~/.local/share/clawdefender/daemon.log` (file). Otherwise, logs go to stderr. Verbosity controlled by `CLAWDEFENDER_LOG` env var.
+Logging behavior: when `--tui` is enabled, logs go to `~/.local/share/rookbot/daemon.log` (file). Otherwise, logs go to stderr. Verbosity controlled by `CLAWDEFENDER_LOG` env var.
 
 ---
 
@@ -226,7 +226,7 @@ Good supply chain hygiene: blocks unknown registries, denies copyleft, denies wi
 - Prompts to unwrap all MCP servers before removal
 - Stops and removes LaunchAgent (`com.clawdefender.daemon.plist`)
 - Removes binaries from `/usr/local/bin`
-- Optionally removes config (`~/.config/clawdefender/`) and audit logs (`~/.local/share/clawdefender/`)
+- Optionally removes config (`~/.config/rookbot/`) and audit logs (`~/.local/share/rookbot/`)
 
 ### 15.8 Homebrew Distribution
 
@@ -239,14 +239,14 @@ Good supply chain hygiene: blocks unknown registries, denies copyleft, denies wi
 
 #### `Homebrew/clawdefender-app.rb` (GUI Cask)
 - Downloads DMG from GitHub releases
-- Installs ClawDefender.app
+- Installs Rookbot.app
 - Version: 0.10.0
 - SHA-256 set to `:no_check`
 - Zap cleanup for app support directories
 
 ### 15.9 Tauri App Configuration (`tauri.conf.json`)
 
-- **Product name:** ClawDefender
+- **Product name:** Rookbot
 - **Identifier:** `com.clawdefender.desktop`
 - **Version:** 0.3.0 (note: differs from workspace 0.1.0 and cask 0.10.0)
 - **Window:** 1200x800 default, 800x600 minimum, centered, resizable
@@ -284,7 +284,7 @@ Good supply chain hygiene: blocks unknown registries, denies copyleft, denies wi
   - `ProcessResolver.swift` -- Process identification for network flows
   - `Types.swift` -- Shared type definitions
   - `main.swift` -- Entry point
-- **Entitlements:** `ClawDefenderNetwork.entitlements`
+- **Entitlements:** `RookbotNetwork.entitlements`
 
 ### 15.12 Developer SDKs (`sdks/`)
 
@@ -461,8 +461,8 @@ All targets verify no-panic behavior on malformed input. Requires nightly toolch
 | `openclaw-integration/bot.py` | Python | OpenClaw bot integration |
 | `python-guarded-agent/main.py` | Python | Full guarded agent example |
 | `typescript-guarded-agent/main.ts` | TypeScript | Full guarded agent example |
-| `python-mcp-server/` | Python | Complete MCP server with ClawDefender config |
-| `typescript-mcp-server/` | TypeScript | Complete MCP server with ClawDefender config |
+| `python-mcp-server/` | Python | Complete MCP server with Rookbot config |
+| `typescript-mcp-server/` | TypeScript | Complete MCP server with Rookbot config |
 
 ### 19.8 Test Quality Assessment
 

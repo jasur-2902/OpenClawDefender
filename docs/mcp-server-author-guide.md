@@ -1,17 +1,17 @@
 # MCP Server Author Guide
 
-This guide explains how to integrate ClawDefender into your MCP server, from
+This guide explains how to integrate Rookbot into your MCP server, from
 a single checkIntent call to full Level 3 certification.
 
-## Why integrate ClawDefender?
+## Why integrate Rookbot?
 
 **Trust signal.** Users see that your server has been independently verified
 and can trust it with access to their system.
 
-**User safety.** ClawDefender prevents your server from accidentally accessing
+**User safety.** Rookbot prevents your server from accidentally accessing
 files or executing commands outside the scope the user intended.
 
-**Ecosystem reputation.** Certified servers are listed in the ClawDefender
+**Ecosystem reputation.** Certified servers are listed in the Rookbot
 certified servers directory, increasing discoverability and adoption.
 
 ## Three compliance levels
@@ -34,12 +34,12 @@ pip install clawdefender-sdk
 
 ### Level 1: checkIntent
 
-Before performing any action, ask ClawDefender if the policy allows it:
+Before performing any action, ask Rookbot if the policy allows it:
 
 ```python
-from clawdefender import ClawDefenderClient
+from clawdefender import RookbotClient
 
-claw = ClawDefenderClient()
+claw = RookbotClient()
 
 async def read_file(path: str) -> str:
     # Check intent before acting
@@ -86,7 +86,7 @@ async def write_file(path: str, content: str) -> None:
 
 ### Level 3: reportAction
 
-After every action, report the outcome so ClawDefender can maintain an
+After every action, report the outcome so Rookbot can maintain an
 audit trail:
 
 ```python
@@ -135,9 +135,9 @@ npm install @clawdefender/sdk
 ### Level 1: checkIntent
 
 ```typescript
-import { ClawDefenderClient } from "@clawdefender/sdk";
+import { RookbotClient } from "@clawdefender/sdk";
 
-const claw = new ClawDefenderClient();
+const claw = new RookbotClient();
 
 async function readFile(path: string): Promise<string> {
   const intent = await claw.checkIntent({
@@ -279,17 +279,17 @@ Checking my-mcp-server...
 Result: Level 3 Claw Compliant
 ```
 
-## Handling ClawDefender unavailable (fail-open)
+## Handling Rookbot unavailable (fail-open)
 
-Your server should work even when ClawDefender is not installed. Wrap SDK
+Your server should work even when Rookbot is not installed. Wrap SDK
 calls in availability checks:
 
 ### Python
 
 ```python
 try:
-    from clawdefender import ClawDefenderClient
-    claw = ClawDefenderClient()
+    from clawdefender import RookbotClient
+    claw = RookbotClient()
     AVAILABLE = True
 except ImportError:
     AVAILABLE = False
@@ -305,12 +305,12 @@ async def read_file(path: str) -> str:
 ### TypeScript
 
 ```typescript
-let claw: ClawDefenderClient | null = null;
+let claw: RookbotClient | null = null;
 try {
   const sdk = await import("@clawdefender/sdk");
-  claw = new sdk.ClawDefenderClient();
+  claw = new sdk.RookbotClient();
 } catch {
-  // ClawDefender not available
+  // Rookbot not available
 }
 
 async function readFile(path: string): Promise<string> {
@@ -376,7 +376,7 @@ await claw.report_action(action_type="network_request", target=url, result="succ
 
 ### Handling denials
 
-When ClawDefender denies an action, return a clear message to the user:
+When Rookbot denies an action, return a clear message to the user:
 
 ```python
 intent = await claw.check_intent(...)
@@ -396,9 +396,9 @@ the certified servers directory:
 
 1. Ensure your server repository is public
 2. Include the `clawdefender.toml` manifest in the repo root
-3. Open an issue at github.com/clawdefender/clawdefender with:
+3. Open an issue at github.com/rookbot-io/rookbot with:
    - Server name and repository URL
    - Compliance level achieved
    - Output of `clawdefender certify .`
-4. The ClawDefender team will review and add your server to
+4. The Rookbot team will review and add your server to
    `docs/certified-servers.md` and `certified-servers.json`

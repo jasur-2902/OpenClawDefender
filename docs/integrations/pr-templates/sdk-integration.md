@@ -1,6 +1,6 @@
 ## Summary
 
-Adds ClawDefender SDK integration to this MCP server for security policy
+Adds Rookbot SDK integration to this MCP server for security policy
 enforcement and audit logging.
 
 ### Changes
@@ -9,8 +9,8 @@ enforcement and audit logging.
 - [ ] Added `checkIntent` calls before all tool actions
 - [ ] Added `requestPermission` calls before write/execute/delete operations
 - [ ] Added `reportAction` calls after all tool actions
-- [ ] Added graceful degradation when ClawDefender is unavailable
-- [ ] Updated README with ClawDefender integration notes
+- [ ] Added graceful degradation when Rookbot is unavailable
+- [ ] Updated README with Rookbot integration notes
 
 ### Compliance level
 
@@ -20,8 +20,8 @@ enforcement and audit logging.
 
 ### Testing
 
-- [ ] Server works with ClawDefender running
-- [ ] Server works without ClawDefender installed (fail-open)
+- [ ] Server works with Rookbot running
+- [ ] Server works without Rookbot installed (fail-open)
 - [ ] `clawdefender certify .` passes at the declared level
 - [ ] Existing tests still pass
 

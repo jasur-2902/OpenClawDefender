@@ -1,13 +1,13 @@
-# Python MCP Server with ClawDefender (Level 3)
+# Python MCP Server with Rookbot (Level 3)
 
-A complete example MCP server that integrates all three ClawDefender security
+A complete example MCP server that integrates all three Rookbot security
 checkpoints, achieving Level 3 Claw Compliance certification.
 
 ## What this server does
 
 Exposes three file-operation tools via MCP:
 
-| Tool | Risk | ClawDefender checkpoints |
+| Tool | Risk | Rookbot checkpoints |
 |---|---|---|
 | `read_file` | Low | checkIntent, reportAction |
 | `write_file` | Medium | checkIntent, requestPermission, reportAction |
@@ -17,7 +17,7 @@ Exposes three file-operation tools via MCP:
 
 ### 1. checkIntent (before action)
 
-Before performing any operation, the server asks ClawDefender whether the
+Before performing any operation, the server asks Rookbot whether the
 action is allowed by the active policy:
 
 ```python
@@ -52,7 +52,7 @@ if not perm.granted:
 ### 3. reportAction (after action)
 
 After every operation (success or failure), the server reports what happened
-so ClawDefender can maintain an audit log:
+so Rookbot can maintain an audit log:
 
 ```python
 await claw.report_action(
@@ -65,11 +65,11 @@ await claw.report_action(
 
 ## Graceful degradation
 
-If the `clawdefender-sdk` package is not installed or the ClawDefender daemon
+If the `clawdefender-sdk` package is not installed or the Rookbot daemon
 is not running, this server continues to function normally. All security
 checkpoints are wrapped in `if CLAWDEFENDER_AVAILABLE:` guards.
 
-This means users who have not installed ClawDefender can still use your server.
+This means users who have not installed Rookbot can still use your server.
 
 ## Setup
 
@@ -81,7 +81,7 @@ pip install -e .
 python server.py
 ```
 
-## Using with ClawDefender
+## Using with Rookbot
 
 ```bash
 # Option A: Wrap the server for Claude Desktop

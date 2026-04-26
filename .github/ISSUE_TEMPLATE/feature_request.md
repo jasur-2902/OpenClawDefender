@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest a new feature for ClawDefender
+about: Suggest a new feature for Rookbot
 title: "[FEATURE] "
 labels: enhancement
 assignees: ""

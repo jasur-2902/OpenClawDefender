@@ -388,7 +388,7 @@
 | Type | Library (staticlib + cdylib + rlib) + Tauri app |
 | LoC (src) | 8,382 |
 | Version | 0.3.0 (independent of workspace 0.1.0) |
-| Description | ClawDefender MCP Security Monitor (Tauri desktop app) |
+| Description | Rookbot MCP Security Monitor (Tauri desktop app) |
 
 **Key modules:** commands.rs (4,575 -- Tauri commands), scanner (1,165), event stream (690), state (556), tray (409), IPC client (324), lib (281), daemon (151), monitor (77), events (76), windows (72), main (6).
 

@@ -1,4 +1,4 @@
-# ClawDefender — Audit Summary
+# Rookbot — Audit Summary
 
 **Date:** 2026-03-29
 **Branch:** `production` (16 commits, Feb 16-23 2026)

@@ -10,7 +10,7 @@
 
 The existing `Onboarding.tsx` has 5 steps but several problems:
 
-1. **No personality** -- Welcome screen says "Welcome to ClawDefender" with generic marketing copy. No Claw character, no typing animation, no warmth.
+1. **No personality** -- Welcome screen says "Welcome to Rookbot" with generic marketing copy. No Claw character, no typing animation, no warmth.
 2. **Step 4 is AI model download** -- This is confusing for new users. AI model setup is optional and should not gate onboarding completion. Currently a full model catalog browser inside onboarding.
 3. **No FDA screen** -- FDA is critical for auto-discovery but never requested during onboarding. Users only find out later when score is low.
 4. **No protection score on completion** -- The "You're All Set" screen shows a checklist but no score ring to anchor the user's mental model.
@@ -111,7 +111,7 @@ Detection: Call a new command `check_fda_status() -> bool` that checks if the ap
 - Headline: "One more thing -- I need your permission."
 - Why: "Full Disk Access lets me read the config files for your AI tools, so I can find and protect them automatically."
 - What if skip: "Without it, I can still protect servers you add manually -- I just will not be able to discover them on my own."
-- Guidance: "Open System Settings, go to Privacy & Security, then Full Disk Access, and toggle ClawDefender on. I will wait here."
+- Guidance: "Open System Settings, go to Privacy & Security, then Full Disk Access, and toggle Rookbot on. I will wait here."
 
 **CTAs**:
 - Primary: "Open System Settings" -- calls `tauri_plugin_shell::open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")`.
@@ -134,7 +134,7 @@ Detection: Call a new command `check_fda_status() -> bool` that checks if the ap
 3. **Closing message**: "I am in your menu bar whenever you need me. Green means everything is fine. If something needs your attention, I will let you know."
 4. **Restart reminder** (if servers were wrapped): "One thing -- restart any AI apps you have open so they route through me."
 
-**CTA**: "Open ClawDefender" -- calls:
+**CTA**: "Open Rookbot" -- calls:
 1. `complete_onboarding()` to persist the flag.
 2. `enable_autostart()` to set up login launch.
 3. Navigate to `/` (Home).

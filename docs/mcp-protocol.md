@@ -1,10 +1,10 @@
 # MCP Protocol Reference
 
-This document describes how ClawDefender interacts with the Model Context Protocol (MCP) and serves as a reference for developers extending ClawDefender or writing custom policies.
+This document describes how Rookbot interacts with the Model Context Protocol (MCP) and serves as a reference for developers extending Rookbot or writing custom policies.
 
-## How `clawdefender wrap` works
+## How `rookbot wrap` works
 
-When you run `clawdefender wrap <server-name>`, ClawDefender modifies the MCP client configuration so that instead of launching the MCP server directly, the client launches ClawDefender, which in turn launches the real server.
+When you run `rookbot wrap <server-name>`, Rookbot modifies the MCP client configuration so that instead of launching the MCP server directly, the client launches Rookbot, which in turn launches the real server.
 
 **Before wrapping:**
 ```json
@@ -23,35 +23,35 @@ When you run `clawdefender wrap <server-name>`, ClawDefender modifies the MCP cl
 {
   "mcpServers": {
     "filesystem": {
-      "command": "clawdefender",
+      "command": "rookbot",
       "args": ["proxy", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
     }
   }
 }
 ```
 
-ClawDefender spawns the real server as a child process, connects to its stdin/stdout, and sits in the middle of all JSON-RPC communication.
+Rookbot spawns the real server as a child process, connects to its stdin/stdout, and sits in the middle of all JSON-RPC communication.
 
-For remote (HTTP/SSE) MCP servers, ClawDefender acts as a reverse proxy, forwarding requests after policy evaluation.
+For remote (HTTP/SSE) MCP servers, Rookbot acts as a reverse proxy, forwarding requests after policy evaluation.
 
-### Internals of `clawdefender wrap`
+### Internals of `rookbot wrap`
 
-1. **Config detection:** ClawDefender auto-detects the MCP client by searching known config paths (Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, Cursor: `~/.cursor/mcp.json`).
+1. **Config detection:** Rookbot auto-detects the MCP client by searching known config paths (Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, Cursor: `~/.cursor/mcp.json`).
 2. **Server lookup:** Finds the named server entry in `mcpServers`.
-3. **Command rewriting:** Replaces the `command` with `clawdefender` and prepends `proxy --` before the original command and args.
+3. **Command rewriting:** Replaces the `command` with `rookbot` and prepends `proxy --` before the original command and args.
 4. **Backup:** Creates a `.bak` backup of the original config before modifying.
 5. **Validation:** Parses the rewritten config to ensure it is valid JSON before writing.
 
-`clawdefender unwrap <server-name>` reverses this process, restoring the original command.
+`rookbot unwrap <server-name>` reverses this process, restoring the original command.
 
 ## Intercepted JSON-RPC methods
 
-ClawDefender intercepts and evaluates the following MCP methods:
+Rookbot intercepts and evaluates the following MCP methods:
 
-| Method | Direction | What ClawDefender does |
+| Method | Direction | What Rookbot does |
 |---|---|---|
 | `tools/call` | Client -> Server | **Primary enforcement point.** Evaluates tool name and arguments against policy rules. May allow, deny, or prompt. |
-| `tools/list` | Server -> Client | Logged for audit. ClawDefender records the declared tool set for a server, used later for correlation. |
+| `tools/list` | Server -> Client | Logged for audit. Rookbot records the declared tool set for a server, used later for correlation. |
 | `resources/read` | Client -> Server | Evaluates the resource URI against policy rules. Can restrict which resources an agent accesses. |
 | `resources/list` | Server -> Client | Logged for audit. Records available resources. |
 | `sampling/createMessage` | Server -> Client | Evaluates sampling requests. Can block or modify prompts that match injection patterns. |
@@ -63,7 +63,7 @@ Methods not listed above are passed through unmodified but still logged.
 
 ## Writing custom policy rules
 
-Policies are defined in TOML at `~/.config/clawdefender/policy.toml`. A policy file contains an ordered list of rules. The first matching rule wins.
+Policies are defined in TOML at `~/.config/rookbot/policy.toml`. A policy file contains an ordered list of rules. The first matching rule wins.
 
 ### Rule structure
 
@@ -117,17 +117,17 @@ Both `tool` and `args` fields support glob patterns:
 
 ## Testing policies against fixtures
 
-ClawDefender includes a policy testing mode for verifying rules before deployment:
+Rookbot includes a policy testing mode for verifying rules before deployment:
 
 ```bash
 # Test a single fixture
-clawdefender policy test --policy policy.toml --fixture fixtures/read-ssh-key.json
+rookbot policy test --policy policy.toml --fixture fixtures/read-ssh-key.json
 
 # Test all fixtures in a directory
-clawdefender policy test --policy policy.toml --fixture-dir fixtures/
+rookbot policy test --policy policy.toml --fixture-dir fixtures/
 
 # Expected output format
-clawdefender policy test --policy policy.toml --fixture fixtures/read-ssh-key.json --expect deny
+rookbot policy test --policy policy.toml --fixture fixtures/read-ssh-key.json --expect deny
 ```
 
 ### Fixture format
@@ -147,15 +147,15 @@ A fixture is a JSON file representing an MCP `tools/call` request:
 }
 ```
 
-The `expected` field is optional. When present, `clawdefender policy test` exits with a non-zero status if the actual decision does not match. This integrates with CI to prevent policy regressions.
+The `expected` field is optional. When present, `rookbot policy test` exits with a non-zero status if the actual decision does not match. This integrates with CI to prevent policy regressions.
 
 ## JSON-RPC error codes
 
-When ClawDefender blocks a request, it returns a JSON-RPC error response with the following code:
+When Rookbot blocks a request, it returns a JSON-RPC error response with the following code:
 
 | Code | Meaning |
 |---|---|
-| `-32001` | Policy block. The request was denied by a ClawDefender policy rule. The error `data` field may contain `rule` (name of the matching rule) and `action` (`"blocked"` or `"denied"`). |
+| `-32001` | Policy block. The request was denied by a Rookbot policy rule. The error `data` field may contain `rule` (name of the matching rule) and `action` (`"blocked"` or `"denied"`). |
 
 Standard JSON-RPC error codes (`-32700` parse error, `-32600` invalid request, etc.) are also used where applicable.
 
@@ -166,7 +166,7 @@ Example block response:
   "id": 1,
   "error": {
     "code": -32001,
-    "message": "Blocked by ClawDefender policy",
+    "message": "Blocked by Rookbot policy",
     "data": {
       "rule": "block_ssh",
       "action": "blocked"
@@ -238,18 +238,18 @@ priority = 0
 any = true
 ```
 
-## ClawDefender MCP Server
+## Rookbot MCP Server
 
-In addition to the proxy, ClawDefender provides its own MCP server that other MCP servers can call to declare intent, request permission, and report actions. This enables cooperative security participation.
+In addition to the proxy, Rookbot provides its own MCP server that other MCP servers can call to declare intent, request permission, and report actions. This enables cooperative security participation.
 
 ### Starting the MCP Server
 
 ```bash
 # stdio transport (for direct integration)
-clawdefender serve
+rookbot serve
 
 # HTTP transport on port 3201
-clawdefender serve --http --port 3201
+rookbot serve --http --port 3201
 ```
 
 ### Tool Definitions
@@ -263,7 +263,7 @@ Pre-flight check: will this action be allowed by policy?
 ```json
 {
   "name": "checkIntent",
-  "description": "Check whether a planned action is allowed by ClawDefender policy.",
+  "description": "Check whether a planned action is allowed by Rookbot policy.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -394,7 +394,7 @@ Query the current security policy rules.
 
 ### Interaction Protocol
 
-SDK clients communicate with the ClawDefender MCP server using standard JSON-RPC 2.0 over the MCP protocol.
+SDK clients communicate with the Rookbot MCP server using standard JSON-RPC 2.0 over the MCP protocol.
 
 **Typical flow:**
 
@@ -453,7 +453,7 @@ When using HTTP transport, the MCP server supports Bearer token authentication:
 
 ```bash
 # Start with auto-generated token
-clawdefender serve --http --port 3201
+rookbot serve --http --port 3201
 
 # Token is printed to stderr on startup
 # Clients must include: Authorization: Bearer <token>

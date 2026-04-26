@@ -2,7 +2,7 @@
 
 ## Overview
 
-ClawDefender uses a small language model (SLM) to provide **advisory-only** risk
+Rookbot uses a small language model (SLM) to provide **advisory-only** risk
 assessments for ambiguous MCP events. The SLM receives untrusted data from MCP
 tool calls, resource reads, and sampling requests. This document describes the
 four defense layers that prevent prompt injection from influencing the system.

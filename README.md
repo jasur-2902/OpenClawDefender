@@ -1,183 +1,228 @@
-# Rookbot
+<p align="center">
+  <img src="https://github.com/rookbot-io/rookbot/raw/main/assets/logo.png" alt="Rookbot" width="120" />
+</p>
 
-**A firewall for AI agents.** Intercepts, inspects, and controls what AI tools can do on your machine — with on-device AI risk analysis.
+<h1 align="center">Rookbot</h1>
 
-[![CI](https://github.com/rookbot-io/rookbot/actions/workflows/ci.yml/badge.svg)](https://github.com/rookbot-io/rookbot/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/rookbot-io/rookbot)](https://github.com/rookbot-io/rookbot/releases)
-[![npm](https://img.shields.io/npm/v/rookbot)](https://www.npmjs.com/package/rookbot)
+<p align="center">
+  <strong>A firewall for AI agents.</strong><br/>
+  Intercept, inspect, and control every MCP tool call — before it touches your system.
+</p>
+
+<p align="center">
+  <a href="https://github.com/rookbot-io/rookbot/actions/workflows/ci.yml"><img src="https://github.com/rookbot-io/rookbot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/rookbot-io/rookbot/releases"><img src="https://img.shields.io/github/v/release/rookbot-io/rookbot?label=release" alt="Release"></a>
+  <a href="https://www.npmjs.com/package/rookbot"><img src="https://img.shields.io/npm/v/rookbot?color=cb3837" alt="npm"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
+</p>
 
 ---
 
-## Why Rookbot?
+## What is Rookbot?
 
-AI agents communicating via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) can read your files, execute shell commands, and make network requests. There is no standardized security layer between what an agent *wants* to do and what it *actually does*.
+AI coding agents (Claude, Cursor, Windsurf, etc.) talk to tools through the [Model Context Protocol](https://modelcontextprotocol.io/). Those tools can read your files, run shell commands, and open network connections — with no security layer in between.
 
-Rookbot fills that gap. It sits between the MCP client and server, enforcing policies you define before any tool call reaches your system — and uses an on-device AI model to classify risk in real time.
+Rookbot is a transparent proxy that sits between the MCP client and server. Every tool call passes through Rookbot first, where it is evaluated against your policy rules, analyzed by an on-device AI model, and logged for audit.
+
+```
+MCP Client ──── Rookbot Proxy ──── MCP Server
+ (Claude)        allow / block       (filesystem,
+                  / prompt            git, shell)
+```
+
+If a tool call violates your policy, Rookbot blocks it. If it's ambiguous, Rookbot asks you. Everything is logged.
+
+---
 
 ## Install
 
-### npm (recommended)
-
 ```bash
+# npm (macOS + Linux)
 npm install -g rookbot
-```
 
-### Homebrew
-
-```bash
+# Homebrew (macOS + Linux)
 brew install rookbot-io/tap/rookbot
-```
 
-### Shell script
-
-```bash
+# Shell script
 curl -fsSL https://raw.githubusercontent.com/rookbot-io/rookbot/main/scripts/install.sh | bash
+
+# Build from source
+git clone https://github.com/rookbot-io/rookbot.git && cd rookbot
+cargo build --workspace --release && just install
 ```
 
-### Build from source
+**Requirements:** macOS 13+ or Linux (x86_64 / arm64). Rust 1.70+ for building from source.
 
-```bash
-git clone https://github.com/rookbot-io/rookbot.git
-cd rookbot
-cargo build --workspace --release
-just install
-```
+---
 
 ## Quick Start
 
 ```bash
+# 1. Initialize config and data directories
 rookbot init
+
+# 2. Start the background daemon
 rookbot daemon start
+
+# 3. Download an on-device AI model for risk analysis (~1 GB)
 rookbot model download qwen3-1.7b
 rookbot model on
+
+# 4. Protect all your MCP servers
 rookbot wrap --all
+
+# 5. Restart your MCP client (Claude Desktop, Cursor) — done.
 ```
 
-See **[QUICKSTART.md](QUICKSTART.md)** for a detailed setup guide.
+Every tool call now flows through Rookbot. Check the dashboard:
+
+```bash
+rookbot status          # proxy & daemon status
+rookbot log -n 20       # recent events
+rookbot log --blocked   # blocked calls only
+```
+
+---
 
 ## How It Works
 
+Rookbot operates in three layers:
+
+### Layer 1 — MCP Proxy (blocking)
+
+The proxy intercepts every JSON-RPC message between client and server. It evaluates each `tools/call`, `resources/read`, and `sampling/createMessage` against your TOML policy rules. Matching calls are allowed, blocked, or held for user prompt.
+
+### Layer 2 — On-Device AI Analysis (advisory)
+
+Tool calls that pass Layer 1 are analyzed by a local GGUF model (runs entirely on your machine — no data leaves your device). The model classifies risk as Low / Medium / High / Critical with an explanation. This enriches audit logs and alerts but never overrides policy decisions.
+
+### Layer 3 — OS-Level Monitoring (observation)
+
+On macOS, Rookbot observes actual system activity via `eslogger` — file access, process execution, network connections — and correlates it with MCP traffic. If an agent does something it didn't declare, Rookbot flags it.
+
+---
+
+## Key Features
+
+**Policy Engine** — TOML rules for allow / deny / prompt per tool, per argument pattern, per server. Default-deny. First match wins.
+
+**Behavioral Defense** — Learns per-server baselines, then detects anomalies across 9 dimensions. Recognizes 6 kill-chain attack patterns. Optional auto-block.
+
+**Security Scanner** — 5 modules: config audit, policy strength, system posture (SIP, Gatekeeper, FileVault), behavioral anomaly, and fuzzing.
+
+**Threat Intelligence** — Ed25519-signed threat feeds, IoC matching (IP, domain, hash, command pattern), server reputation checks.
+
+**Prompt Injection Hardening** — Input sanitization, nonce delimiters, output validation, canary tokens. Fail-closed: unknown output defaults to HIGH risk.
+
+**Cloud Escalation (BYOK)** — Optionally escalate ambiguous events to a multi-agent swarm (Anthropic / OpenAI). Keys stored in macOS Keychain. Daily/monthly budget caps.
+
+**Desktop App** — Tauri GUI with real-time alerts, event timeline, AI analysis display, and interactive prompts.
+
+---
+
+## CLI Reference
+
+```bash
+rookbot init                          # Initialize config
+rookbot daemon start|stop|status      # Manage background daemon
+rookbot wrap <server> | --all         # Protect MCP servers
+rookbot unwrap <server>               # Remove protection
+rookbot status                        # Show proxy status
+
+rookbot model list                    # Available AI models
+rookbot model download <name>         # Download a model
+rookbot model on|off                  # Enable/disable AI analysis
+
+rookbot scan -- <server-command>      # Security scan an MCP server
+rookbot log [-n 50] [--blocked]       # View audit log
+rookbot policy list|reload|test       # Manage policy rules
+rookbot doctor                        # Diagnostic checks
+
+rookbot feed update                   # Update threat intelligence
+rookbot reputation <server>           # Check server reputation
+rookbot ioc add <indicator>           # Add custom IoC
+
+rookbot config set-api-key            # Configure cloud API key (BYOK)
+rookbot usage                         # Cloud API cost tracking
 ```
-MCP Client           Rookbot                   MCP Server
-(Claude,    ──────>  Proxy ──> Policy   ──────>  (filesystem,
- Cursor)             Engine    Engine             git, etc.)
-            <──────           <──────
-                        |
-                   EventRouter
-                  /     |     \
-          Behavioral  Kill    SLM Analysis
-          Scoring     Chain   (on-device AI)
-                  \     |     /
-                   Alert Engine
-                   Audit Logger
-                        |
-                   GUI / CLI / Notifications
+
+Run `rookbot --help` for the full command list (40+ subcommands).
+
+---
+
+## Writing Policy Rules
+
+Policies live in `~/.config/rookbot/policy.toml`. Rules are evaluated top-to-bottom; first match wins.
+
+```toml
+# Block all shell execution
+[[rule]]
+action = "deny"
+tool = "shell_execute"
+
+# Ask before accessing system config
+[[rule]]
+action = "prompt"
+tool = "filesystem_*"
+args.path = "/etc/**"
+
+# Allow reading project files
+[[rule]]
+action = "allow"
+tool = "filesystem_read"
+args.path = "/home/user/projects/**"
+
+# Default deny
+[[rule]]
+action = "deny"
+tool = "*"
 ```
 
-The proxy intercepts every JSON-RPC message. The policy engine evaluates each tool call against your rules. Allowed calls pass through; denied calls are blocked. The SLM (small language model) classifies risk in real time. The OS monitor independently observes what actually happens at the system level for correlation and audit.
+Test policies before deploying:
 
-## Features
+```bash
+rookbot policy test --policy policy.toml --fixture fixtures/read-ssh-key.json --expect deny
+```
 
-### Core Security
-- **MCP interception** — stdio man-in-the-middle for local servers, HTTP reverse proxy for remote servers
-- **Policy engine** — TOML-based rules: allow, deny, or prompt per tool, per argument pattern, per server
-- **Interactive prompts** — when a tool call matches a `prompt` rule, Rookbot asks you before forwarding it
-- **Audit logging** — structured JSONL logs of every intercepted call, decision made, and response returned
-- **Path canonicalization** — prevents path traversal attacks in policy matching
-
-### AI-Powered Analysis
-- **On-device SLM risk analysis** — 5 GGUF models (229 MB to 2.2 GB) run locally on your machine. No data leaves your device
-- **Risk classification** — each tool call is classified as Low/Medium/High/Critical with an explanation
-- **Cloud fallback chain** — GGUF -> Cloud (Anthropic/OpenAI) -> Mock, with data minimization for cloud requests
-- **Fail-closed parsing** — unknown or malformed AI output defaults to HIGH risk
-- **Prompt injection hardening** — input sanitization, nonce delimiters, output validation, canary tokens
-
-### Behavioral Defense
-- **Behavioral baselines** — learns per-server behavioral patterns, then detects anomalies across 9 dimensions (unknown tools, paths, network, rate, sequence, arguments, sensitive targets, first network access, privilege escalation)
-- **Kill chain recognition** — detects 6 multi-step attack patterns (credential theft, reconnaissance, persistence, data staging, shell escape, prompt injection followthrough)
-- **Real-time alerts** — 9 alert rules including SLM-driven Rule 9 for AI-flagged high-risk events
-- **Anomaly-based escalation** — events with anomaly score >= 0.6 are escalated to SLM analysis with rate limiting (5/min)
-
-### OS-Level Monitoring
-- **eslogger integration** — observes file access, process execution, and network activity at the kernel event level
-- **Process tree identification** — traces which AI agent spawned which process
-- **Event correlation** — links MCP tool calls to OS-level events, detecting discrepancies between declared and actual behavior
-- **FSEvents monitoring** — file system event watching with sensitivity classification and debouncing
-
-### Security Scanning
-- **5 scanner modules** — config audit, policy strength, system posture, behavioral anomaly, fuzzing
-- **System posture checks** — SIP, Gatekeeper, Firewall, FileVault, auto-updates, SSH, Full Disk Access
-- **Threat intelligence** — Ed25519-signed threat feeds, IoC engine (IP, CIDR, domain, hash, command pattern), community rule packs
-- **Server reputation** — check any server against the blocklist and IoC database
-
-### Cloud Escalation (Optional, BYOK)
-- **Multi-agent swarm** — escalates ambiguous events to three specialist agents (Hawk, Forensics, Internal Affairs) for deep analysis
-- **Budget controls** — daily and monthly spending caps with cost tracking
-- **API key management** — stored in macOS Keychain, never written to disk or logs
-
-### Interfaces
-- **CLI** — 40+ subcommands for daemon management, model management, policy, scanning, threat intel, and more
-- **Tauri GUI** — desktop application with alerts, events, prompts, AI analysis display, and settings
-- **Cooperative SDK** — Python and TypeScript SDKs for MCP servers to voluntarily declare intent and request permission
+---
 
 ## Supported MCP Clients
 
-| Client | Status | Notes |
-|---|---|---|
-| Claude Desktop | Supported | Auto-detected by `rookbot wrap`. Supports mcpServers config and DXT extensions. |
-| Cursor | Supported | Auto-detected by `rookbot wrap` |
-| VS Code (Copilot) | Planned | Coming in a future release |
+| Client | Status |
+|--------|--------|
+| Claude Desktop | Supported — auto-detected by `rookbot wrap` |
+| Cursor | Supported — auto-detected by `rookbot wrap` |
+| VS Code (Copilot) | Planned |
 
-## System Requirements
+---
 
-- **macOS Ventura (13.0)** or later, **Linux** (x86_64, arm64)
-- **Rust toolchain** (1.70+) — for building from source
-- **Full Disk Access** (macOS) — required for eslogger (grant in System Settings > Privacy & Security)
-- **Node.js 18+** — required only for building the GUI app
+## Configuration
 
-The MCP proxy and policy engine work on any platform; OS-level monitoring and the GUI app are macOS-specific.
+| File | Purpose |
+|------|---------|
+| `~/.config/rookbot/config.toml` | Main configuration |
+| `~/.config/rookbot/policy.toml` | Security policy rules |
+| `~/.local/share/rookbot/audit.jsonl` | Audit log |
+| `~/.local/share/rookbot/models/` | Downloaded AI models |
 
-## Architecture
-
-Rookbot is structured as a Cargo workspace:
-
-| Crate | Purpose |
-|---|---|
-| `clawdefender-cli` | Command-line interface (`rookbot` binary) |
-| `clawdefender-daemon` | Background daemon orchestrating all components |
-| `clawdefender-core` | Policy engine, audit, behavioral analysis, event correlation |
-| `clawdefender-mcp-proxy` | MCP proxy — stdio and HTTP modes |
-| `clawdefender-mcp-server` | Cooperative SDK endpoint (checkIntent, reportAction, getPolicy) |
-| `clawdefender-sensor` | OS-level monitoring via eslogger + FSEvents |
-| `clawdefender-slm` | On-device AI model management and inference |
-| `clawdefender-swarm` | Cloud multi-agent analysis (BYOK) |
-| `clawdefender-scanner` | 5-module security scanner |
-| `clawdefender-threat-intel` | Threat feeds, IoC engine, community rule packs |
-| `clawdefender-guard` | Agent guard system with API auth |
-| `clawdefender-certify` | MCP server compliance testing (Level 1-3) |
-| `clawdefender-tui` | Terminal UI (ratatui) |
-| `clawdefender-app` | Tauri GUI desktop application |
-
-## Known Limitations
-
-- **eslogger is NOTIFY-only.** OS-level monitoring can observe but not block. Enforcement happens at the MCP proxy layer.
-- **Network extension requires Apple signing.** Network-level blocking is designed but not deployable without a System Extension entitlement.
-- **SLM analysis is advisory.** AI risk assessments inform alerts and escalation but do not block on their own. Policy rules remain the enforcement mechanism.
-- **macOS only for OS monitoring.** The MCP proxy and policy engine work cross-platform; eslogger, FSEvents, and the desktop app are macOS-specific.
+---
 
 ## Documentation
 
-- [Quick Start Guide](QUICKSTART.md)
-- [Architecture](docs/architecture.md)
-- [Sensor Guide](docs/sensor-guide.md)
-- [SLM Guide](docs/slm-guide.md)
-- [Behavioral Defense Guide](docs/behavioral-guide.md)
-- [Swarm Guide](docs/swarm-guide.md)
-- [Threat Model](docs/threat-model.md)
-- [MCP Protocol Reference](docs/mcp-protocol.md)
-- [Contributing Guide](CONTRIBUTING.md)
-- [Security Policy](SECURITY.md)
+| Guide | Description |
+|-------|-------------|
+| [Quick Start](QUICKSTART.md) | 10-minute setup guide |
+| [Architecture](docs/architecture.md) | System design and data flow |
+| [MCP Protocol](docs/mcp-protocol.md) | How wrapping, interception, and policies work |
+| [Behavioral Defense](docs/behavioral-guide.md) | Anomaly detection and kill-chain recognition |
+| [SLM Guide](docs/slm-guide.md) | On-device AI model setup |
+| [Sensor Guide](docs/sensor-guide.md) | macOS eslogger + FSEvents monitoring |
+| [Swarm Guide](docs/swarm-guide.md) | Cloud escalation (BYOK) |
+| [Threat Model](docs/threat-model.md) | What Rookbot protects against (and doesn't) |
+| [Security Policy](SECURITY.md) | Vulnerability reporting |
+| [Contributing](CONTRIBUTING.md) | How to build and contribute |
+
+---
 
 ## License
 

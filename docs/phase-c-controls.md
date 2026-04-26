@@ -1,7 +1,7 @@
 # Phase C: Every Control Works
 
 This document summarizes the changes made in Phase C to ensure every UI control
-in the ClawDefender desktop application is wired to a real backend action with
+in the Rookbot desktop application is wired to a real backend action with
 persistent state.
 
 ## Test Results
@@ -43,7 +43,7 @@ order. The first item receives the highest priority (`N * 10`), decreasing by
 
 ## New Config Keys
 
-All keys are read from and written to `~/.config/clawdefender/config.toml`.
+All keys are read from and written to `~/.config/rookbot/config.toml`.
 
 | Section        | Key                    | Type    | Default      | Description                          |
 |----------------|------------------------|---------|--------------|--------------------------------------|

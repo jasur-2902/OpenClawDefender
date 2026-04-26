@@ -6,9 +6,9 @@ The project uses these standard directories:
 
 | Category | Path | Contents |
 |----------|------|----------|
-| Config | `~/.config/clawdefender/` | config.toml, policy.toml, noise.toml, sensor.toml, honeypot/, window-geometry.json |
-| Data | `~/.local/share/clawdefender/` | audit.jsonl, profiles.db, clawdefender.pid, clawdefender.sock, daemon.log, model_config.toml, server-token, score_history.db, conversations.db, guidance_state.json, known_servers.json, swarm_usage.db, chat.db |
-| Data subdirs | `~/.local/share/clawdefender/` | models/, threat-intel/, crashes/, scans/, exports/, behavioral/ |
+| Config | `~/.config/rookbot/` | config.toml, policy.toml, noise.toml, sensor.toml, honeypot/, window-geometry.json |
+| Data | `~/.local/share/rookbot/` | audit.jsonl, profiles.db, clawdefender.pid, clawdefender.sock, daemon.log, model_config.toml, server-token, score_history.db, conversations.db, guidance_state.json, known_servers.json, swarm_usage.db, chat.db |
+| Data subdirs | `~/.local/share/rookbot/` | models/, threat-intel/, crashes/, scans/, exports/, behavioral/ |
 | Binary install | `~/.clawdefender/` | bin/clawdefender (self-installer only) |
 | Legacy marker | `~/.clawdefender/onboarding_complete` | Onboarding completion flag |
 
@@ -37,11 +37,11 @@ The scanner used `threat_intel/blocklist.json` and `threat_intel/feed_meta.json`
 
 **Files:**
 - `clients/clawdefender-app/src-tauri/src/wrap_flow.rs` (was `~/.clawdefender/known_servers.json`)
-- `clients/clawdefender-app/src-tauri/src/tools/detection.rs` (was `~/.local/share/clawdefender/known_servers.json`)
+- `clients/clawdefender-app/src-tauri/src/tools/detection.rs` (was `~/.local/share/rookbot/known_servers.json`)
 
 Two different modules stored/read `known_servers.json` from different base directories.
 
-**Fix:** Changed wrap_flow.rs to use `~/.local/share/clawdefender/known_servers.json` to match the standard data directory.
+**Fix:** Changed wrap_flow.rs to use `~/.local/share/rookbot/known_servers.json` to match the standard data directory.
 
 **Impact:** Servers wrapped via `wrap_flow` would be invisible to `tools/detection` and vice versa, causing the app to show inconsistent server state.
 
@@ -53,7 +53,7 @@ Two different modules stored/read `known_servers.json` from different base direc
 
 Used `~/.clawdefender/guidance_state.json` instead of the standard data directory.
 
-**Fix:** Changed to `~/.local/share/clawdefender/guidance_state.json`.
+**Fix:** Changed to `~/.local/share/rookbot/guidance_state.json`.
 
 **Impact:** Guidance state was stored in a non-standard location, would not be included in standard data-dir backups, and would not be cleaned up by the uninstaller's data-dir removal.
 
@@ -65,7 +65,7 @@ Used `~/.clawdefender/guidance_state.json` instead of the standard data director
 
 Used `~/.clawdefender/exports` for export output.
 
-**Fix:** Changed to `~/.local/share/clawdefender/exports`. Also fixed the corresponding test.
+**Fix:** Changed to `~/.local/share/rookbot/exports`. Also fixed the corresponding test.
 
 **Impact:** Exports were written to a non-standard location.
 
@@ -85,14 +85,14 @@ The `dirs` crate's `data_dir()`, `data_local_dir()`, and `config_dir()` function
 - `dirs::config_dir()` -> `~/Library/Application Support/`
 
 But the project convention is:
-- Data: `~/.local/share/clawdefender/`
-- Config: `~/.config/clawdefender/`
+- Data: `~/.local/share/rookbot/`
+- Config: `~/.config/rookbot/`
 
-These modules would write to `~/Library/Application Support/clawdefender/` on macOS while every other module writes to `~/.local/share/clawdefender/`. This means the server-token, conversations database, threat-intel cache, and window geometry would end up in the wrong location.
+These modules would write to `~/Library/Application Support/clawdefender/` on macOS while every other module writes to `~/.local/share/rookbot/`. This means the server-token, conversations database, threat-intel cache, and window geometry would end up in the wrong location.
 
 **Fix:** Replaced all `dirs::data_dir()`, `dirs::data_local_dir()`, and `dirs::config_dir()` calls with explicit `$HOME/.local/share/clawdefender/` and `$HOME/.config/clawdefender/` path construction using `std::env::var("HOME")`.
 
-**Impact:** On macOS, the server-token file would be written to `~/Library/Application Support/clawdefender/server-token` but the daemon reads it from `~/.local/share/clawdefender/server-token`, causing authentication failures between the MCP server and daemon. Similarly, conversations and threat-intel cache would be stored in an unreachable location.
+**Impact:** On macOS, the server-token file would be written to `~/Library/Application Support/clawdefender/server-token` but the daemon reads it from `~/.local/share/rookbot/server-token`, causing authentication failures between the MCP server and daemon. Similarly, conversations and threat-intel cache would be stored in an unreachable location.
 
 ---
 
@@ -124,12 +124,12 @@ These modules would write to `~/Library/Application Support/clawdefender/` on ma
 
 ### Config Defaults (`crates/clawdefender-core/src/config/settings.rs`)
 
-- `default_socket_path()` -> `~/.local/share/clawdefender/clawdefender.sock` (correct)
-- `default_audit_log_path()` -> `~/.local/share/clawdefender/audit.jsonl` (correct)
-- `default_policy_path()` -> `~/.config/clawdefender/policy.toml` (correct)
-- `default_sensor_config_path()` -> `~/.config/clawdefender/sensor.toml` (correct)
+- `default_socket_path()` -> `~/.local/share/rookbot/clawdefender.sock` (correct)
+- `default_audit_log_path()` -> `~/.local/share/rookbot/audit.jsonl` (correct)
+- `default_policy_path()` -> `~/.config/rookbot/policy.toml` (correct)
+- `default_sensor_config_path()` -> `~/.config/rookbot/sensor.toml` (correct)
 - `dirs_next_fallback()` uses `$HOME` with `/tmp/` fallback (correct pattern)
-- Install script output messages match: "Configuration: ~/.config/clawdefender/" and "Audit logs: ~/.local/share/clawdefender/"
+- Install script output messages match: "Configuration: ~/.config/rookbot/" and "Audit logs: ~/.local/share/rookbot/"
 
 ### Install Script (`scripts/install.sh`)
 
@@ -139,8 +139,8 @@ These modules would write to `~/Library/Application Support/clawdefender/` on ma
 
 ### Daemon PID file
 
-- `crates/clawdefender-daemon/src/lib.rs:1583` -> `~/.local/share/clawdefender/clawdefender.pid`
-- `clients/clawdefender-cli/src/commands/daemon.rs:192` -> `~/.local/share/clawdefender/clawdefender.pid`
+- `crates/clawdefender-daemon/src/lib.rs:1583` -> `~/.local/share/rookbot/clawdefender.pid`
+- `clients/clawdefender-cli/src/commands/daemon.rs:192` -> `~/.local/share/rookbot/clawdefender.pid`
 - Both fallback to `/tmp/clawdefender.pid` when HOME is unset (consistent)
 
 ### Legacy `~/.clawdefender/` Usage
@@ -148,7 +148,7 @@ These modules would write to `~/Library/Application Support/clawdefender/` on ma
 The `~/.clawdefender/` directory is used only for:
 1. **Self-installer binary**: `~/.clawdefender/bin/clawdefender` + PATH export (installer/mod.rs)
 2. **Onboarding marker**: `~/.clawdefender/onboarding_complete` (state.rs)
-3. **Uninstaller**: Correctly removes `~/.clawdefender/`, `~/.config/clawdefender/`, and `~/.local/share/clawdefender/`
+3. **Uninstaller**: Correctly removes `~/.clawdefender/`, `~/.config/rookbot/`, and `~/.local/share/rookbot/`
 
 These are intentional legacy paths for the self-install mechanism and are correctly handled.
 

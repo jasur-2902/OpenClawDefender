@@ -1,4 +1,4 @@
-# ClawDefender Release Process
+# Rookbot Release Process
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@
    After the release is published, download the tarball and compute its SHA-256:
 
    ```bash
-   curl -fsSL https://github.com/clawdefender/clawdefender/releases/download/v0.2.0/clawdefender-macos-universal.tar.gz -o /tmp/clawdefender.tar.gz
+   curl -fsSL https://github.com/rookbot-io/rookbot/releases/download/v0.2.0/clawdefender-macos-universal.tar.gz -o /tmp/clawdefender.tar.gz
    shasum -a 256 /tmp/clawdefender.tar.gz
    ```
 

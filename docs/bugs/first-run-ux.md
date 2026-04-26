@@ -2,7 +2,7 @@
 
 ## Summary
 
-Audit of the first-run experience for ClawDefender CLI commands: `init`, `doctor`, `wrap`, `unwrap`, `status`, and install scripts.
+Audit of the first-run experience for Rookbot CLI commands: `init`, `doctor`, `wrap`, `unwrap`, `status`, and install scripts.
 
 ---
 

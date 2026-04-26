@@ -1,5 +1,5 @@
-# ClawDefender — Changes & New Features Report
-## Compared against: `docs/ClawDefender_System_Audit.md` (2026-02-24)
+# Rookbot — Changes & New Features Report
+## Compared against: `docs/Rookbot_System_Audit.md` (2026-02-24)
 ## Date: 2026-02-26
 ## Analyzed by: 3-agent automated analysis team
 
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-Since the system audit on 2026-02-24, ClawDefender has undergone a **major redesign** of the Mac GUI application. The changes represent a fundamental shift from a complex security-dashboard-heavy interface to a **streamlined, AI-first Mac-native experience** focused on conversational assistance, real-time activity monitoring, and intelligent alerting.
+Since the system audit on 2026-02-24, Rookbot has undergone a **major redesign** of the Mac GUI application. The changes represent a fundamental shift from a complex security-dashboard-heavy interface to a **streamlined, AI-first Mac-native experience** focused on conversational assistance, real-time activity monitoring, and intelligent alerting.
 
 ### Key Metrics
 
@@ -156,7 +156,7 @@ Privacy-safe crash telemetry.
 
 | Function | Purpose |
 |----------|---------|
-| `save_crash_report()` | Write JSON crash report to `~/.local/share/clawdefender/crashes/` |
+| `save_crash_report()` | Write JSON crash report to `~/.local/share/rookbot/crashes/` |
 | `list_crash_reports()` | List all pending crash reports |
 | `get_crash_report()` | Retrieve specific report by ID |
 | `dismiss_crash_report()` | Delete/acknowledge report |
@@ -202,7 +202,7 @@ Converts technical security events into natural language.
 
 Audit log repair at startup.
 
-1. Opens `~/.local/share/clawdefender/audit.jsonl`
+1. Opens `~/.local/share/rookbot/audit.jsonl`
 2. Reads last 64KB (max single JSON line size)
 3. Checks if last line is valid JSON
 4. If invalid, finds the last valid newline and truncates

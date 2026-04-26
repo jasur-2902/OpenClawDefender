@@ -1,4 +1,4 @@
-# ClawDefender Network Architecture (Phase 12)
+# Rookbot Network Architecture (Phase 12)
 
 ## High-Level Architecture
 
@@ -26,7 +26,7 @@
     |           | XPC (policy query) | XPC (DNS query)        |
     |           v                    v                         |
     |  +----------------------------------------------------+ |
-    |  |              ClawDefender Daemon                    | |
+    |  |              Rookbot Daemon                    | |
     |  |                                                    | |
     |  |  +----------------+  +-----------+  +----------+   | |
     |  |  | Network Policy |  | DNS       |  | Rate     |   | |
@@ -82,7 +82,7 @@ When an outbound TCP/UDP connection is initiated:
 The XPC bridge connects the Network Extension (runs as a system extension in a separate sandbox) to the daemon:
 
 ```
-Network Extension (sandbox)  <--XPC-->  ClawDefender Daemon
+Network Extension (sandbox)  <--XPC-->  Rookbot Daemon
      NEFilterDataProvider                   PolicyEngine
      NEDNSProxyProvider                     DnsFilter
 ```

@@ -1,12 +1,12 @@
-# ClawDefender GUI User Guide
+# Rookbot GUI User Guide
 
 ## Installation
 
 ### macOS (.dmg)
 
-1. Download the latest `ClawDefender_x.x.x_universal.dmg` from the releases page
-2. Open the `.dmg` file and drag **ClawDefender** into your Applications folder
-3. Launch ClawDefender from Applications or Spotlight
+1. Download the latest `Rookbot_x.x.x_universal.dmg` from the releases page
+2. Open the `.dmg` file and drag **Rookbot** into your Applications folder
+3. Launch Rookbot from Applications or Spotlight
 
 On first launch, macOS may ask you to confirm opening an app from an identified developer. Click **Open** to proceed.
 
@@ -18,19 +18,19 @@ brew install --cask clawdefender
 
 ### Auto-update
 
-ClawDefender checks for updates automatically. When an update is available, you will see a notification in the app. Updates are downloaded and applied in the background; a restart is required to complete the update.
+Rookbot checks for updates automatically. When an update is available, you will see a notification in the app. Updates are downloaded and applied in the background; a restart is required to complete the update.
 
 ## First Launch and Onboarding
 
-When you open ClawDefender for the first time, an onboarding wizard guides you through initial setup in four steps:
+When you open Rookbot for the first time, an onboarding wizard guides you through initial setup in four steps:
 
 ### Step 1: Welcome
 
-A brief introduction to what ClawDefender does. Click **Get Started** to continue.
+A brief introduction to what Rookbot does. Click **Get Started** to continue.
 
 ### Step 2: Detect and Protect
 
-ClawDefender scans your system for MCP clients (Claude Desktop, VS Code with Copilot, Cursor, etc.) and lists the MCP servers each client has configured. Select which servers to protect and click **Protect These**. ClawDefender wraps each selected server so that all traffic is routed through the security proxy.
+Rookbot scans your system for MCP clients (Claude Desktop, VS Code with Copilot, Cursor, etc.) and lists the MCP servers each client has configured. Select which servers to protect and click **Protect These**. Rookbot wraps each selected server so that all traffic is routed through the security proxy.
 
 If no clients are detected, you can skip this step and add servers manually later.
 
@@ -48,13 +48,13 @@ You can change the security level at any time from the Policy page or Settings.
 
 ### Step 4: Complete
 
-Review the list of protected servers, choose whether to start ClawDefender at login and show the menu bar icon, then click **Open Dashboard**.
+Review the list of protected servers, choose whether to start Rookbot at login and show the menu bar icon, then click **Open Dashboard**.
 
 > After completing onboarding, restart any running AI applications so they use the protected server configurations.
 
 ## Dashboard
 
-The Dashboard is the home screen of ClawDefender. It provides an at-a-glance view of your security posture.
+The Dashboard is the home screen of Rookbot. It provides an at-a-glance view of your security posture.
 
 ### Protection Status
 
@@ -83,7 +83,7 @@ High-risk and critical events are surfaced in the alerts panel on the right side
 
 ### Server Overview
 
-Cards for each monitored MCP server showing the server name, status (running, stopped, error), event count, and whether it is wrapped by ClawDefender.
+Cards for each monitored MCP server showing the server name, status (running, stopped, error), event count, and whether it is wrapped by Rookbot.
 
 ## Event Timeline
 
@@ -120,7 +120,7 @@ The timeline uses virtualized scrolling for performance, rendering only the visi
 
 ## Policy Editor
 
-The Policy Editor lets you create and manage security rules that control how ClawDefender handles MCP traffic.
+The Policy Editor lets you create and manage security rules that control how Rookbot handles MCP traffic.
 
 ### Rules List
 
@@ -185,7 +185,7 @@ Each monitored server has a behavioral profile card showing:
 
 ### Status Meanings
 
-- **Learning**: ClawDefender is building a baseline profile for this server
+- **Learning**: Rookbot is building a baseline profile for this server
 - **Normal**: Server behavior matches the learned baseline
 - **Anomalous**: Server behavior deviates significantly from baseline
 
@@ -229,7 +229,7 @@ Filter by date range, server, event type, decision, and risk level to narrow dow
 
 ## System Health
 
-The System Health page runs diagnostic checks on your ClawDefender installation.
+The System Health page runs diagnostic checks on your Rookbot installation.
 
 ### Diagnostics
 
@@ -253,7 +253,7 @@ The page also displays system details:
 
 ## Settings
 
-The Settings page lets you configure ClawDefender's behavior.
+The Settings page lets you configure Rookbot's behavior.
 
 | Setting | Description |
 |---------|-------------|
@@ -293,7 +293,7 @@ If multiple prompts arrive, a queue indicator at the bottom shows how many are p
 
 ## System Tray
 
-ClawDefender runs in the system tray (menu bar on macOS) when minimized.
+Rookbot runs in the system tray (menu bar on macOS) when minimized.
 
 ### Tray Icon Colors
 
@@ -309,7 +309,7 @@ Right-click (or click on macOS) the tray icon to:
 
 - Open the main window
 - View quick status
-- Quit ClawDefender
+- Quit Rookbot
 
 ## Keyboard Shortcuts
 
@@ -322,7 +322,7 @@ Right-click (or click on macOS) the tray icon to:
 
 ## Troubleshooting
 
-### ClawDefender says "Daemon Stopped"
+### Rookbot says "Daemon Stopped"
 
 1. Open System Health and run diagnostics
 2. Check that the daemon binary is installed (`claw doctor`)
@@ -345,19 +345,19 @@ Increase the prompt timeout in Settings. The default is 30 seconds.
 - Make sure the MCP servers are wrapped (check Server Overview on the Dashboard)
 - Restart your AI application after wrapping servers
 
-### ClawDefender is using too much memory
+### Rookbot is using too much memory
 
 The event ring buffer is capped at 10,000 events in memory. If you see high memory usage, reduce the event retention period in Settings.
 
 ### macOS asks for Full Disk Access
 
-ClawDefender needs to read MCP client configuration files (e.g., Claude Desktop's `claude_desktop_config.json`) to detect and wrap servers. Grant Full Disk Access in System Settings > Privacy & Security > Full Disk Access.
+Rookbot needs to read MCP client configuration files (e.g., Claude Desktop's `claude_desktop_config.json`) to detect and wrap servers. Grant Full Disk Access in System Settings > Privacy & Security > Full Disk Access.
 
 ### How to completely uninstall
 
-1. Quit ClawDefender from the tray menu
+1. Quit Rookbot from the tray menu
 2. Run `claw daemon stop` to stop the daemon
-3. Delete `/Applications/ClawDefender.app`
-4. Remove `~/.config/clawdefender/` for configuration
+3. Delete `/Applications/Rookbot.app`
+4. Remove `~/.config/rookbot/` for configuration
 5. Remove `~/Library/Logs/clawdefender/` for logs
 6. Optionally run `claw unwrap --all` before uninstalling to restore original MCP configurations

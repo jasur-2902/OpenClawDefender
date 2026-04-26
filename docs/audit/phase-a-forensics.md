@@ -12,7 +12,7 @@ However, there are secondary issues that would affect display quality even if th
 
 ## 1. Audit Log Analysis
 
-### File: `~/.local/share/clawdefender/audit.jsonl`
+### File: `~/.local/share/rookbot/audit.jsonl`
 - **Size**: 66,538 bytes, 217 lines
 - **Content**: 100% session-start and session-end events
 - **Zero enriched events**: No tool_call, resource_read, or any MCP-intercepted events
@@ -39,8 +39,8 @@ However, there are secondary issues that would affect display quality even if th
 - Session-end events always show `"total_logged": 0` -- confirming no events were ever logged during any session
 
 ### Other files:
-- `~/.local/share/clawdefender/clawdefender.pid` -- daemon PID file
-- `~/.local/share/clawdefender/clawdefender.sock` -- IPC Unix socket
+- `~/.local/share/rookbot/clawdefender.pid` -- daemon PID file
+- `~/.local/share/rookbot/clawdefender.sock` -- IPC Unix socket
 - `~/.clawdefender/onboarding_complete` -- GUI onboarding flag
 
 ---
@@ -54,7 +54,7 @@ The proxy creates its **own `FileAuditLogger`** in `StdioProxy::new()` (line 88-
 ```rust
 let (audit_tx, mut audit_rx) = mpsc::channel::<AuditRecord>(1024);
 
-let audit_log_path = default_audit_log_path();  // ~/.local/share/clawdefender/audit.jsonl
+let audit_log_path = default_audit_log_path();  // ~/.local/share/rookbot/audit.jsonl
 let audit_logger = Arc::new(
     FileAuditLogger::new(audit_log_path.clone(), LogRotation::default())
         .context("creating proxy audit logger")?,
@@ -125,7 +125,7 @@ The `FileAuditLogger::new()` constructor automatically writes a session-start re
 - The proxy is a standalone binary (`clawdefender-mcp-proxy`) launched by Claude Desktop
 - The daemon is a separate binary (`clawdefender-daemon`) launched by the Tauri app or launchd
 - They share no IPC channel for audit events
-- They both independently write to the same `~/.local/share/clawdefender/audit.jsonl`
+- They both independently write to the same `~/.local/share/rookbot/audit.jsonl`
 
 The IPC socket (`clawdefender.sock`) only supports `status`, `reload`, `shutdown`, and `GuardRequest` messages -- **NOT** audit event forwarding.
 
@@ -230,7 +230,7 @@ GUI (Tauri App)                                                        |
 
 ### If the proxy IS being invoked but events still don't appear:
 1. Check if `default_audit_log_path()` resolves to the same path the GUI watches
-2. Check file permissions on `~/.local/share/clawdefender/audit.jsonl`
+2. Check file permissions on `~/.local/share/rookbot/audit.jsonl`
 3. Check if the BufWriter flush is happening (the proxy's background task uses `audit_logger.log()` which goes through the channel-based writer)
 
 ### Architectural improvements:
@@ -244,7 +244,7 @@ GUI (Tauri App)                                                        |
 
 | Question | Answer |
 |---|---|
-| Where does the proxy write enriched events? | To `~/.local/share/clawdefender/audit.jsonl` via its own FileAuditLogger |
+| Where does the proxy write enriched events? | To `~/.local/share/rookbot/audit.jsonl` via its own FileAuditLogger |
 | Why do only session-start/end events appear? | The proxy has never been invoked. All 217 events are from daemon starts/stops. |
 | Does the proxy connect to the daemon? | **NO**. They are independent processes sharing a log file. |
 | Is there a JSON format mismatch? | **NO**. Field names match across all layers. |

@@ -1,4 +1,4 @@
-# ClawDefender Data & State Diagram
+# Rookbot Data & State Diagram
 
 Visual reference for data flow and state management.
 

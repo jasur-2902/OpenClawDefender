@@ -1,6 +1,6 @@
-# ClawDefender Quick Start Guide
+# Rookbot Quick Start Guide
 
-Get ClawDefender running and protecting your AI agents in under 10 minutes.
+Get Rookbot running and protecting your AI agents in under 10 minutes.
 
 ## Prerequisites
 
@@ -21,8 +21,8 @@ cargo --version
 ## Step 1: Build from Source
 
 ```bash
-git clone https://github.com/clawdefender/clawdefender.git
-cd clawdefender
+git clone https://github.com/rookbot-io/rookbot.git
+cd rookbot
 cargo build --workspace --release
 ```
 
@@ -38,8 +38,8 @@ Expected output (final lines):
 
 ```bash
 # Install CLI and daemon to /usr/local/bin
-sudo cp target/release/clawdefender /usr/local/bin/
-sudo cp target/release/clawdefender-daemon /usr/local/bin/
+sudo cp target/release/rookbot /usr/local/bin/
+sudo cp target/release/rookbot-daemon /usr/local/bin/
 ```
 
 Or use the justfile:
@@ -51,47 +51,47 @@ just install
 ## Step 3: Initialize Configuration
 
 ```bash
-clawdefender init
+rookbot init
 ```
 
 Expected output:
 
 ```
-Created config directory: ~/.config/clawdefender/
-Created data directory: ~/.local/share/clawdefender/
-Written default config: ~/.config/clawdefender/config.toml
-Written default policy: ~/.config/clawdefender/policy.toml
-ClawDefender initialized.
+Created config directory: ~/.config/rookbot/
+Created data directory: ~/.local/share/rookbot/
+Written default config: ~/.config/rookbot/config.toml
+Written default policy: ~/.config/rookbot/policy.toml
+Rookbot initialized.
 ```
 
 This creates:
-- `~/.config/clawdefender/config.toml` -- main configuration
-- `~/.config/clawdefender/policy.toml` -- security rules
-- `~/.local/share/clawdefender/` -- audit logs, models, scan results
+- `~/.config/rookbot/config.toml` -- main configuration
+- `~/.config/rookbot/policy.toml` -- security rules
+- `~/.local/share/rookbot/` -- audit logs, models, scan results
 
 ## Step 4: Start the Daemon
 
 ```bash
-clawdefender daemon start
+rookbot daemon start
 ```
 
 Expected output:
 
 ```
-Starting ClawDefender daemon...
+Starting Rookbot daemon...
 Daemon started (PID 12345).
 ```
 
 Verify it is running:
 
 ```bash
-clawdefender daemon status
+rookbot daemon status
 ```
 
 Expected output:
 
 ```
-ClawDefender Daemon
+Rookbot Daemon
   Status: running
   PID: 12345
   Version: 0.5.0-beta
@@ -109,7 +109,7 @@ Download a small language model for on-device risk analysis:
 
 ```bash
 # Download the recommended model (~1 GB)
-clawdefender model download qwen3-1.7b
+rookbot model download qwen3-1.7b
 ```
 
 Expected output:
@@ -118,20 +118,20 @@ Expected output:
 Downloading qwen3-1.7b (1.1 GB)...
 [========================================] 100% (1.1 GB)
 Verifying SHA-256 checksum... OK
-Model saved to ~/.local/share/clawdefender/models/qwen3-1.7b-q4_k_m.gguf
+Model saved to ~/.local/share/rookbot/models/qwen3-1.7b-q4_k_m.gguf
 ```
 
 Activate the model:
 
 ```bash
-clawdefender model set qwen3-1.7b
-clawdefender model on
+rookbot model set qwen3-1.7b
+rookbot model on
 ```
 
 Verify with:
 
 ```bash
-clawdefender model list
+rookbot model list
 ```
 
 Expected output:
@@ -149,21 +149,21 @@ Smaller models (smollm2-360m, tinyllama-1.1b) use less RAM and run faster, but a
 
 ## Step 6: Protect an MCP Server
 
-Wrap a server so ClawDefender intercepts all tool calls:
+Wrap a server so Rookbot intercepts all tool calls:
 
 ```bash
 # Wrap a specific server from your Claude Desktop config
-clawdefender wrap filesystem-server
+rookbot wrap filesystem-server
 
 # Or wrap all configured servers at once
-clawdefender wrap --all
+rookbot wrap --all
 ```
 
 Expected output:
 
 ```
 Wrapped server "filesystem-server" for Claude Desktop.
-Original config backed up to ~/.config/clawdefender/backups/
+Original config backed up to ~/.config/rookbot/backups/
 Restart Claude Desktop to activate protection.
 ```
 
@@ -174,7 +174,7 @@ Restart your MCP client (Claude Desktop, Cursor) for the changes to take effect.
 Scan an MCP server for vulnerabilities:
 
 ```bash
-clawdefender scan -- npx -y @modelcontextprotocol/server-filesystem /tmp
+rookbot scan -- npx -y @modelcontextprotocol/server-filesystem /tmp
 ```
 
 The scanner runs 5 modules:
@@ -190,13 +190,13 @@ View recent security events:
 
 ```bash
 # Show the last 20 events
-clawdefender log -n 20
+rookbot log -n 20
 
 # Show only blocked events
-clawdefender log --blocked
+rookbot log --blocked
 
 # Show aggregate statistics
-clawdefender log --stats
+rookbot log --stats
 ```
 
 ## Step 9: Set Up Threat Intelligence (Optional)
@@ -204,15 +204,15 @@ clawdefender log --stats
 Update the threat feed and check server reputation:
 
 ```bash
-clawdefender feed update
-clawdefender reputation filesystem-server
+rookbot feed update
+rookbot reputation filesystem-server
 ```
 
 Add custom indicators of compromise:
 
 ```bash
-clawdefender ioc add domain evil-mcp-server.com
-clawdefender ioc test evil-mcp-server.com
+rookbot ioc add domain evil-mcp-server.com
+rookbot ioc test evil-mcp-server.com
 ```
 
 ## Step 10: Cloud Escalation (Optional)
@@ -220,11 +220,11 @@ clawdefender ioc test evil-mcp-server.com
 For deeper analysis of ambiguous events, configure a cloud API key:
 
 ```bash
-clawdefender config set-api-key --provider anthropic
+rookbot config set-api-key --provider anthropic
 # Paste your API key when prompted
 ```
 
-Edit `~/.config/clawdefender/config.toml` to enable escalation:
+Edit `~/.config/rookbot/config.toml` to enable escalation:
 
 ```toml
 [swarm]
@@ -237,7 +237,7 @@ monthly_budget_usd = 20.00
 Monitor usage:
 
 ```bash
-clawdefender usage
+rookbot usage
 ```
 
 ---
@@ -248,17 +248,17 @@ clawdefender usage
 
 ```bash
 # Check if already running
-clawdefender daemon status
+rookbot daemon status
 
 # Check for stale PID file
-ls -la ~/.local/share/clawdefender/clawdefender.pid
+ls -la ~/.local/share/rookbot/rookbot.pid
 
 # Force stop and restart
-clawdefender daemon stop
-clawdefender daemon start
+rookbot daemon stop
+rookbot daemon start
 
 # Check daemon logs
-cat ~/.local/share/clawdefender/daemon.log | tail -50
+cat ~/.local/share/rookbot/daemon.log | tail -50
 ```
 
 ### Full Disk Access not granted
@@ -268,8 +268,8 @@ The OS sensor (eslogger) requires Full Disk Access. Without it, the daemon still
 To grant FDA:
 1. Open **System Settings > Privacy & Security > Full Disk Access**
 2. Click the **+** button
-3. Add `/usr/local/bin/clawdefender-daemon`
-4. Restart the daemon: `clawdefender daemon restart`
+3. Add `/usr/local/bin/rookbot-daemon`
+4. Restart the daemon: `rookbot daemon restart`
 
 ### Model download fails
 
@@ -278,17 +278,17 @@ To grant FDA:
 curl -I https://huggingface.co
 
 # Try a smaller model first
-clawdefender model download smollm2-360m
+rookbot model download smollm2-360m
 
 # Check available disk space (models are 200 MB to 2.2 GB)
-df -h ~/.local/share/clawdefender/models/
+df -h ~/.local/share/rookbot/models/
 ```
 
 ### MCP server not intercepted after wrapping
 
-1. Verify the wrap was applied: `clawdefender status`
+1. Verify the wrap was applied: `rookbot status`
 2. Restart your MCP client (Claude Desktop, Cursor)
-3. Check that the client config was modified: look for `clawdefender proxy --` in your MCP client config file
+3. Check that the client config was modified: look for `rookbot proxy --` in your MCP client config file
 
 ### Compile errors building from source
 
@@ -327,28 +327,28 @@ The GUI provides a visual dashboard for alerts, events, prompts, settings, and A
 
 | Command | Description |
 |---------|-------------|
-| `clawdefender daemon start/stop/restart/status` | Manage the background daemon |
-| `clawdefender wrap <server>/--all` | Protect MCP servers |
-| `clawdefender unwrap <server>` | Remove protection from a server |
-| `clawdefender model list/download/set/on/off` | Manage AI models |
-| `clawdefender scan -- <server-cmd>` | Run security scan |
-| `clawdefender log [-n 50] [--blocked] [--stats]` | View audit log |
-| `clawdefender policy list/reload/test` | Manage security policies |
-| `clawdefender feed update/status/verify` | Manage threat intelligence |
-| `clawdefender ioc status/add/test` | Manage indicators of compromise |
-| `clawdefender reputation <server>` | Check server reputation |
-| `clawdefender doctor` | Run diagnostic checks |
-| `clawdefender config set-api-key` | Configure cloud API keys |
-| `clawdefender usage` | View cloud API usage and costs |
+| `rookbot daemon start/stop/restart/status` | Manage the background daemon |
+| `rookbot wrap <server>/--all` | Protect MCP servers |
+| `rookbot unwrap <server>` | Remove protection from a server |
+| `rookbot model list/download/set/on/off` | Manage AI models |
+| `rookbot scan -- <server-cmd>` | Run security scan |
+| `rookbot log [-n 50] [--blocked] [--stats]` | View audit log |
+| `rookbot policy list/reload/test` | Manage security policies |
+| `rookbot feed update/status/verify` | Manage threat intelligence |
+| `rookbot ioc status/add/test` | Manage indicators of compromise |
+| `rookbot reputation <server>` | Check server reputation |
+| `rookbot doctor` | Run diagnostic checks |
+| `rookbot config set-api-key` | Configure cloud API keys |
+| `rookbot usage` | View cloud API usage and costs |
 
 ## Configuration Files
 
 | File | Purpose |
 |------|---------|
-| `~/.config/clawdefender/config.toml` | Main configuration |
-| `~/.config/clawdefender/policy.toml` | Security policy rules |
-| `~/.local/share/clawdefender/audit.jsonl` | Audit log (JSONL) |
-| `~/.local/share/clawdefender/daemon.log` | Daemon log (rotated) |
-| `~/.local/share/clawdefender/models/` | Downloaded AI models |
-| `~/.local/share/clawdefender/threat-intel/` | Threat feed data |
-| `~/.local/share/clawdefender/scans/` | Scan results |
+| `~/.config/rookbot/config.toml` | Main configuration |
+| `~/.config/rookbot/policy.toml` | Security policy rules |
+| `~/.local/share/rookbot/audit.jsonl` | Audit log (JSONL) |
+| `~/.local/share/rookbot/daemon.log` | Daemon log (rotated) |
+| `~/.local/share/rookbot/models/` | Downloaded AI models |
+| `~/.local/share/rookbot/threat-intel/` | Threat feed data |
+| `~/.local/share/rookbot/scans/` | Scan results |

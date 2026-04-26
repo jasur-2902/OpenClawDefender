@@ -1,4 +1,4 @@
-# ClawDefender Mac GUI — Comprehensive UX Specification Report
+# Rookbot Mac GUI — Comprehensive UX Specification Report
 
 **Version:** 0.5.0-beta
 **Last Updated:** 2026-02-26
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-ClawDefender is a macOS security application that provides real-time protection monitoring and user-friendly controls for AI application security. The GUI is built as a React SPA with Tauri integration, featuring:
+Rookbot is a macOS security application that provides real-time protection monitoring and user-friendly controls for AI application security. The GUI is built as a React SPA with Tauri integration, featuring:
 
 - **Real-time event streaming** from a background daemon
 - **Intelligent alert system** with kill chain analysis
@@ -1036,7 +1036,7 @@ The application prioritizes non-intrusive monitoring, quick decision-making thro
 ```
 ┌─────────────────────────────────────────────┐
 │                                             │
-│            Welcome to ClawDefender          │
+│            Welcome to Rookbot          │
 │                                             │
 │         [Animated Claw Icon]                │
 │                                             │
@@ -1096,7 +1096,7 @@ The application prioritizes non-intrusive monitoring, quick decision-making thro
 ┌─────────────────────────────────────────────┐
 │ FDA Permission Required                     │
 │                                             │
-│ ClawDefender needs access to monitor your   │
+│ Rookbot needs access to monitor your   │
 │ AI tools. macOS requires your approval.     │
 │                                             │
 │ [System Preferences will open]              │
@@ -2510,7 +2510,7 @@ clients/clawdefender-app/
 
 ## 16. Conclusion
 
-The ClawDefender Mac GUI is a sophisticated, real-time security monitoring application with:
+The Rookbot Mac GUI is a sophisticated, real-time security monitoring application with:
 
 - **13 main pages** for comprehensive security control
 - **6 Zustand stores** managing app state, events, alerts, conversations, tools, and servers

@@ -4,7 +4,7 @@
 
 ## Context
 
-ClawDefender consists of multiple components: a CLI, a proxy, a policy engine, an audit logger, an OS monitor, and a correlation engine. We needed to decide whether to organize these as separate repositories or as a single monorepo.
+Rookbot consists of multiple components: a CLI, a proxy, a policy engine, an audit logger, an OS monitor, and a correlation engine. We needed to decide whether to organize these as separate repositories or as a single monorepo.
 
 ## Decision
 

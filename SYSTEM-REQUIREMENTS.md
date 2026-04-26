@@ -1,4 +1,4 @@
-# ClawDefender System Requirements
+# Rookbot System Requirements
 
 ## Operating System
 
@@ -83,16 +83,16 @@ Additional requirements for building the GUI:
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/clawdefender/` | Config: `config.toml`, `policy.toml`, `sensor.toml`, `noise.toml` |
-| `~/.local/share/clawdefender/` | Data: `audit.jsonl`, `clawdefender.pid`, `clawdefender.sock`, `server-token`, databases |
-| `~/.local/share/clawdefender/models/` | GGUF model files for AI inference |
-| `~/.local/share/clawdefender/threat-intel/` | Threat intelligence feeds and blocklists |
-| `~/.local/share/clawdefender/crashes/` | Crash reports |
-| `~/.local/share/clawdefender/scans/` | Scan results |
+| `~/.config/rookbot/` | Config: `config.toml`, `policy.toml`, `sensor.toml`, `noise.toml` |
+| `~/.local/share/rookbot/` | Data: `audit.jsonl`, `clawdefender.pid`, `clawdefender.sock`, `server-token`, databases |
+| `~/.local/share/rookbot/models/` | GGUF model files for AI inference |
+| `~/.local/share/rookbot/threat-intel/` | Threat intelligence feeds and blocklists |
+| `~/.local/share/rookbot/crashes/` | Crash reports |
+| `~/.local/share/rookbot/scans/` | Scan results |
 
 ### Notes
 
-- The IPC socket is created at `~/.local/share/clawdefender/clawdefender.sock`
+- The IPC socket is created at `~/.local/share/rookbot/clawdefender.sock`
 - The `server-token` file (0600 permissions) is used for daemon authentication
 - The project uses XDG-style paths (`~/.config/`, `~/.local/share/`) on all platforms, NOT macOS-native `~/Library/Application Support/`
 - When `$HOME` is not set, fallback paths under `/tmp/clawdefender/` are used

@@ -1,4 +1,4 @@
-# ClawDefender GUI — Final UX Team Report
+# Rookbot GUI — Final UX Team Report
 
 **Prepared for:** UX Team
 **Date:** February 26, 2026
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-ClawDefender's GUI is a **real-time security monitoring dashboard** for macOS that protects AI tools (MCP servers) from threats. The UX must handle:
+Rookbot's GUI is a **real-time security monitoring dashboard** for macOS that protects AI tools (MCP servers) from threats. The UX must handle:
 
 - **High-frequency real-time data** (events batched every 100ms)
 - **Complex state management** (5 Zustand stores)

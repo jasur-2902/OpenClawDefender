@@ -1,4 +1,4 @@
-# ClawDefender Cryptographic Keys
+# Rookbot Cryptographic Keys
 
 This directory holds development signing keys. Production keys must NEVER be committed.
 
@@ -38,7 +38,7 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""  # empty for dev key
 ### 3. Guard REST API Token
 
 - **Generated at runtime** by the daemon on first start
-- **Location**: `~/.local/share/clawdefender/server-token` (mode 0600)
+- **Location**: `~/.local/share/rookbot/server-token` (mode 0600)
 - **Format**: 64 hex characters (256-bit random)
 - **Used by**: Guard REST API (`Authorization: Bearer <token>`), MCP server, SDKs
 

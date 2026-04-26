@@ -1,8 +1,8 @@
-# ClawDefender Network Extension Guide
+# Rookbot Network Extension Guide
 
 ## What Network Protection Does
 
-ClawDefender's network extension provides **prevention** (blocking) for outbound connections from AI agent processes, in addition to the existing detection capabilities from Phases 0-11.
+Rookbot's network extension provides **prevention** (blocking) for outbound connections from AI agent processes, in addition to the existing detection capabilities from Phases 0-11.
 
 - **Prevention**: Connections from agent processes are evaluated in real-time. Malicious or unauthorized connections are blocked before data leaves the machine.
 - **Detection**: All connection decisions (allow, block, prompt) are logged for forensic analysis.
@@ -14,9 +14,9 @@ Non-agent (user) traffic is **never filtered, inspected, or blocked**. This is e
 ### Real Network Extension (requires Apple Developer entitlements)
 
 1. Open **System Settings > General > Login Items & Extensions > Network Extensions**.
-2. Enable **ClawDefender Network Filter**.
+2. Enable **Rookbot Network Filter**.
 3. macOS will prompt you to allow the extension. Click **Allow**.
-4. The extension status will appear in the ClawDefender GUI under **Settings > Network**.
+4. The extension status will appear in the Rookbot GUI under **Settings > Network**.
 
 ### Mock Mode (development and testing)
 
@@ -97,7 +97,7 @@ Mock mode is designed for developers who want to test network policy without a r
 
 1. Check that the extension is enabled in System Settings > Network Extensions.
 2. Verify the extension is properly signed with Apple Developer entitlements.
-3. Check Console.app for `ClawDefenderNetwork` log messages.
+3. Check Console.app for `RookbotNetwork` log messages.
 4. Restart the daemon: `clawdefender-daemon restart`.
 
 ### Connections not being filtered

@@ -243,7 +243,7 @@ Modules:
 
 ## 4.6 clawdefender-certify
 
-**Description**: "Claw Compliant" certification harness -- tests MCP servers for compliance with ClawDefender.
+**Description**: "Claw Compliant" certification harness -- tests MCP servers for compliance with Rookbot.
 
 **Cargo.toml**: Minimal dependencies (core, tokio, serde, tracing, chrono, uuid, toml).
 
@@ -252,8 +252,8 @@ Modules:
 **Status**: REAL IMPLEMENTATION.
 
 - 3 certification levels:
-  - **Level 1 (Transparent)**: Server survives ClawDefender proxy behavior (blocking, delays).
-  - **Level 2 (Cooperative)**: Server integrates with ClawDefender SDK (guard).
+  - **Level 1 (Transparent)**: Server survives Rookbot proxy behavior (blocking, delays).
+  - **Level 2 (Cooperative)**: Server integrates with Rookbot SDK (guard).
   - **Level 3 (Proactive)**: Server declares security posture via manifest.
 - `McpHarness`: Manages MCP server child process over stdio JSON-RPC. Full request/response with timeout, notifications, tool calls.
 - Report generation in JSON and text format.
@@ -339,7 +339,7 @@ Modules:
 
 ## 4.8 clawdefender-tui
 
-**Description**: Terminal UI for ClawDefender interactive prompts, event monitoring dashboard, and headless mode.
+**Description**: Terminal UI for Rookbot interactive prompts, event monitoring dashboard, and headless mode.
 
 **Cargo.toml**: Depends on `clawdefender-core`, `clawdefender-swarm`, `ratatui`, `crossterm`, `tokio`, `chrono`, `serde_json`.
 

@@ -1,16 +1,16 @@
-# Handoff: ClawDefender GUI
+# Handoff: Rookbot GUI
 
 ## Overview
 
-ClawDefender is the **user-facing application** that sits on top of the existing OpenClawDefender Rust + eBPF daemon. The daemon already produces the events, verdicts, and policy enforcement (process exec hooks, network/DNS filtering, AI cold-path verdicts via the `claw-wall` userland service). This GUI surfaces what the daemon produces in a calm, consumer-friendly way — designed for everyday users, not just security pros.
+Rookbot is the **user-facing application** that sits on top of the existing OpenRookbot Rust + eBPF daemon. The daemon already produces the events, verdicts, and policy enforcement (process exec hooks, network/DNS filtering, AI cold-path verdicts via the `claw-wall` userland service). This GUI surfaces what the daemon produces in a calm, consumer-friendly way — designed for everyday users, not just security pros.
 
-The conceptual spine of the design is **chess**. ClawDefender plays the role of the Rook, defending the user (King) against threats (opposing pieces). This metaphor shows up in the Home hero (a live mini chessboard whose state reflects security posture), in posture phrasing ("Defenders in position", "Pawn advanced", "Check", "Mate threatened"), and in My Tools (each MCP tool is rendered as the chess piece that best matches its capability — filesystem = Rook, network = Bishop, shell execution = Knight, metadata = Pawn).
+The conceptual spine of the design is **chess**. Rookbot plays the role of the Rook, defending the user (King) against threats (opposing pieces). This metaphor shows up in the Home hero (a live mini chessboard whose state reflects security posture), in posture phrasing ("Defenders in position", "Pawn advanced", "Check", "Mate threatened"), and in My Tools (each MCP tool is rendered as the chess piece that best matches its capability — filesystem = Rook, network = Bishop, shell execution = Knight, metadata = Pawn).
 
 ## About the Design Files
 
 The files in this bundle are **design references created in HTML / inline-Babel React** — prototypes that show intended look and behavior. They are not production code to copy directly.
 
-The job is to **recreate these designs in ClawDefender's actual GUI environment**, using its established patterns and libraries. Since the existing repo is a Rust daemon with a terminal UI and no shipped GUI yet, the implementer should choose the most appropriate framework for a desktop AI security app — recommended options, in order:
+The job is to **recreate these designs in Rookbot's actual GUI environment**, using its established patterns and libraries. Since the existing repo is a Rust daemon with a terminal UI and no shipped GUI yet, the implementer should choose the most appropriate framework for a desktop AI security app — recommended options, in order:
 
 1. **Tauri + React/TypeScript** — Rust-native, smallest binary, can call into the existing Rust crates directly, cross-platform.
 2. **SwiftUI** (macOS) / native Windows app — best OS integration but platform-locked.
@@ -26,7 +26,7 @@ The visual language was tuned to feel like an Apple HIG app (Settings.app, Famil
 
 | File | Role |
 |---|---|
-| `ClawDefender.html` | Entry HTML — loads React 18 + Babel + every JSX file in order |
+| `Rookbot.html` | Entry HTML — loads React 18 + Babel + every JSX file in order |
 | `styles.css` | Design tokens (CSS variables) + global resets + animations |
 | `data.js` | Mock data for events, alerts, MCP servers, scan stages, etc. |
 | `atoms.jsx` | Shared primitives: `Rook`, `Dot`, `Badge`, `Icon`, `Btn`, `Card`, `Sparkline`, `Ring`, etc. |

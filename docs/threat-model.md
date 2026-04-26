@@ -1,53 +1,53 @@
 # Threat Model
 
-## What ClawDefender protects against
+## What Rookbot protects against
 
 ### Malicious MCP tool calls
-An AI agent (or a prompt injection controlling one) attempts to call tools that the user has not authorized. Examples: reading `~/.ssh/id_rsa`, executing `rm -rf /`, writing to `/etc/hosts`. ClawDefender's policy engine evaluates every `tools/call` request and blocks those that violate the configured rules.
+An AI agent (or a prompt injection controlling one) attempts to call tools that the user has not authorized. Examples: reading `~/.ssh/id_rsa`, executing `rm -rf /`, writing to `/etc/hosts`. Rookbot's policy engine evaluates every `tools/call` request and blocks those that violate the configured rules.
 
 ### Data exfiltration via MCP
-An agent reads sensitive data through one tool and exfiltrates it through another (e.g., reads a file, then sends its contents via a network tool). ClawDefender can enforce policies that restrict which tools can be combined and what argument patterns are allowed. The audit log records the full sequence for forensic review.
+An agent reads sensitive data through one tool and exfiltrates it through another (e.g., reads a file, then sends its contents via a network tool). Rookbot can enforce policies that restrict which tools can be combined and what argument patterns are allowed. The audit log records the full sequence for forensic review.
 
 ### Prompt injection via sampling
-If an MCP server uses the `sampling/createMessage` method to ask the client to generate text, a compromised server could inject instructions into the prompt. ClawDefender intercepts sampling requests and can enforce policies on their content.
+If an MCP server uses the `sampling/createMessage` method to ask the client to generate text, a compromised server could inject instructions into the prompt. Rookbot intercepts sampling requests and can enforce policies on their content.
 
 ### Agents operating outside declared MCP tools
 An agent might use a `shell/execute` tool to run arbitrary commands not covered by its declared tool set. The OS-level monitor (`eslogger`) observes the actual system calls and the correlation engine flags discrepancies between what was declared via MCP and what actually happened.
 
-## What ClawDefender does NOT protect against
+## What Rookbot does NOT protect against
 
 ### Pre-compromised system
-If the operating system is already compromised (rootkit, kernel exploit), ClawDefender's observations cannot be trusted. ClawDefender assumes a healthy OS.
+If the operating system is already compromised (rootkit, kernel exploit), Rookbot's observations cannot be trusted. Rookbot assumes a healthy OS.
 
 ### Malicious MCP clients
-ClawDefender sits between client and server. It trusts the client. If the MCP client itself is malicious, it can bypass ClawDefender entirely by communicating with servers directly or modifying ClawDefender's configuration.
+Rookbot sits between client and server. It trusts the client. If the MCP client itself is malicious, it can bypass Rookbot entirely by communicating with servers directly or modifying Rookbot's configuration.
 
 ### Kernel-level attacks
-ClawDefender operates in userspace. It cannot detect or prevent kernel exploits, rootkits, or attacks that operate below the OS event layer.
+Rookbot operates in userspace. It cannot detect or prevent kernel exploits, rootkits, or attacks that operate below the OS event layer.
 
 ### Non-MCP attack vectors
-If an attacker compromises the system through means other than MCP (SSH brute force, browser exploit, physical access), ClawDefender provides no protection. It is specifically a firewall for the MCP protocol.
+If an attacker compromises the system through means other than MCP (SSH brute force, browser exploit, physical access), Rookbot provides no protection. It is specifically a firewall for the MCP protocol.
 
 ### Supply chain attacks on MCP servers
-If an MCP server itself is backdoored, ClawDefender can restrict what it does but cannot detect that its responses contain manipulated data. Garbage in, garbage out.
+If an MCP server itself is backdoored, Rookbot can restrict what it does but cannot detect that its responses contain manipulated data. Garbage in, garbage out.
 
 ## Assumptions
 
-1. **The MCP client is trusted.** The user chose to run it, and it faithfully forwards ClawDefender's decisions.
+1. **The MCP client is trusted.** The user chose to run it, and it faithfully forwards Rookbot's decisions.
 2. **The operating system is not compromised.** `eslogger` output is accurate. Process trees are reliable.
-3. **The user reviews interactive prompts.** When ClawDefender asks "allow this tool call?", the user reads and makes an informed decision.
+3. **The user reviews interactive prompts.** When Rookbot asks "allow this tool call?", the user reads and makes an informed decision.
 4. **Policy files are protected by filesystem permissions.** If an attacker can modify `policy.toml`, they can allow anything.
 
 ## V1 security mitigations
 
 ### Symlink and path traversal attacks
-An attacker-controlled MCP server could request resources using path traversal sequences (e.g., `/project/data/../../../etc/passwd`) to bypass policy rules that only allow access to `/project/**`. ClawDefender canonicalizes all resource paths before policy evaluation using a stack-based algorithm that resolves `.` and `..` segments without requiring the target file to exist. Null bytes in paths are rejected outright. This ensures that a policy rule for `/project/**` cannot be bypassed via traversal.
+An attacker-controlled MCP server could request resources using path traversal sequences (e.g., `/project/data/../../../etc/passwd`) to bypass policy rules that only allow access to `/project/**`. Rookbot canonicalizes all resource paths before policy evaluation using a stack-based algorithm that resolves `.` and `..` segments without requiring the target file to exist. Null bytes in paths are rejected outright. This ensures that a policy rule for `/project/**` cannot be bypassed via traversal.
 
 ### Prompt fatigue attacks
-A malicious MCP server could flood the user with prompt-triggering tool calls, hoping the user starts blindly clicking "Allow" out of frustration. ClawDefender implements per-server prompt rate limiting: if a server triggers more than 10 prompts within a 60-second window, all further prompts from that server are auto-blocked for the remainder of the session. The user is notified and can explicitly unblock the server if desired.
+A malicious MCP server could flood the user with prompt-triggering tool calls, hoping the user starts blindly clicking "Allow" out of frustration. Rookbot implements per-server prompt rate limiting: if a server triggers more than 10 prompts within a 60-second window, all further prompts from that server are auto-blocked for the remainder of the session. The user is notified and can explicitly unblock the server if desired.
 
 ### Parser safety
-ClawDefender enforces multiple layers of protection on the JSON-RPC parser:
+Rookbot enforces multiple layers of protection on the JSON-RPC parser:
 
 - **Maximum message size (10 MB):** Single messages exceeding this limit are rejected before parsing.
 - **Maximum JSON nesting depth (128 levels):** A pre-parse bracket-counting check prevents stack overflow from deeply nested payloads.
@@ -58,13 +58,13 @@ ClawDefender enforces multiple layers of protection on the JSON-RPC parser:
 Policy rules support regex patterns for matching tool names and paths. The regex engine uses `regex::RegexBuilder` with a compiled size limit (256 KB) to prevent Regular Expression Denial of Service (ReDoS) attacks via pathological patterns. The Rust `regex` crate uses a finite automaton engine that guarantees linear-time matching, providing an additional layer of protection.
 
 ### Plaintext traffic visibility
-ClawDefender sees all MCP traffic in plaintext. The stdio proxy sits between the MCP client and server with full visibility into every JSON-RPC message, including tool call arguments and response data. This is by design -- it is required for policy evaluation and audit logging. Users should be aware that ClawDefender's audit logs may contain sensitive data passed through MCP tool calls.
+Rookbot sees all MCP traffic in plaintext. The stdio proxy sits between the MCP client and server with full visibility into every JSON-RPC message, including tool call arguments and response data. This is by design -- it is required for policy evaluation and audit logging. Users should be aware that Rookbot's audit logs may contain sensitive data passed through MCP tool calls.
 
 ## Prompt injection attacks on SLM analysis
 
 ### Threat
 
-When ClawDefender uses an on-device SLM to analyze tool calls, untrusted data from MCP servers flows into model prompts. An attacker could embed prompt injection payloads in tool arguments, resource URIs, or sampling content to manipulate the SLM's risk assessment (e.g., forcing it to output "RISK: LOW" for a dangerous action).
+When Rookbot uses an on-device SLM to analyze tool calls, untrusted data from MCP servers flows into model prompts. An attacker could embed prompt injection payloads in tool arguments, resource URIs, or sampling content to manipulate the SLM's risk assessment (e.g., forcing it to output "RISK: LOW" for a dangerous action).
 
 ### Attack vectors
 
@@ -79,7 +79,7 @@ When ClawDefender uses an on-device SLM to analyze tool calls, untrusted data fr
 
 ### Defenses (defense-in-depth)
 
-ClawDefender implements five layers of defense:
+Rookbot implements five layers of defense:
 
 1. **Input sanitization** (`sanitizer::sanitize_untrusted_input`): Truncates input, strips XML/HTML tags, removes lines matching known injection patterns (ignore instructions, system override, output mimicry), and escapes special characters.
 
@@ -101,13 +101,13 @@ ClawDefender implements five layers of defense:
 
 ### Threat
 
-When ClawDefender escalates events to cloud LLM providers (Anthropic, OpenAI), event data leaves the user's machine. This data may include tool call arguments, resource URIs, and sampling content from MCP interactions.
+When Rookbot escalates events to cloud LLM providers (Anthropic, OpenAI), event data leaves the user's machine. This data may include tool call arguments, resource URIs, and sampling content from MCP interactions.
 
 ### Mitigations
 
-1. **Data minimization** (`data_minimizer`): Before sending data to the cloud, ClawDefender strips known secret patterns (API keys, tokens, passwords, SSH keys, JWTs) and replaces them with redacted placeholders. Email addresses and file paths with home directories are also sanitized.
+1. **Data minimization** (`data_minimizer`): Before sending data to the cloud, Rookbot strips known secret patterns (API keys, tokens, passwords, SSH keys, JWTs) and replaces them with redacted placeholders. Email addresses and file paths with home directories are also sanitized.
 
-2. **BYOK trust model**: Users provide their own API keys. ClawDefender does not operate a proxy service or intermediate server. API calls go directly from the user's machine to the LLM provider. ClawDefender never sees or stores the API responses on any server it controls.
+2. **BYOK trust model**: Users provide their own API keys. Rookbot does not operate a proxy service or intermediate server. API calls go directly from the user's machine to the LLM provider. Rookbot never sees or stores the API responses on any server it controls.
 
 3. **Keychain storage**: API keys are stored in the macOS Keychain (or in-memory for testing). They are never written to disk files, included in logs, or transmitted anywhere except to the configured LLM provider.
 
@@ -127,7 +127,7 @@ When ClawDefender escalates events to cloud LLM providers (Anthropic, OpenAI), e
 
 ### Threat: Malicious or compromised SDK reporters
 
-MCP servers that integrate the ClawDefender SDK voluntarily report their actions. A malicious server could:
+MCP servers that integrate the Rookbot SDK voluntarily report their actions. A malicious server could:
 
 1. **Lie about intent**: Call `checkIntent` with one target, then act on a different one
 2. **Skip reporting**: Perform actions without calling `reportAction`
@@ -190,17 +190,17 @@ String fields could contain Unicode bidirectional overrides, null bytes, or othe
 
 ### Certification Sandbox Model
 
-The certification tool (`clawdefender certify`) runs MCP servers in a sandboxed environment:
+The certification tool (`rookbot certify`) runs MCP servers in a sandboxed environment:
 
 - Temporary policy files that do not affect the user's real policy
 - In-memory audit logging (no writes to the user's audit log)
 - Timeout-bounded test execution (10 seconds per test by default)
 - Isolated from the running daemon -- certification tests do not require the daemon to be running
 
-## Attack surface of ClawDefender itself
+## Attack surface of Rookbot itself
 
 ### JSON-RPC parser
-ClawDefender parses untrusted JSON-RPC messages from both the MCP client and server. Bugs here could cause crashes, incorrect routing, or policy bypasses. Mitigation: strict parsing with `serde_json`, message size limits, JSON depth limits, buffer overflow protection, and extensive fuzz testing.
+Rookbot parses untrusted JSON-RPC messages from both the MCP client and server. Bugs here could cause crashes, incorrect routing, or policy bypasses. Mitigation: strict parsing with `serde_json`, message size limits, JSON depth limits, buffer overflow protection, and extensive fuzz testing.
 
 ### Policy engine
 The policy evaluation logic must be correct -- a bug here is a security bypass. Mitigation: simple rule format (TOML, not a Turing-complete language), path canonicalization before matching, regex size limits, comprehensive test suite including security-focused integration tests.
@@ -212,4 +212,4 @@ The policy evaluation logic must be correct -- a bug here is a security bypass. 
 The on-device language model processes untrusted data. Bugs in the inference engine, prompt construction, or output parsing could lead to incorrect risk assessments. Mitigation: multi-layer input sanitization, output validation, canary tokens, and advisory-only design (SLM cannot override policy decisions).
 
 ### Configuration files
-`policy.toml` and `clawdefender.toml` are read from disk. If an attacker gains write access to these files, they can disable protections. Mitigation: ClawDefender warns if policy files have overly permissive filesystem permissions.
+`policy.toml` and `rookbot.toml` are read from disk. If an attacker gains write access to these files, they can disable protections. Mitigation: Rookbot warns if policy files have overly permissive filesystem permissions.

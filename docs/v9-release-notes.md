@@ -2,7 +2,7 @@
 
 ## Summary
 
-Phase 9 introduces the **Agent Self-Protection API**, enabling AI agents to declare and enforce their own security boundaries. This is a new capability layer that sits between the agent code and the ClawDefender daemon.
+Phase 9 introduces the **Agent Self-Protection API**, enabling AI agents to declare and enforce their own security boundaries. This is a new capability layer that sits between the agent code and the Rookbot daemon.
 
 ## New features
 
@@ -65,7 +65,7 @@ None. Phase 9 is additive — all existing functionality continues to work uncha
 
 ## Migration
 
-No migration is needed. The Agent Self-Protection API is a new feature set with no impact on existing ClawDefender users. Agents that do not use the guard API are unaffected.
+No migration is needed. The Agent Self-Protection API is a new feature set with no impact on existing Rookbot users. Agents that do not use the guard API are unaffected.
 
 ## Test coverage
 

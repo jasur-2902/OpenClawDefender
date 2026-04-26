@@ -1,4 +1,4 @@
-# ClawDefender Build Guide
+# Rookbot Build Guide
 
 ## Prerequisites
 
@@ -80,8 +80,8 @@ bash scripts/install.sh
 This script:
 1. Builds release binaries for `clawdefender` (CLI) and `clawdefender-daemon`
 2. Copies binaries to `/usr/local/bin/` (override with `CLAWDEFENDER_INSTALL_DIR`)
-3. Creates `~/.config/clawdefender/` with default `config.toml` and `policy.toml`
-4. Creates `~/.local/share/clawdefender/` with subdirectories: `models/`, `threat-intel/`, `crashes/`, `scans/`
+3. Creates `~/.config/rookbot/` with default `config.toml` and `policy.toml`
+4. Creates `~/.local/share/rookbot/` with subdirectories: `models/`, `threat-intel/`, `crashes/`, `scans/`
 5. Generates a `server-token` (0600 permissions) for daemon authentication
 6. Installs and loads a LaunchAgent plist (`com.clawdefender.daemon`)
 7. Runs `clawdefender init` for honeypot setup and client detection
@@ -113,8 +113,8 @@ clawdefender-daemon --version
 Verify config and data directories exist:
 
 ```bash
-ls ~/.config/clawdefender/
-ls ~/.local/share/clawdefender/
+ls ~/.config/rookbot/
+ls ~/.local/share/rookbot/
 ```
 
 ## Run the Daemon
@@ -144,7 +144,7 @@ Or from the build directory:
 ./target/release/clawdefender-daemon
 ```
 
-The daemon creates an IPC socket at `~/.local/share/clawdefender/clawdefender.sock` and writes its PID to `~/.local/share/clawdefender/clawdefender.pid`.
+The daemon creates an IPC socket at `~/.local/share/rookbot/clawdefender.sock` and writes its PID to `~/.local/share/rookbot/clawdefender.pid`.
 
 ## Uninstall
 
@@ -162,10 +162,10 @@ just uninstall
 
 | Directory | Purpose |
 |-----------|---------|
-| `~/.config/clawdefender/` | Configuration: `config.toml`, `policy.toml`, `sensor.toml` |
-| `~/.local/share/clawdefender/` | Runtime data: audit logs, databases, PID file, socket, server-token |
-| `~/.local/share/clawdefender/models/` | GGUF model files for AI inference |
-| `~/.local/share/clawdefender/threat-intel/` | Threat intelligence feeds and blocklists |
+| `~/.config/rookbot/` | Configuration: `config.toml`, `policy.toml`, `sensor.toml` |
+| `~/.local/share/rookbot/` | Runtime data: audit logs, databases, PID file, socket, server-token |
+| `~/.local/share/rookbot/models/` | GGUF model files for AI inference |
+| `~/.local/share/rookbot/threat-intel/` | Threat intelligence feeds and blocklists |
 | `/usr/local/bin/` | Installed binaries |
 
 ## Troubleshooting
@@ -184,7 +184,7 @@ This is expected if you also pass `--no-default-features`. The `gguf` feature is
 
 ### Daemon fails to start: "Address already in use"
 
-Another daemon instance is running. Check with `launchctl list | grep clawdefender` or look for the PID file at `~/.local/share/clawdefender/clawdefender.pid`.
+Another daemon instance is running. Check with `launchctl list | grep clawdefender` or look for the PID file at `~/.local/share/rookbot/clawdefender.pid`.
 
 ### eslogger errors: "macOS X.Y is not supported"
 
@@ -196,11 +196,11 @@ The daemon (or terminal running it) needs Full Disk Access. Grant it in System S
 
 ### Server-token authentication failures
 
-Ensure both the daemon and CLI/app read the same token file at `~/.local/share/clawdefender/server-token`. If the file is missing, run `scripts/install.sh` or manually generate one:
+Ensure both the daemon and CLI/app read the same token file at `~/.local/share/rookbot/server-token`. If the file is missing, run `scripts/install.sh` or manually generate one:
 
 ```bash
-head -c 32 /dev/urandom | base64 > ~/.local/share/clawdefender/server-token
-chmod 0600 ~/.local/share/clawdefender/server-token
+head -c 32 /dev/urandom | base64 > ~/.local/share/rookbot/server-token
+chmod 0600 ~/.local/share/rookbot/server-token
 ```
 
 ### GPU inference not working (CPU-only)

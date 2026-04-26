@@ -1,6 +1,6 @@
 # Threat Feed Contribution Guide
 
-The ClawDefender threat feed provides blocklists, indicators of compromise (IoCs), kill-chain patterns, injection signatures, and tool profiles. This guide explains how to contribute new entries and keep the feed up to date.
+The Rookbot threat feed provides blocklists, indicators of compromise (IoCs), kill-chain patterns, injection signatures, and tool profiles. This guide explains how to contribute new entries and keep the feed up to date.
 
 ## Feed Structure
 

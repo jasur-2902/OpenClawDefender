@@ -4,7 +4,7 @@
 
 ### OS-Level Sensor
 
-ClawDefender v0.4.0 introduces a full OS-level sensor subsystem that monitors system activity from AI agent processes in real time. The sensor uses macOS Endpoint Security (`eslogger`) and FSEvents to observe process execution, file access, network connections, and more.
+Rookbot v0.4.0 introduces a full OS-level sensor subsystem that monitors system activity from AI agent processes in real time. The sensor uses macOS Endpoint Security (`eslogger`) and FSEvents to observe process execution, file access, network connections, and more.
 
 Key capabilities:
 - **eslogger integration** with pre-filtering, crash recovery, and automatic FDA detection
@@ -91,7 +91,7 @@ The filesystem watcher now includes:
 ## Upgrading from v0.3.0
 
 1. Build the new version: `cargo build --release`
-2. Create `~/.config/clawdefender/sensor.toml` (or use defaults)
+2. Create `~/.config/rookbot/sensor.toml` (or use defaults)
 3. Grant Full Disk Access to the daemon binary (for eslogger)
 4. Restart the daemon: `clawdefender daemon restart`
 5. Optionally build the menu bar app: `just build-menubar`
@@ -100,7 +100,7 @@ No breaking changes to existing configuration. The sensor subsystem is enabled b
 
 ## New configuration
 
-Add to `~/.config/clawdefender/sensor.toml`:
+Add to `~/.config/rookbot/sensor.toml`:
 
 ```toml
 [eslogger]

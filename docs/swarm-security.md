@@ -1,16 +1,16 @@
 # Cloud Swarm Security Model
 
-This document describes the security architecture of ClawDefender's cloud swarm
+This document describes the security architecture of Rookbot's cloud swarm
 pipeline — the system that sends MCP event metadata to cloud LLMs for specialist
 analysis.
 
 ## BYOK (Bring Your Own Key)
 
-ClawDefender uses a BYOK model for cloud LLM access:
+Rookbot uses a BYOK model for cloud LLM access:
 
 - **Your API key, your provider.** Data flows directly from your machine to the
   LLM provider you configured (Anthropic, OpenAI, or a custom endpoint). There
-  is no intermediate ClawDefender server.
+  is no intermediate Rookbot server.
 - API keys are stored in the macOS Keychain (or an in-memory store for
   testing). They are never written to disk in plaintext, never logged, and
   never transmitted anywhere except to the provider's API endpoint.

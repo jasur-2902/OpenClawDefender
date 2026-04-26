@@ -72,7 +72,7 @@ All AI subsystem outputs are **advisory only**. This is enforced architecturally
 ## Setting Up a Local AI Model
 
 1. **Download a model** from the app's AI Settings panel, or place a GGUF file
-   in `~/.local/share/clawdefender/models/`.
+   in `~/.local/share/rookbot/models/`.
 2. **Activate the model** via the UI "Activate" button or the CLI:
    ```bash
    clawdefender slm activate <model-id-or-path>

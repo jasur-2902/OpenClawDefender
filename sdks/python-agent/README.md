@@ -1,7 +1,7 @@
 # clawdefender-agent
 
 Self-protection package for autonomous Python agents. Enforces security
-policies (file access, network, shell execution) via the ClawDefender daemon
+policies (file access, network, shell execution) via the Rookbot daemon
 or an embedded fallback enforcer.
 
 ## Installation
@@ -35,11 +35,11 @@ def safe_task():
 
 ## Features
 
-- **Daemon mode**: Connects to ClawDefender daemon REST API for full enforcement
+- **Daemon mode**: Connects to Rookbot daemon REST API for full enforcement
 - **Embedded fallback**: In-process enforcement when daemon is unavailable
 - **Monitor mode**: Record operations and get suggested minimal permissions
 - **Decorators**: `@restricted` and `@sandboxed` for function-level protection
-- **Auto-installation**: Detect and optionally download the ClawDefender binary
+- **Auto-installation**: Detect and optionally download the Rookbot binary
 
 ## License
 

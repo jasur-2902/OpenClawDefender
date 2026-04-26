@@ -4,23 +4,23 @@
 
 ## Context
 
-ClawDefender is a security daemon that sits in the critical path between AI agents and the tools they invoke. It parses untrusted input (JSON-RPC from MCP clients and servers), runs continuously as a background process, and must not itself become an attack vector.
+Rookbot is a security daemon that sits in the critical path between AI agents and the tools they invoke. It parses untrusted input (JSON-RPC from MCP clients and servers), runs continuously as a background process, and must not itself become an attack vector.
 
-We needed to choose a language for implementing ClawDefender that prioritizes correctness, safety, and performance.
+We needed to choose a language for implementing Rookbot that prioritizes correctness, safety, and performance.
 
 ## Decision
 
-We chose Rust as the implementation language for ClawDefender.
+We chose Rust as the implementation language for Rookbot.
 
 ### Rationale
 
-**Memory safety without garbage collection.** ClawDefender handles untrusted input in a security-critical context. Memory corruption bugs (buffer overflows, use-after-free, double-free) are the most common class of exploitable vulnerabilities in systems software. Rust eliminates these at compile time without the unpredictable latency of a garbage collector — important for a proxy that sits in the hot path of every tool call.
+**Memory safety without garbage collection.** Rookbot handles untrusted input in a security-critical context. Memory corruption bugs (buffer overflows, use-after-free, double-free) are the most common class of exploitable vulnerabilities in systems software. Rust eliminates these at compile time without the unpredictable latency of a garbage collector — important for a proxy that sits in the hot path of every tool call.
 
 **Excellent async runtime.** MCP proxy work is inherently I/O-bound: reading from stdin, writing to stdout, waiting on HTTP responses. Tokio provides a mature, performant async runtime that handles this naturally.
 
 **Strong type system.** MCP has a well-defined protocol with specific message types. Rust's type system (enums, pattern matching, serde) lets us model the protocol precisely and catch mishandling at compile time rather than runtime.
 
-**Cross-platform.** ClawDefender must work on macOS (primary target with eslogger), Linux, and eventually Windows. Rust compiles to native binaries on all three with no runtime dependencies.
+**Cross-platform.** Rookbot must work on macOS (primary target with eslogger), Linux, and eventually Windows. Rust compiles to native binaries on all three with no runtime dependencies.
 
 **Growing security tooling ecosystem.** The Rust security ecosystem includes mature crates for JSON parsing (serde_json), TOML (toml), async I/O (tokio), and process management. Cargo's dependency management and `cargo-audit` provide supply chain visibility.
 

@@ -1,8 +1,8 @@
-# ClawDefender Character Brief
+# Rookbot Character Brief
 
 ## The Soul of Claw
 
-ClawDefender -- "Claw" -- is a personal AI security companion for developers. It sits between you and the AI tools you use every day, watching the traffic, catching the threats, and keeping your machine safe. It is not enterprise software. It is not a dashboard. It is the security-expert friend who moved into your menu bar and quietly makes sure nothing goes wrong.
+Rookbot -- "Claw" -- is a personal AI security companion for developers. It sits between you and the AI tools you use every day, watching the traffic, catching the threats, and keeping your machine safe. It is not enterprise software. It is not a dashboard. It is the security-expert friend who moved into your menu bar and quietly makes sure nothing goes wrong.
 
 This document defines who Claw is. Every message, every screen, every animation should feel like it came from this character.
 
@@ -60,7 +60,7 @@ Danger gets direct, specific language. No euphemisms, no softening. But also no 
 
 > "The sensor crashed and restarted. You were unprotected for about 4 seconds. Everything is running again now."
 
-> "I could not start the eslogger sensor. Your system may need Full Disk Access enabled for ClawDefender. Here is how to fix it."
+> "I could not start the eslogger sensor. Your system may need Full Disk Access enabled for Rookbot. Here is how to fix it."
 
 Breakage is reported honestly with what happened, what the impact was, and what to do about it. Claw does not hide its failures.
 
@@ -68,7 +68,7 @@ Breakage is reported honestly with what happened, what the impact was, and what 
 
 > "Hey. I am Claw -- your AI security companion. I will watch over your AI tools and keep your machine safe. Let me take a quick look at what you have running."
 
-> "Welcome to ClawDefender. I will scan for your MCP clients and set up protection. This takes about 30 seconds."
+> "Welcome to Rookbot. I will scan for your MCP clients and set up protection. This takes about 30 seconds."
 
 First contact is friendly and functional. Claw introduces itself briefly, then gets to work. No lengthy tutorials, no feature tours. You learn by using it.
 
@@ -116,7 +116,7 @@ Uncertainty is expressed plainly without hedging into uselessness. Claw gives yo
 ### Corporate
 - BAD: "We have detected a potential security incident in your environment."
 - BAD: "Your security posture has been updated to reflect current threat conditions."
-- BAD: "Thank you for choosing ClawDefender. Your security is our priority."
+- BAD: "Thank you for choosing Rookbot. Your security is our priority."
 - WHY NOT: Claw is not a company. It is a single entity speaking to a single person. "We" implies bureaucracy. "Thank you for choosing" implies a transaction. There is no transaction -- Claw lives on your computer and it is on your team.
 
 ### Passive-aggressive

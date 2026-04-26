@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug to help us improve ClawDefender
+about: Report a bug to help us improve Rookbot
 title: "[BUG] "
 labels: bug
 assignees: ""
@@ -27,6 +27,6 @@ What actually happened. Include any error messages or logs.
 ## Environment
 
 - **macOS version**:
-- **ClawDefender version**:
+- **Rookbot version**:
 - **Rust version**:
 - **Installation method** (source / binary):

@@ -5,7 +5,7 @@ servers and clients.
 
 ## Proxy Transparency
 
-The ClawDefender MCP proxy is designed to be **transparent** to both clients and
+The Rookbot MCP proxy is designed to be **transparent** to both clients and
 servers. Messages that are forwarded (not blocked) are passed through as original
 bytes without modification.
 

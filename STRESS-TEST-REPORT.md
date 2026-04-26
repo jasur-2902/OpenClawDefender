@@ -1,4 +1,4 @@
-# ClawDefender Phase 6 — Stress Test Report (T11)
+# Rookbot Phase 6 — Stress Test Report (T11)
 
 **Date:** 2026-03-30
 **Reviewer:** Agent 6 (Code-Based Resilience Review)
