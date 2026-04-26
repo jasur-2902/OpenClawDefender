@@ -45,12 +45,12 @@ jobs:
         run: |
           mkdir -p target/universal-apple-darwin/release
           lipo -create \
-            target/aarch64-apple-darwin/release/clawdefender \
-            target/x86_64-apple-darwin/release/clawdefender \
+            target/aarch64-apple-darwin/release/rookbot \
+            target/x86_64-apple-darwin/release/rookbot \
             -output target/universal-apple-darwin/release/rookbot
           lipo -create \
-            target/aarch64-apple-darwin/release/clawdefender-daemon \
-            target/x86_64-apple-darwin/release/clawdefender-daemon \
+            target/aarch64-apple-darwin/release/rookbot-daemon \
+            target/x86_64-apple-darwin/release/rookbot-daemon \
             -output target/universal-apple-darwin/release/rookbot-daemon
 
       - name: Ad-hoc code sign
@@ -151,8 +151,8 @@ jobs:
         run: |
           ARCH=${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64' || 'x86_64' }}
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/clawdefender dist/rookbot
-          cp target/${{ matrix.target }}/release/clawdefender-daemon dist/rookbot-daemon
+          cp target/${{ matrix.target }}/release/rookbot dist/rookbot
+          cp target/${{ matrix.target }}/release/rookbot-daemon dist/rookbot-daemon
           cd dist
           tar czf rookbot-linux-${ARCH}.tar.gz rookbot rookbot-daemon
           shasum -a 256 rookbot-linux-${ARCH}.tar.gz > rookbot-linux-${ARCH}.tar.gz.sha256

@@ -27,20 +27,20 @@ build-release: release
 
 # Build release and install both binaries to /usr/local/bin
 install: release
-    cp target/release/clawdefender /usr/local/bin/rookbot
-    cp target/release/clawdefender-daemon /usr/local/bin/rookbot-daemon
+    cp target/release/rookbot /usr/local/bin/rookbot
+    cp target/release/rookbot-daemon /usr/local/bin/rookbot-daemon
 
 # Build release, install to /usr/local/bin, and run init
 install-local: release
-    cp target/release/clawdefender /usr/local/bin/rookbot
-    cp target/release/clawdefender-daemon /usr/local/bin/rookbot-daemon
+    cp target/release/rookbot /usr/local/bin/rookbot
+    cp target/release/rookbot-daemon /usr/local/bin/rookbot-daemon
     rookbot init
 
 # Build release tarball and checksum (for local packaging)
 package: release
     mkdir -p dist
-    cp target/release/clawdefender dist/rookbot
-    cp target/release/clawdefender-daemon dist/rookbot-daemon
+    cp target/release/rookbot dist/rookbot
+    cp target/release/rookbot-daemon dist/rookbot-daemon
     cd dist && tar czf rookbot-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz rookbot rookbot-daemon
     cd dist && shasum -a 256 rookbot-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz > rookbot-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz.sha256
     @echo "Package created in dist/"
@@ -121,13 +121,13 @@ dev-app:
 build-sidecar:
     cargo build -p clawdefender-daemon --release
     mkdir -p clients/clawdefender-app/src-tauri/binaries
-    cp target/release/clawdefender-daemon clients/clawdefender-app/src-tauri/binaries/rookbot-daemon-$(rustc -vV | grep host | cut -d' ' -f2)
+    cp target/release/rookbot-daemon clients/clawdefender-app/src-tauri/binaries/rookbot-daemon-$(rustc -vV | grep host | cut -d' ' -f2)
 
 # Build the .dmg installer
 build-dmg:
     cargo build -p clawdefender-daemon --release
     mkdir -p clients/clawdefender-app/src-tauri/binaries
-    cp target/release/clawdefender-daemon "clients/clawdefender-app/src-tauri/binaries/rookbot-daemon-$(rustc -vV | grep host | cut -d' ' -f2)"
+    cp target/release/rookbot-daemon "clients/clawdefender-app/src-tauri/binaries/rookbot-daemon-$(rustc -vV | grep host | cut -d' ' -f2)"
     cd clients/clawdefender-app && npm install && cargo tauri build
 
 # Build .dmg for a specific target (e.g., aarch64-apple-darwin or x86_64-apple-darwin)
