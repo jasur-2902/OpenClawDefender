@@ -436,20 +436,21 @@ fn analyze_entries(entries: &[TccEntry]) -> Vec<TccFinding> {
         }
 
         // App in unusual location with critical/high permission
-        if entry.client_type == 1 && is_in_unusual_location(&entry.client) {
-            if base_severity <= Severity::High {
-                findings.push(TccFinding {
-                    entry: entry.clone(),
-                    risk: TccRisk::CriticalPermission,
-                    reason: format!(
-                        "App '{}' is in an unusual location and has {} permission. \
+        if entry.client_type == 1
+            && is_in_unusual_location(&entry.client)
+            && base_severity <= Severity::High
+        {
+            findings.push(TccFinding {
+                entry: entry.clone(),
+                risk: TccRisk::CriticalPermission,
+                reason: format!(
+                    "App '{}' is in an unusual location and has {} permission. \
                          Legitimate apps are typically installed in /Applications/.",
-                        entry.client,
-                        friendly_service_name(&entry.service)
-                    ),
-                });
-                continue;
-            }
+                    entry.client,
+                    friendly_service_name(&entry.service)
+                ),
+            });
+            continue;
         }
 
         // Non-allowlisted app with accessibility

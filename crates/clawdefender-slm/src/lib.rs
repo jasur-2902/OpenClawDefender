@@ -130,13 +130,13 @@ impl SlmService {
                     );
                     let backend: Box<dyn SlmBackend> = Box::new(backend);
                     let engine = Arc::new(SlmEngine::new(backend, config.clone()));
-                    return Self {
+                    Self {
                         engine: Some(engine),
                         fallback_engine: None,
                         config,
                         enabled: true,
                         mock_mode: false,
-                    };
+                    }
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -146,13 +146,13 @@ impl SlmService {
                     );
                     let backend: Box<dyn SlmBackend> = Box::new(HeuristicSlmBackend::new());
                     let engine = Arc::new(SlmEngine::new(backend, config.clone()));
-                    return Self {
+                    Self {
                         engine: Some(engine),
                         fallback_engine: None,
                         config,
                         enabled: true,
                         mock_mode: false,
-                    };
+                    }
                 }
             }
         }

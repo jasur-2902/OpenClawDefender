@@ -381,7 +381,7 @@ impl ThresholdCalibrator {
         for o in &routine_investigations {
             *routine_servers.entry(o.server_name.clone()).or_insert(0) += 1;
         }
-        for (server, _count) in &routine_servers {
+        for server in routine_servers.keys() {
             let cal = self
                 .per_server_adjustments
                 .entry(server.clone())
@@ -468,7 +468,7 @@ impl ThresholdCalibrator {
                 }
             }
         }
-        for (server, _count) in &correction_servers {
+        for server in correction_servers.keys() {
             let cal = self
                 .per_server_adjustments
                 .entry(server.clone())

@@ -297,9 +297,7 @@ const ALLOWED_REMEDIATION_COMMANDS: &[&str] =
 /// Check whether a command is in the remediation allowlist.
 fn is_command_allowed(command: &str) -> bool {
     let binary = command.split_whitespace().next().unwrap_or("");
-    ALLOWED_REMEDIATION_COMMANDS
-        .iter()
-        .any(|&allowed| binary == allowed)
+    ALLOWED_REMEDIATION_COMMANDS.contains(&binary)
 }
 
 // ---------------------------------------------------------------------------

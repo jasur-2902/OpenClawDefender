@@ -728,8 +728,9 @@ impl SecurityKnowledgeBase {
         let mut count = 0;
 
         for (server, knowledge) in imported.server_profiles {
-            if !self.server_profiles.contains_key(&server) {
-                self.server_profiles.insert(server, knowledge);
+            if let std::collections::hash_map::Entry::Vacant(e) = self.server_profiles.entry(server)
+            {
+                e.insert(knowledge);
                 count += 1;
             }
         }
@@ -1077,21 +1078,11 @@ pub struct PromptPreference {
     pub sample_count: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NotificationPrefs {
     pub prefers_quiet: bool,
     pub typical_active_hours: Option<(u8, u8)>,
     pub dismissed_notification_types: Vec<String>,
-}
-
-impl Default for NotificationPrefs {
-    fn default() -> Self {
-        Self {
-            prefers_quiet: false,
-            typical_active_hours: None,
-            dismissed_notification_types: Vec::new(),
-        }
-    }
 }
 
 // ============================================================================

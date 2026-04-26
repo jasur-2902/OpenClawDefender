@@ -5,15 +5,16 @@
 //! - Daily reviews (cloud-powered, opt-in)
 //! - Weekly reports (cloud-powered, opt-in)
 
-use anyhow::{bail, Context, Result};
-use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, NaiveTime, Timelike, Utc};
+use anyhow::{Context, Result};
+use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 const DAILY_REVIEW_PROMPT: &str = r#"Review today's security activity. You're writing a brief daily security briefing.
 
 HOURLY SUMMARIES (last 24h):
@@ -30,6 +31,7 @@ Produce:
 
 Keep it concise — this is a daily check-in, not a full report."#;
 
+#[allow(dead_code)]
 const WEEKLY_REPORT_PROMPT: &str = r#"Review this week's security posture. You're writing a comprehensive weekly security report.
 
 DAILY BRIEFS (last 7 days):
@@ -48,7 +50,9 @@ Produce:
 This is a strategic review — focus on patterns, trends, and actionable insights."#;
 
 // Cost constants (estimated)
+#[allow(dead_code)]
 const DAILY_REVIEW_COST_USD: f64 = 0.15;
+#[allow(dead_code)]
 const WEEKLY_REPORT_COST_USD: f64 = 0.50;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -400,7 +404,7 @@ impl ScheduledAnalysisManager {
         summary
     }
 
-    pub fn run_daily_review(&mut self, context: &DailyContext, cloud_prompt: &str) -> DailyBrief {
+    pub fn run_daily_review(&mut self, context: &DailyContext, _cloud_prompt: &str) -> DailyBrief {
         info!("Running daily review");
 
         // Check if we should skip
@@ -458,7 +462,7 @@ impl ScheduledAnalysisManager {
     pub fn run_weekly_report(
         &mut self,
         context: &WeeklyContext,
-        cloud_prompt: &str,
+        _cloud_prompt: &str,
     ) -> WeeklyReport {
         info!("Running weekly report");
 
@@ -658,11 +662,7 @@ impl ScheduledAnalysisManager {
 
             // Run if we're within 30 minutes of the preferred time
             let hour_match = current_hour == target_hour;
-            let minute_diff = if current_minute >= target_minute {
-                current_minute - target_minute
-            } else {
-                0
-            };
+            let minute_diff = current_minute.saturating_sub(target_minute);
 
             hour_match && minute_diff < 30
         } else {
@@ -687,7 +687,7 @@ impl ScheduledAnalysisManager {
 
             // If the calculated time is in the past, add the interval
             while next <= Utc::now() {
-                next = next + ChronoDuration::seconds(interval_secs);
+                next += ChronoDuration::seconds(interval_secs);
             }
             Some(next)
         } else {

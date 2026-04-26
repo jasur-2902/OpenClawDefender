@@ -430,6 +430,7 @@ impl TimelineBuilder {
     }
 
     /// Insert investigator notes at appropriate timeline positions.
+    #[allow(dead_code)]
     fn insert_investigator_notes(
         timeline: &mut Vec<TimelineEntry>,
         notes: &[(DateTime<Utc>, String)],
@@ -453,7 +454,7 @@ impl TimelineBuilder {
     }
 
     /// Identify key moments: critical/high severity, policy blocks, pivots.
-    fn mark_key_moments(entries: &mut Vec<TimelineEntry>) {
+    fn mark_key_moments(entries: &mut [TimelineEntry]) {
         for entry in entries.iter_mut() {
             if entry.is_key_moment {
                 continue;
@@ -489,7 +490,7 @@ impl TimelineBuilder {
 
     /// Link related entries: consecutive events from the same server, or
     /// tool calls followed by file access.
-    fn link_related_entries(entries: &mut Vec<TimelineEntry>) {
+    fn link_related_entries(entries: &mut [TimelineEntry]) {
         if entries.len() < 2 {
             return;
         }

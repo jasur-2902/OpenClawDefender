@@ -19,20 +19,15 @@ use crate::cloud_api::{extract_text, AgentRequest, CloudApiClient, Message, Mess
 // ---------------------------------------------------------------------------
 
 /// Routing mode for Ask Rook queries.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum AskClawMode {
     /// Route through Claude API with full tool-use capabilities.
     Cloud,
     /// Route through the local SLM model.
     LocalSlm,
     /// Fall back to keyword-based pattern matching.
+    #[default]
     Pattern,
-}
-
-impl Default for AskClawMode {
-    fn default() -> Self {
-        Self::Pattern
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +210,12 @@ pub struct ConversationState {
     pub pending_actions: Vec<PendingClawAction>,
     pub created_at: DateTime<Utc>,
     pub cloud_session_id: Option<String>,
+}
+
+impl Default for ConversationState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConversationState {

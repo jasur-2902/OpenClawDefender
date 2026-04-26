@@ -43,21 +43,12 @@ pub enum ServerAction {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ServerState {
     #[serde(default)]
     blocked: Vec<String>,
     #[serde(default)]
     trust_levels: HashMap<String, String>,
-}
-
-impl Default for ServerState {
-    fn default() -> Self {
-        Self {
-            blocked: Vec::new(),
-            trust_levels: HashMap::new(),
-        }
-    }
 }
 
 /// Run the server subcommand.

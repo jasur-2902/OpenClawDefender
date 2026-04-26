@@ -425,7 +425,7 @@ fn logs(follow: bool, lines: usize, level: Option<String>) -> Result<()> {
         let file = fs::File::open(&log_path)?;
         let reader = BufReader::new(file);
 
-        let mut all_lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+        let mut all_lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
         // Filter by level if specified.
         if level.is_some() {

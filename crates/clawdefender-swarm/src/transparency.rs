@@ -62,6 +62,12 @@ pub struct AgentActivityTracker {
     activities: Vec<AgentActivity>,
 }
 
+impl Default for AgentActivityTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AgentActivityTracker {
     pub fn new() -> Self {
         Self {
@@ -173,6 +179,12 @@ pub struct CostSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CostDashboard {
     operation_costs: Vec<OperationCost>,
+}
+
+impl Default for CostDashboard {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CostDashboard {
@@ -314,6 +326,12 @@ pub struct AccuracyMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccuracyTracker {
     assessments: Vec<AccuracyRecord>,
+}
+
+impl Default for AccuracyTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AccuracyTracker {
@@ -500,6 +518,12 @@ pub struct KnowledgeBaseViewer {
     risk_patterns: Vec<RiskPattern>,
 }
 
+impl Default for KnowledgeBaseViewer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KnowledgeBaseViewer {
     pub fn new() -> Self {
         Self {
@@ -644,6 +668,12 @@ pub struct AutonomyAuditTrail {
     entries: Vec<AuditEntry>,
 }
 
+impl Default for AutonomyAuditTrail {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AutonomyAuditTrail {
     pub fn new() -> Self {
         Self {
@@ -750,6 +780,12 @@ pub struct DecisionExplainer {
     explanations: Vec<DecisionExplanation>,
 }
 
+impl Default for DecisionExplainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DecisionExplainer {
     pub fn new() -> Self {
         Self {
@@ -828,6 +864,12 @@ pub struct TransparencyDashboard {
     pub decision_explainer: DecisionExplainer,
 }
 
+impl Default for TransparencyDashboard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransparencyDashboard {
     pub fn new() -> Self {
         Self {
@@ -847,12 +889,7 @@ impl TransparencyDashboard {
             accuracy_metrics: self.accuracy_tracker.get_metrics(),
             pattern_stats: self.knowledge_viewer.get_pattern_stats(),
             audit_summary: self.audit_trail.get_audit_summary(),
-            recent_decisions: self
-                .decision_explainer
-                .get_recent(10)
-                .iter()
-                .cloned()
-                .collect(),
+            recent_decisions: self.decision_explainer.get_recent(10).to_vec(),
             generated_at: Utc::now(),
         }
     }

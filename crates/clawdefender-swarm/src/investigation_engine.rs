@@ -780,7 +780,7 @@ impl InvestigationEngine {
             // Extract answers from accumulated text
             let what_happened = state
                 .questions_answered
-                .get(0)
+                .first()
                 .and_then(|q| q.answer.clone())
                 .unwrap_or_else(|| extract_section(&state.accumulated_text, "WHAT HAPPENED"));
             let why_it_happened = state

@@ -2,7 +2,6 @@
 ///
 /// Rules are organized by threat category. Each rule includes metadata
 /// with description and severity to map detections to Finding severity levels.
-
 /// EICAR antivirus test file detection.
 pub const RULE_EICAR_TEST: &str = r##"
 rule EICAR_Test {

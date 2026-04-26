@@ -146,6 +146,7 @@ pub struct ScanUserRequest {
 
 /// Internal mutable state for a single running scan.
 struct ScanState {
+    #[allow(dead_code)]
     scan_id: String,
     playbook: ScanPlaybook,
     status: ScanStatus,

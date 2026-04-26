@@ -52,18 +52,10 @@ struct FimViolation {
     detected_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct FimState {
     #[serde(default)]
     violations: Vec<FimViolation>,
-}
-
-impl Default for FimState {
-    fn default() -> Self {
-        Self {
-            violations: Vec::new(),
-        }
-    }
 }
 
 /// Run the fim subcommand.

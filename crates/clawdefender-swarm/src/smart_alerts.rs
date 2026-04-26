@@ -1,8 +1,7 @@
-use anyhow::Result;
 use chrono::{DateTime, Duration, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 // ==================== Alert Group ====================
@@ -364,7 +363,7 @@ impl SmartAlertEngine {
         severity: &str,
         timestamp: DateTime<Utc>,
     ) -> Option<Uuid> {
-        let now = Utc::now();
+        let _now = Utc::now();
 
         // Check for same server action grouping
         for group in &mut self.groups {
@@ -524,7 +523,7 @@ impl SmartAlertEngine {
             .filter(|(t, count)| *t > two_hours_ago && *count > 10)
             .count();
 
-        let was_sustained = self.fatigue.alert_rate.sustained_high;
+        let _was_sustained = self.fatigue.alert_rate.sustained_high;
         self.fatigue.alert_rate.sustained_high = recent_high_hours >= 2;
 
         // Activate digest mode if sustained high
@@ -766,7 +765,7 @@ impl SmartAlertEngine {
             .collect()
     }
 
-    pub fn check_recurrence(&self, alert_id: &str, pattern: &str) -> bool {
+    pub fn check_recurrence(&self, alert_id: &str, _pattern: &str) -> bool {
         if let Some(lifecycle) = self.lifecycle.lifecycles.get(alert_id) {
             lifecycle.current_status == LifecycleStatus::Dismissed && lifecycle.recurrence_count > 0
         } else {

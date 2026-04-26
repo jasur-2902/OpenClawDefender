@@ -465,6 +465,7 @@ pub fn check_reputation(_config: &ClawConfig, server_name: &str) -> Result<()> {
 // Signatures command
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 pub async fn signatures_update(config: &ClawConfig) -> Result<()> {
     println!("Signatures Update");
     println!("=================");

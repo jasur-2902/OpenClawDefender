@@ -5,10 +5,8 @@
 //! into a native Rust pattern matcher that produces `Finding` results.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
-use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -101,6 +99,7 @@ fn expand_home(path: &str) -> PathBuf {
 }
 
 /// Check whether a path (with ~ expansion) exists.
+#[allow(dead_code)]
 fn path_exists(path: &str) -> bool {
     expand_home(path).exists()
 }

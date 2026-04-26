@@ -435,6 +435,12 @@ fn check_large_strings(value: &serde_json::Value, warnings: &mut Vec<String>, pa
 // DataPortabilityManager implementation
 // ============================================================================
 
+impl Default for DataPortabilityManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DataPortabilityManager {
     /// Create a new manager with the default data directory.
     pub fn new() -> Self {
@@ -878,14 +884,13 @@ impl DataPortabilityManager {
         }
 
         // Knowledge base with different machine origin
-        if data.machine_id_hash != get_machine_id_hash() {
-            if data.components.knowledge_base.is_some() {
-                conflicts.push(ImportConflict {
-                    component: "knowledge_base".to_string(),
-                    description: "Knowledge base originates from a different machine".to_string(),
-                    resolution: "keep_both".to_string(),
-                });
-            }
+        if data.machine_id_hash != get_machine_id_hash() && data.components.knowledge_base.is_some()
+        {
+            conflicts.push(ImportConflict {
+                component: "knowledge_base".to_string(),
+                description: "Knowledge base originates from a different machine".to_string(),
+                resolution: "keep_both".to_string(),
+            });
         }
 
         // Calibration data from different machine may not apply

@@ -756,7 +756,7 @@ impl DriftDetector {
         }
 
         // Check if ALL dimensions are drifting (compound effect)
-        let all_drift_types = vec![
+        let all_drift_types = [
             DriftType::ScopeCreep,
             DriftType::ActivityVolume,
             DriftType::ToolUsage,

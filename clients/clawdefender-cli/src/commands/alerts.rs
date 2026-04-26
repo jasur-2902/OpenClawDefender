@@ -11,7 +11,6 @@ use clawdefender_core::audit::{AuditFilter, AuditLogger, AuditRecord};
 use clawdefender_core::config::settings::LogRotation;
 use clawdefender_core::config::ClawConfig;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 

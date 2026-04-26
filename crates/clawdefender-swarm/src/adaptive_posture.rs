@@ -3,7 +3,6 @@
 //! Dynamically adjusts security monitoring intensity based on threat landscape,
 //! power state, and user preferences.
 
-use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
@@ -549,15 +548,14 @@ impl ThreatPosture {
             return None;
         }
 
-        let target_trigger = match &event.event_type {
+        match &event.event_type {
             PostureEventType::KillChainProgression { stage } => {
                 let target = if *stage >= 3 {
                     PostureLevel::High
                 } else {
                     PostureLevel::Elevated
                 };
-                return self
-                    .try_escalate_to(target, PostureTrigger::KillChainDetected { stage: *stage });
+                self.try_escalate_to(target, PostureTrigger::KillChainDetected { stage: *stage })
             }
             PostureEventType::SuspiciousBurst {
                 count,
@@ -570,51 +568,47 @@ impl ThreatPosture {
                 } else {
                     return None;
                 };
-                return self.try_escalate_to(
+                self.try_escalate_to(
                     target,
                     PostureTrigger::SuspiciousEventBurst {
                         count: *count,
                         window_minutes: *window_minutes,
                     },
-                );
+                )
             }
-            PostureEventType::ThreatFeedMatch { server } => {
-                return self.try_escalate_to(
-                    PostureLevel::Elevated,
-                    PostureTrigger::ThreatFeedMatch {
-                        server: server.clone(),
-                    },
-                );
-            }
+            PostureEventType::ThreatFeedMatch { server } => self.try_escalate_to(
+                PostureLevel::Elevated,
+                PostureTrigger::ThreatFeedMatch {
+                    server: server.clone(),
+                },
+            ),
             PostureEventType::InvestigationComplete { verdict } => {
                 if verdict == "confirmed_threat" {
-                    return self.try_escalate_to(
+                    self.try_escalate_to(
                         PostureLevel::High,
                         PostureTrigger::InvestigationVerdict {
                             verdict: verdict.clone(),
                         },
-                    );
+                    )
+                } else {
+                    None
                 }
-                return None;
             }
-            PostureEventType::DataExfiltration => {
-                return self.try_escalate_to(
-                    PostureLevel::Critical,
-                    PostureTrigger::DataExfiltrationDetected,
-                );
-            }
+            PostureEventType::DataExfiltration => self.try_escalate_to(
+                PostureLevel::Critical,
+                PostureTrigger::DataExfiltrationDetected,
+            ),
             PostureEventType::SimulationGap { gap_count } => {
                 if *gap_count > 3 {
-                    return self.try_escalate_to(
+                    self.try_escalate_to(
                         PostureLevel::Elevated,
                         PostureTrigger::NoSuspiciousEvents { hours: 0 },
-                    );
+                    )
+                } else {
+                    None
                 }
-                return None;
             }
-        };
-
-        None
+        }
     }
 
     /// Evaluate if context should trigger de-escalation

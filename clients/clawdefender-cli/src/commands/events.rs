@@ -7,7 +7,6 @@ use clawdefender_core::audit::logger::FileAuditLogger;
 use clawdefender_core::audit::{AuditFilter, AuditLogger};
 use clawdefender_core::config::settings::LogRotation;
 use clawdefender_core::config::ClawConfig;
-use std::collections::HashMap;
 
 #[derive(Subcommand, Debug)]
 pub enum EventsAction {
@@ -233,12 +232,12 @@ pub fn run(config: &ClawConfig, action: &EventsAction) -> Result<()> {
 /// Parse a time offset string like "1h", "30m", "2d" into a DateTime.
 fn parse_time_offset(offset: &str) -> Result<DateTime<Utc>> {
     let offset = offset.trim();
-    let (num_str, unit) = if offset.ends_with('h') {
-        (&offset[..offset.len() - 1], "hours")
-    } else if offset.ends_with('m') {
-        (&offset[..offset.len() - 1], "minutes")
-    } else if offset.ends_with('d') {
-        (&offset[..offset.len() - 1], "days")
+    let (num_str, unit) = if let Some(stripped) = offset.strip_suffix('h') {
+        (stripped, "hours")
+    } else if let Some(stripped) = offset.strip_suffix('m') {
+        (stripped, "minutes")
+    } else if let Some(stripped) = offset.strip_suffix('d') {
+        (stripped, "days")
     } else {
         anyhow::bail!(
             "Invalid time offset: {}. Use format like '1h', '30m', or '2d'",

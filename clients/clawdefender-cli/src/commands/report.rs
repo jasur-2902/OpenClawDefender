@@ -2,12 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::Subcommand;
 
-use clawdefender_swarm::report_system::{
-    DailyBriefData, ReportFormat, ReportGenerator, ReportType,
-};
+use clawdefender_swarm::report_system::{DailyBriefData, ReportGenerator};
 
 #[derive(Subcommand, Debug)]
 pub enum ReportAction {
@@ -465,7 +463,7 @@ pub fn list_reports(type_filter: Option<String>, limit: usize) -> Result<()> {
     reports.sort_by(|a, b| b.2.cmp(&a.2));
     reports.truncate(limit);
 
-    println!("{:<40} {:<12} {}", "Report File", "Type", "Generated");
+    println!("{:<40} {:<12} Generated", "Report File", "Type");
     println!("{}", "-".repeat(70));
 
     for (file_name, report_type, datetime) in &reports {

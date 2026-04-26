@@ -1,7 +1,6 @@
 //! `rookbot investigate` — AI-powered investigation from the terminal.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::{bail, Result};
 use clap::Subcommand;
@@ -71,7 +70,7 @@ pub async fn run_investigation(target: &str, depth: &str) -> Result<()> {
     println!();
 
     // Parse target type
-    let investigation_target = if target.starts_with("event-") {
+    let _investigation_target = if target.starts_with("event-") {
         InvestigationTarget::Event {
             event_id: target.to_string(),
             event_data: serde_json::json!({"id": target}),
@@ -101,20 +100,20 @@ pub async fn run_investigation(target: &str, depth: &str) -> Result<()> {
     println!("  4. Assess impact and blast radius");
     println!("  5. Provide actionable recommendations");
 
-    return Ok(());
+    Ok(())
 }
 
 /// List past investigations.
 pub fn list_investigations(limit: usize, verdict_filter: Option<String>) -> Result<()> {
-    let mut store = InvestigationStore::with_dir(investigations_dir())?;
+    let store = InvestigationStore::with_dir(investigations_dir())?;
 
-    let mut query = clawdefender_swarm::investigation_store::InvestigationSearchQuery::default();
-    query.limit = Some(limit);
-    if let Some(ref verdict) = verdict_filter {
-        query.verdict = Some(verdict.clone());
-    }
+    let query = clawdefender_swarm::investigation_store::InvestigationSearchQuery {
+        limit: Some(limit),
+        verdict: verdict_filter.clone(),
+        ..Default::default()
+    };
 
-    let mut investigations = store.list(Some(&query));
+    let investigations = store.list(Some(&query));
 
     if investigations.is_empty() {
         println!("No investigations found.");
@@ -228,6 +227,7 @@ pub async fn resume_investigation(investigation_id: &str) -> Result<()> {
 }
 
 /// Get a human-readable summary of an investigation target.
+#[allow(dead_code)]
 fn target_summary(target: &InvestigationTarget) -> String {
     match target {
         InvestigationTarget::Event { event_id, .. } => format!("Event: {event_id}"),

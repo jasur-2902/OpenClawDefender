@@ -28,8 +28,10 @@ use crate::modules::ScanModule;
 /// Which detection modules to run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ScanMode {
     /// All deterministic scanners including memory scanning.
+    #[default]
     Full,
     /// YARA signature scanning only.
     SignaturesOnly,
@@ -51,12 +53,6 @@ pub enum ScanMode {
     BrowserOnly,
     /// Clipboard security check only.
     ClipboardOnly,
-}
-
-impl Default for ScanMode {
-    fn default() -> Self {
-        Self::Full
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +411,7 @@ fn cross_reference_findings(findings: &mut Vec<EnrichedFinding>) {
     // Track which findings to remove after merging
     let mut to_remove: Vec<usize> = Vec::new();
 
-    for (_path, indices) in &path_index {
+    for indices in path_index.values() {
         if indices.len() < 2 {
             continue;
         }

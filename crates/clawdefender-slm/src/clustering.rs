@@ -305,7 +305,7 @@ fn detect_kill_chain(existing: &[ClusterEvent], new_event: &ClusterEvent) -> boo
     }
 
     // Also check the reverse: existing network event, new credential access.
-    let new_is_credential = new_event.target.as_ref().map_or(false, |t| {
+    let new_is_credential = new_event.target.as_ref().is_some_and(|t| {
         let t = t.to_lowercase();
         t.contains(".ssh")
             || t.contains("id_rsa")

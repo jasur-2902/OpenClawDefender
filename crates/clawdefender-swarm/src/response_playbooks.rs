@@ -207,7 +207,7 @@ pub fn check_trigger_match(trigger: &PlaybookTrigger, context: &TriggerContext) 
                 .details
                 .split("stage:")
                 .nth(1)
-                .and_then(|s| s.trim().split_whitespace().next())
+                .and_then(|s| s.split_whitespace().next())
                 .and_then(|s| s.parse::<u8>().ok())
                 .unwrap_or(0);
             stage >= *min_stage && context.confidence >= *min_confidence
@@ -244,7 +244,7 @@ pub fn check_trigger_match(trigger: &PlaybookTrigger, context: &TriggerContext) 
                 .details
                 .split("count:")
                 .nth(1)
-                .and_then(|s| s.trim().split_whitespace().next())
+                .and_then(|s| s.split_whitespace().next())
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(0);
             count >= *threshold

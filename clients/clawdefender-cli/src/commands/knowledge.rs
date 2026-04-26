@@ -46,17 +46,9 @@ struct KnowledgeEntry {
     created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct KnowledgeBase {
     entries: Vec<KnowledgeEntry>,
-}
-
-impl Default for KnowledgeBase {
-    fn default() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
-    }
 }
 
 /// Run the knowledge subcommand.
@@ -161,7 +153,7 @@ fn show(entry_id: &str) -> Result<()> {
 fn add(entry_type: &str, description: &str, server: Option<&str>) -> Result<()> {
     let mut kb = load_knowledge_base()?;
 
-    let id = format!("kb-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+    let id = format!("kb-{}", &uuid::Uuid::new_v4().to_string()[..8]);
     let entry = KnowledgeEntry {
         id: id.clone(),
         r#type: entry_type.to_string(),

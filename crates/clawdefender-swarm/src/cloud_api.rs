@@ -572,7 +572,7 @@ pub async fn send_with_retry(
     let result = provider.send_message(request).await;
 
     match result {
-        Ok(resp) => return Ok(resp),
+        Ok(resp) => Ok(resp),
         Err(e) => {
             let err_str = format!("{e}");
 
@@ -707,7 +707,7 @@ impl CloudApiClient {
                 .messages
                 .into_iter()
                 .map(|mut m| {
-                    m.content = filter_message_content(&**filter, m.content);
+                    m.content = filter_message_content(filter, m.content);
                     m
                 })
                 .collect();

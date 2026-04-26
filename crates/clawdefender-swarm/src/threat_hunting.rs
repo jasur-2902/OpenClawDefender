@@ -812,9 +812,8 @@ fn parse_tag_attr(tag: &str, key: &str) -> Option<String> {
     let idx = tag.find(&search)?;
     let after = &tag[idx + search.len()..];
 
-    if after.starts_with('"') {
+    if let Some(content) = after.strip_prefix('"') {
         // Quoted value
-        let content = &after[1..];
         let end = content.find('"')?;
         Some(content[..end].to_string())
     } else {

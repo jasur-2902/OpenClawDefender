@@ -122,7 +122,7 @@ impl Default for PostureSnapshot {
 }
 
 /// Threat intelligence feed status.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ThreatIntelStatus {
     /// Whether offline intelligence has been generated.
     pub offline_intel_ready: bool,
@@ -132,17 +132,6 @@ pub struct ThreatIntelStatus {
     pub security_tips: u32,
     /// Last time intelligence was refreshed.
     pub last_refreshed: Option<String>,
-}
-
-impl Default for ThreatIntelStatus {
-    fn default() -> Self {
-        Self {
-            offline_intel_ready: false,
-            server_assessments: 0,
-            security_tips: 0,
-            last_refreshed: None,
-        }
-    }
 }
 
 /// Event counts accumulated for the current window.
@@ -382,8 +371,8 @@ impl ContextWindow {
                 .pending_suspicious
                 .lock()
                 .expect("pending_suspicious poisoned");
-            let s = std::mem::take(&mut *pending);
-            s
+
+            std::mem::take(&mut *pending)
         };
 
         // Snapshot server scores.

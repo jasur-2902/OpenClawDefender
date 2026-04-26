@@ -340,7 +340,7 @@ fn check_bluetooth_sharing() -> CisCheckResult {
                 title: title.to_string(),
                 category: category.to_string(),
                 expected: "0 (Disabled)".to_string(),
-                actual: format!("{}", trimmed),
+                actual: trimmed.to_string(),
                 passed: is_disabled,
                 severity: Severity::Medium,
                 remediation: "System Settings > General > Sharing > Bluetooth Sharing > Off"
@@ -753,7 +753,7 @@ fn check_password_hints() -> CisCheckResult {
                 title: title.to_string(),
                 category: category.to_string(),
                 expected: "0 (Disabled)".to_string(),
-                actual: format!("{}", trimmed),
+                actual: trimmed.to_string(),
                 passed: is_disabled,
                 severity: Severity::Low,
                 remediation: "Run: sudo defaults write /Library/Preferences/com.apple.loginwindow RetriesUntilHint -int 0".to_string(),

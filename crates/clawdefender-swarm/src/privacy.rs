@@ -124,97 +124,93 @@ impl PrivacyFilter {
 
     /// Built-in redaction rules.
     fn default_rules() -> Vec<RedactionRule> {
-        let mut rules = Vec::new();
-
-        // --- API Keys / Tokens ---
-        rules.push(RedactionRule {
-            name: "openai_api_key".into(),
-            pattern: r"sk-[a-zA-Z0-9]{20,}".into(),
-            replacement: "[REDACTED_API_KEY]".into(),
-            data_type: DataType::ApiKey,
-        });
-        rules.push(RedactionRule {
-            name: "github_token".into(),
-            pattern: r"ghp_[a-zA-Z0-9]{36,}".into(),
-            replacement: "[REDACTED_GITHUB_TOKEN]".into(),
-            data_type: DataType::ApiKey,
-        });
-        rules.push(RedactionRule {
-            name: "aws_key".into(),
-            pattern: r"AKIA[A-Z0-9]{16}".into(),
-            replacement: "[REDACTED_AWS_KEY]".into(),
-            data_type: DataType::ApiKey,
-        });
-        rules.push(RedactionRule {
-            name: "bearer_token".into(),
-            pattern: r"Bearer\s+[a-zA-Z0-9._\-]{20,}".into(),
-            replacement: "Bearer [REDACTED_TOKEN]".into(),
-            data_type: DataType::ApiKey,
-        });
-        rules.push(RedactionRule {
-            name: "generic_secret".into(),
-            pattern:
-                r#"(?i)(key|token|password|secret|api_key|apikey|auth)\s*[=:]\s*["']?[^\s"'\[]{8,}"#
-                    .into(),
-            replacement: "$1=[REDACTED]".into(),
-            data_type: DataType::Password,
-        });
-
-        // --- Private Key Material ---
-        rules.push(RedactionRule {
-            name: "pem_private_key".into(),
-            pattern: r"-----BEGIN\s+(?:RSA\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(?:RSA\s+)?PRIVATE KEY-----".into(),
-            replacement: "[REDACTED_PRIVATE_KEY]".into(),
-            data_type: DataType::PrivateKey,
-        });
-        rules.push(RedactionRule {
-            name: "openssh_private_key".into(),
-            pattern: r"-----BEGIN\s+OPENSSH\s+PRIVATE KEY-----[\s\S]*?-----END\s+OPENSSH\s+PRIVATE KEY-----".into(),
-            replacement: "[REDACTED_PRIVATE_KEY]".into(),
-            data_type: DataType::PrivateKey,
-        });
-
-        // --- Home Directory Paths ---
-        rules.push(RedactionRule {
-            name: "macos_home_path".into(),
-            pattern: r"/Users/[a-zA-Z0-9._-]+/".into(),
-            replacement: "~/".into(),
-            data_type: DataType::HomePath,
-        });
-        rules.push(RedactionRule {
-            name: "linux_home_path".into(),
-            pattern: r"/home/[a-zA-Z0-9._-]+/".into(),
-            replacement: "~/".into(),
-            data_type: DataType::HomePath,
-        });
-
-        // --- Internal IPs ---
-        rules.push(RedactionRule {
-            name: "internal_ip_192".into(),
-            pattern: r"\b192\.168\.\d{1,3}\.\d{1,3}\b".into(),
-            replacement: "[INTERNAL_IP]".into(),
-            data_type: DataType::InternalIp,
-        });
-        rules.push(RedactionRule {
-            name: "internal_ip_10".into(),
-            pattern: r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b".into(),
-            replacement: "[INTERNAL_IP]".into(),
-            data_type: DataType::InternalIp,
-        });
-        rules.push(RedactionRule {
-            name: "internal_ip_172".into(),
-            pattern: r"\b172\.(1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}\b".into(),
-            replacement: "[INTERNAL_IP]".into(),
-            data_type: DataType::InternalIp,
-        });
-
-        // --- Email Addresses ---
-        rules.push(RedactionRule {
-            name: "email_address".into(),
-            pattern: r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}".into(),
-            replacement: "[EMAIL]".into(),
-            data_type: DataType::Email,
-        });
+        let mut rules = vec![
+            // --- API Keys / Tokens ---
+            RedactionRule {
+                name: "openai_api_key".into(),
+                pattern: r"sk-[a-zA-Z0-9]{20,}".into(),
+                replacement: "[REDACTED_API_KEY]".into(),
+                data_type: DataType::ApiKey,
+            },
+            RedactionRule {
+                name: "github_token".into(),
+                pattern: r"ghp_[a-zA-Z0-9]{36,}".into(),
+                replacement: "[REDACTED_GITHUB_TOKEN]".into(),
+                data_type: DataType::ApiKey,
+            },
+            RedactionRule {
+                name: "aws_key".into(),
+                pattern: r"AKIA[A-Z0-9]{16}".into(),
+                replacement: "[REDACTED_AWS_KEY]".into(),
+                data_type: DataType::ApiKey,
+            },
+            RedactionRule {
+                name: "bearer_token".into(),
+                pattern: r"Bearer\s+[a-zA-Z0-9._\-]{20,}".into(),
+                replacement: "Bearer [REDACTED_TOKEN]".into(),
+                data_type: DataType::ApiKey,
+            },
+            RedactionRule {
+                name: "generic_secret".into(),
+                pattern:
+                    r#"(?i)(key|token|password|secret|api_key|apikey|auth)\s*[=:]\s*["']?[^\s"'\[]{8,}"#
+                        .into(),
+                replacement: "$1=[REDACTED]".into(),
+                data_type: DataType::Password,
+            },
+            // --- Private Key Material ---
+            RedactionRule {
+                name: "pem_private_key".into(),
+                pattern: r"-----BEGIN\s+(?:RSA\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(?:RSA\s+)?PRIVATE KEY-----".into(),
+                replacement: "[REDACTED_PRIVATE_KEY]".into(),
+                data_type: DataType::PrivateKey,
+            },
+            RedactionRule {
+                name: "openssh_private_key".into(),
+                pattern: r"-----BEGIN\s+OPENSSH\s+PRIVATE KEY-----[\s\S]*?-----END\s+OPENSSH\s+PRIVATE KEY-----".into(),
+                replacement: "[REDACTED_PRIVATE_KEY]".into(),
+                data_type: DataType::PrivateKey,
+            },
+            // --- Home Directory Paths ---
+            RedactionRule {
+                name: "macos_home_path".into(),
+                pattern: r"/Users/[a-zA-Z0-9._-]+/".into(),
+                replacement: "~/".into(),
+                data_type: DataType::HomePath,
+            },
+            RedactionRule {
+                name: "linux_home_path".into(),
+                pattern: r"/home/[a-zA-Z0-9._-]+/".into(),
+                replacement: "~/".into(),
+                data_type: DataType::HomePath,
+            },
+            // --- Internal IPs ---
+            RedactionRule {
+                name: "internal_ip_192".into(),
+                pattern: r"\b192\.168\.\d{1,3}\.\d{1,3}\b".into(),
+                replacement: "[INTERNAL_IP]".into(),
+                data_type: DataType::InternalIp,
+            },
+            RedactionRule {
+                name: "internal_ip_10".into(),
+                pattern: r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b".into(),
+                replacement: "[INTERNAL_IP]".into(),
+                data_type: DataType::InternalIp,
+            },
+            RedactionRule {
+                name: "internal_ip_172".into(),
+                pattern: r"\b172\.(1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}\b".into(),
+                replacement: "[INTERNAL_IP]".into(),
+                data_type: DataType::InternalIp,
+            },
+            // --- Email Addresses ---
+            RedactionRule {
+                name: "email_address".into(),
+                pattern: r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}".into(),
+                replacement: "[EMAIL]".into(),
+                data_type: DataType::Email,
+            },
+        ];
 
         // --- Machine Hostname ---
         // Detect system hostname at startup and add a rule for it.

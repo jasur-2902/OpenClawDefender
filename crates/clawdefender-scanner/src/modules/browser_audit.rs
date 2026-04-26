@@ -961,7 +961,7 @@ pub fn detect_login_anomalies(
         .filter(|e| {
             e.source != "local"
                 && e.source != "console"
-                && e.source != ""
+                && !e.source.is_empty()
                 && e.event_type == LoginEventType::Login
         })
         .collect();
@@ -1032,7 +1032,7 @@ pub fn detect_login_anomalies(
         .filter(|e| {
             if let Some(ref lt) = e.login_time {
                 let hour = lt.hour();
-                hour < 6 || hour >= 23
+                !(6..23).contains(&hour)
             } else {
                 false
             }
@@ -1260,10 +1260,7 @@ fn detect_login_issues() -> Vec<Finding> {
 /// Run a full browser extension audit and return structured results.
 pub async fn run_full_browser_audit() -> Result<(Vec<ExtensionRisk>, Vec<Finding>)> {
     let extensions = enumerate_all_extensions();
-    let risks: Vec<ExtensionRisk> = extensions
-        .iter()
-        .map(|e| assess_extension_risk(e))
-        .collect();
+    let risks: Vec<ExtensionRisk> = extensions.iter().map(assess_extension_risk).collect();
     let findings = audit_browser_extensions();
     Ok((risks, findings))
 }

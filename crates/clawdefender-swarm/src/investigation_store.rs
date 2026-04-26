@@ -4,7 +4,7 @@
 //! fast listing and filtering. Supports full-text search, expiry, pinning,
 //! and export to markdown.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -378,7 +378,7 @@ impl InvestigationStore {
         let result = self.load(id)?;
         match format {
             "json" => Ok(serde_json::to_string_pretty(&result)?),
-            "markdown" | _ => Ok(render_investigation_markdown(&result)),
+            _ => Ok(render_investigation_markdown(&result)),
         }
     }
 
@@ -589,7 +589,7 @@ fn investigations_directory() -> PathBuf {
 }
 
 /// Load existing index from disk or create a fresh one.
-fn load_or_create_index(base_dir: &PathBuf) -> Result<InvestigationIndex> {
+fn load_or_create_index(base_dir: &Path) -> Result<InvestigationIndex> {
     let path = base_dir.join("_index.json");
     if path.exists() {
         let data = std::fs::read_to_string(&path)?;

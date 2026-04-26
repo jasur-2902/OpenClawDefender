@@ -222,6 +222,12 @@ pub struct ReportGenerator {
     max_reports: usize,
 }
 
+impl Default for ReportGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReportGenerator {
     /// Create a new `ReportGenerator` using the default reports directory.
     pub fn new() -> Self {
@@ -349,7 +355,7 @@ impl ReportGenerator {
         let mut filtered: Vec<&GeneratedReport> = self
             .report_history
             .iter()
-            .filter(|r| report_type.map_or(true, |rt| r.report_type == *rt))
+            .filter(|r| report_type.is_none_or(|rt| r.report_type == *rt))
             .collect();
         filtered.sort_by(|a, b| b.generated_at.cmp(&a.generated_at));
         filtered.truncate(count);
@@ -401,7 +407,7 @@ impl ReportGenerator {
 
         match format {
             ReportFormat::Html => {
-                let html = to_html(&content, &report.report_type.title());
+                let html = to_html(&content, report.report_type.title());
                 let html_path = report.file_path.replace(".md", ".html");
                 std::fs::write(&html_path, &html)
                     .map_err(|e| format!("Failed to write HTML: {}", e))?;
@@ -804,7 +810,7 @@ fn render_weekly_report(data: &WeeklyReportData) -> String {
 
 fn render_incident_report(data: &IncidentReportData) -> String {
     let mut md = String::new();
-    md.push_str(&format!("# CLAWDEFENDER INCIDENT REPORT\n\n"));
+    md.push_str("# CLAWDEFENDER INCIDENT REPORT\n\n");
     md.push_str(&format!("**Incident ID:** {}  \n", data.incident_id));
     md.push_str(&format!("**Date:** {}  \n", data.date));
     md.push_str(&format!("**Severity:** {}  \n", data.severity));
@@ -1043,19 +1049,19 @@ fn markdown_to_html_body(md: &str) -> String {
         let trimmed = line.trim();
 
         // Headings
-        if trimmed.starts_with("### ") {
+        if let Some(content) = trimmed.strip_prefix("### ") {
             close_contexts(&mut html, &mut in_table, &mut in_list);
-            html.push_str(&format!("<h3>{}</h3>\n", &trimmed[4..]));
+            html.push_str(&format!("<h3>{}</h3>\n", content));
             continue;
         }
-        if trimmed.starts_with("## ") {
+        if let Some(content) = trimmed.strip_prefix("## ") {
             close_contexts(&mut html, &mut in_table, &mut in_list);
-            html.push_str(&format!("<h2>{}</h2>\n", &trimmed[3..]));
+            html.push_str(&format!("<h2>{}</h2>\n", content));
             continue;
         }
-        if trimmed.starts_with("# ") {
+        if let Some(content) = trimmed.strip_prefix("# ") {
             close_contexts(&mut html, &mut in_table, &mut in_list);
-            html.push_str(&format!("<h1>{}</h1>\n", &trimmed[2..]));
+            html.push_str(&format!("<h1>{}</h1>\n", content));
             continue;
         }
 
@@ -1104,18 +1110,17 @@ fn markdown_to_html_body(md: &str) -> String {
         }
 
         // List items
-        if trimmed.starts_with("- ") {
+        if let Some(content) = trimmed.strip_prefix("- ") {
             if !in_list {
                 html.push_str("<ul>\n");
                 in_list = true;
             }
-            let content = &trimmed[2..];
             html.push_str(&format!("<li>{}</li>\n", apply_bold(content)));
             continue;
         }
         // Numbered list items
-        if trimmed.len() > 2 && trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-            if let Some(rest) = trimmed.splitn(2, ". ").nth(1) {
+        if trimmed.len() > 2 && trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            if let Some(rest) = trimmed.split_once(". ").map(|x| x.1) {
                 if !in_list {
                     html.push_str("<ul>\n");
                     in_list = true;

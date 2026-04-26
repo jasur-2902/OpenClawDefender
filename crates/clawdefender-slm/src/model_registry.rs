@@ -379,6 +379,7 @@ pub fn cloud_providers() -> Vec<CloudProvider> {
 /// Kept for backward compatibility during migration from v1 to v2 config format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[derive(Default)]
 pub enum ActiveModelConfig {
     /// A model from the curated catalog, downloaded locally.
     LocalCatalog { model_id: String, path: PathBuf },
@@ -387,13 +388,8 @@ pub enum ActiveModelConfig {
     /// A cloud API model.
     CloudApi { provider: String, model: String },
     /// No model configured.
+    #[default]
     None,
-}
-
-impl Default for ActiveModelConfig {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Return the default path for the model configuration file.

@@ -68,6 +68,7 @@ fn parse_hunt_type(
 }
 
 /// Calculate time range from period string.
+#[allow(dead_code)]
 fn parse_time_range(period: &str) -> Result<TimeRange> {
     let now = chrono::Utc::now();
     let duration = match period {
@@ -123,7 +124,7 @@ pub async fn run_hunt(
     println!();
     println!("For now, use 'rookbot investigate' for deep dives on specific targets.");
 
-    return Ok(());
+    Ok(())
 }
 
 /// List past hunts.

@@ -181,7 +181,11 @@ pub fn run(action: &PostureAction) -> Result<()> {
                 return Ok(());
             }
 
-            store.set_level(new_level.clone(), format!("Manual change via CLI"), false);
+            store.set_level(
+                new_level.clone(),
+                "Manual change via CLI".to_string(),
+                false,
+            );
             store.save(&posture_path)?;
 
             println!("Threat posture set to {:?}.", new_level);

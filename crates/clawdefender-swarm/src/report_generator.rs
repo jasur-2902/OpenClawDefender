@@ -108,6 +108,12 @@ pub struct ReportSummary {
 /// Generates, renders, and persists security scan reports.
 pub struct ReportGenerator;
 
+impl Default for ReportGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReportGenerator {
     pub fn new() -> Self {
         Self
@@ -786,21 +792,20 @@ fn markdown_to_html(md: &str) -> String {
         let trimmed = line.trim();
 
         // Headings
-        if trimmed.starts_with("### ") {
+        if let Some(content) = trimmed.strip_prefix("### ") {
             close_contexts(&mut html, &mut in_table, &mut in_list);
-            let content = &trimmed[4..];
             let content = apply_severity_badges(content);
             html.push_str(&format!("<h3>{}</h3>\n", content));
             continue;
         }
-        if trimmed.starts_with("## ") {
+        if let Some(content) = trimmed.strip_prefix("## ") {
             close_contexts(&mut html, &mut in_table, &mut in_list);
-            html.push_str(&format!("<h2>{}</h2>\n", &trimmed[3..]));
+            html.push_str(&format!("<h2>{}</h2>\n", content));
             continue;
         }
-        if trimmed.starts_with("# ") {
+        if let Some(content) = trimmed.strip_prefix("# ") {
             close_contexts(&mut html, &mut in_table, &mut in_list);
-            html.push_str(&format!("<h1>{}</h1>\n", &trimmed[2..]));
+            html.push_str(&format!("<h1>{}</h1>\n", content));
             continue;
         }
 
@@ -851,12 +856,11 @@ fn markdown_to_html(md: &str) -> String {
         }
 
         // List items
-        if trimmed.starts_with("- ") {
+        if let Some(content) = trimmed.strip_prefix("- ") {
             if !in_list {
                 html.push_str("<ul>\n");
                 in_list = true;
             }
-            let content = &trimmed[2..];
             // Handle checkbox syntax
             let content = content.replace("[ ] ", "").replace("[x] ", "");
             html.push_str(&format!("<li>{}</li>\n", apply_inline_formatting(&content)));

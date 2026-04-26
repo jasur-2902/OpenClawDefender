@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use clap::Args;
 
-use clawdefender_swarm::chat::{ChatManager, ChatMessage};
+use clawdefender_swarm::chat::ChatManager;
 use clawdefender_swarm::cost::{BudgetConfig, CostTracker, PricingTable};
 use clawdefender_swarm::keychain;
 use clawdefender_swarm::llm_client::{HttpLlmClient, LlmClient, LlmRequest};
@@ -132,7 +132,7 @@ pub async fn run_interactive_chat() -> Result<()> {
     println!();
 
     // Build initial system context
-    let system_context = build_system_context();
+    let _system_context = build_system_context();
 
     loop {
         print!("Rook> ");
@@ -179,13 +179,12 @@ fn build_system_context() -> String {
     //
     // For now, return placeholder context.
 
-    format!(
-        "Recent Activity (Last 24h):\n\
+    "Recent Activity (Last 24h):\n\
          - Events: 142 total, 3 suspicious\n\
          - Alerts: 1 active (Medium severity)\n\
          - Security Posture: Monitoring\n\
          - Protected Servers: 4\n\
          \n\
          Note: For detailed investigation, use 'rookbot investigate <target>'"
-    )
+        .to_string()
 }

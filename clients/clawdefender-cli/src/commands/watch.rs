@@ -3,7 +3,6 @@
 //! Displays security events in real-time as they occur, similar to `tail -f`.
 
 use anyhow::{Context, Result};
-use chrono::Utc;
 use clap::Args;
 use clawdefender_core::audit::logger::FileAuditLogger;
 use clawdefender_core::audit::{AuditFilter, AuditLogger};
