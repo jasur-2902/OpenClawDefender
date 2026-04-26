@@ -104,9 +104,7 @@ pub fn delete_api_key(provider: &str) -> Result<()> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Not-found is not an error for deletion.
-        if !stderr.contains("could not be found")
-            && !stderr.contains("SecKeychainSearchCopyNext")
-        {
+        if !stderr.contains("could not be found") && !stderr.contains("SecKeychainSearchCopyNext") {
             bail!("failed to delete API key from Keychain: {}", stderr.trim());
         }
     }
@@ -200,13 +198,13 @@ impl CloudBackend {
             .context("Anthropic API request failed")?;
 
         let status = resp.status();
-        let json: serde_json::Value =
-            resp.json().await.context("failed to parse Anthropic response")?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .context("failed to parse Anthropic response")?;
 
         if !status.is_success() {
-            let msg = json["error"]["message"]
-                .as_str()
-                .unwrap_or("unknown error");
+            let msg = json["error"]["message"].as_str().unwrap_or("unknown error");
             bail!("Anthropic API error ({}): {}", status, msg);
         }
 
@@ -249,13 +247,13 @@ impl CloudBackend {
             .context("OpenAI API request failed")?;
 
         let status = resp.status();
-        let json: serde_json::Value =
-            resp.json().await.context("failed to parse OpenAI response")?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .context("failed to parse OpenAI response")?;
 
         if !status.is_success() {
-            let msg = json["error"]["message"]
-                .as_str()
-                .unwrap_or("unknown error");
+            let msg = json["error"]["message"].as_str().unwrap_or("unknown error");
             bail!("OpenAI API error ({}): {}", status, msg);
         }
 
@@ -302,13 +300,13 @@ impl CloudBackend {
             .context("Google API request failed")?;
 
         let status = resp.status();
-        let json: serde_json::Value =
-            resp.json().await.context("failed to parse Google response")?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .context("failed to parse Google response")?;
 
         if !status.is_success() {
-            let msg = json["error"]["message"]
-                .as_str()
-                .unwrap_or("unknown error");
+            let msg = json["error"]["message"].as_str().unwrap_or("unknown error");
             bail!("Google API error ({}): {}", status, msg);
         }
 
@@ -418,11 +416,7 @@ pub async fn test_connection(
     api_key: &str,
     model: &str,
 ) -> Result<ConnectionTestResult> {
-    let backend = CloudBackend::new(
-        provider.to_string(),
-        model.to_string(),
-        api_key.to_string(),
-    );
+    let backend = CloudBackend::new(provider.to_string(), model.to_string(), api_key.to_string());
 
     let start = Instant::now();
     let result = backend.call_provider("Hello").await;

@@ -39,7 +39,10 @@ async fn test_download_starts_and_progresses() {
                         _ => {}
                     }
                     if prog.bytes_downloaded > 0 {
-                        println!("SUCCESS: Download is progressing! Downloaded {} bytes", prog.bytes_downloaded);
+                        println!(
+                            "SUCCESS: Download is progressing! Downloaded {} bytes",
+                            prog.bytes_downloaded
+                        );
                         // Cancel since we don't want to download the full model
                         let cancelled = mgr.cancel(task_id).await;
                         println!("Cancel result: {}", cancelled);
@@ -133,9 +136,14 @@ async fn test_reqwest_https_connectivity() {
                 }
                 Err(e) => {
                     println!("HTTPS request FAILED: {}", e);
-                    if format!("{:?}", e).contains("certificate") || format!("{:?}", e).contains("tls") || format!("{:?}", e).contains("ssl") {
+                    if format!("{:?}", e).contains("certificate")
+                        || format!("{:?}", e).contains("tls")
+                        || format!("{:?}", e).contains("ssl")
+                    {
                         println!("ROOT CAUSE CONFIRMED: TLS certificate verification failed.");
-                        println!("Fix: Add 'rustls-tls-native-roots' to reqwest features in Cargo.toml");
+                        println!(
+                            "Fix: Add 'rustls-tls-native-roots' to reqwest features in Cargo.toml"
+                        );
                     }
                     assert!(false, "HTTPS request failed: {}", e);
                 }

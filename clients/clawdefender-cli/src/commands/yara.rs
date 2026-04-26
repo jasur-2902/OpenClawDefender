@@ -34,7 +34,10 @@ pub enum YaraAction {
 
 pub fn scan(path: PathBuf, recursive: bool) -> anyhow::Result<()> {
     println!("YARA Scan: {}", path.display());
-    println!("==========={}=", "=".repeat(path.display().to_string().len()));
+    println!(
+        "==========={}=",
+        "=".repeat(path.display().to_string().len())
+    );
 
     if recursive {
         println!("Mode: recursive");

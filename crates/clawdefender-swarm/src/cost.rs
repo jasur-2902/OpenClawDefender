@@ -614,8 +614,7 @@ impl CostTracker {
         };
 
         let warning_threshold = 80.0;
-        let any_warning =
-            session_pct >= warning_threshold
+        let any_warning = session_pct >= warning_threshold
             || daily_pct >= warning_threshold
             || monthly_pct >= warning_threshold;
 

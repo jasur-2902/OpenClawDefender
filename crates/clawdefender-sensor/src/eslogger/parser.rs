@@ -306,10 +306,7 @@ mod tests {
                 item_url,
                 item_type,
             } => {
-                assert_eq!(
-                    item_url,
-                    "/Library/LaunchDaemons/com.evil.daemon.plist"
-                );
+                assert_eq!(item_url, "/Library/LaunchDaemons/com.evil.daemon.plist");
                 assert_eq!(item_type, "daemon");
             }
             other => panic!("expected BtmLaunchItemAdd, got {other:?}"),

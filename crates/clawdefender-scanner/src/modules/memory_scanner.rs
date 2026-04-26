@@ -80,10 +80,7 @@ fn collect_process_artifacts(pid: u32) -> Result<ProcessArtifacts> {
     }
 
     // 3. Open file descriptors (check for suspicious file access)
-    if let Ok(output) = Command::new("lsof")
-        .args(["-p", &pid_str, "-Fn"])
-        .output()
-    {
+    if let Ok(output) = Command::new("lsof").args(["-p", &pid_str, "-Fn"]).output() {
         if output.status.success() {
             data.extend_from_slice(&output.stdout);
             data.push(b'\n');
@@ -91,10 +88,7 @@ fn collect_process_artifacts(pid: u32) -> Result<ProcessArtifacts> {
     }
 
     // 4. Loaded libraries and memory map summary (detect injected dylibs)
-    if let Ok(output) = Command::new("vmmap")
-        .args(["-summary", &pid_str])
-        .output()
-    {
+    if let Ok(output) = Command::new("vmmap").args(["-summary", &pid_str]).output() {
         if output.status.success() {
             data.extend_from_slice(&output.stdout);
             data.push(b'\n');
@@ -122,13 +116,9 @@ fn is_apple_signed(path: &str) -> bool {
         return true;
     }
     // Use codesign to verify Apple signing for other paths
-    if let Ok(output) = Command::new("codesign")
-        .args(["-dvvv", path])
-        .output()
-    {
+    if let Ok(output) = Command::new("codesign").args(["-dvvv", path]).output() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return stderr.contains("Authority=Software Signing")
-            || stderr.contains("Authority=Apple");
+        return stderr.contains("Authority=Software Signing") || stderr.contains("Authority=Apple");
     }
     false
 }
@@ -221,12 +211,11 @@ fn extract_description_from_metadata(rule: &yara_x::Rule<'_, '_>) -> String {
 }
 
 /// Scan a single process's collected artifacts with YARA rules.
-fn scan_process(
-    target: &ProcessTarget,
-    rules: &yara_x::Rules,
-) -> Result<MemoryScanResult> {
-    let artifacts = collect_process_artifacts(target.pid)
-        .context(format!("Failed to collect artifacts for PID {}", target.pid))?;
+fn scan_process(target: &ProcessTarget, rules: &yara_x::Rules) -> Result<MemoryScanResult> {
+    let artifacts = collect_process_artifacts(target.pid).context(format!(
+        "Failed to collect artifacts for PID {}",
+        target.pid
+    ))?;
 
     if artifacts.data.is_empty() {
         return Ok(MemoryScanResult {
@@ -281,11 +270,7 @@ fn severity_to_cvss(severity: &Severity) -> f64 {
 }
 
 /// Build a Finding from a process memory YARA match.
-fn build_memory_finding(
-    target: &ProcessTarget,
-    m: &MemoryYaraMatch,
-    counter: u32,
-) -> Finding {
+fn build_memory_finding(target: &ProcessTarget, m: &MemoryYaraMatch, counter: u32) -> Finding {
     let fid = format!("{}-MEM-{:03}", m.severity.finding_id_prefix(), counter);
 
     let remediation = match m.severity {
@@ -384,10 +369,7 @@ impl ScanModule for MemoryScanModule {
         ModuleCategory::SignatureDetection
     }
 
-    async fn run(
-        &self,
-        _ctx: &mut crate::modules::ScanContext,
-    ) -> Result<Vec<Finding>> {
+    async fn run(&self, _ctx: &mut crate::modules::ScanContext) -> Result<Vec<Finding>> {
         self.run_standalone().await
     }
 
@@ -396,8 +378,8 @@ impl ScanModule for MemoryScanModule {
 
         // Compile memory-specific YARA rules
         let source = yara_rules_source::memory_scan_rules();
-        let rules = yara_x::compile(source.as_str())
-            .context("Failed to compile memory YARA rules")?;
+        let rules =
+            yara_x::compile(source.as_str()).context("Failed to compile memory YARA rules")?;
 
         // Select non-system processes to scan
         let targets = select_scan_targets();
@@ -432,10 +414,7 @@ impl ScanModule for MemoryScanModule {
                     debug!("No matches for {} (PID {})", target.name, target.pid);
                 }
                 Err(e) => {
-                    debug!(
-                        "Error scanning {} (PID {}): {}",
-                        target.name, target.pid, e
-                    );
+                    debug!("Error scanning {} (PID {}): {}", target.name, target.pid, e);
                 }
             }
         }

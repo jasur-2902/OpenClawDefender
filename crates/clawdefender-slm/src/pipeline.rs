@@ -479,7 +479,11 @@ mod tests {
         let cluster = EventCluster {
             id: "test-cluster".to_string(),
             server_name: "evil-server".to_string(),
-            events: vec![make_event("evil-server", "file_read", Some("~/.ssh/id_rsa"))],
+            events: vec![make_event(
+                "evil-server",
+                "file_read",
+                Some("~/.ssh/id_rsa"),
+            )],
             cluster_reason: crate::clustering::ClusterReason::TimeWindow,
             window_start: Utc::now(),
             window_end: Utc::now(),

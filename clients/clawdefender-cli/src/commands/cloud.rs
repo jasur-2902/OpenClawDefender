@@ -154,7 +154,11 @@ fn cmd_status() -> Result<()> {
 
     println!("Configured Providers:");
     for (name, configured) in &entries {
-        let status = if *configured { "Connected" } else { "Not configured" };
+        let status = if *configured {
+            "Connected"
+        } else {
+            "Not configured"
+        };
         println!("  {:<16} {}", name, status);
     }
 

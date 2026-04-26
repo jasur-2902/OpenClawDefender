@@ -13,9 +13,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::finding::{
-    calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity,
-};
+use crate::finding::{calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity};
 use crate::modules::{ScanContext, ScanModule};
 
 // ---------------------------------------------------------------------------
@@ -87,7 +85,12 @@ fn run_check(cmd: &str, args: &[&str]) -> Option<String> {
 }
 
 /// Build a CisCheckResult for a check that could not be executed.
-fn check_not_executable(cis_id: &str, title: &str, category: &str, cis_level: u8) -> CisCheckResult {
+fn check_not_executable(
+    cis_id: &str,
+    title: &str,
+    category: &str,
+    cis_level: u8,
+) -> CisCheckResult {
     CisCheckResult {
         cis_id: cis_id.to_string(),
         title: title.to_string(),
@@ -155,7 +158,11 @@ fn check_bluetooth_powered() -> CisCheckResult {
 
     match run_check(
         "defaults",
-        &["read", "/Library/Preferences/com.apple.Bluetooth", "ControllerPowerState"],
+        &[
+            "read",
+            "/Library/Preferences/com.apple.Bluetooth",
+            "ControllerPowerState",
+        ],
     ) {
         Some(output) => {
             let is_off = output.trim() == "0";
@@ -189,7 +196,11 @@ fn check_remote_apple_events() -> CisCheckResult {
                 title: title.to_string(),
                 category: category.to_string(),
                 expected: "Off".to_string(),
-                actual: if is_off { "Off".to_string() } else { "On".to_string() },
+                actual: if is_off {
+                    "Off".to_string()
+                } else {
+                    "On".to_string()
+                },
                 passed: is_off,
                 severity: Severity::Medium,
                 remediation: "Run: sudo systemsetup -setremoteappleevents off".to_string(),
@@ -290,7 +301,11 @@ fn check_remote_login() -> CisCheckResult {
                 title: title.to_string(),
                 category: category.to_string(),
                 expected: "Off".to_string(),
-                actual: if is_off { "Off".to_string() } else { "On".to_string() },
+                actual: if is_off {
+                    "Off".to_string()
+                } else {
+                    "On".to_string()
+                },
                 passed: is_off,
                 severity: Severity::Medium,
                 remediation: "Run: sudo systemsetup -setremotelogin off".to_string(),
@@ -309,7 +324,12 @@ fn check_bluetooth_sharing() -> CisCheckResult {
 
     match run_check(
         "defaults",
-        &["-currentHost", "read", "com.apple.Bluetooth", "PrefKeyServicesEnabled"],
+        &[
+            "-currentHost",
+            "read",
+            "com.apple.Bluetooth",
+            "PrefKeyServicesEnabled",
+        ],
     ) {
         Some(output) => {
             let trimmed = output.trim();
@@ -323,8 +343,8 @@ fn check_bluetooth_sharing() -> CisCheckResult {
                 actual: format!("{}", trimmed),
                 passed: is_disabled,
                 severity: Severity::Medium,
-                remediation:
-                    "System Settings > General > Sharing > Bluetooth Sharing > Off".to_string(),
+                remediation: "System Settings > General > Sharing > Bluetooth Sharing > Off"
+                    .to_string(),
                 cis_level: 1,
             }
         }
@@ -366,8 +386,8 @@ fn check_content_caching() -> CisCheckResult {
                 },
                 passed: !is_activated,
                 severity: Severity::Low,
-                remediation:
-                    "System Settings > General > Sharing > Content Caching > Off".to_string(),
+                remediation: "System Settings > General > Sharing > Content Caching > Off"
+                    .to_string(),
                 cis_level: 2,
             }
         }
@@ -405,9 +425,8 @@ fn check_filevault() -> CisCheckResult {
                 actual: output.clone(),
                 passed: is_on,
                 severity: Severity::Critical,
-                remediation:
-                    "System Settings > Privacy & Security > FileVault > Turn On FileVault"
-                        .to_string(),
+                remediation: "System Settings > Privacy & Security > FileVault > Turn On FileVault"
+                    .to_string(),
                 cis_level: 1,
             }
         }
@@ -460,7 +479,9 @@ fn check_firewall() -> CisCheckResult {
                 actual: output.clone(),
                 passed: is_enabled,
                 severity: Severity::High,
-                remediation: "Run: sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on".to_string(),
+                remediation:
+                    "Run: sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on"
+                        .to_string(),
                 cis_level: 1,
             }
         }
@@ -488,7 +509,9 @@ fn check_firewall_stealth() -> CisCheckResult {
                 actual: output.clone(),
                 passed: is_enabled,
                 severity: Severity::Medium,
-                remediation: "Run: sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on".to_string(),
+                remediation:
+                    "Run: sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on"
+                        .to_string(),
                 cis_level: 1,
             }
         }
@@ -579,12 +602,15 @@ fn check_auto_login() -> CisCheckResult {
 
     match run_check(
         "defaults",
-        &["read", "/Library/Preferences/com.apple.loginwindow", "autoLoginUser"],
+        &[
+            "read",
+            "/Library/Preferences/com.apple.loginwindow",
+            "autoLoginUser",
+        ],
     ) {
         Some(output) => {
             let trimmed = output.trim();
-            let is_disabled =
-                trimmed.is_empty() || trimmed.contains("does not exist");
+            let is_disabled = trimmed.is_empty() || trimmed.contains("does not exist");
             CisCheckResult {
                 cis_id: cis_id.to_string(),
                 title: title.to_string(),
@@ -663,7 +689,11 @@ fn check_login_window_display() -> CisCheckResult {
 
     match run_check(
         "defaults",
-        &["read", "/Library/Preferences/com.apple.loginwindow", "SHOWFULLNAME"],
+        &[
+            "read",
+            "/Library/Preferences/com.apple.loginwindow",
+            "SHOWFULLNAME",
+        ],
     ) {
         Some(output) => {
             let trimmed = output.trim();
@@ -709,7 +739,11 @@ fn check_password_hints() -> CisCheckResult {
 
     match run_check(
         "defaults",
-        &["read", "/Library/Preferences/com.apple.loginwindow", "RetriesUntilHint"],
+        &[
+            "read",
+            "/Library/Preferences/com.apple.loginwindow",
+            "RetriesUntilHint",
+        ],
     ) {
         Some(output) => {
             let trimmed = output.trim();
@@ -751,7 +785,11 @@ fn check_guest_account() -> CisCheckResult {
 
     match run_check(
         "defaults",
-        &["read", "/Library/Preferences/com.apple.loginwindow", "GuestEnabled"],
+        &[
+            "read",
+            "/Library/Preferences/com.apple.loginwindow",
+            "GuestEnabled",
+        ],
     ) {
         Some(output) => {
             let trimmed = output.trim();
@@ -800,11 +838,19 @@ fn check_guest_shared_folders() -> CisCheckResult {
     // Check both AFP and SMB guest access
     let afp_result = run_check(
         "defaults",
-        &["read", "/Library/Preferences/com.apple.AppleFileServer", "guestAccess"],
+        &[
+            "read",
+            "/Library/Preferences/com.apple.AppleFileServer",
+            "guestAccess",
+        ],
     );
     let smb_result = run_check(
         "defaults",
-        &["read", "/Library/Preferences/SystemConfiguration/com.apple.smb.server", "AllowGuestAccess"],
+        &[
+            "read",
+            "/Library/Preferences/SystemConfiguration/com.apple.smb.server",
+            "AllowGuestAccess",
+        ],
     );
 
     let afp_disabled = match &afp_result {
@@ -876,8 +922,8 @@ fn check_filename_extensions() -> CisCheckResult {
                 ),
                 passed: is_shown,
                 severity: Severity::Low,
-                remediation:
-                    "Finder > Settings > Advanced > Show all filename extensions".to_string(),
+                remediation: "Finder > Settings > Advanced > Show all filename extensions"
+                    .to_string(),
                 cis_level: 1,
             }
         }
@@ -891,8 +937,8 @@ fn check_filename_extensions() -> CisCheckResult {
                 actual: "Key not found (extensions hidden)".to_string(),
                 passed: false,
                 severity: Severity::Low,
-                remediation:
-                    "Finder > Settings > Advanced > Show all filename extensions".to_string(),
+                remediation: "Finder > Settings > Advanced > Show all filename extensions"
+                    .to_string(),
                 cis_level: 1,
             }
         }
@@ -928,15 +974,18 @@ pub fn run_all_cis_checks() -> Vec<CisCheckResult> {
         check_filename_extensions,
     ];
 
-    checks.iter().map(|check_fn| {
-        let result = check_fn();
-        debug!(
-            cis_id = %result.cis_id,
-            passed = result.passed,
-            "CIS check completed"
-        );
-        result
-    }).collect()
+    checks
+        .iter()
+        .map(|check_fn| {
+            let result = check_fn();
+            debug!(
+                cis_id = %result.cis_id,
+                passed = result.passed,
+                "CIS check completed"
+            );
+            result
+        })
+        .collect()
 }
 
 /// Calculate a weighted compliance score from check results.
@@ -1037,10 +1086,7 @@ fn build_summary_finding(report: &ComplianceReport) -> Finding {
         Severity::Critical
     };
 
-    let id = format!(
-        "{}-CIS-SUMMARY",
-        severity.finding_id_prefix()
-    );
+    let id = format!("{}-CIS-SUMMARY", severity.finding_id_prefix());
 
     let description = format!(
         "CIS macOS Benchmark Compliance Score: {:.1}%\n\n\
@@ -1180,19 +1226,17 @@ mod tests {
 
     #[test]
     fn test_compliance_score_all_fail() {
-        let checks = vec![
-            CisCheckResult {
-                cis_id: "1.0".to_string(),
-                title: "Test".to_string(),
-                category: "Test".to_string(),
-                expected: "a".to_string(),
-                actual: "b".to_string(),
-                passed: false,
-                severity: Severity::Critical,
-                remediation: String::new(),
-                cis_level: 1,
-            },
-        ];
+        let checks = vec![CisCheckResult {
+            cis_id: "1.0".to_string(),
+            title: "Test".to_string(),
+            category: "Test".to_string(),
+            expected: "a".to_string(),
+            actual: "b".to_string(),
+            passed: false,
+            severity: Severity::Critical,
+            remediation: String::new(),
+            cis_level: 1,
+        }];
         let score = calculate_compliance_score(&checks);
         assert!(score.abs() < f64::EPSILON);
     }
@@ -1371,7 +1415,12 @@ mod tests {
     fn test_run_all_cis_checks_returns_results() {
         let results = run_all_cis_checks();
         // We defined 20 checks
-        assert_eq!(results.len(), 20, "Expected 20 CIS checks, got {}", results.len());
+        assert_eq!(
+            results.len(),
+            20,
+            "Expected 20 CIS checks, got {}",
+            results.len()
+        );
     }
 
     #[test]
@@ -1412,7 +1461,10 @@ mod tests {
         let module = CisBenchmarkModule::new();
         let findings = module.run_standalone().await.unwrap();
         // Should always produce at least the summary finding
-        assert!(!findings.is_empty(), "Should produce at least a summary finding");
+        assert!(
+            !findings.is_empty(),
+            "Should produce at least a summary finding"
+        );
         // Last finding should be the summary
         let last = findings.last().unwrap();
         assert!(

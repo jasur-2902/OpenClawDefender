@@ -185,10 +185,7 @@ fn mcp_security_audit() -> ScanPlaybook {
                 description: "Identify all MCP servers, check wrapped status, and review \
                     trust levels."
                     .into(),
-                key_tools: vec![
-                    "get_system_posture".into(),
-                    "query_events".into(),
-                ],
+                key_tools: vec!["get_system_posture".into(), "query_events".into()],
             },
             PlaybookStage {
                 name: "Configuration Analysis".into(),
@@ -202,10 +199,7 @@ fn mcp_security_audit() -> ScanPlaybook {
                 description: "Pull the behavioral profile for each server. Compare actual \
                     tool usage and file access against declared capabilities."
                     .into(),
-                key_tools: vec![
-                    "get_server_profile".into(),
-                    "query_events".into(),
-                ],
+                key_tools: vec!["get_server_profile".into(), "query_events".into()],
             },
             PlaybookStage {
                 name: "Threat Intelligence".into(),
@@ -284,10 +278,7 @@ fn system_hardening() -> ScanPlaybook {
                 description: "Check SIP, Gatekeeper, FileVault, and firewall status using \
                     system inspection commands."
                     .into(),
-                key_tools: vec![
-                    "get_system_posture".into(),
-                    "run_command".into(),
-                ],
+                key_tools: vec!["get_system_posture".into(), "run_command".into()],
             },
             PlaybookStage {
                 name: "SSH Configuration".into(),
@@ -316,8 +307,7 @@ fn system_hardening() -> ScanPlaybook {
             },
             PlaybookStage {
                 name: "Network Configuration".into(),
-                description: "Review network services, DNS settings, and firewall rules."
-                    .into(),
+                description: "Review network services, DNS settings, and firewall rules.".into(),
                 key_tools: vec!["run_command".into()],
             },
         ],
@@ -415,10 +405,7 @@ fn credential_exposure() -> ScanPlaybook {
                 description: "Check for .env files in common locations that may contain \
                     unprotected secrets."
                     .into(),
-                key_tools: vec![
-                    "list_directory".into(),
-                    "search_events".into(),
-                ],
+                key_tools: vec!["list_directory".into(), "search_events".into()],
             },
         ],
         system_prompt: format!(
@@ -487,20 +474,14 @@ fn network_security() -> ScanPlaybook {
                 description: "Map all outbound connections made by MCP servers — \
                     destinations, ports, and frequency."
                     .into(),
-                key_tools: vec![
-                    "get_server_profile".into(),
-                    "query_events".into(),
-                ],
+                key_tools: vec!["get_server_profile".into(), "query_events".into()],
             },
             PlaybookStage {
                 name: "Data Exfiltration Patterns".into(),
                 description: "Look for signs of data exfiltration — large uploads, \
                     unusual POST requests, encoded payloads."
                     .into(),
-                key_tools: vec![
-                    "search_events".into(),
-                    "query_events".into(),
-                ],
+                key_tools: vec!["search_events".into(), "query_events".into()],
             },
             PlaybookStage {
                 name: "DNS Analysis".into(),
@@ -585,10 +566,7 @@ fn behavioral_deep_dive() -> ScanPlaybook {
                 description: "Identify the servers with the highest anomaly scores and \
                     most suspicious recent activity."
                     .into(),
-                key_tools: vec![
-                    "get_server_profile".into(),
-                    "query_events".into(),
-                ],
+                key_tools: vec!["get_server_profile".into(), "query_events".into()],
             },
             PlaybookStage {
                 name: "Behavior Change Timeline".into(),
@@ -606,20 +584,14 @@ fn behavioral_deep_dive() -> ScanPlaybook {
                 description: "Look for gradual privilege escalation — servers requesting \
                     broader permissions or accessing increasingly sensitive resources."
                     .into(),
-                key_tools: vec![
-                    "query_events".into(),
-                    "search_events".into(),
-                ],
+                key_tools: vec!["query_events".into(), "search_events".into()],
             },
             PlaybookStage {
                 name: "Kill Chain Analysis".into(),
                 description: "Check for multi-stage attack patterns matching known kill \
                     chain frameworks."
                     .into(),
-                key_tools: vec![
-                    "query_events".into(),
-                    "get_server_profile".into(),
-                ],
+                key_tools: vec!["query_events".into(), "get_server_profile".into()],
             },
             PlaybookStage {
                 name: "Learning Period Comparison".into(),
@@ -817,8 +789,7 @@ pub fn get_playbook_summaries() -> Vec<PlaybookSummary> {
             // Assume 60% input, 40% output.
             let input_tokens = (p.estimated_tokens as f64) * 0.6;
             let output_tokens = (p.estimated_tokens as f64) * 0.4;
-            let cost = (input_tokens / 1_000_000.0) * 3.0
-                + (output_tokens / 1_000_000.0) * 15.0;
+            let cost = (input_tokens / 1_000_000.0) * 3.0 + (output_tokens / 1_000_000.0) * 15.0;
 
             PlaybookSummary {
                 id: p.id,
@@ -885,7 +856,10 @@ mod tests {
     #[test]
     fn test_get_playbook_default() {
         let pb = get_playbook("mcp_security_audit");
-        assert!(pb.is_some(), "mcp_security_audit must be the default playbook");
+        assert!(
+            pb.is_some(),
+            "mcp_security_audit must be the default playbook"
+        );
         let pb = pb.unwrap();
         assert_eq!(pb.name, "MCP Security Audit");
         assert_eq!(pb.stages.len(), 5);
@@ -977,7 +951,8 @@ mod tests {
     fn test_credential_exposure_safety_rule() {
         let pb = get_playbook("credential_exposure").unwrap();
         assert!(
-            pb.system_prompt.contains("NEVER read, display, log, or output actual credential"),
+            pb.system_prompt
+                .contains("NEVER read, display, log, or output actual credential"),
             "credential_exposure must include the safety rule about never displaying secrets",
         );
     }

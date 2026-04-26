@@ -52,7 +52,11 @@ struct RookbotData {
 pub fn run(action: &DataAction) -> Result<()> {
     match action {
         DataAction::Export { output, include } => export(output.as_deref(), include.as_deref()),
-        DataAction::Import { path, mode, preview } => import(path, mode, *preview),
+        DataAction::Import {
+            path,
+            mode,
+            preview,
+        } => import(path, mode, *preview),
         DataAction::Reset {
             confirm,
             keep_config,
@@ -164,7 +168,10 @@ fn import(path: &PathBuf, mode: &str, preview: bool) -> Result<()> {
     if let Some(ref server_state) = data.server_state {
         println!("  Importing: server state");
         if !preview {
-            write_data_file("server_state.json", &serde_json::to_string_pretty(server_state)?)?;
+            write_data_file(
+                "server_state.json",
+                &serde_json::to_string_pretty(server_state)?,
+            )?;
         }
     }
 
@@ -172,7 +179,10 @@ fn import(path: &PathBuf, mode: &str, preview: bool) -> Result<()> {
     if let Some(ref autonomy_state) = data.autonomy_state {
         println!("  Importing: autonomy state");
         if !preview {
-            write_data_file("autonomy.json", &serde_json::to_string_pretty(autonomy_state)?)?;
+            write_data_file(
+                "autonomy.json",
+                &serde_json::to_string_pretty(autonomy_state)?,
+            )?;
         }
     }
 
@@ -196,7 +206,10 @@ fn import(path: &PathBuf, mode: &str, preview: bool) -> Result<()> {
     if let Some(ref fim_baseline) = data.fim_baseline {
         println!("  Importing: FIM baseline");
         if !preview {
-            write_data_file("fim/baseline.json", &serde_json::to_string_pretty(fim_baseline)?)?;
+            write_data_file(
+                "fim/baseline.json",
+                &serde_json::to_string_pretty(fim_baseline)?,
+            )?;
         }
     }
 

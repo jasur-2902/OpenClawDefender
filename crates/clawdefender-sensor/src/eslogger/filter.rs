@@ -586,7 +586,10 @@ mod tests {
                 name: "OSX.Trojan".to_string(),
             },
         );
-        assert!(filter.should_pass(&ev), "xp_malware_detected must always pass");
+        assert!(
+            filter.should_pass(&ev),
+            "xp_malware_detected must always pass"
+        );
     }
 
     #[test]
@@ -600,7 +603,10 @@ mod tests {
                 item_type: "daemon".to_string(),
             },
         );
-        assert!(filter.should_pass(&ev), "btm_launch_item_add must always pass");
+        assert!(
+            filter.should_pass(&ev),
+            "btm_launch_item_add must always pass"
+        );
     }
 
     #[test]
@@ -630,7 +636,10 @@ mod tests {
                 path: "/usr/sbin/something".to_string(),
             },
         );
-        assert!(!filter.should_pass(&ev), "setuid from PID < 100 should be dropped");
+        assert!(
+            !filter.should_pass(&ev),
+            "setuid from PID < 100 should be dropped"
+        );
 
         // Apple-signed should be filtered
         let mut ev2 = make_event(
@@ -654,7 +663,10 @@ mod tests {
                 path: "/tmp/escalate".to_string(),
             },
         );
-        assert!(filter.should_pass(&ev3), "setuid from user process should pass");
+        assert!(
+            filter.should_pass(&ev3),
+            "setuid from user process should pass"
+        );
     }
 
     #[test]
@@ -677,7 +689,10 @@ mod tests {
             "/tmp/injector",
             OsEventKind::GetTask { target_pid: 1234 },
         );
-        assert!(filter.should_pass(&ev2), "get_task from unknown process should pass");
+        assert!(
+            filter.should_pass(&ev2),
+            "get_task from unknown process should pass"
+        );
 
         // System process (PID < 100) should be filtered
         let ev3 = make_event(
@@ -702,10 +717,7 @@ mod tests {
                 path: "/tmp/some_link".to_string(),
             },
         );
-        assert!(
-            !filter.should_pass(&ev),
-            "link in /tmp should be dropped"
-        );
+        assert!(!filter.should_pass(&ev), "link in /tmp should be dropped");
 
         // Link in sensitive area should pass
         let ev2 = make_event(

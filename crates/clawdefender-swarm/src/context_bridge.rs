@@ -171,9 +171,7 @@ impl CloudBriefing {
     pub fn to_system_prompt(&self) -> String {
         let mut out = String::with_capacity(2048);
 
-        out.push_str(
-            "You are RookBot's security agent running on the user's machine.\n\n",
-        );
+        out.push_str("You are RookBot's security agent running on the user's machine.\n\n");
 
         // System profile
         out.push_str(&format!("SYSTEM: {}\n", self.system_profile));
@@ -190,8 +188,12 @@ impl CloudBriefing {
             let alert = if srv.anomaly_score >= 0.6 { " !!!" } else { "" };
             out.push_str(&format!(
                 "  - {} [{}, {}, anomaly={:.2}, {:.0} events/hr]{}\n",
-                srv.name, wrap_label, srv.trust_level, srv.anomaly_score,
-                srv.events_per_hour, alert,
+                srv.name,
+                wrap_label,
+                srv.trust_level,
+                srv.anomaly_score,
+                srv.events_per_hour,
+                alert,
             ));
         }
 
@@ -203,9 +205,7 @@ impl CloudBriefing {
         };
         out.push_str(&format!(
             "POLICY: {} rules, default={}, gaps=[{}]\n",
-            self.policy_summary.rule_count,
-            self.policy_summary.default_action,
-            gaps,
+            self.policy_summary.rule_count, self.policy_summary.default_action, gaps,
         ));
 
         // Threat intel
@@ -307,8 +307,10 @@ impl BriefingDiff {
         }
 
         for s in &self.new_suspicious {
-            parts.push(format!("NEW SUSPICIOUS: {} {}->{}",
-                s.timestamp, s.server, s.description));
+            parts.push(format!(
+                "NEW SUSPICIOUS: {} {}->{}",
+                s.timestamp, s.server, s.description
+            ));
         }
 
         for update in &self.kill_chain_updates {
@@ -753,11 +755,10 @@ mod tests {
         });
 
         let diff = diff_briefings(&old, &new);
-        assert!(
-            diff.changed_servers
-                .iter()
-                .any(|(name, _)| name == "NewServer"),
-        );
+        assert!(diff
+            .changed_servers
+            .iter()
+            .any(|(name, _)| name == "NewServer"),);
     }
 
     #[test]
@@ -777,15 +778,30 @@ mod tests {
     fn test_session_type_display() {
         assert_eq!(format!("{}", SessionType::Chat), "Chat");
         assert_eq!(
-            format!("{}", SessionType::Scan { playbook: "full".into() }),
+            format!(
+                "{}",
+                SessionType::Scan {
+                    playbook: "full".into()
+                }
+            ),
             "Scan(full)",
         );
         assert_eq!(
-            format!("{}", SessionType::Investigate { event_id: "e1".into() }),
+            format!(
+                "{}",
+                SessionType::Investigate {
+                    event_id: "e1".into()
+                }
+            ),
             "Investigate(e1)",
         );
         assert_eq!(
-            format!("{}", SessionType::Report { report_type: "weekly".into() }),
+            format!(
+                "{}",
+                SessionType::Report {
+                    report_type: "weekly".into()
+                }
+            ),
             "Report(weekly)",
         );
     }

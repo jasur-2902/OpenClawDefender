@@ -12,7 +12,11 @@ use output::Output;
 
 /// Rookbot — a firewall for AI agents.
 #[derive(Parser, Debug)]
-#[command(name = "rookbot", version, about = "Rookbot — a firewall for AI agents")]
+#[command(
+    name = "rookbot",
+    version,
+    about = "Rookbot — a firewall for AI agents"
+)]
 struct Cli {
     /// Path to the config file.
     #[arg(long, global = true)]
@@ -246,7 +250,6 @@ enum Commands {
     },
 
     // ── New commands ────────────────────────────────────────────────
-
     /// Live event stream (like `tail -f` for security events).
     Watch(commands::watch::WatchArgs),
 
@@ -564,14 +567,17 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Version => {
-            out.data(&serde_json::json!({
-                "name": "rookbot",
-                "version": env!("CARGO_PKG_VERSION"),
-            }), |_| {
-                println!("rookbot {}", env!("CARGO_PKG_VERSION"));
-                println!("  Target: {}", std::env::consts::ARCH);
-                println!("  OS: {}", std::env::consts::OS);
-            });
+            out.data(
+                &serde_json::json!({
+                    "name": "rookbot",
+                    "version": env!("CARGO_PKG_VERSION"),
+                }),
+                |_| {
+                    println!("rookbot {}", env!("CARGO_PKG_VERSION"));
+                    println!("  Target: {}", std::env::consts::ARCH);
+                    println!("  OS: {}", std::env::consts::OS);
+                },
+            );
         }
 
         Commands::Init => commands::init::run(&config)?,
@@ -707,14 +713,29 @@ async fn main() -> anyhow::Result<()> {
             GuardAction::Test { file } => commands::guard::test(&config, &file)?,
         },
 
-        Commands::Scan { action } => {
-            match action {
-                commands::scan::ScanAction::Run {
+        Commands::Scan { action } => match action {
+            commands::scan::ScanAction::Run {
+                playbook,
+                ai,
+                signatures_only,
+                quick,
+                full,
+                timeout,
+                modules,
+                json,
+                html,
+                output,
+                threshold,
+                baseline,
+                server_command,
+            } => {
+                commands::scan::run_scan(
                     playbook,
                     ai,
                     signatures_only,
                     quick,
                     full,
+                    server_command,
                     timeout,
                     modules,
                     json,
@@ -722,58 +743,41 @@ async fn main() -> anyhow::Result<()> {
                     output,
                     threshold,
                     baseline,
-                    server_command,
-                } => {
-                    commands::scan::run_scan(
-                        playbook,
-                        ai,
-                        signatures_only,
-                        quick,
-                        full,
-                        server_command,
-                        timeout,
-                        modules,
-                        json,
-                        html,
-                        output,
-                        threshold,
-                        baseline,
-                    )
-                    .await?;
-                }
-                commands::scan::ScanAction::Results {
-                    scan_id,
-                    severity,
-                    format,
-                } => {
-                    commands::scan::show_results(scan_id, severity, format)?;
-                }
-                commands::scan::ScanAction::History { limit } => {
-                    commands::scan::show_history(limit)?;
-                }
-                commands::scan::ScanAction::Fix {
-                    finding_id,
-                    safe,
-                    all,
-                    dry_run,
-                } => {
-                    commands::scan::apply_fix(finding_id, safe, all, dry_run)?;
-                }
-                commands::scan::ScanAction::Revert { remediation_id } => {
-                    commands::scan::revert_remediation(remediation_id)?;
-                }
-                commands::scan::ScanAction::Export {
-                    scan_id,
-                    format,
-                    output,
-                } => {
-                    commands::scan::export_report(scan_id, format, output)?;
-                }
-                commands::scan::ScanAction::ListModules => {
-                    commands::scan::list_modules()?;
-                }
+                )
+                .await?;
             }
-        }
+            commands::scan::ScanAction::Results {
+                scan_id,
+                severity,
+                format,
+            } => {
+                commands::scan::show_results(scan_id, severity, format)?;
+            }
+            commands::scan::ScanAction::History { limit } => {
+                commands::scan::show_history(limit)?;
+            }
+            commands::scan::ScanAction::Fix {
+                finding_id,
+                safe,
+                all,
+                dry_run,
+            } => {
+                commands::scan::apply_fix(finding_id, safe, all, dry_run)?;
+            }
+            commands::scan::ScanAction::Revert { remediation_id } => {
+                commands::scan::revert_remediation(remediation_id)?;
+            }
+            commands::scan::ScanAction::Export {
+                scan_id,
+                format,
+                output,
+            } => {
+                commands::scan::export_report(scan_id, format, output)?;
+            }
+            commands::scan::ScanAction::ListModules => {
+                commands::scan::list_modules()?;
+            }
+        },
 
         Commands::Feed { action } => match action {
             FeedAction::Status => commands::threat_intel::feed_status(&config)?,
@@ -814,7 +818,6 @@ async fn main() -> anyhow::Result<()> {
         }
 
         // ── New commands ────────────────────────────────────────────
-
         Commands::Watch(args) => {
             commands::watch::run(&config, &args)?;
         }
@@ -841,59 +844,61 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        Commands::Investigate { action } => {
-            match action {
-                commands::investigate::InvestigateAction::Run { target, depth } => {
-                    commands::investigate::run_investigation(&target, &depth).await?;
-                }
-                commands::investigate::InvestigateAction::List { limit, verdict } => {
-                    commands::investigate::list_investigations(limit, verdict)?;
-                }
-                commands::investigate::InvestigateAction::Show { investigation_id } => {
-                    commands::investigate::show_investigation(&investigation_id)?;
-                }
-                commands::investigate::InvestigateAction::Resume { investigation_id } => {
-                    commands::investigate::resume_investigation(&investigation_id).await?;
-                }
+        Commands::Investigate { action } => match action {
+            commands::investigate::InvestigateAction::Run { target, depth } => {
+                commands::investigate::run_investigation(&target, &depth).await?;
             }
-        }
+            commands::investigate::InvestigateAction::List { limit, verdict } => {
+                commands::investigate::list_investigations(limit, verdict)?;
+            }
+            commands::investigate::InvestigateAction::Show { investigation_id } => {
+                commands::investigate::show_investigation(&investigation_id)?;
+            }
+            commands::investigate::InvestigateAction::Resume { investigation_id } => {
+                commands::investigate::resume_investigation(&investigation_id).await?;
+            }
+        },
 
-        Commands::Hunt { action } => {
-            match action {
-                commands::hunt::HuntAction::Run { r#type, server, pattern, period } => {
-                    commands::hunt::run_hunt(&r#type, server, pattern, period).await?;
-                }
-                commands::hunt::HuntAction::List { limit } => {
-                    commands::hunt::list_hunts(limit)?;
-                }
-                commands::hunt::HuntAction::Show { hunt_id } => {
-                    commands::hunt::show_hunt(&hunt_id)?;
-                }
+        Commands::Hunt { action } => match action {
+            commands::hunt::HuntAction::Run {
+                r#type,
+                server,
+                pattern,
+                period,
+            } => {
+                commands::hunt::run_hunt(&r#type, server, pattern, period).await?;
             }
-        }
+            commands::hunt::HuntAction::List { limit } => {
+                commands::hunt::list_hunts(limit)?;
+            }
+            commands::hunt::HuntAction::Show { hunt_id } => {
+                commands::hunt::show_hunt(&hunt_id)?;
+            }
+        },
 
-        Commands::Report { action } => {
-            match action {
-                commands::report::ReportAction::Daily { date, output } => {
-                    commands::report::generate_daily_report(date, output)?;
-                }
-                commands::report::ReportAction::Weekly { date, output } => {
-                    commands::report::generate_weekly_report(date, output)?;
-                }
-                commands::report::ReportAction::Incident { investigation_id, output } => {
-                    commands::report::generate_incident_report(&investigation_id, output)?;
-                }
-                commands::report::ReportAction::Compliance { framework, output } => {
-                    commands::report::generate_compliance_report(&framework, output)?;
-                }
-                commands::report::ReportAction::List { r#type, limit } => {
-                    commands::report::list_reports(r#type, limit)?;
-                }
-                commands::report::ReportAction::Show { report_id } => {
-                    commands::report::show_report(&report_id)?;
-                }
+        Commands::Report { action } => match action {
+            commands::report::ReportAction::Daily { date, output } => {
+                commands::report::generate_daily_report(date, output)?;
             }
-        }
+            commands::report::ReportAction::Weekly { date, output } => {
+                commands::report::generate_weekly_report(date, output)?;
+            }
+            commands::report::ReportAction::Incident {
+                investigation_id,
+                output,
+            } => {
+                commands::report::generate_incident_report(&investigation_id, output)?;
+            }
+            commands::report::ReportAction::Compliance { framework, output } => {
+                commands::report::generate_compliance_report(&framework, output)?;
+            }
+            commands::report::ReportAction::List { r#type, limit } => {
+                commands::report::list_reports(r#type, limit)?;
+            }
+            commands::report::ReportAction::Show { report_id } => {
+                commands::report::show_report(&report_id)?;
+            }
+        },
 
         Commands::Server { action } => {
             commands::server::run(&action, &config)?;
@@ -931,30 +936,26 @@ async fn main() -> anyhow::Result<()> {
             commands::posture::run(&action)?;
         }
 
-        Commands::Compliance { action } => {
-            match action {
-                commands::compliance::ComplianceAction::Check { framework } => {
-                    commands::compliance::check(framework)?;
-                }
-                commands::compliance::ComplianceAction::Report { output } => {
-                    commands::compliance::report(output)?;
-                }
-                commands::compliance::ComplianceAction::Score => {
-                    commands::compliance::score()?;
-                }
+        Commands::Compliance { action } => match action {
+            commands::compliance::ComplianceAction::Check { framework } => {
+                commands::compliance::check(framework)?;
             }
-        }
+            commands::compliance::ComplianceAction::Report { output } => {
+                commands::compliance::report(output)?;
+            }
+            commands::compliance::ComplianceAction::Score => {
+                commands::compliance::score()?;
+            }
+        },
 
-        Commands::Yara { action } => {
-            match action {
-                commands::yara::YaraAction::Scan { path, recursive } => {
-                    commands::yara::scan(path, recursive)?;
-                }
-                commands::yara::YaraAction::Rules { count, list } => {
-                    commands::yara::show_rules(count, list)?;
-                }
+        Commands::Yara { action } => match action {
+            commands::yara::YaraAction::Scan { path, recursive } => {
+                commands::yara::scan(path, recursive)?;
             }
-        }
+            commands::yara::YaraAction::Rules { count, list } => {
+                commands::yara::show_rules(count, list)?;
+            }
+        },
 
         Commands::Config { action } => {
             let keystore = clawdefender_swarm::keychain::default_keystore();

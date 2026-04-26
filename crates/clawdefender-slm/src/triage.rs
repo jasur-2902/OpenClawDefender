@@ -84,8 +84,16 @@ impl From<&AnalysisRequest> for TriageInput {
             } => (
                 Some(tool_name.clone()),
                 "tool_call".to_string(),
-                arguments.get("path").and_then(|v| v.as_str()).map(String::from)
-                    .or_else(|| arguments.get("uri").and_then(|v| v.as_str()).map(String::from)),
+                arguments
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+                    .or_else(|| {
+                        arguments
+                            .get("uri")
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    }),
                 format!("Tool: {} Args: {}", tool_name, arguments),
             ),
             AnalysisEventType::McpResourceRead { uri } => (
@@ -255,11 +263,7 @@ pub fn parse_deep_analysis_output(raw: &str) -> DeepAnalysis {
                 _ => RiskLevel::High,
             };
         } else if let Some(rest) = line.strip_prefix("CONFIDENCE:") {
-            confidence = rest
-                .trim()
-                .parse::<f32>()
-                .unwrap_or(0.5)
-                .clamp(0.0, 1.0);
+            confidence = rest.trim().parse::<f32>().unwrap_or(0.5).clamp(0.0, 1.0);
         } else if let Some(rest) = line.strip_prefix("REASONING:") {
             reasoning = rest.trim().to_string();
         } else if let Some(rest) = line.strip_prefix("ACTION:") {
@@ -360,9 +364,7 @@ impl TriageEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analyzer::{
-        AnalysisContext, AnalysisEventType, AnalysisRequest, ServerReputation,
-    };
+    use crate::analyzer::{AnalysisContext, AnalysisEventType, AnalysisRequest, ServerReputation};
     use crate::engine::{MockSlmBackend, SlmConfig};
 
     // -- parse_triage_output tests --
@@ -559,8 +561,7 @@ mod tests {
             has_kill_chain: false,
             event_details: "Process spawned".to_string(),
         };
-        let prompt =
-            build_deep_analysis_prompt(&input, Some("Previous: 3 file reads in /tmp"));
+        let prompt = build_deep_analysis_prompt(&input, Some("Previous: 3 file reads in /tmp"));
 
         assert!(prompt.contains("Context Window:"));
         assert!(prompt.contains("Previous: 3 file reads in /tmp"));
@@ -643,7 +644,10 @@ mod tests {
         let engine = Arc::new(SlmEngine::new(Box::new(backend), SlmConfig::default()));
         let triage = TriageEngine::new(engine);
         let result = triage.triage(&make_triage_input()).await.unwrap();
-        assert!(matches!(result, TriageResult::LogOnly(TriageLevel::Notable)));
+        assert!(matches!(
+            result,
+            TriageResult::LogOnly(TriageLevel::Notable)
+        ));
     }
 
     #[tokio::test]
@@ -709,7 +713,9 @@ mod tests {
 
     #[test]
     fn deep_analysis_context_used_default() {
-        let analysis = parse_deep_analysis_output("RISK: LOW\nCONFIDENCE: 0.9\nREASONING: Safe.\nACTION: allow");
+        let analysis = parse_deep_analysis_output(
+            "RISK: LOW\nCONFIDENCE: 0.9\nREASONING: Safe.\nACTION: allow",
+        );
         assert!(!analysis.context_used);
     }
 }

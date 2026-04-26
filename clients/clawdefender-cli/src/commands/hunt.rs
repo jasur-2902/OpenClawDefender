@@ -50,24 +50,20 @@ fn parse_hunt_type(
     match type_str.to_lowercase().as_str() {
         "general" => Ok(HuntType::GeneralSweep),
         "server" => {
-            let server = server.ok_or_else(|| {
-                anyhow::anyhow!("Server-focused hunt requires --server argument")
-            })?;
+            let server = server
+                .ok_or_else(|| anyhow::anyhow!("Server-focused hunt requires --server argument"))?;
             Ok(HuntType::ServerFocused { server })
         }
         "pattern" => {
-            let pattern = pattern.ok_or_else(|| {
-                anyhow::anyhow!("Pattern hunt requires --pattern argument")
-            })?;
+            let pattern = pattern
+                .ok_or_else(|| anyhow::anyhow!("Pattern hunt requires --pattern argument"))?;
             Ok(HuntType::PatternSearch { pattern })
         }
         "historical" => {
             let period = period.unwrap_or_else(|| "last-7d".to_string());
             Ok(HuntType::HistoricalReview { period })
         }
-        _ => bail!(
-            "Invalid hunt type: {type_str}. Use general, server, pattern, or historical."
-        ),
+        _ => bail!("Invalid hunt type: {type_str}. Use general, server, pattern, or historical."),
     }
 }
 
@@ -114,7 +110,7 @@ pub async fn run_hunt(
     println!("Starting threat hunt...");
     println!("Type: {}", type_str);
     match &hunt_type {
-        HuntType::GeneralSweep => {},
+        HuntType::GeneralSweep => {}
         HuntType::ServerFocused { server } => println!("Server: {server}"),
         HuntType::PatternSearch { pattern } => println!("Pattern: {pattern}"),
         HuntType::HistoricalReview { period } => println!("Period: {period}"),
@@ -128,7 +124,6 @@ pub async fn run_hunt(
     println!("For now, use 'rookbot investigate' for deep dives on specific targets.");
 
     return Ok(());
-
 }
 
 /// List past hunts.
@@ -165,7 +160,10 @@ pub fn list_hunts(limit: usize) -> Result<()> {
     hunts.sort_by(|a, b| b.time_range.end.cmp(&a.time_range.end));
     hunts.truncate(limit);
 
-    println!("{:<24} {:<20} {:<12} {:<10} {:<8}", "Hunt ID", "Type", "Findings", "Patterns", "Date");
+    println!(
+        "{:<24} {:<20} {:<12} {:<10} {:<8}",
+        "Hunt ID", "Type", "Findings", "Patterns", "Date"
+    );
     println!("{}", "-".repeat(80));
 
     for hunt in &hunts {
@@ -218,7 +216,8 @@ pub fn show_hunt(hunt_id: &str) -> Result<()> {
         HuntType::PatternSearch { pattern } => println!("Pattern Search ({})", pattern),
         HuntType::HistoricalReview { period } => println!("Historical Review ({})", period),
     }
-    println!("Time Range: {} to {}",
+    println!(
+        "Time Range: {} to {}",
         result.time_range.start.format("%Y-%m-%d %H:%M:%S"),
         result.time_range.end.format("%Y-%m-%d %H:%M:%S")
     );
@@ -244,7 +243,8 @@ pub fn show_hunt(hunt_id: &str) -> Result<()> {
             if !finding.involved_events.is_empty() {
                 println!("   Events: {}", finding.involved_events.len());
             }
-            println!("   Time Range: {} to {}",
+            println!(
+                "   Time Range: {} to {}",
                 finding.time_range.start.format("%Y-%m-%d %H:%M"),
                 finding.time_range.end.format("%Y-%m-%d %H:%M")
             );
@@ -256,4 +256,3 @@ pub fn show_hunt(hunt_id: &str) -> Result<()> {
 
     Ok(())
 }
-

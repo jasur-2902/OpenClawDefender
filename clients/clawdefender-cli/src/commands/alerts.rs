@@ -264,11 +264,13 @@ pub fn run(config: &ClawConfig, action: &AlertsAction) -> Result<()> {
             let alert_id = alert.id.clone();
             store.save(&alerts_path)?;
 
-            println!("Launching {} investigation for alert {}...", depth, &alert_id[..8]);
-            println!();
             println!(
-                "Investigation launched. Use `rookbot investigate show` to view results."
+                "Launching {} investigation for alert {}...",
+                depth,
+                &alert_id[..8]
             );
+            println!();
+            println!("Investigation launched. Use `rookbot investigate show` to view results.");
         }
     }
 
@@ -303,7 +305,11 @@ fn sync_alerts_from_audit_log(config: &ClawConfig, store: &mut AlertStore) -> Re
     for record in records {
         // Check if alert already exists.
         let event_id = record.session_id.clone().unwrap_or_default();
-        if store.alerts.iter().any(|a| a.event_id.as_deref() == Some(&event_id)) {
+        if store
+            .alerts
+            .iter()
+            .any(|a| a.event_id.as_deref() == Some(&event_id))
+        {
             continue;
         }
 

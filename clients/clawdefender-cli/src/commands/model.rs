@@ -104,7 +104,11 @@ fn cmd_list(mgr: &ModelManager, config: &ClawConfig) -> Result<()> {
         let ram_gb = (m.size_bytes as f64 / 1_073_741_824.0 * 1.2).ceil();
 
         // Show recommended badge for first model
-        let recommended = if m.name.contains("TinyLlama") { " [RECOMMENDED]" } else { "" };
+        let recommended = if m.name.contains("TinyLlama") {
+            " [RECOMMENDED]"
+        } else {
+            ""
+        };
 
         println!(
             "  {check} {:<35} {:<10} {:>8.1} MB  ~{}GB RAM  {status}{recommended}",

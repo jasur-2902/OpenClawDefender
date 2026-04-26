@@ -186,10 +186,7 @@ fn test_metadata_write_and_read() {
     assert_eq!(loaded.version, "0.1.0");
     assert_eq!(loaded.platform, "macos-arm64");
     assert_eq!(loaded.install_method, "auto");
-    assert_eq!(
-        loaded.install_path,
-        "/home/user/.rookbot/bin/clawdefender"
-    );
+    assert_eq!(loaded.install_path, "/home/user/.rookbot/bin/clawdefender");
 }
 
 #[test]

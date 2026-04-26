@@ -350,9 +350,7 @@ impl ContextWindow {
             }
 
             self.refresh().await;
-            debug!(
-                "Context window refreshed"
-            );
+            debug!("Context window refreshed");
 
             if self.should_persist() {
                 if let Err(e) = self.persist().await {
@@ -412,10 +410,7 @@ impl ContextWindow {
         ctx.total_events_in_window += counts.total();
         ctx.event_summary = format!(
             "{} events: {} routine, {} notable, {} suspicious",
-            ctx.total_events_in_window,
-            counts.routine,
-            counts.notable,
-            counts.suspicious
+            ctx.total_events_in_window, counts.routine, counts.notable, counts.suspicious
         );
 
         // Merge suspicious events (keep last MAX_SUSPICIOUS across old + new).
@@ -432,21 +427,25 @@ impl ContextWindow {
             servers.insert(existing.name.clone(), existing);
         }
         for (name, count) in &event_counts {
-            let entry = servers.entry(name.clone()).or_insert_with(|| ServerSnapshot {
-                name: name.clone(),
-                trust_level: "unknown".to_string(),
-                anomaly_score: 0.0,
-                event_count: 0,
-            });
+            let entry = servers
+                .entry(name.clone())
+                .or_insert_with(|| ServerSnapshot {
+                    name: name.clone(),
+                    trust_level: "unknown".to_string(),
+                    anomaly_score: 0.0,
+                    event_count: 0,
+                });
             entry.event_count += count;
         }
         for (name, score) in &scores {
-            let entry = servers.entry(name.clone()).or_insert_with(|| ServerSnapshot {
-                name: name.clone(),
-                trust_level: "unknown".to_string(),
-                anomaly_score: 0.0,
-                event_count: 0,
-            });
+            let entry = servers
+                .entry(name.clone())
+                .or_insert_with(|| ServerSnapshot {
+                    name: name.clone(),
+                    trust_level: "unknown".to_string(),
+                    anomaly_score: 0.0,
+                    event_count: 0,
+                });
             entry.anomaly_score = *score;
         }
         ctx.active_servers = servers.into_values().collect();
@@ -509,7 +508,10 @@ impl ContextWindow {
         if !ctx.recent_suspicious.is_empty() {
             out.push_str("SUSPICIOUS:");
             for s in &ctx.recent_suspicious {
-                out.push_str(&format!(" {} {} {}", s.timestamp, s.server_name, s.description));
+                out.push_str(&format!(
+                    " {} {} {}",
+                    s.timestamp, s.server_name, s.description
+                ));
                 out.push_str(" |");
             }
             // Remove trailing " |"
@@ -544,8 +546,7 @@ impl ContextWindow {
         if ctx.threat_intel_status.offline_intel_ready {
             out.push_str(&format!(
                 "INTEL: ready assessments={} tips={}\n",
-                ctx.threat_intel_status.server_assessments,
-                ctx.threat_intel_status.security_tips,
+                ctx.threat_intel_status.server_assessments, ctx.threat_intel_status.security_tips,
             ));
         }
 
@@ -588,7 +589,10 @@ impl ContextWindow {
         if !ctx.recent_suspicious.is_empty() {
             out.push_str("SUSPICIOUS:");
             for s in &ctx.recent_suspicious {
-                out.push_str(&format!(" {} {} {}", s.timestamp, s.server_name, s.description));
+                out.push_str(&format!(
+                    " {} {} {}",
+                    s.timestamp, s.server_name, s.description
+                ));
                 out.push_str(" |");
             }
             if out.ends_with(" |") {
@@ -619,8 +623,7 @@ impl ContextWindow {
         if ctx.threat_intel_status.offline_intel_ready {
             out.push_str(&format!(
                 "INTEL: ready assessments={} tips={}\n",
-                ctx.threat_intel_status.server_assessments,
-                ctx.threat_intel_status.security_tips,
+                ctx.threat_intel_status.server_assessments, ctx.threat_intel_status.security_tips,
             ));
         }
 
@@ -737,9 +740,17 @@ mod tests {
         assert_eq!(ctx.active_servers.len(), 2);
 
         // Verify server scores were applied.
-        let srv_a = ctx.active_servers.iter().find(|s| s.name == "server-a").unwrap();
+        let srv_a = ctx
+            .active_servers
+            .iter()
+            .find(|s| s.name == "server-a")
+            .unwrap();
         assert!((srv_a.anomaly_score - 0.1).abs() < f64::EPSILON);
-        let srv_b = ctx.active_servers.iter().find(|s| s.name == "server-b").unwrap();
+        let srv_b = ctx
+            .active_servers
+            .iter()
+            .find(|s| s.name == "server-b")
+            .unwrap();
         assert!((srv_b.anomaly_score - 0.8).abs() < f64::EPSILON);
 
         // Pending should be drained.
@@ -752,7 +763,11 @@ mod tests {
         let w = test_window();
         let line = w.triage_context_line();
         // Should be under ~100 "tokens" (rough: < 400 chars).
-        assert!(line.len() < 400, "triage line too long: {} chars", line.len());
+        assert!(
+            line.len() < 400,
+            "triage line too long: {} chars",
+            line.len()
+        );
         assert!(line.starts_with("[CONTEXT"));
         assert!(line.contains("events="));
     }
@@ -987,14 +1002,14 @@ mod tests {
         });
 
         // Wait for the loop to finish.
-        let result = tokio::time::timeout(
-            Duration::from_secs(300),
-            handle,
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(300), handle).await;
         assert!(result.is_ok(), "run_loop should have exited");
 
         // Context should have been persisted on shutdown.
-        assert!(path.exists(), "context file should exist after shutdown persist");
+        assert!(
+            path.exists(),
+            "context file should exist after shutdown persist"
+        );
 
         // Clean up.
         let _ = std::fs::remove_file(&path);
@@ -1005,7 +1020,11 @@ mod tests {
     fn default_persist_path_contains_clawdefender() {
         let path = default_persist_path();
         let path_str = path.to_string_lossy();
-        assert!(path_str.contains("clawdefender"), "path should contain 'clawdefender': {}", path_str);
+        assert!(
+            path_str.contains("clawdefender"),
+            "path should contain 'clawdefender': {}",
+            path_str
+        );
         assert!(path_str.ends_with("context_window.json"));
     }
 

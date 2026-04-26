@@ -289,7 +289,10 @@ impl FileAuditLogger {
     pub fn shutdown(&self) {
         let end_record = AuditRecord {
             timestamp: Utc::now(),
-            source: self.source_name.clone().unwrap_or_else(|| "system".to_string()),
+            source: self
+                .source_name
+                .clone()
+                .unwrap_or_else(|| "system".to_string()),
             event_summary: "session-end".to_string(),
             event_details: serde_json::json!({
                 "session_id": self.session_id,
@@ -402,7 +405,10 @@ impl Drop for FileAuditLogger {
         // Log session-end and shut down writer thread.
         let end_record = AuditRecord {
             timestamp: Utc::now(),
-            source: self.source_name.clone().unwrap_or_else(|| "system".to_string()),
+            source: self
+                .source_name
+                .clone()
+                .unwrap_or_else(|| "system".to_string()),
             event_summary: "session-end".to_string(),
             event_details: serde_json::json!({
                 "session_id": self.session_id,

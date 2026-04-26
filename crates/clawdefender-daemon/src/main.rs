@@ -47,16 +47,15 @@ async fn main() -> Result<()> {
 
     // Set up tracing: to file when TUI is enabled, to stderr otherwise.
     // Priority: CLAWDEFENDER_LOG env var > [ui] log_level in config.toml > default.
-    let env_filter = EnvFilter::try_from_env("CLAWDEFENDER_LOG")
-        .unwrap_or_else(|_| {
-            // Try to read log_level from config.toml as fallback
-            let config_log_level = read_config_log_level(&expand_tilde(&args.config));
-            if let Some(level) = config_log_level {
-                EnvFilter::new(level)
-            } else {
-                EnvFilter::from_default_env()
-            }
-        });
+    let env_filter = EnvFilter::try_from_env("CLAWDEFENDER_LOG").unwrap_or_else(|_| {
+        // Try to read log_level from config.toml as fallback
+        let config_log_level = read_config_log_level(&expand_tilde(&args.config));
+        if let Some(level) = config_log_level {
+            EnvFilter::new(level)
+        } else {
+            EnvFilter::from_default_env()
+        }
+    });
 
     if args.tui {
         // When TUI is active, log to a file to avoid corrupting the terminal.
@@ -95,7 +94,9 @@ async fn main() -> Result<()> {
         }
         Some(DaemonCommand::Proxy { server_command }) => {
             if server_command.is_empty() {
-                anyhow::bail!("proxy command requires a server command: rookbot proxy -- <cmd> [args...]");
+                anyhow::bail!(
+                    "proxy command requires a server command: rookbot proxy -- <cmd> [args...]"
+                );
             }
             let command = server_command[0].clone();
             let cmd_args = server_command[1..].to_vec();

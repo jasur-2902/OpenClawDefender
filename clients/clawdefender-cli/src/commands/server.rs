@@ -103,7 +103,11 @@ fn list() -> Result<()> {
             continue;
         }
 
-        println!("  {} ({}):", client.display_name, client.config_path.display());
+        println!(
+            "  {} ({}):",
+            client.display_name,
+            client.config_path.display()
+        );
         for server_name in &servers {
             let servers_key = detect_servers_key(&config);
             if let Some(server) = config
@@ -134,7 +138,9 @@ fn list() -> Result<()> {
     if total_servers == 0 {
         println!("  No MCP servers detected.");
         println!();
-        println!("  Install an MCP client (Claude Desktop, Cursor, VS Code) and configure servers.");
+        println!(
+            "  Install an MCP client (Claude Desktop, Cursor, VS Code) and configure servers."
+        );
     } else {
         println!("  {} server(s) detected", total_servers);
     }
@@ -175,7 +181,9 @@ fn set_trust(name: &str, level: &str) -> Result<()> {
     }
 
     let mut state = load_server_state()?;
-    state.trust_levels.insert(name.to_string(), level.to_string());
+    state
+        .trust_levels
+        .insert(name.to_string(), level.to_string());
     save_server_state(&state)?;
 
     println!("Set trust level for \"{}\": {}", name, level);

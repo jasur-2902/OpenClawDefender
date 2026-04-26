@@ -123,7 +123,10 @@ fn list(server: Option<&str>, entry_type: Option<&str>) -> Result<()> {
         } else {
             entry.description.clone()
         };
-        println!("  {:<16} {:<12} {:<20} {}", entry.id, entry.r#type, srv, desc);
+        println!(
+            "  {:<16} {:<12} {:<20} {}",
+            entry.id, entry.r#type, srv, desc
+        );
     }
 
     println!();

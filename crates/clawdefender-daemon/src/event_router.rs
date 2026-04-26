@@ -21,24 +21,24 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, info, warn};
 
 use clawdefender_core::audit::{AuditRecord, SlmAnalysisRecord, SwarmAnalysisRecord};
+use clawdefender_core::behavioral::killchain::{self, StepEventType};
 use clawdefender_core::behavioral::{
     AnomalyScorer, BehavioralDecision, BehavioralEvent, BehavioralEventType, DecisionEngine,
     KillChainDetector, KillChainEvent, LearningEngine,
 };
-use clawdefender_core::behavioral::killchain::{self, StepEventType};
 use clawdefender_core::event::correlation::CorrelatedEvent;
 use clawdefender_core::event::mcp::McpEventKind;
 use clawdefender_core::event::os::OsEventKind;
 use clawdefender_core::event::{Event, Severity};
 use clawdefender_core::policy::PolicyAction;
+use clawdefender_slm::analyzer::build_user_prompt;
 use clawdefender_slm::analyzer::{
     AnalysisContext, AnalysisEventType, AnalysisRequest, ServerReputation,
 };
-use clawdefender_slm::analyzer::build_user_prompt;
 use clawdefender_slm::clustering::ClusterEvent;
 use clawdefender_slm::engine::RiskLevel;
 use clawdefender_slm::pipeline::SlmPipeline;
-use clawdefender_slm::{AiBackendManager, AiRequest, TaskType, SlmService};
+use clawdefender_slm::{AiBackendManager, AiRequest, SlmService, TaskType};
 use clawdefender_swarm::agent_session::AgentSessionManager;
 use clawdefender_swarm::commander::Commander;
 use clawdefender_swarm::prompts::SwarmEventData;
@@ -232,21 +232,15 @@ impl EventRouter {
 
                 // --- Behavioral engine processing (non-blocking) ---
                 let escalation_reasons = if let Some(ref engines) = self.behavioral {
-                    self.process_behavioral(
-                        engines,
-                        &event,
-                        &mut audit_record,
-                        anomaly_threshold,
-                    )
-                    .await
+                    self.process_behavioral(engines, &event, &mut audit_record, anomaly_threshold)
+                        .await
                 } else {
                     Vec::new()
                 };
 
                 // Check for uncorrelated high-severity OS events
                 let mut all_reasons = escalation_reasons;
-                if event.mcp_event.is_none()
-                    && event.severity() >= self.config.escalation_threshold
+                if event.mcp_event.is_none() && event.severity() >= self.config.escalation_threshold
                 {
                     all_reasons.push(EscalationReason::UncorrelatedHighSeverity);
                 }
@@ -306,7 +300,11 @@ impl EventRouter {
 
                             tokio::spawn(async move {
                                 Self::run_dual_escalation_analysis(
-                                    mgr, swarm, cloud, event_clone, audit_tx,
+                                    mgr,
+                                    swarm,
+                                    cloud,
+                                    event_clone,
+                                    audit_tx,
                                 )
                                 .await;
                             });
@@ -337,7 +335,11 @@ impl EventRouter {
 
                                 tokio::spawn(async move {
                                     Self::run_escalation_analysis(
-                                        slm, swarm, cloud, event_clone, audit_tx,
+                                        slm,
+                                        swarm,
+                                        cloud,
+                                        event_clone,
+                                        audit_tx,
                                     )
                                     .await;
                                 });
@@ -380,44 +382,24 @@ impl EventRouter {
                         .and_then(|v| v.as_str())
                         .map(String::from),
                 ),
-                McpEventKind::ResourceRead(rr) => (
-                    "resource_read".to_string(),
-                    None,
-                    Some(rr.uri.clone()),
-                ),
-                McpEventKind::SamplingRequest(_) => (
-                    "sampling".to_string(),
-                    None,
-                    None,
-                ),
-                _ => (
-                    format!("{:?}", mcp.kind),
-                    None,
-                    None,
-                ),
+                McpEventKind::ResourceRead(rr) => {
+                    ("resource_read".to_string(), None, Some(rr.uri.clone()))
+                }
+                McpEventKind::SamplingRequest(_) => ("sampling".to_string(), None, None),
+                _ => (format!("{:?}", mcp.kind), None, None),
             }
         } else if let Some(os) = event.os_events.first() {
             match &os.kind {
-                OsEventKind::Open { path, .. } => (
-                    "file_open".to_string(),
-                    None,
-                    Some(path.clone()),
-                ),
-                OsEventKind::Connect { address, .. } => (
-                    "network_connect".to_string(),
-                    None,
-                    Some(address.clone()),
-                ),
-                OsEventKind::Exec { target_path, .. } => (
-                    "exec".to_string(),
-                    None,
-                    Some(target_path.clone()),
-                ),
-                _ => (
-                    "os_event".to_string(),
-                    None,
-                    None,
-                ),
+                OsEventKind::Open { path, .. } => {
+                    ("file_open".to_string(), None, Some(path.clone()))
+                }
+                OsEventKind::Connect { address, .. } => {
+                    ("network_connect".to_string(), None, Some(address.clone()))
+                }
+                OsEventKind::Exec { target_path, .. } => {
+                    ("exec".to_string(), None, Some(target_path.clone()))
+                }
+                _ => ("os_event".to_string(), None, None),
             }
         } else {
             ("unknown".to_string(), None, None)
@@ -647,8 +629,7 @@ impl EventRouter {
                                 .iter()
                                 .map(|r| r.verdict.clone())
                                 .collect(),
-                            total_tokens: verdict.total_input_tokens
-                                + verdict.total_output_tokens,
+                            total_tokens: verdict.total_input_tokens + verdict.total_output_tokens,
                             estimated_cost_usd: verdict.estimated_cost_usd,
                             latency_ms: verdict.total_latency_ms,
                         });
@@ -713,7 +694,9 @@ impl EventRouter {
 
                 match agent_mgr
                     .start_session(
-                        AgentSessionType::Investigate { event_id: event_id.clone() },
+                        AgentSessionType::Investigate {
+                            event_id: event_id.clone(),
+                        },
                         briefing,
                         Some(query),
                     )
@@ -849,10 +832,7 @@ impl EventRouter {
                         triage_resp.explanation,
                         prompt,
                     ),
-                    context: Some(format!(
-                        "Local triage: {} risk",
-                        triage_resp.risk_level
-                    )),
+                    context: Some(format!("Local triage: {} risk", triage_resp.risk_level)),
                 };
 
                 let deep_result = ai_manager.analyze(deep_request).await;
@@ -944,8 +924,7 @@ impl EventRouter {
                                 .iter()
                                 .map(|r| r.verdict.clone())
                                 .collect(),
-                            total_tokens: verdict.total_input_tokens
-                                + verdict.total_output_tokens,
+                            total_tokens: verdict.total_input_tokens + verdict.total_output_tokens,
                             estimated_cost_usd: verdict.estimated_cost_usd,
                             latency_ms: verdict.total_latency_ms,
                         });
@@ -1264,11 +1243,7 @@ impl EventRouter {
                         server_name: server_name.clone(),
                     });
                 }
-                OsEventKind::Connect {
-                    address,
-                    port,
-                    ..
-                } => {
+                OsEventKind::Connect { address, port, .. } => {
                     behavioral_events.push(BehavioralEvent {
                         event_type: BehavioralEventType::NetworkConnect {
                             host: address.clone(),
@@ -1370,12 +1345,7 @@ impl EventRouter {
             // Use Prompt as the default policy action so behavioral analysis runs
             let policy_action = PolicyAction::Prompt("behavioral".to_string());
 
-            let decision = decision_engine.decide(
-                &policy_action,
-                &profile,
-                highest_score,
-                best_kc,
-            );
+            let decision = decision_engine.decide(&policy_action, &profile, highest_score, best_kc);
 
             // Build audit data and attach to audit record
             let audit_data = decision_engine.build_audit_data(&decision, &profile);
@@ -1383,9 +1353,7 @@ impl EventRouter {
 
             // Log significant findings and collect escalation reasons
             match &decision {
-                BehavioralDecision::AutoBlock {
-                    explanation, ..
-                } => {
+                BehavioralDecision::AutoBlock { explanation, .. } => {
                     warn!(
                         server = %server_name,
                         explanation = %explanation,
@@ -1395,10 +1363,7 @@ impl EventRouter {
                         decision_type: "AutoBlock".to_string(),
                     });
                 }
-                BehavioralDecision::EnrichedPrompt {
-                    anomaly_score,
-                    ..
-                } => {
+                BehavioralDecision::EnrichedPrompt { anomaly_score, .. } => {
                     info!(
                         server = %server_name,
                         score = anomaly_score.total,

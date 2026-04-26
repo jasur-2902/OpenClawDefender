@@ -1179,9 +1179,7 @@ mod tests {
     fn test_honeypot_path_is_sensitive() {
         let scorer = AnomalyScorer::new();
         assert!(scorer.is_sensitive_path("/Users/test/.config/rookbot/honeypot/ssh/id_rsa"));
-        assert!(
-            scorer.is_sensitive_path("/home/user/.config/rookbot/honeypot/aws/credentials")
-        );
+        assert!(scorer.is_sensitive_path("/home/user/.config/rookbot/honeypot/aws/credentials"));
         assert!(scorer.is_sensitive_path("/Users/test/.config/rookbot/honeypot/env"));
     }
 

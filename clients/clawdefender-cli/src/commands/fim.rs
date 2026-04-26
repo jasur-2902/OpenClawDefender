@@ -125,10 +125,7 @@ fn baseline(reset: bool) -> Result<()> {
     println!();
 
     // Baseline critical system paths.
-    let critical_paths = vec![
-        "/usr/local/bin/rookbot",
-        "/usr/local/bin/clawdefender",
-    ];
+    let critical_paths = vec!["/usr/local/bin/rookbot", "/usr/local/bin/clawdefender"];
 
     let mut baseline = FimBaseline::default();
 
@@ -145,7 +142,10 @@ fn baseline(reset: bool) -> Result<()> {
     save_baseline(&baseline)?;
 
     println!();
-    println!("Baseline created: {} file(s) monitored", baseline.files.len());
+    println!(
+        "Baseline created: {} file(s) monitored",
+        baseline.files.len()
+    );
     Ok(())
 }
 

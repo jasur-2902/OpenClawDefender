@@ -265,11 +265,7 @@ mod tests {
     /// Helper: create a temp config file with the given content, return its path.
     fn write_temp_config(content: &str) -> (tempfile::TempDir, PathBuf) {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
-        let config_dir = tmp
-            .path()
-            .join(".local")
-            .join("share")
-            .join("clawdefender");
+        let config_dir = tmp.path().join(".local").join("share").join("clawdefender");
         std::fs::create_dir_all(&config_dir).unwrap();
         let config_path = config_dir.join("model_config.toml");
         std::fs::write(&config_path, content).unwrap();

@@ -19,8 +19,7 @@ use uuid::Uuid;
 use crate::model_registry;
 
 /// All-zeros placeholder means "skip verification".
-const PLACEHOLDER_SHA256: &str =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+const PLACEHOLDER_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Minimum bytes between progress updates.
 const PROGRESS_UPDATE_INTERVAL_BYTES: u64 = 100 * 1024; // 100 KB
@@ -164,7 +163,11 @@ impl DownloadManager {
             .to_string();
 
         // Security: Validate extracted filename has no path traversal components.
-        if filename.contains("..") || filename.contains('/') || filename.contains('\\') || filename.is_empty() {
+        if filename.contains("..")
+            || filename.contains('/')
+            || filename.contains('\\')
+            || filename.is_empty()
+        {
             bail!("invalid filename extracted from URL");
         }
 
@@ -180,7 +183,7 @@ impl DownloadManager {
             task_id.clone(),
             url.to_string(),
             filename,
-            0, // unknown size
+            0,                              // unknown size
             PLACEHOLDER_SHA256.to_string(), // no checksum for custom
             models_dir.to_path_buf(),
         )
@@ -759,7 +762,9 @@ mod tests {
     #[tokio::test]
     async fn start_download_unknown_model_fails() {
         let dm = DownloadManager::new();
-        let result = dm.start_download("nonexistent-model", Path::new("/tmp")).await;
+        let result = dm
+            .start_download("nonexistent-model", Path::new("/tmp"))
+            .await;
         assert!(result.is_err());
     }
 

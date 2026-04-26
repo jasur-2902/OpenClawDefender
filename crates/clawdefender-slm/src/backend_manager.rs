@@ -6,16 +6,16 @@
 //!
 //! Cloud-preferred tasks fall back to local SLM when cloud is unavailable.
 
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
-use serde::{Serialize, Deserialize};
 use tracing::warn;
 
-use crate::SlmService;
 use crate::engine::{SlmResponse, SlmStats};
 use crate::task_router::{
     FeatureRoutingConfig, RateLimitStatus, RoutingDecision as TaskRoutingDecision,
     RoutingPreferences, TaskRouter,
 };
+use crate::SlmService;
 
 /// Manages two independent AI backends: local SLM (always-on, fast)
 /// and cloud API (on-demand, powerful).
@@ -209,7 +209,10 @@ impl AiBackendManager {
             TaskRoutingDecision::UseLocalReduced => {
                 let mut resp = self.use_local(&request).await;
                 if resp.response.is_some() {
-                    resp.message = Some("Using local model (reduced quality — cloud unavailable or rate-limited)".to_string());
+                    resp.message = Some(
+                        "Using local model (reduced quality — cloud unavailable or rate-limited)"
+                            .to_string(),
+                    );
                 }
                 resp
             }
@@ -217,7 +220,10 @@ impl AiBackendManager {
                 response: None,
                 backend_used: "unavailable".to_string(),
                 fallback_used: false,
-                message: Some("This feature requires a cloud AI backend. Add an API key in Settings.".to_string()),
+                message: Some(
+                    "This feature requires a cloud AI backend. Add an API key in Settings."
+                        .to_string(),
+                ),
             },
             TaskRoutingDecision::Unavailable(reason) => AiResponse {
                 response: None,
@@ -255,8 +261,7 @@ impl AiBackendManager {
             | TaskType::ThreatHunt => RoutingDecision::CloudPreferred,
 
             // Cloud only
-            TaskType::AgentScan
-            | TaskType::PlaybookExecution => RoutingDecision::CloudOnly,
+            TaskType::AgentScan | TaskType::PlaybookExecution => RoutingDecision::CloudOnly,
         }
     }
 
@@ -274,25 +279,23 @@ impl AiBackendManager {
         };
 
         match service {
-            Some(svc) => {
-                match svc.analyze_event(&request.prompt).await {
-                    Ok(resp) => AiResponse {
-                        response: Some(resp),
-                        backend_used: "local".to_string(),
+            Some(svc) => match svc.analyze_event(&request.prompt).await {
+                Ok(resp) => AiResponse {
+                    response: Some(resp),
+                    backend_used: "local".to_string(),
+                    fallback_used: false,
+                    message: None,
+                },
+                Err(e) => {
+                    warn!("Local backend inference failed: {}", e);
+                    AiResponse {
+                        response: None,
+                        backend_used: "unavailable".to_string(),
                         fallback_used: false,
-                        message: None,
-                    },
-                    Err(e) => {
-                        warn!("Local backend inference failed: {}", e);
-                        AiResponse {
-                            response: None,
-                            backend_used: "unavailable".to_string(),
-                            fallback_used: false,
-                            message: Some(format!("Local inference failed: {}", e)),
-                        }
+                        message: Some(format!("Local inference failed: {}", e)),
                     }
                 }
-            }
+            },
             None => AiResponse {
                 response: None,
                 backend_used: "unavailable".to_string(),
@@ -307,7 +310,8 @@ impl AiBackendManager {
         // Clone Arcs and drop guards before awaiting to avoid Send issues.
         let cloud_svc = {
             let guard = self.cloud_backend.read().unwrap();
-            guard.as_ref()
+            guard
+                .as_ref()
                 .filter(|s| s.status == BackendStatus::Ready)
                 .map(|s| Arc::clone(&s.service))
         };
@@ -332,31 +336,30 @@ impl AiBackendManager {
         // Fall back to local
         let local_svc = {
             let guard = self.local_backend.read().unwrap();
-            guard.as_ref()
+            guard
+                .as_ref()
                 .filter(|s| s.status == BackendStatus::Ready)
                 .map(|s| Arc::clone(&s.service))
         };
 
         match local_svc {
-            Some(svc) => {
-                match svc.analyze_event(&request.prompt).await {
-                    Ok(resp) => AiResponse {
-                        response: Some(resp),
-                        backend_used: "local".to_string(),
+            Some(svc) => match svc.analyze_event(&request.prompt).await {
+                Ok(resp) => AiResponse {
+                    response: Some(resp),
+                    backend_used: "local".to_string(),
+                    fallback_used: true,
+                    message: Some("Cloud unavailable, used local model".to_string()),
+                },
+                Err(e) => {
+                    warn!("Local fallback also failed: {}", e);
+                    AiResponse {
+                        response: None,
+                        backend_used: "unavailable".to_string(),
                         fallback_used: true,
-                        message: Some("Cloud unavailable, used local model".to_string()),
-                    },
-                    Err(e) => {
-                        warn!("Local fallback also failed: {}", e);
-                        AiResponse {
-                            response: None,
-                            backend_used: "unavailable".to_string(),
-                            fallback_used: true,
-                            message: Some(format!("Both cloud and local backends failed: {}", e)),
-                        }
+                        message: Some(format!("Both cloud and local backends failed: {}", e)),
                     }
                 }
-            }
+            },
             None => AiResponse {
                 response: None,
                 backend_used: "unavailable".to_string(),
@@ -380,25 +383,23 @@ impl AiBackendManager {
         };
 
         match service {
-            Some(svc) => {
-                match svc.analyze_event(&request.prompt).await {
-                    Ok(resp) => AiResponse {
-                        response: Some(resp),
-                        backend_used: "cloud".to_string(),
+            Some(svc) => match svc.analyze_event(&request.prompt).await {
+                Ok(resp) => AiResponse {
+                    response: Some(resp),
+                    backend_used: "cloud".to_string(),
+                    fallback_used: false,
+                    message: None,
+                },
+                Err(e) => {
+                    warn!("Cloud-only inference failed: {}", e);
+                    AiResponse {
+                        response: None,
+                        backend_used: "unavailable".to_string(),
                         fallback_used: false,
-                        message: None,
-                    },
-                    Err(e) => {
-                        warn!("Cloud-only inference failed: {}", e);
-                        AiResponse {
-                            response: None,
-                            backend_used: "unavailable".to_string(),
-                            fallback_used: false,
-                            message: Some(format!("Cloud inference failed: {}", e)),
-                        }
+                        message: Some(format!("Cloud inference failed: {}", e)),
                     }
                 }
-            }
+            },
             None => AiResponse {
                 response: None,
                 backend_used: "unavailable".to_string(),

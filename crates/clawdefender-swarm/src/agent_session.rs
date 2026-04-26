@@ -14,9 +14,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::cloud_api::{
-    extract_text, extract_tool_calls, build_tool_result_message,
-    AgentRequest, AgentResponse, CloudApiClient, ContentBlock, Message,
-    MessageContent,
+    build_tool_result_message, extract_text, extract_tool_calls, AgentRequest, AgentResponse,
+    CloudApiClient, ContentBlock, Message, MessageContent,
 };
 use crate::tool_sandbox::ToolSandbox;
 use crate::tools::get_all_tool_definitions;
@@ -232,11 +231,7 @@ impl AgentSessionManager {
     }
 
     /// Send a user message in an existing session and run the tool-use loop.
-    pub async fn send_message(
-        &self,
-        session_id: &str,
-        message: &str,
-    ) -> Result<AgentTurnResult> {
+    pub async fn send_message(&self, session_id: &str, message: &str) -> Result<AgentTurnResult> {
         // Get session (clone out to release lock)
         let mut session = {
             let sessions = self.sessions.lock().await;
@@ -347,10 +342,7 @@ impl AgentSessionManager {
             // Execute each tool call
             let mut tool_results = Vec::new();
             for tc in &tool_calls {
-                let result = self
-                    .tool_sandbox
-                    .execute_tool(tc, session_id)
-                    .await;
+                let result = self.tool_sandbox.execute_tool(tc, session_id).await;
 
                 // Summarize for tracking
                 let input_json = serde_json::to_string(&tc.input).unwrap_or_default();
@@ -368,10 +360,14 @@ impl AgentSessionManager {
 
                 // Extract findings from certain tool results
                 if !result.is_error {
-                    if let Some(finding) = extract_finding_from_tool_result(&tc.name, &result.content) {
+                    if let Some(finding) =
+                        extract_finding_from_tool_result(&tc.name, &result.content)
+                    {
                         turn_findings.push(finding);
                     }
-                    if let Some(action) = extract_pending_action_from_tool_result(&tc.name, &result.content) {
+                    if let Some(action) =
+                        extract_pending_action_from_tool_result(&tc.name, &result.content)
+                    {
                         turn_pending_actions.push(action);
                     }
                 }
@@ -526,21 +522,13 @@ impl AgentSessionManager {
     }
 
     /// Approve a pending action within a session.
-    pub async fn approve_pending_action(
-        &self,
-        session_id: &str,
-        action_id: &str,
-    ) -> Result<()> {
+    pub async fn approve_pending_action(&self, session_id: &str, action_id: &str) -> Result<()> {
         self.update_action_status(session_id, action_id, ActionStatus::Approved)
             .await
     }
 
     /// Reject a pending action within a session.
-    pub async fn reject_pending_action(
-        &self,
-        session_id: &str,
-        action_id: &str,
-    ) -> Result<()> {
+    pub async fn reject_pending_action(&self, session_id: &str, action_id: &str) -> Result<()> {
         self.update_action_status(session_id, action_id, ActionStatus::Rejected)
             .await
     }
@@ -570,8 +558,7 @@ impl AgentSessionManager {
             return Ok(());
         }
 
-        let cutoff = chrono::Utc::now()
-            - chrono::Duration::days(max_age_days as i64);
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days as i64);
 
         let mut entries = tokio::fs::read_dir(&self.sessions_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
@@ -834,7 +821,11 @@ mod tests {
             }
         }
 
-        fn tool_use_response(tool_name: &str, tool_id: &str, input: serde_json::Value) -> AgentResponse {
+        fn tool_use_response(
+            tool_name: &str,
+            tool_id: &str,
+            input: serde_json::Value,
+        ) -> AgentResponse {
             AgentResponse {
                 id: "msg-mock-tool".to_string(),
                 content: vec![
@@ -885,27 +876,16 @@ mod tests {
         tempfile::tempdir().unwrap()
     }
 
-    fn make_manager(
-        provider: MockCloudProvider,
-        sessions_dir: PathBuf,
-    ) -> AgentSessionManager {
+    fn make_manager(provider: MockCloudProvider, sessions_dir: PathBuf) -> AgentSessionManager {
         let client = Arc::new(CloudApiClient::new(Box::new(provider)));
         let sandbox = Arc::new(ToolSandbox::new());
-        AgentSessionManager::new(
-            client,
-            sandbox,
-            "mock-model".to_string(),
-            sessions_dir,
-        )
+        AgentSessionManager::new(client, sandbox, "mock-model".to_string(), sessions_dir)
     }
 
     #[tokio::test]
     async fn test_session_creation() {
         let dir = temp_dir();
-        let mgr = make_manager(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("sessions"),
-        );
+        let mgr = make_manager(MockCloudProvider::new(vec![]), dir.path().join("sessions"));
 
         let id = mgr
             .start_session(SessionType::Chat, "You are a security agent.".into(), None)
@@ -925,9 +905,7 @@ mod tests {
     async fn test_session_creation_with_initial_query() {
         let dir = temp_dir();
         let mgr = make_manager(
-            MockCloudProvider::new(vec![MockCloudProvider::text_response(
-                "I'll investigate.",
-            )]),
+            MockCloudProvider::new(vec![MockCloudProvider::text_response("I'll investigate.")]),
             dir.path().join("sessions"),
         );
 
@@ -953,26 +931,16 @@ mod tests {
 
         let id;
         {
-            let mgr = make_manager(
-                MockCloudProvider::new(vec![]),
-                sessions_dir.clone(),
-            );
+            let mgr = make_manager(MockCloudProvider::new(vec![]), sessions_dir.clone());
             id = mgr
-                .start_session(
-                    SessionType::Chat,
-                    "Test briefing.".into(),
-                    None,
-                )
+                .start_session(SessionType::Chat, "Test briefing.".into(), None)
                 .await
                 .unwrap();
         }
 
         // Create a new manager and load from disk
         {
-            let mgr = make_manager(
-                MockCloudProvider::new(vec![]),
-                sessions_dir,
-            );
+            let mgr = make_manager(MockCloudProvider::new(vec![]), sessions_dir);
             let loaded = mgr.load_session(&id).await.unwrap();
             assert_eq!(loaded.id, id);
             assert_eq!(loaded.initial_briefing, "Test briefing.");
@@ -983,10 +951,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_listing() {
         let dir = temp_dir();
-        let mgr = make_manager(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("sessions"),
-        );
+        let mgr = make_manager(MockCloudProvider::new(vec![]), dir.path().join("sessions"));
 
         mgr.start_session(SessionType::Chat, "Briefing 1".into(), None)
             .await
@@ -1017,10 +982,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_cancellation() {
         let dir = temp_dir();
-        let mgr = make_manager(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("sessions"),
-        );
+        let mgr = make_manager(MockCloudProvider::new(vec![]), dir.path().join("sessions"));
 
         let id = mgr
             .start_session(SessionType::Chat, "Briefing".into(), None)
@@ -1039,10 +1001,7 @@ mod tests {
     #[tokio::test]
     async fn test_pending_action_workflow() {
         let dir = temp_dir();
-        let mgr = make_manager(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("sessions"),
-        );
+        let mgr = make_manager(MockCloudProvider::new(vec![]), dir.path().join("sessions"));
 
         let id = mgr
             .start_session(SessionType::Chat, "Briefing".into(), None)
@@ -1162,10 +1121,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = mgr
-            .send_message(&id, "What's our policy?")
-            .await
-            .unwrap();
+        let result = mgr.send_message(&id, "What's our policy?").await.unwrap();
 
         assert_eq!(result.text, "Based on the policy, everything looks good.");
         assert_eq!(result.tool_calls_made.len(), 1);
@@ -1180,10 +1136,7 @@ mod tests {
     #[tokio::test]
     async fn test_inactive_session_rejects_messages() {
         let dir = temp_dir();
-        let mgr = make_manager(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("sessions"),
-        );
+        let mgr = make_manager(MockCloudProvider::new(vec![]), dir.path().join("sessions"));
 
         let id = mgr
             .start_session(SessionType::Chat, "Briefing".into(), None)
@@ -1280,10 +1233,7 @@ mod tests {
 
     #[test]
     fn test_no_finding_from_regular_tool() {
-        let finding = extract_finding_from_tool_result(
-            "query_events",
-            "{\"events\": []}",
-        );
+        let finding = extract_finding_from_tool_result("query_events", "{\"events\": []}");
         assert!(finding.is_none());
     }
 }

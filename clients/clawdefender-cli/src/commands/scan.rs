@@ -298,7 +298,10 @@ pub fn show_results(
 
 pub fn show_history(limit: usize) -> anyhow::Result<()> {
     println!("Scan History (last {})", limit);
-    println!("===================={}=", "=".repeat(limit.to_string().len()));
+    println!(
+        "===================={}=",
+        "=".repeat(limit.to_string().len())
+    );
     println!();
     println!("(Scan history will be available in a future version)");
 
@@ -333,7 +336,10 @@ pub fn apply_fix(
 
 pub fn revert_remediation(remediation_id: String) -> anyhow::Result<()> {
     println!("Reverting remediation: {}", remediation_id);
-    println!("=========================={}=", "=".repeat(remediation_id.len()));
+    println!(
+        "=========================={}=",
+        "=".repeat(remediation_id.len())
+    );
     println!();
     println!("(Remediation rollback will be available in a future version)");
 

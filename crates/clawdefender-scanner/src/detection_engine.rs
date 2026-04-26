@@ -190,46 +190,70 @@ impl DetectionEngine {
 
         let (findings, modules_run) = match &self.mode {
             ScanMode::Full => self.run_full().await,
-            ScanMode::SignaturesOnly => self.run_single(
-                Box::new(SignatureDetectionModule::new()),
-                DetectionMethod::YaraSignature,
-            ).await,
-            ScanMode::PersistenceOnly => self.run_single(
-                Box::new(PersistenceModule::new()),
-                DetectionMethod::PersistenceEnum,
-            ).await,
-            ScanMode::PatternsOnly => self.run_single(
-                Box::new(PatternDetectionModule::new()),
-                DetectionMethod::PatternMatch,
-            ).await,
-            ScanMode::ClamavOnly => self.run_single(
-                Box::new(ClamAvModule::new()),
-                DetectionMethod::ClamAv,
-            ).await,
-            ScanMode::MemoryOnly => self.run_single(
-                Box::new(MemoryScanModule::new()),
-                DetectionMethod::MemoryYaraScan,
-            ).await,
-            ScanMode::TccOnly => self.run_single(
-                Box::new(TccAuditModule::new()),
-                DetectionMethod::TccAudit,
-            ).await,
-            ScanMode::FileIntegrityOnly => self.run_single(
-                Box::new(FileIntegrityModule::new()),
-                DetectionMethod::FileIntegrity,
-            ).await,
-            ScanMode::CisOnly => self.run_single(
-                Box::new(CisBenchmarkModule::new()),
-                DetectionMethod::CisBenchmark,
-            ).await,
-            ScanMode::BrowserOnly => self.run_single(
-                Box::new(BrowserAuditModule::new()),
-                DetectionMethod::BrowserAudit,
-            ).await,
-            ScanMode::ClipboardOnly => self.run_single(
-                Box::new(ClipboardMonitorModule::new()),
-                DetectionMethod::ClipboardCheck,
-            ).await,
+            ScanMode::SignaturesOnly => {
+                self.run_single(
+                    Box::new(SignatureDetectionModule::new()),
+                    DetectionMethod::YaraSignature,
+                )
+                .await
+            }
+            ScanMode::PersistenceOnly => {
+                self.run_single(
+                    Box::new(PersistenceModule::new()),
+                    DetectionMethod::PersistenceEnum,
+                )
+                .await
+            }
+            ScanMode::PatternsOnly => {
+                self.run_single(
+                    Box::new(PatternDetectionModule::new()),
+                    DetectionMethod::PatternMatch,
+                )
+                .await
+            }
+            ScanMode::ClamavOnly => {
+                self.run_single(Box::new(ClamAvModule::new()), DetectionMethod::ClamAv)
+                    .await
+            }
+            ScanMode::MemoryOnly => {
+                self.run_single(
+                    Box::new(MemoryScanModule::new()),
+                    DetectionMethod::MemoryYaraScan,
+                )
+                .await
+            }
+            ScanMode::TccOnly => {
+                self.run_single(Box::new(TccAuditModule::new()), DetectionMethod::TccAudit)
+                    .await
+            }
+            ScanMode::FileIntegrityOnly => {
+                self.run_single(
+                    Box::new(FileIntegrityModule::new()),
+                    DetectionMethod::FileIntegrity,
+                )
+                .await
+            }
+            ScanMode::CisOnly => {
+                self.run_single(
+                    Box::new(CisBenchmarkModule::new()),
+                    DetectionMethod::CisBenchmark,
+                )
+                .await
+            }
+            ScanMode::BrowserOnly => {
+                self.run_single(
+                    Box::new(BrowserAuditModule::new()),
+                    DetectionMethod::BrowserAudit,
+                )
+                .await
+            }
+            ScanMode::ClipboardOnly => {
+                self.run_single(
+                    Box::new(ClipboardMonitorModule::new()),
+                    DetectionMethod::ClipboardCheck,
+                )
+                .await
+            }
         };
 
         // Cross-reference and deduplicate
@@ -288,28 +312,45 @@ impl DetectionEngine {
         let mut modules_run = Vec::new();
 
         // Helper closure to collect results from a module
-        let mut collect = |name: &str, res: anyhow::Result<Vec<Finding>>, method: DetectionMethod| {
-            modules_run.push(name.to_string());
-            match res {
-                Ok(findings) => {
-                    tracing::info!("{}: {} finding(s)", name, findings.len());
-                    for f in findings {
-                        all_findings.push(EnrichedFinding {
-                            finding: f,
-                            detection_methods: vec![method.clone()],
-                            ai_analysis: None,
-                        });
+        let mut collect =
+            |name: &str, res: anyhow::Result<Vec<Finding>>, method: DetectionMethod| {
+                modules_run.push(name.to_string());
+                match res {
+                    Ok(findings) => {
+                        tracing::info!("{}: {} finding(s)", name, findings.len());
+                        for f in findings {
+                            all_findings.push(EnrichedFinding {
+                                finding: f,
+                                detection_methods: vec![method.clone()],
+                                ai_analysis: None,
+                            });
+                        }
                     }
+                    Err(e) => tracing::warn!("{}: error -- {}", name, e),
                 }
-                Err(e) => tracing::warn!("{}: error -- {}", name, e),
-            }
-        };
+            };
 
-        collect("signature-detection", sig_res, DetectionMethod::YaraSignature);
-        collect("persistence-detection", persist_res, DetectionMethod::PersistenceEnum);
-        collect("pattern-detection", pattern_res, DetectionMethod::PatternMatch);
+        collect(
+            "signature-detection",
+            sig_res,
+            DetectionMethod::YaraSignature,
+        );
+        collect(
+            "persistence-detection",
+            persist_res,
+            DetectionMethod::PersistenceEnum,
+        );
+        collect(
+            "pattern-detection",
+            pattern_res,
+            DetectionMethod::PatternMatch,
+        );
         collect("clamav-scan", clamav_res, DetectionMethod::ClamAv);
-        collect("memory-scanner", memory_res, DetectionMethod::MemoryYaraScan);
+        collect(
+            "memory-scanner",
+            memory_res,
+            DetectionMethod::MemoryYaraScan,
+        );
         collect("tcc-audit", tcc_res, DetectionMethod::TccAudit);
         collect("file-integrity", fim_res, DetectionMethod::FileIntegrity);
         collect("clipboard-check", clip_res, DetectionMethod::ClipboardCheck);
@@ -367,10 +408,7 @@ fn cross_reference_findings(findings: &mut Vec<EnrichedFinding>) {
 
     for (i, ef) in findings.iter().enumerate() {
         for file_path in &ef.finding.evidence.files_modified {
-            path_index
-                .entry(file_path.clone())
-                .or_default()
-                .push(i);
+            path_index.entry(file_path.clone()).or_default().push(i);
         }
     }
 
@@ -407,8 +445,7 @@ fn cross_reference_findings(findings: &mut Vec<EnrichedFinding>) {
             let secondary_methods = findings[idx].detection_methods.clone();
 
             // Check if this is a cross-module correlation (different categories)
-            let is_cross_module =
-                findings[primary_idx].finding.category != secondary_category;
+            let is_cross_module = findings[primary_idx].finding.category != secondary_category;
 
             // Merge the secondary finding into the primary
             findings[primary_idx].finding.description = format!(
@@ -424,11 +461,7 @@ fn cross_reference_findings(findings: &mut Vec<EnrichedFinding>) {
                     .os_events
                     .contains(&event)
                 {
-                    findings[primary_idx]
-                        .finding
-                        .evidence
-                        .os_events
-                        .push(event);
+                    findings[primary_idx].finding.evidence.os_events.push(event);
                 }
             }
             for file in secondary_files {
@@ -457,10 +490,8 @@ fn cross_reference_findings(findings: &mut Vec<EnrichedFinding>) {
             if is_cross_module && findings[primary_idx].finding.severity < Severity::Critical {
                 findings[primary_idx].finding.severity = Severity::Critical;
                 findings[primary_idx].finding.cvss = 9.5;
-                findings[primary_idx].finding.title = format!(
-                    "[Correlated] {}",
-                    findings[primary_idx].finding.title
-                );
+                findings[primary_idx].finding.title =
+                    format!("[Correlated] {}", findings[primary_idx].finding.title);
                 if !findings[primary_idx]
                     .detection_methods
                     .contains(&DetectionMethod::CrossModuleCorrelation)

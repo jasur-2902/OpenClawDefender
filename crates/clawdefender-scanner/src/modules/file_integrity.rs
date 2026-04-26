@@ -7,9 +7,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::finding::{
-    calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity,
-};
+use crate::finding::{calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity};
 use crate::modules::{ScanContext, ScanModule};
 
 // ---------------------------------------------------------------------------
@@ -103,10 +101,7 @@ impl ScanModule for FileIntegrityModule {
 
                 Ok(vec![Finding {
                     id: "FIM-INFO-001".to_string(),
-                    title: format!(
-                        "File integrity baseline created for {} files",
-                        file_count
-                    ),
+                    title: format!("File integrity baseline created for {} files", file_count),
                     severity: Severity::Info,
                     cvss,
                     category: ModuleCategory::Configuration,
@@ -124,8 +119,7 @@ impl ScanModule for FileIntegrityModule {
                 }])
             }
             Some(old) => {
-                let (new_baseline, violations) =
-                    compare_against_baseline(&old, &watch_paths)?;
+                let (new_baseline, violations) = compare_against_baseline(&old, &watch_paths)?;
                 save_baseline(&new_baseline)?;
                 Ok(violations_to_findings(violations))
             }
@@ -309,9 +303,7 @@ fn compare_against_baseline(
                     });
                 }
                 // Check size (if hash also changed, this is additional info)
-                if old_entry.size != new_entry.size
-                    && old_entry.sha256 == new_entry.sha256
-                {
+                if old_entry.size != new_entry.size && old_entry.sha256 == new_entry.sha256 {
                     // Size changed but hash didn't — shouldn't normally happen,
                     // but flag it if it does (could indicate metadata corruption)
                     violations.push(IntegrityViolation::SizeChanged {
@@ -513,10 +505,7 @@ pub fn run_integrity_check_sync() -> Result<Vec<Finding>> {
 
             Ok(vec![Finding {
                 id: "FIM-INFO-001".to_string(),
-                title: format!(
-                    "File integrity baseline created for {} files",
-                    file_count
-                ),
+                title: format!("File integrity baseline created for {} files", file_count),
                 severity: Severity::Info,
                 cvss,
                 category: ModuleCategory::Configuration,
@@ -531,8 +520,7 @@ pub fn run_integrity_check_sync() -> Result<Vec<Finding>> {
             }])
         }
         Some(old) => {
-            let (new_baseline, violations) =
-                compare_against_baseline(&old, &watch_paths)?;
+            let (new_baseline, violations) = compare_against_baseline(&old, &watch_paths)?;
             save_baseline(&new_baseline)?;
             Ok(violations_to_findings(violations))
         }
@@ -592,8 +580,12 @@ mod tests {
         let baseline = create_baseline(&paths).unwrap();
 
         assert_eq!(baseline.files.len(), 2);
-        assert!(baseline.files.contains_key(&file1.to_string_lossy().to_string()));
-        assert!(baseline.files.contains_key(&file2.to_string_lossy().to_string()));
+        assert!(baseline
+            .files
+            .contains_key(&file1.to_string_lossy().to_string()));
+        assert!(baseline
+            .files
+            .contains_key(&file2.to_string_lossy().to_string()));
 
         // Test serialization round-trip
         let json = serde_json::to_string(&baseline).unwrap();
@@ -718,7 +710,10 @@ mod tests {
         // Hash change should be High
         assert_eq!(findings[0].severity, Severity::High);
         assert!(findings[0].title.contains("File content modified"));
-        assert!(findings[0].evidence.files_modified.contains(&"/etc/hosts".to_string()));
+        assert!(findings[0]
+            .evidence
+            .files_modified
+            .contains(&"/etc/hosts".to_string()));
 
         // Permission change should be Medium
         assert_eq!(findings[1].severity, Severity::Medium);
@@ -730,7 +725,9 @@ mod tests {
 
         // New file should be Medium
         assert_eq!(findings[3].severity, Severity::Medium);
-        assert!(findings[3].title.contains("New file in monitored directory"));
+        assert!(findings[3]
+            .title
+            .contains("New file in monitored directory"));
     }
 
     #[test]

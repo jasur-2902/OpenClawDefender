@@ -26,7 +26,10 @@ impl DaemonClient {
     }
 
     /// Create from config, with optional socket override.
-    pub fn from_config(config: &clawdefender_core::config::ClawConfig, socket_override: Option<&PathBuf>) -> Self {
+    pub fn from_config(
+        config: &clawdefender_core::config::ClawConfig,
+        socket_override: Option<&PathBuf>,
+    ) -> Self {
         let socket_path = socket_override
             .cloned()
             .unwrap_or_else(|| config.daemon_socket_path.clone());
@@ -49,11 +52,12 @@ impl DaemonClient {
 
     /// Connect to the daemon socket.
     fn connect(&self) -> Result<UnixStream> {
-        let stream = UnixStream::connect(&self.socket_path)
-            .with_context(|| format!(
+        let stream = UnixStream::connect(&self.socket_path).with_context(|| {
+            format!(
                 "Daemon not running. Start with: rookbot daemon start\n  Socket: {}",
                 self.socket_path.display()
-            ))?;
+            )
+        })?;
         stream.set_read_timeout(Some(self.command_timeout)).ok();
         stream.set_write_timeout(Some(self.connect_timeout)).ok();
         Ok(stream)
@@ -70,8 +74,8 @@ impl DaemonClient {
         let mut response = String::new();
         reader.read_line(&mut response)?;
 
-        let resp: DaemonResponse = serde_json::from_str(&response)
-            .with_context(|| "Invalid response from daemon")?;
+        let resp: DaemonResponse =
+            serde_json::from_str(&response).with_context(|| "Invalid response from daemon")?;
         Ok(resp)
     }
 

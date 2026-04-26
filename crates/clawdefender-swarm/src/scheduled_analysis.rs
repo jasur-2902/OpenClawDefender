@@ -5,8 +5,8 @@
 //! - Daily reviews (cloud-powered, opt-in)
 //! - Weekly reports (cloud-powered, opt-in)
 
-use anyhow::{Context, Result, bail};
-use chrono::{DateTime, Utc, NaiveDate, NaiveTime, Datelike, Duration as ChronoDuration, Timelike};
+use anyhow::{bail, Context, Result};
+use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, NaiveTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -400,11 +400,7 @@ impl ScheduledAnalysisManager {
         summary
     }
 
-    pub fn run_daily_review(
-        &mut self,
-        context: &DailyContext,
-        cloud_prompt: &str,
-    ) -> DailyBrief {
+    pub fn run_daily_review(&mut self, context: &DailyContext, cloud_prompt: &str) -> DailyBrief {
         info!("Running daily review");
 
         // Check if we should skip
@@ -687,10 +683,7 @@ impl ScheduledAnalysisManager {
 
         // Adjust for preferred time if set
         if let Some(preferred) = schedule.preferred_time {
-            let mut next = next_base
-                .date_naive()
-                .and_time(preferred)
-                .and_utc();
+            let mut next = next_base.date_naive().and_time(preferred).and_utc();
 
             // If the calculated time is in the past, add the interval
             while next <= Utc::now() {
@@ -735,9 +728,7 @@ impl ScheduledAnalysisManager {
 
     pub fn should_skip_daily(&self, last_event_time: Option<DateTime<Utc>>) -> Option<String> {
         if let Some(last_event) = last_event_time {
-            let hours_since = Utc::now()
-                .signed_duration_since(last_event)
-                .num_hours();
+            let hours_since = Utc::now().signed_duration_since(last_event).num_hours();
             if hours_since >= 12 {
                 return Some("No activity in the last 12 hours".to_string());
             }
@@ -767,14 +758,11 @@ impl ScheduledAnalysisManager {
 
     pub fn save_config(&self) -> Result<()> {
         if let Some(parent) = self.config_path.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create config directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create config directory")?;
         }
 
-        let json = serde_json::to_string_pretty(&self)
-            .context("Failed to serialize config")?;
-        std::fs::write(&self.config_path, json)
-            .context("Failed to write config file")?;
+        let json = serde_json::to_string_pretty(&self).context("Failed to serialize config")?;
+        std::fs::write(&self.config_path, json).context("Failed to write config file")?;
 
         debug!("Saved scheduled analysis config");
         Ok(())
@@ -786,10 +774,10 @@ impl ScheduledAnalysisManager {
             return Ok(());
         }
 
-        let json = std::fs::read_to_string(&self.config_path)
-            .context("Failed to read config file")?;
-        let loaded: ScheduledAnalysisManager = serde_json::from_str(&json)
-            .context("Failed to parse config")?;
+        let json =
+            std::fs::read_to_string(&self.config_path).context("Failed to read config file")?;
+        let loaded: ScheduledAnalysisManager =
+            serde_json::from_str(&json).context("Failed to parse config")?;
 
         self.schedules = loaded.schedules;
         self.last_runs = loaded.last_runs;
@@ -822,7 +810,10 @@ impl ScheduledAnalysisManager {
             if summary.status == SweepStatus::Concerning {
                 events.push(NotableEvent {
                     event_id: summary.id.to_string(),
-                    summary: format!("Concerning activity at {}", summary.timestamp.format("%H:%M")),
+                    summary: format!(
+                        "Concerning activity at {}",
+                        summary.timestamp.format("%H:%M")
+                    ),
                     severity: "high".to_string(),
                 });
             }
@@ -910,15 +901,27 @@ mod tests {
         let manager = create_test_manager();
         assert_eq!(manager.schedules.len(), 3);
 
-        let hourly = manager.schedules.iter().find(|s| s.id == "hourly_sweep").unwrap();
+        let hourly = manager
+            .schedules
+            .iter()
+            .find(|s| s.id == "hourly_sweep")
+            .unwrap();
         assert!(hourly.enabled);
         assert!(!hourly.requires_cloud);
 
-        let daily = manager.schedules.iter().find(|s| s.id == "daily_review").unwrap();
+        let daily = manager
+            .schedules
+            .iter()
+            .find(|s| s.id == "daily_review")
+            .unwrap();
         assert!(!daily.enabled);
         assert!(daily.requires_cloud);
 
-        let weekly = manager.schedules.iter().find(|s| s.id == "weekly_report").unwrap();
+        let weekly = manager
+            .schedules
+            .iter()
+            .find(|s| s.id == "weekly_report")
+            .unwrap();
         assert!(!weekly.enabled);
         assert!(weekly.requires_cloud);
     }
@@ -939,7 +942,9 @@ mod tests {
     #[test]
     fn test_should_run_not_enough_time() {
         let mut manager = create_test_manager();
-        manager.last_runs.insert("hourly_sweep".to_string(), Utc::now());
+        manager
+            .last_runs
+            .insert("hourly_sweep".to_string(), Utc::now());
         assert!(!manager.should_run("hourly_sweep"));
     }
 
@@ -947,7 +952,9 @@ mod tests {
     fn test_should_run_enough_time_elapsed() {
         let mut manager = create_test_manager();
         let two_hours_ago = Utc::now() - ChronoDuration::hours(2);
-        manager.last_runs.insert("hourly_sweep".to_string(), two_hours_ago);
+        manager
+            .last_runs
+            .insert("hourly_sweep".to_string(), two_hours_ago);
         assert!(manager.should_run("hourly_sweep"));
     }
 
@@ -1025,11 +1032,17 @@ mod tests {
     fn test_anomaly_trend_rising() {
         let mut manager = create_test_manager();
         let mut context = create_test_sweep_context();
-        context.server_anomaly_scores.insert("server1".to_string(), 0.8);
+        context
+            .server_anomaly_scores
+            .insert("server1".to_string(), 0.8);
         context.previous_scores.insert("server1".to_string(), 0.5);
         let summary = manager.run_hourly_sweep(&context);
 
-        let trend = summary.anomaly_trends.iter().find(|t| t.server_name == "server1").unwrap();
+        let trend = summary
+            .anomaly_trends
+            .iter()
+            .find(|t| t.server_name == "server1")
+            .unwrap();
         assert_eq!(trend.direction, TrendDirection::Rising);
         assert_eq!(trend.current_score, 0.8);
         assert_eq!(trend.previous_score, 0.5);
@@ -1039,11 +1052,17 @@ mod tests {
     fn test_anomaly_trend_stable() {
         let mut manager = create_test_manager();
         let mut context = create_test_sweep_context();
-        context.server_anomaly_scores.insert("server1".to_string(), 0.5);
+        context
+            .server_anomaly_scores
+            .insert("server1".to_string(), 0.5);
         context.previous_scores.insert("server1".to_string(), 0.52);
         let summary = manager.run_hourly_sweep(&context);
 
-        let trend = summary.anomaly_trends.iter().find(|t| t.server_name == "server1").unwrap();
+        let trend = summary
+            .anomaly_trends
+            .iter()
+            .find(|t| t.server_name == "server1")
+            .unwrap();
         assert_eq!(trend.direction, TrendDirection::Stable);
     }
 
@@ -1051,11 +1070,17 @@ mod tests {
     fn test_anomaly_trend_falling() {
         let mut manager = create_test_manager();
         let mut context = create_test_sweep_context();
-        context.server_anomaly_scores.insert("server1".to_string(), 0.3);
+        context
+            .server_anomaly_scores
+            .insert("server1".to_string(), 0.3);
         context.previous_scores.insert("server1".to_string(), 0.6);
         let summary = manager.run_hourly_sweep(&context);
 
-        let trend = summary.anomaly_trends.iter().find(|t| t.server_name == "server1").unwrap();
+        let trend = summary
+            .anomaly_trends
+            .iter()
+            .find(|t| t.server_name == "server1")
+            .unwrap();
         assert_eq!(trend.direction, TrendDirection::Falling);
     }
 
@@ -1174,9 +1199,15 @@ mod tests {
     #[test]
     fn test_update_schedule_enable_disable() {
         let mut manager = create_test_manager();
-        manager.update_schedule("daily_review", Some(true), None, None).unwrap();
+        manager
+            .update_schedule("daily_review", Some(true), None, None)
+            .unwrap();
 
-        let schedule = manager.schedules.iter().find(|s| s.id == "daily_review").unwrap();
+        let schedule = manager
+            .schedules
+            .iter()
+            .find(|s| s.id == "daily_review")
+            .unwrap();
         assert!(schedule.enabled);
     }
 
@@ -1184,9 +1215,15 @@ mod tests {
     fn test_update_schedule_change_interval() {
         let mut manager = create_test_manager();
         let new_interval = Duration::from_secs(7200);
-        manager.update_schedule("hourly_sweep", None, Some(new_interval), None).unwrap();
+        manager
+            .update_schedule("hourly_sweep", None, Some(new_interval), None)
+            .unwrap();
 
-        let schedule = manager.schedules.iter().find(|s| s.id == "hourly_sweep").unwrap();
+        let schedule = manager
+            .schedules
+            .iter()
+            .find(|s| s.id == "hourly_sweep")
+            .unwrap();
         assert_eq!(schedule.interval.as_secs(), 7200);
     }
 
@@ -1194,9 +1231,15 @@ mod tests {
     fn test_update_schedule_change_time() {
         let mut manager = create_test_manager();
         let new_time = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
-        manager.update_schedule("daily_review", None, None, Some(new_time)).unwrap();
+        manager
+            .update_schedule("daily_review", None, None, Some(new_time))
+            .unwrap();
 
-        let schedule = manager.schedules.iter().find(|s| s.id == "daily_review").unwrap();
+        let schedule = manager
+            .schedules
+            .iter()
+            .find(|s| s.id == "daily_review")
+            .unwrap();
         assert_eq!(schedule.preferred_time, Some(new_time));
     }
 
@@ -1372,7 +1415,11 @@ mod tests {
         let context = create_test_sweep_context();
         let summary = manager.run_hourly_sweep(&context);
 
-        let schedule = manager.schedules.iter().find(|s| s.id == "hourly_sweep").unwrap();
+        let schedule = manager
+            .schedules
+            .iter()
+            .find(|s| s.id == "hourly_sweep")
+            .unwrap();
         assert!(schedule.last_result.is_some());
 
         if let Some(AnalysisResult::Hourly(h)) = &schedule.last_result {

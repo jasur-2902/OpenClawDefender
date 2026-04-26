@@ -556,10 +556,8 @@ impl ThreatPosture {
                 } else {
                     PostureLevel::Elevated
                 };
-                return self.try_escalate_to(
-                    target,
-                    PostureTrigger::KillChainDetected { stage: *stage },
-                );
+                return self
+                    .try_escalate_to(target, PostureTrigger::KillChainDetected { stage: *stage });
             }
             PostureEventType::SuspiciousBurst {
                 count,
@@ -630,10 +628,7 @@ impl ThreatPosture {
 
         // All alerts resolved -> go to Normal
         if context.all_alerts_resolved && self.current_level > PostureLevel::Normal {
-            return self.try_deescalate_to(
-                PostureLevel::Normal,
-                PostureTrigger::AllAlertsResolved,
-            );
+            return self.try_deescalate_to(PostureLevel::Normal, PostureTrigger::AllAlertsResolved);
         }
 
         // False positive verdict -> step down one

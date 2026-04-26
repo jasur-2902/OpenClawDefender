@@ -140,7 +140,10 @@ fn enumerate_all_persistence() -> Vec<PersistenceItem> {
 fn enumerate_launch_items(items: &mut Vec<PersistenceItem>) {
     let mut dirs: Vec<(PathBuf, PersistenceType)> = vec![
         ("/Library/LaunchAgents".into(), PersistenceType::LaunchAgent),
-        ("/Library/LaunchDaemons".into(), PersistenceType::LaunchDaemon),
+        (
+            "/Library/LaunchDaemons".into(),
+            PersistenceType::LaunchDaemon,
+        ),
     ];
 
     if let Some(home) = home_dir() {
@@ -184,10 +187,7 @@ fn parse_plist_program(path: &Path) -> (Option<PathBuf>, String) {
         if let Some(dict) = val.as_dictionary() {
             // Program key (single string)
             if let Some(prog) = dict.get("Program").and_then(|v| v.as_string()) {
-                return (
-                    Some(PathBuf::from(prog)),
-                    format!("Program: {}", prog),
-                );
+                return (Some(PathBuf::from(prog)), format!("Program: {}", prog));
             }
             // ProgramArguments key (array, first element is the binary)
             if let Some(args) = dict.get("ProgramArguments").and_then(|v| v.as_array()) {
@@ -272,10 +272,7 @@ fn enumerate_browser_extensions(items: &mut Vec<PersistenceItem>) {
     };
 
     let extension_dirs = [
-        (
-            home.join("Library/Safari/Extensions"),
-            "Safari",
-        ),
+        (home.join("Library/Safari/Extensions"), "Safari"),
         (
             home.join("Library/Application Support/Google/Chrome/Default/Extensions"),
             "Chrome",
@@ -300,7 +297,11 @@ fn enumerate_browser_extensions(items: &mut Vec<PersistenceItem>) {
                         item_type: PersistenceType::BrowserExtension,
                         binary_path: None,
                         signing_status: SigningStatus::Unknown,
-                        description: format!("{} extension: {}", browser, path.file_name().unwrap_or_default().to_string_lossy()),
+                        description: format!(
+                            "{} extension: {}",
+                            browser,
+                            path.file_name().unwrap_or_default().to_string_lossy()
+                        ),
                     });
                 }
             }
@@ -534,10 +535,7 @@ fn enumerate_dyld_injection(items: &mut Vec<PersistenceItem>) {
                     item_type: PersistenceType::DylibInjection,
                     binary_path: None,
                     signing_status: SigningStatus::Unknown,
-                    description: format!(
-                        "DYLD_INSERT_LIBRARIES found in {}",
-                        path.display()
-                    ),
+                    description: format!("DYLD_INSERT_LIBRARIES found in {}", path.display()),
                 });
             }
         }
@@ -548,7 +546,10 @@ fn check_plist_for_dyld(path: &Path) -> bool {
     // Try structured plist parse first
     if let Ok(val) = plist::from_file::<_, plist::Value>(path) {
         if let Some(dict) = val.as_dictionary() {
-            if let Some(env) = dict.get("EnvironmentVariables").and_then(|v| v.as_dictionary()) {
+            if let Some(env) = dict
+                .get("EnvironmentVariables")
+                .and_then(|v| v.as_dictionary())
+            {
                 if env.contains_key("DYLD_INSERT_LIBRARIES") {
                     return true;
                 }
@@ -586,10 +587,7 @@ fn check_codesign(binary: &Path) -> SigningStatus {
     }
 
     // Run `codesign -dvv` to get signing details
-    let output = match Command::new("codesign")
-        .args(["-dvv", &path_str])
-        .output()
-    {
+    let output = match Command::new("codesign").args(["-dvv", &path_str]).output() {
         Ok(o) => o,
         Err(_) => return SigningStatus::Unknown,
     };
@@ -680,10 +678,7 @@ fn classify_and_report(items: &[PersistenceItem]) -> Vec<Finding> {
                 messages: Vec::new(),
                 audit_record: None,
                 canary_detected: false,
-                os_events: vec![format!(
-                    "Persistence item at {}",
-                    item.path.display()
-                )],
+                os_events: vec![format!("Persistence item at {}", item.path.display())],
                 files_modified: vec![item.path.display().to_string()],
                 network_connections: Vec::new(),
                 stderr_output: None,
@@ -703,11 +698,7 @@ fn classify_item(item: &PersistenceItem) -> (Severity, f64) {
 
     // Unsigned items with hidden (dot-prefixed) filenames
     if item.signing_status == SigningStatus::Unsigned {
-        let name = item
-            .path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
+        let name = item.path.file_name().unwrap_or_default().to_string_lossy();
         if name.starts_with('.') {
             return (Severity::High, 7.5);
         }
@@ -785,7 +776,8 @@ fn remediation_for(item: &PersistenceItem) -> String {
                 .to_string()
         }
         PersistenceType::CronJob => {
-            "Review cron jobs with `crontab -l`. Remove suspicious entries with `crontab -e`.".to_string()
+            "Review cron jobs with `crontab -l`. Remove suspicious entries with `crontab -e`."
+                .to_string()
         }
         PersistenceType::ShellProfile => {
             format!(
@@ -929,7 +921,10 @@ mod tests {
     #[test]
     fn test_persistence_type_display() {
         assert_eq!(PersistenceType::LaunchAgent.to_string(), "Launch Agent");
-        assert_eq!(PersistenceType::DylibInjection.to_string(), "DYLD Injection");
+        assert_eq!(
+            PersistenceType::DylibInjection.to_string(),
+            "DYLD Injection"
+        );
     }
 
     #[test]

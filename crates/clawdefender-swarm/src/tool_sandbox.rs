@@ -590,9 +590,7 @@ impl ToolSandbox {
             actions.push(pending);
         }
 
-        Ok(format!(
-            "Alert created (id: {id}). Awaiting user approval."
-        ))
+        Ok(format!("Alert created (id: {id}). Awaiting user approval."))
     }
 
     fn handle_suggest_remediation(&self, input: &Value) -> Result<String, ToolError> {

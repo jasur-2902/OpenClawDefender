@@ -19,8 +19,8 @@ use crate::cloud_api::{
     CloudApiClient, ContentBlock, Message, MessageContent,
 };
 use crate::investigation_tools::{
-    InvestigationContext, InvestigationDepth, InvestigationSuggestion, InvestigationTarget,
-    InvestigationToolExecutor, get_investigation_prompt, get_investigation_tools,
+    get_investigation_prompt, get_investigation_tools, InvestigationContext, InvestigationDepth,
+    InvestigationSuggestion, InvestigationTarget, InvestigationToolExecutor,
 };
 use crate::tool_sandbox::ToolSandbox;
 use crate::tools::ToolResult;
@@ -273,9 +273,9 @@ impl InvestigationEngine {
             // Check guardrails
             let (max_tool_calls, max_duration, status, tool_calls, _depth) = {
                 let investigations = self.investigations.lock().await;
-                let state = investigations
-                    .get(investigation_id)
-                    .ok_or_else(|| anyhow::anyhow!("Investigation not found: {}", investigation_id))?;
+                let state = investigations.get(investigation_id).ok_or_else(|| {
+                    anyhow::anyhow!("Investigation not found: {}", investigation_id)
+                })?;
 
                 (
                     state.depth.max_tool_calls(),
@@ -287,16 +287,18 @@ impl InvestigationEngine {
             };
 
             // Check if cancelled or already complete
-            if status != InvestigationStatus::Running
-                && status != InvestigationStatus::Initializing
+            if status != InvestigationStatus::Running && status != InvestigationStatus::Initializing
             {
                 break;
             }
 
             // Check tool call limit
             if tool_calls >= max_tool_calls {
-                self.set_activity(investigation_id, "Max tool calls reached, finalizing...".to_string())
-                    .await;
+                self.set_activity(
+                    investigation_id,
+                    "Max tool calls reached, finalizing...".to_string(),
+                )
+                .await;
                 self.finalize_investigation(investigation_id, InvestigationStatus::Complete)
                     .await?;
                 break;
@@ -304,8 +306,11 @@ impl InvestigationEngine {
 
             // Check duration limit
             if start_time.elapsed().as_secs() >= max_duration {
-                self.set_activity(investigation_id, "Time limit reached, finalizing...".to_string())
-                    .await;
+                self.set_activity(
+                    investigation_id,
+                    "Time limit reached, finalizing...".to_string(),
+                )
+                .await;
                 self.finalize_investigation(investigation_id, InvestigationStatus::Complete)
                     .await?;
                 break;
@@ -315,8 +320,11 @@ impl InvestigationEngine {
             match self.run_single_turn(investigation_id).await {
                 Ok(completed) => {
                     if completed {
-                        self.finalize_investigation(investigation_id, InvestigationStatus::Complete)
-                            .await?;
+                        self.finalize_investigation(
+                            investigation_id,
+                            InvestigationStatus::Complete,
+                        )
+                        .await?;
                         break;
                     }
 
@@ -362,10 +370,7 @@ impl InvestigationEngine {
     }
 
     /// Get real-time progress for an investigation.
-    pub async fn get_progress(
-        &self,
-        investigation_id: &str,
-    ) -> Result<InvestigationProgress> {
+    pub async fn get_progress(&self, investigation_id: &str) -> Result<InvestigationProgress> {
         // Check running investigations
         let investigations = self.investigations.lock().await;
         if let Some(state) = investigations.get(investigation_id) {
@@ -410,7 +415,11 @@ impl InvestigationEngine {
                 max_tool_calls: result.depth.max_tool_calls(),
                 elapsed_secs: result
                     .completed_at
-                    .map(|c| c.signed_duration_since(result.started_at).num_seconds().unsigned_abs())
+                    .map(|c| {
+                        c.signed_duration_since(result.started_at)
+                            .num_seconds()
+                            .unsigned_abs()
+                    })
                     .unwrap_or(0),
                 findings_count: result.evidence_ids.len(),
                 current_activity: "Investigation complete".to_string(),
@@ -421,10 +430,7 @@ impl InvestigationEngine {
     }
 
     /// Get the final result of a completed investigation.
-    pub async fn get_result(
-        &self,
-        investigation_id: &str,
-    ) -> Result<InvestigationResult> {
+    pub async fn get_result(&self, investigation_id: &str) -> Result<InvestigationResult> {
         let results = self.results.lock().await;
         results
             .get(investigation_id)
@@ -433,10 +439,7 @@ impl InvestigationEngine {
     }
 
     /// Cancel a running investigation.
-    pub async fn cancel_investigation(
-        &self,
-        investigation_id: &str,
-    ) -> Result<()> {
+    pub async fn cancel_investigation(&self, investigation_id: &str) -> Result<()> {
         let mut investigations = self.investigations.lock().await;
         if let Some(state) = investigations.get_mut(investigation_id) {
             if state.status == InvestigationStatus::Running {
@@ -499,7 +502,11 @@ impl InvestigationEngine {
                 max_tool_calls: result.depth.max_tool_calls(),
                 elapsed_secs: result
                     .completed_at
-                    .map(|c| c.signed_duration_since(result.started_at).num_seconds().unsigned_abs())
+                    .map(|c| {
+                        c.signed_duration_since(result.started_at)
+                            .num_seconds()
+                            .unsigned_abs()
+                    })
                     .unwrap_or(0),
                 findings_count: result.evidence_ids.len(),
                 current_activity: "Investigation complete".to_string(),
@@ -628,9 +635,7 @@ impl InvestigationEngine {
                     },
                 }
             } else {
-                self.tool_sandbox
-                    .execute_tool(tc, investigation_id)
-                    .await
+                self.tool_sandbox.execute_tool(tc, investigation_id).await
             };
 
             // Record evidence
@@ -638,8 +643,7 @@ impl InvestigationEngine {
                 let mut investigations = self.investigations.lock().await;
                 if let Some(state) = investigations.get_mut(investigation_id) {
                     state.tool_calls += 1;
-                    let evidence_id =
-                        format!("ev-{}-{}", investigation_id, state.tool_calls);
+                    let evidence_id = format!("ev-{}-{}", investigation_id, state.tool_calls);
                     state.evidence_ids.push(evidence_id);
 
                     // Handle suggest_investigation tool specially
@@ -705,11 +709,7 @@ impl InvestigationEngine {
     /// Process text output from Claude, extracting verdicts, impacts,
     /// timeline entries, and question answers.
     /// Returns `true` if INVESTIGATION COMPLETE was found.
-    async fn process_text_output(
-        &self,
-        investigation_id: &str,
-        text: &str,
-    ) -> Result<bool> {
+    async fn process_text_output(&self, investigation_id: &str, text: &str) -> Result<bool> {
         let mut complete = false;
 
         // Check for INVESTIGATION COMPLETE
@@ -1093,8 +1093,8 @@ fn extract_impact(text: &str) -> Option<ImpactAssessment> {
     let data_exfiltrated = body
         .lines()
         .any(|l| l.contains("data_exfiltrated") && !l.contains("none"));
-    let blast_radius = extract_impact_single_field(body, "blast_radius")
-        .unwrap_or_else(|| "Unknown".to_string());
+    let blast_radius =
+        extract_impact_single_field(body, "blast_radius").unwrap_or_else(|| "Unknown".to_string());
 
     Some(ImpactAssessment {
         data_accessed,
@@ -1169,12 +1169,9 @@ fn extract_answered_questions(text: &str) -> Vec<(usize, String)> {
                         break;
                     }
                     // Stop if we hit the next question
-                    let is_next_question = question_patterns
-                        .iter()
-                        .any(|(qi, ps)| {
-                            *qi != *idx
-                                && ps.iter().any(|p| sub_trimmed.starts_with(p))
-                        });
+                    let is_next_question = question_patterns.iter().any(|(qi, ps)| {
+                        *qi != *idx && ps.iter().any(|p| sub_trimmed.starts_with(p))
+                    });
                     if is_next_question {
                         break;
                     }
@@ -1193,7 +1190,10 @@ fn extract_answered_questions(text: &str) -> Vec<(usize, String)> {
 fn extract_section(text: &str, section_name: &str) -> String {
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed.to_uppercase().contains(&section_name.to_uppercase()) {
+        if trimmed
+            .to_uppercase()
+            .contains(&section_name.to_uppercase())
+        {
             let content = trimmed
                 .split(':')
                 .skip(1)
@@ -1461,7 +1461,9 @@ More text.
         let impact = result.unwrap();
         assert_eq!(impact.data_accessed.len(), 2);
         assert!(impact.data_accessed.contains(&"/etc/passwd".to_string()));
-        assert!(impact.data_accessed.contains(&"/home/user/.ssh/id_rsa".to_string()));
+        assert!(impact
+            .data_accessed
+            .contains(&"/home/user/.ssh/id_rsa".to_string()));
         assert!(impact.data_modified.is_empty());
         assert!(impact.data_exfiltrated);
         assert_eq!(impact.blast_radius, "2 servers affected");
@@ -1962,10 +1964,7 @@ WHY: Automated scan triggered by cron job.
             event_id: "evt-42".into(),
             event_data: json!({"severity": "HIGH"}),
         };
-        let progress = engine
-            .start_investigation(target, None)
-            .await
-            .unwrap();
+        let progress = engine.start_investigation(target, None).await.unwrap();
 
         assert!(progress.investigation_id.starts_with("inv-"));
         assert_eq!(progress.status, InvestigationStatus::Running);
@@ -1996,10 +1995,7 @@ WHY: Automated scan triggered by cron job.
         let target = InvestigationTarget::Freeform {
             query: "Has any server accessed SSH keys?".into(),
         };
-        let progress = engine
-            .start_investigation(target, None)
-            .await
-            .unwrap();
+        let progress = engine.start_investigation(target, None).await.unwrap();
 
         assert_eq!(progress.depth, InvestigationDepth::Standard);
         assert!(progress.target_summary.contains("SSH keys"));
@@ -2037,10 +2033,7 @@ INVESTIGATION COMPLETE"#,
             event_data: json!({"severity": "LOW"}),
         };
 
-        let progress = engine
-            .start_investigation(target, None)
-            .await
-            .unwrap();
+        let progress = engine.start_investigation(target, None).await.unwrap();
         let inv_id = progress.investigation_id.clone();
 
         let result = engine.run_investigation_loop(&inv_id).await.unwrap();

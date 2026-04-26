@@ -259,8 +259,7 @@ impl Daemon {
                 let telemetry = TelemetryAggregator::new();
 
                 // Initialize feed client with Ed25519 verifier.
-                let verifier = FeedVerifier::from_embedded()
-                .unwrap_or_else(|e| {
+                let verifier = FeedVerifier::from_embedded().unwrap_or_else(|e| {
                     warn!(error = %e, "Threat intel: failed to load embedded public key");
                     // Fallback: create a dummy verifier (will fail signature checks but won't crash)
                     FeedVerifier::from_hex(
@@ -692,18 +691,21 @@ impl Daemon {
                     .map(|s| s.model_name.clone())
                     .unwrap_or_else(|| "local-model".to_string()),
                 model_id: None,
-                file_path: self.config.slm.model_path.as_ref().map(|p| p.display().to_string()),
+                file_path: self
+                    .config
+                    .slm
+                    .model_path
+                    .as_ref()
+                    .map(|p| p.display().to_string()),
                 size_bytes: None,
                 using_gpu: self.config.slm.use_gpu,
             };
-            ai_manager
-                .set_local(Arc::clone(&slm_service), local_info);
+            ai_manager.set_local(Arc::clone(&slm_service), local_info);
             info!("AI manager: local backend loaded");
         }
         // Check for cloud backend (reuse existing cloud fallback detection).
         if let Some((cloud_service, provider, model)) = try_create_cloud_backend() {
-            ai_manager
-                .set_cloud(Arc::new(cloud_service), provider.clone(), model.clone());
+            ai_manager.set_cloud(Arc::new(cloud_service), provider.clone(), model.clone());
             info!(
                 provider = %provider,
                 model = %model,
@@ -816,15 +818,23 @@ impl Daemon {
             slm_service: Some(Arc::clone(&slm_service)),
             ai_manager: Some(Arc::clone(&ai_manager)),
             behavioral_enabled: self.config.behavioral.enabled,
-            behavioral_profile_count: self.profile_store.as_ref().and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
+            behavioral_profile_count: self
+                .profile_store
+                .as_ref()
+                .and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
             swarm_available: false, // standalone mode does not run swarm
             learning_engine: self.behavioral_engine.clone(),
             decision_engine: self.decision_engine.clone(),
         };
         let ipc_handle = tokio::spawn(async move {
-            if let Err(e) =
-                ipc::run_ipc_server_with_ai(socket_path, metrics, policy_for_ipc, guard_registry_for_ipc, ai_ctx)
-                    .await
+            if let Err(e) = ipc::run_ipc_server_with_ai(
+                socket_path,
+                metrics,
+                policy_for_ipc,
+                guard_registry_for_ipc,
+                ai_ctx,
+            )
+            .await
             {
                 warn!(error = %e, "IPC server exited");
             }
@@ -1011,17 +1021,20 @@ impl Daemon {
                     .map(|s| s.model_name.clone())
                     .unwrap_or_else(|| "local-model".to_string()),
                 model_id: None,
-                file_path: self.config.slm.model_path.as_ref().map(|p| p.display().to_string()),
+                file_path: self
+                    .config
+                    .slm
+                    .model_path
+                    .as_ref()
+                    .map(|p| p.display().to_string()),
                 size_bytes: None,
                 using_gpu: self.config.slm.use_gpu,
             };
-            ai_manager
-                .set_local(Arc::clone(&slm_service), local_info);
+            ai_manager.set_local(Arc::clone(&slm_service), local_info);
             info!("AI manager: local backend loaded");
         }
         if let Some((cloud_service, provider, model)) = try_create_cloud_backend() {
-            ai_manager
-                .set_cloud(Arc::new(cloud_service), provider.clone(), model.clone());
+            ai_manager.set_cloud(Arc::new(cloud_service), provider.clone(), model.clone());
             info!(
                 provider = %provider,
                 model = %model,
@@ -1283,7 +1296,10 @@ impl Daemon {
             slm_service: Some(Arc::clone(&slm_service)),
             ai_manager: Some(Arc::clone(&ai_manager)),
             behavioral_enabled: self.config.behavioral.enabled,
-            behavioral_profile_count: self.profile_store.as_ref().and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
+            behavioral_profile_count: self
+                .profile_store
+                .as_ref()
+                .and_then(|ps| ps.load_all_profiles().ok().map(|p| p.len())),
             swarm_available: swarm_commander.is_some(),
             learning_engine: self.behavioral_engine.clone(),
             decision_engine: self.decision_engine.clone(),
@@ -1422,10 +1438,8 @@ fn load_or_generate_server_token() -> String {
                             mode = format!("{:o}", mode),
                             "server-token has wrong permissions, fixing to 0600"
                         );
-                        let _ = std::fs::set_permissions(
-                            &path,
-                            std::fs::Permissions::from_mode(0o600),
-                        );
+                        let _ =
+                            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
                     }
                 }
             }
@@ -1640,7 +1654,9 @@ fn remove_pid_file(path: &PathBuf) {
 /// is configured or the key is missing.
 fn try_create_cloud_fallback() -> Option<Arc<clawdefender_slm::engine::SlmEngine>> {
     use clawdefender_slm::cloud_backend::get_api_key;
-    use clawdefender_slm::model_registry::{cloud_providers, load_active_config, ActiveModelConfig};
+    use clawdefender_slm::model_registry::{
+        cloud_providers, load_active_config, ActiveModelConfig,
+    };
 
     // Check if a cloud provider is configured
     let config = load_active_config().ok()?;
@@ -1683,7 +1699,9 @@ fn try_create_cloud_engine(
 fn try_create_cloud_backend() -> Option<(SlmService, String, String)> {
     use clawdefender_slm::cloud_backend::{get_api_key, CloudBackend};
     use clawdefender_slm::engine::{SlmBackend, SlmConfig, SlmEngine};
-    use clawdefender_slm::model_registry::{cloud_providers, load_active_config, ActiveModelConfig};
+    use clawdefender_slm::model_registry::{
+        cloud_providers, load_active_config, ActiveModelConfig,
+    };
 
     // Determine provider and model
     let (provider_id, model_id) = match load_active_config().ok()? {

@@ -84,26 +84,74 @@ pub struct LoginAnomaly {
 // ---------------------------------------------------------------------------
 
 const KNOWN_MALICIOUS_IDS: &[(&str, &str)] = &[
-    ("efaidnbmnnnibpcajpcglclefindmkaj", "Fake PDF Viewer (info stealer)"),
-    ("ogfjmhfpmojodcolpobfhiljdgbknmip", "The Great Suspender (malware variant)"),
-    ("hgimnogjllphhhkhlmebbmlgjoejdpjl", "CryptoCurrency Clipboard Hijacker"),
-    ("lmjegmlicamnimmfhcmpkclmigmmcbeh", "PDF Toolbox (data exfiltration)"),
-    ("akdgnmcogleenhbclghgeepfnkhepknl", "Autoskip for YouTube (spyware)"),
+    (
+        "efaidnbmnnnibpcajpcglclefindmkaj",
+        "Fake PDF Viewer (info stealer)",
+    ),
+    (
+        "ogfjmhfpmojodcolpobfhiljdgbknmip",
+        "The Great Suspender (malware variant)",
+    ),
+    (
+        "hgimnogjllphhhkhlmebbmlgjoejdpjl",
+        "CryptoCurrency Clipboard Hijacker",
+    ),
+    (
+        "lmjegmlicamnimmfhcmpkclmigmmcbeh",
+        "PDF Toolbox (data exfiltration)",
+    ),
+    (
+        "akdgnmcogleenhbclghgeepfnkhepknl",
+        "Autoskip for YouTube (spyware)",
+    ),
     ("fnjhmkhhmkbjkkabndcnnogagogbneec", "ChromeLoader variant"),
-    ("pkedcjkdefgpdelpbcmbmeomcjbeemfm", "SearchBlox (credential stealer)"),
+    (
+        "pkedcjkdefgpdelpbcmbmeomcjbeemfm",
+        "SearchBlox (credential stealer)",
+    ),
     ("jiofmdifiilpiniahclmfdkllndjokdm", "FB Stealer / NullMixer"),
-    ("gcalenpjmijhcaocmgehoacafinbailg", "VenomSoftX (crypto hijacker)"),
+    (
+        "gcalenpjmijhcaocmgehoacafinbailg",
+        "VenomSoftX (crypto hijacker)",
+    ),
     ("oaikpkmjlabkfhcnoglnfinnfmcppacl", "Rilide Stealer variant"),
-    ("aohghmighlieiainnegkcijnfilokake", "Fake Google Docs (phishing)"),
-    ("bcocdbombenodlegijagbhdjnifohcde", "SpiderX (form data stealer)"),
+    (
+        "aohghmighlieiainnegkcijnfilokake",
+        "Fake Google Docs (phishing)",
+    ),
+    (
+        "bcocdbombenodlegijagbhdjnifohcde",
+        "SpiderX (form data stealer)",
+    ),
     ("kpocjpoifmommoiiiamepombpeoaehfh", "CacheFlow malware"),
-    ("bbedlkgobihcneffkggkaicbagmajhab", "Fake ChatGPT extension (credential theft)"),
-    ("dgjidcncolhgebcmgpnggcldncilmdbp", "Internet Download Manager (fake adware)"),
-    ("gpdjojdkbbmdfjfahjcgigfpmkopogic", "Flash Player mimic (malicious)"),
-    ("mabloidgodmbnmnhoenmhdjhdioolkhi", "Dormant Colors (ad hijacker)"),
-    ("nkbihfbeogaeaoehlefnkodbefgpgknn", "MetaMask impersonator (phishing)"),
-    ("cjpalhdlnbpafiamejdnhcphjbkeiagm", "Suspicious uBlock Origin fork"),
-    ("eppiocemhmnlbhjplcgkofciiegomcon", "Copyfish OCR trojanized version"),
+    (
+        "bbedlkgobihcneffkggkaicbagmajhab",
+        "Fake ChatGPT extension (credential theft)",
+    ),
+    (
+        "dgjidcncolhgebcmgpnggcldncilmdbp",
+        "Internet Download Manager (fake adware)",
+    ),
+    (
+        "gpdjojdkbbmdfjfahjcgigfpmkopogic",
+        "Flash Player mimic (malicious)",
+    ),
+    (
+        "mabloidgodmbnmnhoenmhdjhdioolkhi",
+        "Dormant Colors (ad hijacker)",
+    ),
+    (
+        "nkbihfbeogaeaoehlefnkodbefgpgknn",
+        "MetaMask impersonator (phishing)",
+    ),
+    (
+        "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+        "Suspicious uBlock Origin fork",
+    ),
+    (
+        "eppiocemhmnlbhjplcgkofciiegomcon",
+        "Copyfish OCR trojanized version",
+    ),
 ];
 
 // ---------------------------------------------------------------------------
@@ -194,15 +242,11 @@ fn browser_extension_paths() -> Vec<(String, Vec<PathBuf>)> {
         ),
         (
             "Arc".into(),
-            vec![home.join(
-                "Library/Application Support/Arc/User Data/Default/Extensions",
-            )],
+            vec![home.join("Library/Application Support/Arc/User Data/Default/Extensions")],
         ),
         (
             "Edge".into(),
-            vec![home.join(
-                "Library/Application Support/Microsoft Edge/Default/Extensions",
-            )],
+            vec![home.join("Library/Application Support/Microsoft Edge/Default/Extensions")],
         ),
         (
             "Safari".into(),
@@ -583,8 +627,7 @@ pub fn assess_extension_risk(ext: &ExtensionInfo) -> ExtensionRisk {
 
     // Native messaging can run arbitrary code
     if has_native_messaging {
-        reasons
-            .push("Uses nativeMessaging — can communicate with native applications".to_string());
+        reasons.push("Uses nativeMessaging — can communicate with native applications".to_string());
         if max_severity < Severity::High {
             max_severity = Severity::High;
         }
@@ -639,7 +682,8 @@ pub fn assess_extension_risk(ext: &ExtensionInfo) -> ExtensionRisk {
 
     // MV2 extensions have weaker security model
     if ext.manifest_version == 2 && critical_count > 0 {
-        reasons.push("Uses Manifest V2 with critical permissions (weaker security model)".to_string());
+        reasons
+            .push("Uses Manifest V2 with critical permissions (weaker security model)".to_string());
         if max_severity < Severity::Low {
             max_severity = Severity::Low;
         }
@@ -707,7 +751,11 @@ fn parse_last_line(line: &str) -> Option<LoginEvent> {
     // Try to parse login time from remaining fields
     // Typical: "Mon DD HH:MM" or "Mon  DD HH:MM"
     let login_time = if parts.len() > date_start + 2 {
-        parse_last_timestamp(parts.get(date_start), parts.get(date_start + 1), parts.get(date_start + 2))
+        parse_last_timestamp(
+            parts.get(date_start),
+            parts.get(date_start + 1),
+            parts.get(date_start + 2),
+        )
     } else {
         None
     };
@@ -724,8 +772,12 @@ fn parse_last_line(line: &str) -> Option<LoginEvent> {
                 login_time.map(|lt| {
                     let time_parts: Vec<&str> = t.split(':').collect();
                     if time_parts.len() == 2 {
-                        if let (Ok(h), Ok(m)) = (time_parts[0].parse::<u32>(), time_parts[1].parse::<u32>()) {
-                            return lt.date_naive().and_hms_opt(h, m, 0)
+                        if let (Ok(h), Ok(m)) =
+                            (time_parts[0].parse::<u32>(), time_parts[1].parse::<u32>())
+                        {
+                            return lt
+                                .date_naive()
+                                .and_hms_opt(h, m, 0)
                                 .map(|ndt| DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc))
                                 .unwrap_or(lt);
                         }
@@ -760,9 +812,18 @@ fn parse_last_timestamp(
     // macOS `last` uses: "Mon DD HH:MM" where Mon is abbreviated month name
     // e.g., "Fri Apr 11 09:15"
     let month_num = match dow.to_lowercase().as_str() {
-        "jan" => 1, "feb" => 2, "mar" => 3, "apr" => 4,
-        "may" => 5, "jun" => 6, "jul" => 7, "aug" => 8,
-        "sep" => 9, "oct" => 10, "nov" => 11, "dec" => 12,
+        "jan" => 1,
+        "feb" => 2,
+        "mar" => 3,
+        "apr" => 4,
+        "may" => 5,
+        "jun" => 6,
+        "jul" => 7,
+        "aug" => 8,
+        "sep" => 9,
+        "oct" => 10,
+        "nov" => 11,
+        "dec" => 12,
         // If it looks like a day of week (Mon, Tue, etc.), skip it
         _ => return None,
     };
@@ -954,10 +1015,7 @@ pub fn detect_login_anomalies(
         if *count > 3 {
             anomalies.push(LoginAnomaly {
                 anomaly_type: "concurrent_sessions".to_string(),
-                description: format!(
-                    "User '{}' has {} concurrent active sessions",
-                    user, count
-                ),
+                description: format!("User '{}' has {} concurrent active sessions", user, count),
                 severity: Severity::Medium,
                 events: active_sessions
                     .iter()
@@ -1160,21 +1218,15 @@ fn detect_login_issues() -> Vec<Finding> {
                  Consider restricting SSH access with AllowUsers or IP allowlists in sshd_config."
                     .to_string()
             }
-            "remote_logins" => {
-                "Remote login detected. Verify the source IP is authorized. \
+            "remote_logins" => "Remote login detected. Verify the source IP is authorized. \
                  Ensure SSH is configured with key-based authentication."
-                    .to_string()
-            }
-            "concurrent_sessions" => {
-                "Multiple concurrent sessions detected for the same user. \
+                .to_string(),
+            "concurrent_sessions" => "Multiple concurrent sessions detected for the same user. \
                  Verify all sessions are legitimate."
-                    .to_string()
-            }
-            "unusual_login_time" => {
-                "Login detected outside normal business hours (11PM-6AM). \
+                .to_string(),
+            "unusual_login_time" => "Login detected outside normal business hours (11PM-6AM). \
                  Verify this activity is expected."
-                    .to_string()
-            }
+                .to_string(),
             _ => "Review the detected anomaly and investigate further.".to_string(),
         };
 
@@ -1208,7 +1260,10 @@ fn detect_login_issues() -> Vec<Finding> {
 /// Run a full browser extension audit and return structured results.
 pub async fn run_full_browser_audit() -> Result<(Vec<ExtensionRisk>, Vec<Finding>)> {
     let extensions = enumerate_all_extensions();
-    let risks: Vec<ExtensionRisk> = extensions.iter().map(|e| assess_extension_risk(e)).collect();
+    let risks: Vec<ExtensionRisk> = extensions
+        .iter()
+        .map(|e| assess_extension_risk(e))
+        .collect();
     let findings = audit_browser_extensions();
     Ok((risks, findings))
 }
@@ -1312,16 +1367,16 @@ mod tests {
         assert_eq!(classify_permission("contextMenus"), PermissionRisk::Low);
         assert_eq!(classify_permission("alarms"), PermissionRisk::Low);
         assert_eq!(classify_permission("idle"), PermissionRisk::Low);
-        assert_eq!(
-            classify_permission("someUnknownPerm"),
-            PermissionRisk::Low
-        );
+        assert_eq!(classify_permission("someUnknownPerm"), PermissionRisk::Low);
     }
 
     #[test]
     fn test_classify_permission_case_insensitive() {
         assert_eq!(classify_permission("COOKIES"), PermissionRisk::High);
-        assert_eq!(classify_permission("NativeMessaging"), PermissionRisk::Critical);
+        assert_eq!(
+            classify_permission("NativeMessaging"),
+            PermissionRisk::Critical
+        );
     }
 
     #[test]
@@ -1390,10 +1445,7 @@ mod tests {
 
         let risk = assess_extension_risk(&ext);
         assert_eq!(risk.risk_level, Severity::Critical);
-        assert!(risk
-            .reasons
-            .iter()
-            .any(|r| r.contains("Known malicious")));
+        assert!(risk.reasons.iter().any(|r| r.contains("Known malicious")));
     }
 
     #[test]
@@ -1413,10 +1465,7 @@ mod tests {
 
         let risk = assess_extension_risk(&ext);
         assert!(risk.risk_level >= Severity::High);
-        assert!(risk
-            .reasons
-            .iter()
-            .any(|r| r.contains("session hijacking")));
+        assert!(risk.reasons.iter().any(|r| r.contains("session hijacking")));
     }
 
     #[test]
@@ -1436,10 +1485,7 @@ mod tests {
 
         let risk = assess_extension_risk(&ext);
         assert!(risk.risk_level >= Severity::High);
-        assert!(risk
-            .reasons
-            .iter()
-            .any(|r| r.contains("nativeMessaging")));
+        assert!(risk.reasons.iter().any(|r| r.contains("nativeMessaging")));
     }
 
     #[test]
@@ -1509,15 +1555,13 @@ mod tests {
             username: "nightowl".to_string(),
             tty: "ttys001".to_string(),
             source: "console".to_string(),
-            login_time: Some(
-                DateTime::from_naive_utc_and_offset(
-                    chrono::NaiveDate::from_ymd_opt(2026, 4, 11)
-                        .unwrap()
-                        .and_hms_opt(3, 30, 0)
-                        .unwrap(),
-                    Utc,
-                ),
-            ),
+            login_time: Some(DateTime::from_naive_utc_and_offset(
+                chrono::NaiveDate::from_ymd_opt(2026, 4, 11)
+                    .unwrap()
+                    .and_hms_opt(3, 30, 0)
+                    .unwrap(),
+                Utc,
+            )),
             logout_time: Some(Utc::now()),
             event_type: LoginEventType::Login,
         }];
@@ -1535,15 +1579,13 @@ mod tests {
             username: "normaluser".to_string(),
             tty: "console".to_string(),
             source: "console".to_string(),
-            login_time: Some(
-                DateTime::from_naive_utc_and_offset(
-                    chrono::NaiveDate::from_ymd_opt(2026, 4, 11)
-                        .unwrap()
-                        .and_hms_opt(10, 0, 0)
-                        .unwrap(),
-                    Utc,
-                ),
-            ),
+            login_time: Some(DateTime::from_naive_utc_and_offset(
+                chrono::NaiveDate::from_ymd_opt(2026, 4, 11)
+                    .unwrap()
+                    .and_hms_opt(10, 0, 0)
+                    .unwrap(),
+                Utc,
+            )),
             logout_time: Some(Utc::now()),
             event_type: LoginEventType::Login,
         }];

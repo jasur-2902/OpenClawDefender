@@ -109,9 +109,9 @@ impl AiFeature {
     /// The default backend for this feature (what the hardcoded routing matrix uses).
     pub fn default_backend(&self) -> &'static str {
         match self {
-            AiFeature::EventTriage
-            | AiFeature::EventExplanation
-            | AiFeature::QuickRiskCheck => "local",
+            AiFeature::EventTriage | AiFeature::EventExplanation | AiFeature::QuickRiskCheck => {
+                "local"
+            }
             AiFeature::DeepAnalysis
             | AiFeature::ScanAnalysis
             | AiFeature::AskClaw
@@ -149,7 +149,9 @@ impl FeatureRoutingConfig {
 
     /// Returns true if any non-Auto overrides exist.
     pub fn has_overrides(&self) -> bool {
-        self.overrides.values().any(|p| *p != FeatureBackendPreference::Auto)
+        self.overrides
+            .values()
+            .any(|p| *p != FeatureBackendPreference::Auto)
     }
 }
 
@@ -274,7 +276,8 @@ impl TaskRouter {
                                 return RoutingDecision::UseLocalReduced;
                             }
                             return RoutingDecision::Unavailable(
-                                "Cloud rate limit exceeded and no local model available".to_string(),
+                                "Cloud rate limit exceeded and no local model available"
+                                    .to_string(),
                             );
                         }
                         if prefs.cloud_confirmation {
@@ -323,9 +326,7 @@ impl TaskRouter {
                 } else if cloud_available {
                     RoutingDecision::UseCloud
                 } else {
-                    RoutingDecision::Unavailable(
-                        "No AI backend available for analysis".to_string(),
-                    )
+                    RoutingDecision::Unavailable("No AI backend available for analysis".to_string())
                 }
             }
 
@@ -368,8 +369,7 @@ impl TaskRouter {
 
         // Apply preference overrides and rate limiting for cloud decisions
         match &decision {
-            RoutingDecision::UseCloud
-            | RoutingDecision::UseCloudWithLocalFallback => {
+            RoutingDecision::UseCloud | RoutingDecision::UseCloudWithLocalFallback => {
                 // Check rate limit
                 if !self.check_rate_limit_inner(&prefs) {
                     // Rate limited: fall back to local if available
@@ -744,13 +744,12 @@ mod tests {
         assert!(prefs.prefer_local);
         assert_eq!(prefs.max_cloud_calls_per_hour, 10);
 
-        router
-            .update_preferences(RoutingPreferences {
-                prefer_local: false,
-                cloud_auto_escalate: false,
-                cloud_confirmation: true,
-                max_cloud_calls_per_hour: 50,
-            });
+        router.update_preferences(RoutingPreferences {
+            prefer_local: false,
+            cloud_auto_escalate: false,
+            cloud_confirmation: true,
+            max_cloud_calls_per_hour: 50,
+        });
 
         let updated = router.get_preferences();
         assert!(!updated.prefer_local);
@@ -873,7 +872,9 @@ mod tests {
     fn feature_override_force_local() {
         let router = TaskRouter::default();
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::DeepAnalysis, FeatureBackendPreference::Local);
+        config
+            .overrides
+            .insert(AiFeature::DeepAnalysis, FeatureBackendPreference::Local);
         router.update_feature_routing(config);
 
         // DeepAnalysis normally uses cloud; override forces local
@@ -885,7 +886,9 @@ mod tests {
     fn feature_override_force_cloud() {
         let router = TaskRouter::default();
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::EventTriage, FeatureBackendPreference::Cloud);
+        config
+            .overrides
+            .insert(AiFeature::EventTriage, FeatureBackendPreference::Cloud);
         router.update_feature_routing(config);
 
         // Triage normally uses local; override forces cloud
@@ -897,7 +900,9 @@ mod tests {
     fn feature_override_cloud_unavailable_falls_back_to_local() {
         let router = TaskRouter::default();
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::EventExplanation, FeatureBackendPreference::Cloud);
+        config
+            .overrides
+            .insert(AiFeature::EventExplanation, FeatureBackendPreference::Cloud);
         router.update_feature_routing(config);
 
         // Cloud forced but unavailable — should fall back to local reduced
@@ -909,7 +914,9 @@ mod tests {
     fn feature_override_local_unavailable() {
         let router = TaskRouter::default();
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::DeepAnalysis, FeatureBackendPreference::Local);
+        config
+            .overrides
+            .insert(AiFeature::DeepAnalysis, FeatureBackendPreference::Local);
         router.update_feature_routing(config);
 
         let decision = router.route(&TaskType::DeepAnalysis, false, true);
@@ -920,7 +927,9 @@ mod tests {
     fn feature_override_auto_uses_default_matrix() {
         let router = TaskRouter::default();
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::DeepAnalysis, FeatureBackendPreference::Auto);
+        config
+            .overrides
+            .insert(AiFeature::DeepAnalysis, FeatureBackendPreference::Auto);
         router.update_feature_routing(config);
 
         // Auto should use the default routing matrix
@@ -932,7 +941,9 @@ mod tests {
     fn context_update_always_uses_matrix_despite_override() {
         let router = TaskRouter::default();
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::EventTriage, FeatureBackendPreference::Cloud);
+        config
+            .overrides
+            .insert(AiFeature::EventTriage, FeatureBackendPreference::Cloud);
         router.update_feature_routing(config);
 
         // ContextUpdate should always use the matrix (local), ignoring the cloud override
@@ -946,31 +957,77 @@ mod tests {
         assert!(!config.has_overrides());
 
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::AskClaw, FeatureBackendPreference::Local);
+        config
+            .overrides
+            .insert(AiFeature::AskClaw, FeatureBackendPreference::Local);
         assert!(config.has_overrides());
 
         let mut config = FeatureRoutingConfig::default();
-        config.overrides.insert(AiFeature::AskClaw, FeatureBackendPreference::Auto);
+        config
+            .overrides
+            .insert(AiFeature::AskClaw, FeatureBackendPreference::Auto);
         assert!(!config.has_overrides());
     }
 
     #[test]
     fn ai_feature_from_task_type_coverage() {
         // Verify all task types map to a feature
-        assert_eq!(AiFeature::from_task_type(&TaskType::Triage), AiFeature::EventTriage);
-        assert_eq!(AiFeature::from_task_type(&TaskType::ContextUpdate), AiFeature::EventTriage);
-        assert_eq!(AiFeature::from_task_type(&TaskType::AnomalyExplanation), AiFeature::EventExplanation);
-        assert_eq!(AiFeature::from_task_type(&TaskType::EventNarrative), AiFeature::EventExplanation);
-        assert_eq!(AiFeature::from_task_type(&TaskType::QuickRiskAssessment), AiFeature::QuickRiskCheck);
-        assert_eq!(AiFeature::from_task_type(&TaskType::SecurityTip), AiFeature::QuickRiskCheck);
-        assert_eq!(AiFeature::from_task_type(&TaskType::DeepAnalysis), AiFeature::DeepAnalysis);
-        assert_eq!(AiFeature::from_task_type(&TaskType::Investigation), AiFeature::DeepAnalysis);
-        assert_eq!(AiFeature::from_task_type(&TaskType::ScanAnalysis), AiFeature::ScanAnalysis);
-        assert_eq!(AiFeature::from_task_type(&TaskType::AskClaw), AiFeature::AskClaw);
-        assert_eq!(AiFeature::from_task_type(&TaskType::ReportGeneration), AiFeature::Reports);
-        assert_eq!(AiFeature::from_task_type(&TaskType::ThreatHunt), AiFeature::ThreatHunting);
-        assert_eq!(AiFeature::from_task_type(&TaskType::AgentScan), AiFeature::AgentScan);
-        assert_eq!(AiFeature::from_task_type(&TaskType::PlaybookExecution), AiFeature::AgentScan);
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::Triage),
+            AiFeature::EventTriage
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::ContextUpdate),
+            AiFeature::EventTriage
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::AnomalyExplanation),
+            AiFeature::EventExplanation
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::EventNarrative),
+            AiFeature::EventExplanation
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::QuickRiskAssessment),
+            AiFeature::QuickRiskCheck
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::SecurityTip),
+            AiFeature::QuickRiskCheck
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::DeepAnalysis),
+            AiFeature::DeepAnalysis
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::Investigation),
+            AiFeature::DeepAnalysis
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::ScanAnalysis),
+            AiFeature::ScanAnalysis
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::AskClaw),
+            AiFeature::AskClaw
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::ReportGeneration),
+            AiFeature::Reports
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::ThreatHunt),
+            AiFeature::ThreatHunting
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::AgentScan),
+            AiFeature::AgentScan
+        );
+        assert_eq!(
+            AiFeature::from_task_type(&TaskType::PlaybookExecution),
+            AiFeature::AgentScan
+        );
     }
 
     #[test]

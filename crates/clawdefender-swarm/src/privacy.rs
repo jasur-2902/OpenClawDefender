@@ -153,7 +153,9 @@ impl PrivacyFilter {
         });
         rules.push(RedactionRule {
             name: "generic_secret".into(),
-            pattern: r#"(?i)(key|token|password|secret|api_key|apikey|auth)\s*[=:]\s*["']?[^\s"'\[]{8,}"#.into(),
+            pattern:
+                r#"(?i)(key|token|password|secret|api_key|apikey|auth)\s*[=:]\s*["']?[^\s"'\[]{8,}"#
+                    .into(),
             replacement: "$1=[REDACTED]".into(),
             data_type: DataType::Password,
         });
@@ -402,7 +404,9 @@ mod tests {
     #[test]
     fn test_bearer_token_redaction() {
         let f = filter();
-        let result = f.filter_text("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature");
+        let result = f.filter_text(
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature",
+        );
         assert!(result.filtered_text.contains("Bearer [REDACTED_TOKEN]"));
         assert!(!result.filtered_text.contains("eyJhbGci"));
     }
@@ -411,7 +415,9 @@ mod tests {
     fn test_home_path_redaction() {
         let f = filter();
         let result = f.filter_text("/Users/jasur/Documents/project/file.txt");
-        assert!(result.filtered_text.contains("~/Documents/project/file.txt"));
+        assert!(result
+            .filtered_text
+            .contains("~/Documents/project/file.txt"));
         assert!(!result.filtered_text.contains("jasur"));
     }
 
@@ -486,7 +492,8 @@ mod tests {
     #[test]
     fn test_openssh_private_key_redaction() {
         let f = filter();
-        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz...\n-----END OPENSSH PRIVATE KEY-----";
+        let pem =
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz...\n-----END OPENSSH PRIVATE KEY-----";
         let result = f.filter_text(pem);
         assert!(result.filtered_text.contains("[REDACTED_PRIVATE_KEY]"));
     }
@@ -565,7 +572,10 @@ mod tests {
                     Process nginx (PID 1234) attempted to modify configuration files. \
                     Risk level is moderate.";
         let result = f.filter_text(text);
-        assert_eq!(result.redaction_count, 0, "Normal text should have 0 redactions");
+        assert_eq!(
+            result.redaction_count, 0,
+            "Normal text should have 0 redactions"
+        );
         assert_eq!(result.filtered_text, text);
     }
 

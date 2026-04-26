@@ -387,11 +387,7 @@ impl ReportGenerator {
     }
 
     /// Export a report to a different format. Returns the new file path.
-    pub fn export_report(
-        &self,
-        id: Uuid,
-        format: ReportFormat,
-    ) -> Result<String, String> {
+    pub fn export_report(&self, id: Uuid, format: ReportFormat) -> Result<String, String> {
         let report = self
             .get_report(id)
             .ok_or_else(|| format!("Report not found: {}", id))?;
@@ -427,8 +423,7 @@ impl ReportGenerator {
         let path = self.reports_dir.join("history.json");
         let json = serde_json::to_string_pretty(&self.report_history)
             .map_err(|e| format!("Failed to serialize history: {}", e))?;
-        std::fs::write(&path, json)
-            .map_err(|e| format!("Failed to write history: {}", e))
+        std::fs::write(&path, json).map_err(|e| format!("Failed to write history: {}", e))
     }
 
     /// Load report history from `history.json`.
@@ -437,10 +432,10 @@ impl ReportGenerator {
         if !path.exists() {
             return Ok(());
         }
-        let json = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read history: {}", e))?;
-        self.report_history = serde_json::from_str(&json)
-            .map_err(|e| format!("Failed to parse history: {}", e))?;
+        let json =
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read history: {}", e))?;
+        self.report_history =
+            serde_json::from_str(&json).map_err(|e| format!("Failed to parse history: {}", e))?;
         Ok(())
     }
 
@@ -595,14 +590,8 @@ fn render_daily_brief(data: &DailyBriefData) -> String {
     };
 
     let mut md = String::new();
-    md.push_str(&format!(
-        "# CLAWDEFENDER DAILY BRIEF — {}\n\n",
-        data.date
-    ));
-    md.push_str(&format!(
-        "**STATUS:** [{}] {}\n\n",
-        status.0, status.1
-    ));
+    md.push_str(&format!("# CLAWDEFENDER DAILY BRIEF — {}\n\n", data.date));
+    md.push_str(&format!("**STATUS:** [{}] {}\n\n", status.0, status.1));
 
     // Today in Numbers
     md.push_str("## Today in Numbers\n\n");
@@ -620,15 +609,15 @@ fn render_daily_brief(data: &DailyBriefData) -> String {
     } else {
         md.push_str("**Posture Changes:**\n\n");
         for pc in &data.posture_changes {
-            md.push_str(&format!(
-                "- {} — {} -> {}\n",
-                pc.time, pc.from, pc.to
-            ));
+            md.push_str(&format!("- {} — {} -> {}\n", pc.time, pc.from, pc.to));
         }
         md.push('\n');
     }
 
-    md.push_str(&format!("**Defense Score:** {}/100\n\n", data.defense_score));
+    md.push_str(&format!(
+        "**Defense Score:** {}/100\n\n",
+        data.defense_score
+    ));
 
     // Highlights
     md.push_str("## Highlights\n\n");
@@ -647,20 +636,14 @@ fn render_daily_brief(data: &DailyBriefData) -> String {
         md.push_str("- No action items.\n\n");
     } else {
         for item in &data.action_items {
-            md.push_str(&format!(
-                "- **[{}]** {}\n",
-                item.priority, item.description
-            ));
+            md.push_str(&format!("- **[{}]** {}\n", item.priority, item.description));
         }
         md.push('\n');
     }
 
     // Agent Activity
     md.push_str("## Agent Activity\n\n");
-    md.push_str(&format!(
-        "- Actions taken: {}\n",
-        data.agent_actions_taken
-    ));
+    md.push_str(&format!("- Actions taken: {}\n", data.agent_actions_taken));
     md.push_str(&format!(
         "- Actions suggested: {}\n",
         data.agent_actions_suggested
@@ -717,18 +700,12 @@ fn render_weekly_report(data: &WeeklyReportData) -> String {
         "| Scans Completed | {} | — |\n",
         data.scans_completed,
     ));
-    md.push_str(&format!(
-        "| Scan Findings | {} | — |\n",
-        data.scan_findings,
-    ));
+    md.push_str(&format!("| Scan Findings | {} | — |\n", data.scan_findings,));
     md.push_str(&format!(
         "| Investigations | {} | — |\n",
         data.investigations_count,
     ));
-    md.push_str(&format!(
-        "| Agent Actions | {} | — |\n",
-        data.agent_actions,
-    ));
+    md.push_str(&format!("| Agent Actions | {} | — |\n", data.agent_actions,));
     md.push('\n');
 
     // Investigation Breakdown
@@ -827,9 +804,7 @@ fn render_weekly_report(data: &WeeklyReportData) -> String {
 
 fn render_incident_report(data: &IncidentReportData) -> String {
     let mut md = String::new();
-    md.push_str(&format!(
-        "# CLAWDEFENDER INCIDENT REPORT\n\n"
-    ));
+    md.push_str(&format!("# CLAWDEFENDER INCIDENT REPORT\n\n"));
     md.push_str(&format!("**Incident ID:** {}  \n", data.incident_id));
     md.push_str(&format!("**Date:** {}  \n", data.date));
     md.push_str(&format!("**Severity:** {}  \n", data.severity));
@@ -1020,10 +995,7 @@ fn render_executive_summary(data: &WeeklyReportData) -> String {
     ));
     md.push_str(&format!("| Alerts | {} |\n", data.alerts_generated));
     md.push_str(&format!("| Scans | {} |\n", data.scans_completed));
-    md.push_str(&format!(
-        "| Defense Score | {}/100 |\n",
-        data.defense_score
-    ));
+    md.push_str(&format!("| Defense Score | {}/100 |\n", data.defense_score));
     md.push('\n');
 
     // Trend
@@ -1058,9 +1030,7 @@ fn default_reports_dir() -> PathBuf {
 
 /// Convert a NaiveDate to a DateTime<Utc> at midnight.
 fn date_to_utc(date: NaiveDate) -> DateTime<Utc> {
-    date.and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc()
+    date.and_hms_opt(0, 0, 0).unwrap().and_utc()
 }
 
 /// Minimal Markdown-to-HTML conversion for report rendering.
@@ -1996,7 +1966,9 @@ mod tests {
         let (mut gen, _tmp) = make_generator();
         let report = gen.generate_daily_brief(&sample_daily_brief()).unwrap();
 
-        let path = gen.export_report(report.id, ReportFormat::Markdown).unwrap();
+        let path = gen
+            .export_report(report.id, ReportFormat::Markdown)
+            .unwrap();
         assert_eq!(path, report.file_path);
     }
 
@@ -2214,15 +2186,21 @@ mod tests {
         let c2 = gen.get_report_content(r2.id).unwrap();
         assert!(c2.contains("Generated by RookBot Report System"));
 
-        let r3 = gen.generate_incident_report(&sample_incident_report()).unwrap();
+        let r3 = gen
+            .generate_incident_report(&sample_incident_report())
+            .unwrap();
         let c3 = gen.get_report_content(r3.id).unwrap();
         assert!(c3.contains("Generated by RookBot Report System"));
 
-        let r4 = gen.generate_compliance_report(&sample_compliance_report()).unwrap();
+        let r4 = gen
+            .generate_compliance_report(&sample_compliance_report())
+            .unwrap();
         let c4 = gen.get_report_content(r4.id).unwrap();
         assert!(c4.contains("Generated by RookBot Report System"));
 
-        let r5 = gen.generate_executive_summary(&sample_weekly_report()).unwrap();
+        let r5 = gen
+            .generate_executive_summary(&sample_weekly_report())
+            .unwrap();
         let c5 = gen.get_report_content(r5.id).unwrap();
         assert!(c5.contains("Generated by RookBot Report System"));
     }

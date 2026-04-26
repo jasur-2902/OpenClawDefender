@@ -15,9 +15,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use tracing::{debug, warn};
 
-use crate::finding::{
-    calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity,
-};
+use crate::finding::{calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity};
 use crate::modules::{ScanContext, ScanModule};
 
 // ---------------------------------------------------------------------------
@@ -159,8 +157,8 @@ fn evaluate_check(check: &PatternCheck) -> (bool, String) {
                 match Regex::new(pattern) {
                     Ok(re) => {
                         if let Some(m) = re.find(&contents) {
-                            let snippet = &contents
-                                [m.start()..std::cmp::min(m.end(), m.start() + 200)];
+                            let snippet =
+                                &contents[m.start()..std::cmp::min(m.end(), m.start() + 200)];
                             (
                                 true,
                                 format!(
@@ -208,8 +206,7 @@ fn evaluate_check(check: &PatternCheck) -> (bool, String) {
                         for entry in entries.flatten() {
                             if let Some(name) = entry.file_name().to_str() {
                                 if re.is_match(name) {
-                                    evidence_parts
-                                        .push(format!("  {}", entry.path().display()));
+                                    evidence_parts.push(format!("  {}", entry.path().display()));
                                     if evidence_parts.len() >= 10 {
                                         evidence_parts.push("  ... (truncated)".into());
                                         break;
@@ -243,8 +240,8 @@ fn evaluate_check(check: &PatternCheck) -> (bool, String) {
                 match Regex::new(pattern) {
                     Ok(re) => {
                         if let Some(m) = re.find(&stdout) {
-                            let snippet = &stdout
-                                [m.start()..std::cmp::min(m.end(), m.start() + 200)];
+                            let snippet =
+                                &stdout[m.start()..std::cmp::min(m.end(), m.start() + 200)];
                             (
                                 true,
                                 format!(
@@ -273,10 +270,7 @@ fn evaluate_check(check: &PatternCheck) -> (bool, String) {
             for path in *paths {
                 let expanded = expand_home(path);
                 if expanded.exists() {
-                    return (
-                        true,
-                        format!("File exists: {}", expanded.display()),
-                    );
+                    return (true, format!("File exists: {}", expanded.display()));
                 }
             }
             (false, String::new())
@@ -1126,11 +1120,7 @@ impl PatternMatcher {
             .iter()
             .map(|pattern| {
                 let (matched, evidence) = evaluate_check(&pattern.check);
-                debug!(
-                    pattern_id = pattern.id,
-                    matched,
-                    "evaluated pattern"
-                );
+                debug!(pattern_id = pattern.id, matched, "evaluated pattern");
                 PatternMatchResult {
                     pattern,
                     matched,
@@ -1197,11 +1187,7 @@ impl ScanModule for PatternDetectionModule {
 
             counter += 1;
             let p = result.pattern;
-            let id = format!(
-                "{}-PAT-{:03}",
-                p.severity.finding_id_prefix(),
-                counter
-            );
+            let id = format!("{}-PAT-{:03}", p.severity.finding_id_prefix(), counter);
 
             let mitre_note = p
                 .mitre_id
@@ -1251,10 +1237,7 @@ impl ScanModule for PatternDetectionModule {
                 description,
                 reproduction: None,
                 evidence: Evidence {
-                    os_events: vec![format!(
-                        "pattern-detection: {} ({})",
-                        p.id, p.name
-                    )],
+                    os_events: vec![format!("pattern-detection: {} ({})", p.id, p.name)],
                     ..Evidence::empty()
                 },
                 remediation,
@@ -1304,11 +1287,7 @@ mod tests {
         ids.sort();
         let len_before = ids.len();
         ids.dedup();
-        assert_eq!(
-            len_before,
-            ids.len(),
-            "Duplicate pattern IDs detected"
-        );
+        assert_eq!(len_before, ids.len(), "Duplicate pattern IDs detected");
     }
 
     #[test]
@@ -1319,16 +1298,14 @@ mod tests {
 
     #[test]
     fn test_evaluate_file_exists_nonexistent() {
-        let (matched, _) =
-            evaluate_check(&PatternCheck::FileExists("/nonexistent_path_12345"));
+        let (matched, _) = evaluate_check(&PatternCheck::FileExists("/nonexistent_path_12345"));
         assert!(!matched);
     }
 
     #[test]
     fn test_evaluate_file_exists_real() {
         // /etc/hosts should exist on macOS.
-        let (matched, evidence) =
-            evaluate_check(&PatternCheck::FileExists("/etc/hosts"));
+        let (matched, evidence) = evaluate_check(&PatternCheck::FileExists("/etc/hosts"));
         assert!(matched);
         assert!(evidence.contains("/etc/hosts"));
     }
@@ -1355,8 +1332,7 @@ mod tests {
     #[test]
     fn test_evaluate_directory_not_empty() {
         // /etc should be non-empty.
-        let (matched, _) =
-            evaluate_check(&PatternCheck::DirectoryNotEmpty("/etc"));
+        let (matched, _) = evaluate_check(&PatternCheck::DirectoryNotEmpty("/etc"));
         assert!(matched);
     }
 

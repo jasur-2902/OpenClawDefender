@@ -29,7 +29,11 @@ impl Output {
         } else {
             OutputMode::Human
         };
-        Self { mode, no_color, verbose }
+        Self {
+            mode,
+            no_color,
+            verbose,
+        }
     }
 
     /// Print a human-readable line (skipped in json/quiet mode).

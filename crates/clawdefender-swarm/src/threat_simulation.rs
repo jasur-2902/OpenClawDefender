@@ -167,7 +167,8 @@ fn credential_theft_scenario() -> AttackScenario {
     AttackScenario {
         id: "credential_exfiltration".into(),
         name: "Credential Theft".into(),
-        description: "Server reads SSH keys and AWS credentials, then exfiltrates to external host".into(),
+        description: "Server reads SSH keys and AWS credentials, then exfiltrates to external host"
+            .into(),
         category: AttackCategory::CredentialTheft,
         severity_if_successful: "critical".into(),
         steps: vec![
@@ -457,7 +458,10 @@ impl ThreatSimulator {
             lateral_movement_scenario(),
         ];
 
-        info!("ThreatSimulator initialized with {} scenarios", scenarios.len());
+        info!(
+            "ThreatSimulator initialized with {} scenarios",
+            scenarios.len()
+        );
 
         Self {
             scenarios,
@@ -491,10 +495,7 @@ impl ThreatSimulator {
         let total_count = results.len();
         let overall_score = (caught_count as f64 / total_count as f64) * 100.0;
 
-        let gaps: Vec<DefenseGap> = results
-            .iter()
-            .filter_map(|r| r.gap.clone())
-            .collect();
+        let gaps: Vec<DefenseGap> = results.iter().filter_map(|r| r.gap.clone()).collect();
 
         let comparison = self.compare_with_previous(&results);
 
@@ -512,7 +513,11 @@ impl ThreatSimulator {
 
         info!(
             "Simulation complete: score={:.1}%, caught={}/{}, gaps={}, time={}ms",
-            run.overall_score, caught_count, total_count, run.gaps.len(), run.execution_time_ms
+            run.overall_score,
+            caught_count,
+            total_count,
+            run.gaps.len(),
+            run.execution_time_ms
         );
 
         self.results.push(run.clone());
@@ -552,7 +557,9 @@ impl ThreatSimulator {
                 caught = true;
                 caught_at_step = Some(event.step_number);
                 detection_method = Some(DetectionMethod::PolicyBlock {
-                    rule_id: policy_result.matched_rule.unwrap_or_else(|| "default".into()),
+                    rule_id: policy_result
+                        .matched_rule
+                        .unwrap_or_else(|| "default".into()),
                 });
                 break;
             }
@@ -656,9 +663,9 @@ impl ThreatSimulator {
         // Check for lateral movement pattern
         let servers: HashSet<&str> = events_so_far.iter().map(|e| e.server.as_str()).collect();
         if servers.len() > 1 {
-            let has_cred = events_so_far.iter().any(|e| {
-                e.event_type == "resources/read" && e.target.contains(".ssh")
-            });
+            let has_cred = events_so_far
+                .iter()
+                .any(|e| e.event_type == "resources/read" && e.target.contains(".ssh"));
             let has_auth = events_so_far
                 .iter()
                 .any(|e| e.tool == "authenticate" || e.tool == "use_credential");
@@ -742,9 +749,8 @@ impl ThreatSimulator {
 
         let previous_run = self.results.last()?;
         let previous_score = previous_run.overall_score;
-        let current_score = (current.iter().filter(|r| r.caught).count() as f64
-            / current.len() as f64)
-            * 100.0;
+        let current_score =
+            (current.iter().filter(|r| r.caught).count() as f64 / current.len() as f64) * 100.0;
 
         let mut improved = Vec::new();
         let mut regressed = Vec::new();
@@ -869,10 +875,7 @@ impl AnomalySimulator {
         }
     }
 
-    pub fn with_profiles(
-        profiles: HashMap<String, SimulatedProfile>,
-        threshold: f64,
-    ) -> Self {
+    pub fn with_profiles(profiles: HashMap<String, SimulatedProfile>, threshold: f64) -> Self {
         Self {
             server_profiles: profiles,
             anomaly_threshold: threshold,
@@ -904,13 +907,8 @@ impl AnomalySimulator {
         }
 
         // Sensitive paths
-        let sensitive_patterns = [
-            "/.ssh/", "/.aws/", "/.gnupg/", "/.config/", "/etc/passwd",
-        ];
-        if sensitive_patterns
-            .iter()
-            .any(|p| event.target.contains(p))
-        {
+        let sensitive_patterns = ["/.ssh/", "/.aws/", "/.gnupg/", "/.config/", "/etc/passwd"];
+        if sensitive_patterns.iter().any(|p| event.target.contains(p)) {
             score += 0.3;
         }
 
@@ -997,7 +995,10 @@ mod tests {
         assert_eq!(exfil_scenario.category, AttackCategory::DataExfiltration);
 
         let privesc_scenario = sim.get_scenario("privilege_escalation").unwrap();
-        assert_eq!(privesc_scenario.category, AttackCategory::PrivilegeEscalation);
+        assert_eq!(
+            privesc_scenario.category,
+            AttackCategory::PrivilegeEscalation
+        );
 
         let supply_scenario = sim.get_scenario("supply_chain_attack").unwrap();
         assert_eq!(supply_scenario.category, AttackCategory::SupplyChain);
@@ -1010,11 +1011,32 @@ mod tests {
     fn test_scenario_step_counts() {
         let sim = ThreatSimulator::new();
 
-        assert_eq!(sim.get_scenario("credential_exfiltration").unwrap().steps.len(), 3);
+        assert_eq!(
+            sim.get_scenario("credential_exfiltration")
+                .unwrap()
+                .steps
+                .len(),
+            3
+        );
         assert_eq!(sim.get_scenario("prompt_injection").unwrap().steps.len(), 3);
-        assert_eq!(sim.get_scenario("data_exfiltration_slow").unwrap().steps.len(), 7);
-        assert_eq!(sim.get_scenario("privilege_escalation").unwrap().steps.len(), 4);
-        assert_eq!(sim.get_scenario("supply_chain_attack").unwrap().steps.len(), 3);
+        assert_eq!(
+            sim.get_scenario("data_exfiltration_slow")
+                .unwrap()
+                .steps
+                .len(),
+            7
+        );
+        assert_eq!(
+            sim.get_scenario("privilege_escalation")
+                .unwrap()
+                .steps
+                .len(),
+            4
+        );
+        assert_eq!(
+            sim.get_scenario("supply_chain_attack").unwrap().steps.len(),
+            3
+        );
         assert_eq!(sim.get_scenario("lateral_movement").unwrap().steps.len(), 3);
     }
 
@@ -1037,10 +1059,15 @@ mod tests {
 
         let anomaly = AnomalySimulator::new(1.0);
 
-        let result = sim.run_single_scenario("credential_exfiltration", &policy, &anomaly).unwrap();
+        let result = sim
+            .run_single_scenario("credential_exfiltration", &policy, &anomaly)
+            .unwrap();
         assert!(result.caught);
         assert_eq!(result.caught_at_step, Some(1));
-        assert!(matches!(result.detection_method, Some(DetectionMethod::PolicyBlock { .. })));
+        assert!(matches!(
+            result.detection_method,
+            Some(DetectionMethod::PolicyBlock { .. })
+        ));
     }
 
     #[test]
@@ -1049,7 +1076,9 @@ mod tests {
         let policy = PolicySimulator::new();
         let anomaly = AnomalySimulator::new(1.5); // High threshold
 
-        let result = sim.run_single_scenario("credential_exfiltration", &policy, &anomaly).unwrap();
+        let result = sim
+            .run_single_scenario("credential_exfiltration", &policy, &anomaly)
+            .unwrap();
         assert!(!result.caught);
         assert!(result.gap.is_some());
     }
@@ -1073,7 +1102,9 @@ mod tests {
 
         let anomaly = AnomalySimulator::new(1.0);
 
-        let result = sim.run_single_scenario("prompt_injection", &policy, &anomaly).unwrap();
+        let result = sim
+            .run_single_scenario("prompt_injection", &policy, &anomaly)
+            .unwrap();
         assert!(result.caught);
     }
 
@@ -1096,9 +1127,14 @@ mod tests {
 
         let anomaly = AnomalySimulator::with_profiles(profiles, 0.7);
 
-        let result = sim.run_single_scenario("data_exfiltration_slow", &policy, &anomaly).unwrap();
+        let result = sim
+            .run_single_scenario("data_exfiltration_slow", &policy, &anomaly)
+            .unwrap();
         assert!(result.caught);
-        assert!(matches!(result.detection_method, Some(DetectionMethod::AnomalyScore { .. })));
+        assert!(matches!(
+            result.detection_method,
+            Some(DetectionMethod::AnomalyScore { .. })
+        ));
     }
 
     #[test]
@@ -1120,7 +1156,9 @@ mod tests {
 
         let anomaly = AnomalySimulator::new(1.0);
 
-        let result = sim.run_single_scenario("privilege_escalation", &policy, &anomaly).unwrap();
+        let result = sim
+            .run_single_scenario("privilege_escalation", &policy, &anomaly)
+            .unwrap();
         assert!(result.caught);
         assert_eq!(result.caught_at_step, Some(3));
     }
@@ -1131,10 +1169,15 @@ mod tests {
         let policy = PolicySimulator::new();
         let anomaly = AnomalySimulator::new(1.0);
 
-        let result = sim.run_single_scenario("supply_chain_attack", &policy, &anomaly).unwrap();
+        let result = sim
+            .run_single_scenario("supply_chain_attack", &policy, &anomaly)
+            .unwrap();
         assert!(result.caught);
         assert_eq!(result.caught_at_step, Some(2));
-        assert!(matches!(result.detection_method, Some(DetectionMethod::BlocklistMatch { .. })));
+        assert!(matches!(
+            result.detection_method,
+            Some(DetectionMethod::BlocklistMatch { .. })
+        ));
     }
 
     #[test]
@@ -1144,9 +1187,14 @@ mod tests {
         // Use slightly higher threshold to avoid anomaly detection on step 1 (which scores 1.0)
         let anomaly = AnomalySimulator::new(1.01);
 
-        let result = sim.run_single_scenario("lateral_movement", &policy, &anomaly).unwrap();
+        let result = sim
+            .run_single_scenario("lateral_movement", &policy, &anomaly)
+            .unwrap();
         assert!(result.caught);
-        assert!(matches!(result.detection_method, Some(DetectionMethod::KillChainMatch { .. })));
+        assert!(matches!(
+            result.detection_method,
+            Some(DetectionMethod::KillChainMatch { .. })
+        ));
     }
 
     #[test]
@@ -1242,11 +1290,17 @@ mod tests {
 
         let run = sim.run_simulation(&policy, &anomaly);
 
-        let cred_gap = run.gaps.iter().find(|g| g.scenario_id == "credential_exfiltration");
+        let cred_gap = run
+            .gaps
+            .iter()
+            .find(|g| g.scenario_id == "credential_exfiltration");
         assert!(cred_gap.is_some());
         assert!(cred_gap.unwrap().remediation.contains("~/.ssh"));
 
-        let privesc_gap = run.gaps.iter().find(|g| g.scenario_id == "privilege_escalation");
+        let privesc_gap = run
+            .gaps
+            .iter()
+            .find(|g| g.scenario_id == "privilege_escalation");
         assert!(privesc_gap.is_some());
         assert!(privesc_gap.unwrap().remediation.contains("shell profiles"));
     }

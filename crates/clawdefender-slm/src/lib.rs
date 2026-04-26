@@ -13,9 +13,9 @@
 
 pub mod analyzer;
 pub mod backend_manager;
-pub mod clustering;
 #[cfg(feature = "cloud")]
 pub mod cloud_backend;
+pub mod clustering;
 pub mod config_migration;
 pub mod context;
 pub mod context_window;
@@ -42,7 +42,9 @@ use tracing::{info, warn};
 
 #[cfg(any(not(feature = "gguf"), test))]
 use crate::engine::MockSlmBackend;
-use crate::engine::{HeuristicSlmBackend, RiskLevel, SlmBackend, SlmConfig, SlmEngine, SlmResponse, SlmStats};
+use crate::engine::{
+    HeuristicSlmBackend, RiskLevel, SlmBackend, SlmConfig, SlmEngine, SlmResponse, SlmStats,
+};
 
 pub use backend_manager::{
     AiBackendManager, AiRequest, AiResponse, AiStatus, BackendStatus, LocalModelInfo, TaskType,
@@ -356,8 +358,7 @@ impl SlmService {
                 if stats.using_gpu { "GPU" } else { "CPU" }
             )
         } else {
-            "No model loaded - place a GGUF model in ~/.local/share/rookbot/models/"
-                .to_string()
+            "No model loaded - place a GGUF model in ~/.local/share/rookbot/models/".to_string()
         }
     }
 
@@ -445,7 +446,12 @@ mod tests {
     async fn analyze_scan_finding_disabled_returns_low() {
         let svc = SlmService::disabled(SlmConfig::default());
         let resp = svc
-            .analyze_scan_finding("exposed_secret", "HIGH", "API key in source", "/src/config.rs")
+            .analyze_scan_finding(
+                "exposed_secret",
+                "HIGH",
+                "API key in source",
+                "/src/config.rs",
+            )
             .await
             .unwrap();
         assert_eq!(resp.risk_level, RiskLevel::Low);
@@ -580,8 +586,8 @@ mod tests {
     #[tokio::test]
     async fn fallback_chain_uses_primary_when_it_succeeds() {
         let primary = Box::new(MockSlmBackend {
-            response_text:
-                "RISK: MEDIUM\nCONFIDENCE: 0.7\nEXPLANATION: Primary analysis".to_string(),
+            response_text: "RISK: MEDIUM\nCONFIDENCE: 0.7\nEXPLANATION: Primary analysis"
+                .to_string(),
             ..Default::default()
         });
         let primary_engine = Arc::new(SlmEngine::new(primary, SlmConfig::default()));

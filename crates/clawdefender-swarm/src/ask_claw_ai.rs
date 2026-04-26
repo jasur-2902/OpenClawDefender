@@ -12,9 +12,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::cloud_api::{
-    extract_text, AgentRequest, CloudApiClient, Message, MessageContent,
-};
+use crate::cloud_api::{extract_text, AgentRequest, CloudApiClient, Message, MessageContent};
 
 // ---------------------------------------------------------------------------
 // Configuration & mode
@@ -67,34 +65,55 @@ impl QuestionType {
     pub fn classify(input: &str) -> Self {
         let lower = input.to_lowercase();
 
-        if lower.contains("investigate") || lower.contains("deep dive") || lower.contains("dig into") {
+        if lower.contains("investigate")
+            || lower.contains("deep dive")
+            || lower.contains("dig into")
+        {
             return Self::InvestigateRequest;
         }
-        if lower.contains("status") || lower.contains("overview") || lower.contains("everything ok")
-            || lower.contains("secure?") || lower.contains("dashboard")
+        if lower.contains("status")
+            || lower.contains("overview")
+            || lower.contains("everything ok")
+            || lower.contains("secure?")
+            || lower.contains("dashboard")
         {
             return Self::StatusQuery;
         }
-        if lower.contains("event") || lower.contains("happened") || lower.contains("recent")
-            || lower.contains("log") || lower.contains("activity")
+        if lower.contains("event")
+            || lower.contains("happened")
+            || lower.contains("recent")
+            || lower.contains("log")
+            || lower.contains("activity")
         {
             return Self::EventQuery;
         }
-        if lower.contains("server") && (lower.contains("tell me") || lower.contains("about") || lower.contains("what does")) {
+        if lower.contains("server")
+            && (lower.contains("tell me") || lower.contains("about") || lower.contains("what does"))
+        {
             return Self::ServerQuery;
         }
-        if lower.contains("explain") || lower.contains("what does") || lower.contains("mean")
-            || lower.contains("why") || lower.contains("understand")
+        if lower.contains("explain")
+            || lower.contains("what does")
+            || lower.contains("mean")
+            || lower.contains("why")
+            || lower.contains("understand")
         {
             return Self::ExplainEvent;
         }
-        if lower.contains("config") || lower.contains("setup") || lower.contains("rule")
-            || lower.contains("policy") || lower.contains("how do i")
+        if lower.contains("config")
+            || lower.contains("setup")
+            || lower.contains("rule")
+            || lower.contains("policy")
+            || lower.contains("how do i")
         {
             return Self::ConfigHelp;
         }
-        if lower.contains("block") || lower.contains("allow") || lower.contains("enable")
-            || lower.contains("disable") || lower.contains("execute") || lower.contains("run")
+        if lower.contains("block")
+            || lower.contains("allow")
+            || lower.contains("enable")
+            || lower.contains("disable")
+            || lower.contains("execute")
+            || lower.contains("run")
         {
             return Self::ActionRequest;
         }
@@ -343,8 +362,10 @@ pub fn extract_actions(text: &str) -> Vec<SuggestedAction> {
         let body = after_tag[tag_end + 1..end_idx].trim();
 
         // Parse tag attributes
-        let action_type = parse_tag_attr_quoted(tag_line, "type").unwrap_or_else(|| "unknown".to_string());
-        let label = parse_tag_attr_quoted(tag_line, "label").unwrap_or_else(|| "Execute".to_string());
+        let action_type =
+            parse_tag_attr_quoted(tag_line, "type").unwrap_or_else(|| "unknown".to_string());
+        let label =
+            parse_tag_attr_quoted(tag_line, "label").unwrap_or_else(|| "Execute".to_string());
         let confirm = parse_tag_attr_simple(tag_line, "confirm")
             .map(|v| v == "yes" || v == "true")
             .unwrap_or(true);
@@ -468,7 +489,11 @@ pub struct AskClawAI {
 
 impl AskClawAI {
     /// Create a new AskClawAI instance.
-    pub fn new(mode: AskClawMode, cloud_client: Option<Arc<CloudApiClient>>, model: String) -> Self {
+    pub fn new(
+        mode: AskClawMode,
+        cloud_client: Option<Arc<CloudApiClient>>,
+        model: String,
+    ) -> Self {
         Self {
             mode,
             context: ClawContext::default(),
@@ -589,9 +614,10 @@ impl AskClawAI {
         turn_id: &str,
         question_type: &QuestionType,
     ) -> Result<AskClawResponse> {
-        let client = self.cloud_client.clone().ok_or_else(|| {
-            anyhow::anyhow!("Cloud client not configured")
-        })?;
+        let client = self
+            .cloud_client
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Cloud client not configured"))?;
 
         let system_prompt = build_system_prompt(&self.context);
 
@@ -624,7 +650,10 @@ impl AskClawAI {
             stream: false,
         };
 
-        let response = client.send(&request).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        let response = client
+            .send(&request)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         let raw_text = extract_text(&response);
 
         // Parse structured output
@@ -838,16 +867,34 @@ mod tests {
 
     #[test]
     fn test_classify_status() {
-        assert_eq!(QuestionType::classify("What's the status?"), QuestionType::StatusQuery);
-        assert_eq!(QuestionType::classify("Is everything secure?"), QuestionType::StatusQuery);
-        assert_eq!(QuestionType::classify("Give me an overview"), QuestionType::StatusQuery);
+        assert_eq!(
+            QuestionType::classify("What's the status?"),
+            QuestionType::StatusQuery
+        );
+        assert_eq!(
+            QuestionType::classify("Is everything secure?"),
+            QuestionType::StatusQuery
+        );
+        assert_eq!(
+            QuestionType::classify("Give me an overview"),
+            QuestionType::StatusQuery
+        );
     }
 
     #[test]
     fn test_classify_event() {
-        assert_eq!(QuestionType::classify("What happened at 3pm?"), QuestionType::EventQuery);
-        assert_eq!(QuestionType::classify("Show recent events"), QuestionType::EventQuery);
-        assert_eq!(QuestionType::classify("Check the activity log"), QuestionType::EventQuery);
+        assert_eq!(
+            QuestionType::classify("What happened at 3pm?"),
+            QuestionType::EventQuery
+        );
+        assert_eq!(
+            QuestionType::classify("Show recent events"),
+            QuestionType::EventQuery
+        );
+        assert_eq!(
+            QuestionType::classify("Check the activity log"),
+            QuestionType::EventQuery
+        );
     }
 
     #[test]
@@ -864,8 +911,14 @@ mod tests {
 
     #[test]
     fn test_classify_action() {
-        assert_eq!(QuestionType::classify("Block this server"), QuestionType::ActionRequest);
-        assert_eq!(QuestionType::classify("Enable strict mode"), QuestionType::ActionRequest);
+        assert_eq!(
+            QuestionType::classify("Block this server"),
+            QuestionType::ActionRequest
+        );
+        assert_eq!(
+            QuestionType::classify("Enable strict mode"),
+            QuestionType::ActionRequest
+        );
     }
 
     #[test]

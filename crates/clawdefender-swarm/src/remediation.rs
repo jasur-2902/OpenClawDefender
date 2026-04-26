@@ -149,7 +149,9 @@ pub fn extract_remediations(text: &str, scan_id: &str) -> Vec<Remediation> {
             .unwrap_or(false);
 
         // Parse body fields
-        if let Some(remediation) = parse_remediation_body(body, &finding_id, scan_id, risk, reversible) {
+        if let Some(remediation) =
+            parse_remediation_body(body, &finding_id, scan_id, risk, reversible)
+        {
             results.push(remediation);
         }
 
@@ -238,7 +240,8 @@ fn parse_remediation_body(
         .or_else(|| parse_body_field(body, "Instructions"))
         .unwrap_or_else(|| format!("Fix for {finding_id}"));
 
-    let auto_executable = risk == FixRisk::Safe && !matches!(fix_type, FixType::ManualAction { .. });
+    let auto_executable =
+        risk == FixRisk::Safe && !matches!(fix_type, FixType::ManualAction { .. });
 
     Some(Remediation {
         id: format!("rem-{}", Uuid::new_v4()),
@@ -288,18 +291,15 @@ fn parse_policy_action(s: &str) -> PolicyAction {
 // ---------------------------------------------------------------------------
 
 /// Commands considered safe to run without user confirmation.
-const ALLOWED_REMEDIATION_COMMANDS: &[&str] = &[
-    "networksetup",
-    "defaults",
-    "launchctl",
-    "chmod",
-    "chflags",
-];
+const ALLOWED_REMEDIATION_COMMANDS: &[&str] =
+    &["networksetup", "defaults", "launchctl", "chmod", "chflags"];
 
 /// Check whether a command is in the remediation allowlist.
 fn is_command_allowed(command: &str) -> bool {
     let binary = command.split_whitespace().next().unwrap_or("");
-    ALLOWED_REMEDIATION_COMMANDS.iter().any(|&allowed| binary == allowed)
+    ALLOWED_REMEDIATION_COMMANDS
+        .iter()
+        .any(|&allowed| binary == allowed)
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +360,11 @@ impl RemediationEngine {
                 requires_sudo,
                 dry_run_output,
             } => {
-                let sudo_note = if *requires_sudo { " (requires sudo)" } else { "" };
+                let sudo_note = if *requires_sudo {
+                    " (requires sudo)"
+                } else {
+                    ""
+                };
                 let dry_run = dry_run_output
                     .as_deref()
                     .map(|o| format!("\nDry-run output: {o}"))
@@ -398,10 +402,7 @@ impl RemediationEngine {
 
         match &rem.status {
             RemediationStatus::Proposed | RemediationStatus::Approved => {}
-            other => bail!(
-                "Cannot execute remediation in status {:?}",
-                other
-            ),
+            other => bail!("Cannot execute remediation in status {:?}", other),
         }
 
         match &rem.fix_type {
@@ -421,9 +422,7 @@ impl RemediationEngine {
                 if *requires_sudo {
                     // Convert to manual action — we cannot run sudo non-interactively
                     rem.status = RemediationStatus::Failed {
-                        error: format!(
-                            "Requires sudo — please run manually: sudo {command}"
-                        ),
+                        error: format!("Requires sudo — please run manually: sudo {command}"),
                     };
                     return Ok(());
                 }
@@ -470,10 +469,7 @@ impl RemediationEngine {
         let rem = self.find_mut(remediation_id)?;
 
         if rem.status != RemediationStatus::Executed {
-            bail!(
-                "Cannot revert remediation in status {:?}",
-                rem.status
-            );
+            bail!("Cannot revert remediation in status {:?}", rem.status);
         }
 
         if !rem.reversible {
@@ -798,7 +794,8 @@ Instructions: Do something without a Type field
         reversible: bool,
         fix_type: FixType,
     ) -> Remediation {
-        let auto_executable = risk == FixRisk::Safe && !matches!(fix_type, FixType::ManualAction { .. });
+        let auto_executable =
+            risk == FixRisk::Safe && !matches!(fix_type, FixType::ManualAction { .. });
         Remediation {
             id: id.to_string(),
             finding_id: finding_id.to_string(),

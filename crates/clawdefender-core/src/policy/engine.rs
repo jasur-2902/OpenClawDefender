@@ -209,7 +209,13 @@ impl DefaultPolicyEngine {
                 tool_name: None,
                 resource_path: None,
                 method: None,
-                event_type: Some(format!("{:?}", other).split_whitespace().next().unwrap_or("unknown").to_lowercase()),
+                event_type: Some(
+                    format!("{:?}", other)
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_lowercase(),
+                ),
             },
         }
     }

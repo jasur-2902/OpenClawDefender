@@ -36,8 +36,7 @@ pub enum InvestigateAction {
 /// Default investigation store directory: ~/.local/share/rookbot/investigations/
 fn investigations_dir() -> PathBuf {
     let home = std::env::var_os("HOME").expect("HOME not set");
-    PathBuf::from(home)
-        .join(".local/share/rookbot/investigations")
+    PathBuf::from(home).join(".local/share/rookbot/investigations")
 }
 
 /// Parse investigation depth from string.
@@ -103,7 +102,6 @@ pub async fn run_investigation(target: &str, depth: &str) -> Result<()> {
     println!("  5. Provide actionable recommendations");
 
     return Ok(());
-
 }
 
 /// List past investigations.
@@ -118,7 +116,6 @@ pub fn list_investigations(limit: usize, verdict_filter: Option<String>) -> Resu
 
     let mut investigations = store.list(Some(&query));
 
-
     if investigations.is_empty() {
         println!("No investigations found.");
         if verdict_filter.is_some() {
@@ -127,7 +124,10 @@ pub fn list_investigations(limit: usize, verdict_filter: Option<String>) -> Resu
         return Ok(());
     }
 
-    println!("{:<24} {:<16} {:<20} {:<12} {:<8}", "ID", "Target", "Summary", "Verdict", "Confidence");
+    println!(
+        "{:<24} {:<16} {:<20} {:<12} {:<8}",
+        "ID", "Target", "Summary", "Verdict", "Confidence"
+    );
     println!("{}", "-".repeat(90));
 
     for inv in &investigations {
@@ -210,7 +210,10 @@ pub fn show_investigation(investigation_id: &str) -> Result<()> {
     }
     println!();
     println!("Tool Calls: {}", result.total_tool_calls);
-    println!("Tokens: {} in, {} out", result.total_input_tokens, result.total_output_tokens);
+    println!(
+        "Tokens: {} in, {} out",
+        result.total_input_tokens, result.total_output_tokens
+    );
     println!("Cost: ${:.4}", result.estimated_cost_usd);
 
     Ok(())
@@ -231,7 +234,11 @@ fn target_summary(target: &InvestigationTarget) -> String {
         InvestigationTarget::Alert { alert_id, .. } => format!("Alert: {alert_id}"),
         InvestigationTarget::Server { server_name } => format!("Server: {server_name}"),
         InvestigationTarget::TimeRange { start, end } => {
-            format!("Time Range: {} to {}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d"))
+            format!(
+                "Time Range: {} to {}",
+                start.format("%Y-%m-%d"),
+                end.format("%Y-%m-%d")
+            )
         }
         InvestigationTarget::Freeform { query } => format!("Query: {query}"),
     }

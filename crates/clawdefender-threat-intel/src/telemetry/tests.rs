@@ -348,10 +348,7 @@ mod tests {
         // An empty JSON object should produce all defaults
         let config: TelemetryConfig = serde_json::from_str("{}").unwrap();
         assert!(!config.enabled);
-        assert_eq!(
-            config.endpoint_url,
-            "https://feed.rookbot.io/v1/telemetry"
-        );
+        assert_eq!(config.endpoint_url, "https://feed.rookbot.io/v1/telemetry");
     }
 
     // -----------------------------------------------------------------------

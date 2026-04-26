@@ -93,13 +93,22 @@ impl TimelineEntryType {
         // Check action field for hints
         if let Some(action) = event.get("action").and_then(|v| v.as_str()) {
             let action_lower = action.to_lowercase();
-            if action_lower.contains("file") || action_lower.contains("read") || action_lower.contains("write") {
+            if action_lower.contains("file")
+                || action_lower.contains("read")
+                || action_lower.contains("write")
+            {
                 return Self::FileAccess;
             }
-            if action_lower.contains("network") || action_lower.contains("connect") || action_lower.contains("dns") {
+            if action_lower.contains("network")
+                || action_lower.contains("connect")
+                || action_lower.contains("dns")
+            {
                 return Self::NetworkConnection;
             }
-            if action_lower.contains("exec") || action_lower.contains("process") || action_lower.contains("spawn") {
+            if action_lower.contains("exec")
+                || action_lower.contains("process")
+                || action_lower.contains("spawn")
+            {
                 return Self::ProcessExecution;
             }
             if action_lower.contains("tools/call") || action_lower.contains("mcp") {
@@ -371,8 +380,7 @@ impl TimelineBuilder {
             all_events.push(target_event.clone());
         }
 
-        let narrative =
-            NarrativeGenerator::generate_event_story(target_event, surrounding_events);
+        let narrative = NarrativeGenerator::generate_event_story(target_event, surrounding_events);
 
         Self::from_investigation(&investigation_id, &all_events, &[], &[], &narrative)
     }
@@ -380,29 +388,26 @@ impl TimelineBuilder {
     /// Parse `[TIMELINE_ENTRY ...]...[/TIMELINE_ENTRY]` tags from text.
     pub fn extract_timeline_entries(text: &str) -> Vec<TimelineEntry> {
         let mut entries = Vec::new();
-        let re = Regex::new(
-            r#"\[TIMELINE_ENTRY\s+([^\]]*)\]([\s\S]*?)\[/TIMELINE_ENTRY\]"#,
-        )
-        .expect("regex must compile");
+        let re = Regex::new(r#"\[TIMELINE_ENTRY\s+([^\]]*)\]([\s\S]*?)\[/TIMELINE_ENTRY\]"#)
+            .expect("regex must compile");
 
         for (idx, cap) in re.captures_iter(text).enumerate() {
             let attrs_str = &cap[1];
             let body = cap[2].trim();
 
-            let time_str = parse_tag_attr_value(attrs_str, "time")
-                .unwrap_or_default();
+            let time_str = parse_tag_attr_value(attrs_str, "time").unwrap_or_default();
             let timestamp = DateTime::parse_from_rfc3339(&time_str)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now());
 
-            let server = parse_tag_attr_value(attrs_str, "server")
-                .unwrap_or_else(|| "unknown".to_string());
+            let server =
+                parse_tag_attr_value(attrs_str, "server").unwrap_or_else(|| "unknown".to_string());
             let type_str = parse_tag_attr_value(attrs_str, "type")
                 .unwrap_or_else(|| "McpToolCall".to_string());
-            let severity = parse_tag_attr_value(attrs_str, "severity")
-                .unwrap_or_else(|| "info".to_string());
-            let key_str = parse_tag_attr_value(attrs_str, "key")
-                .unwrap_or_else(|| "false".to_string());
+            let severity =
+                parse_tag_attr_value(attrs_str, "severity").unwrap_or_else(|| "info".to_string());
+            let key_str =
+                parse_tag_attr_value(attrs_str, "key").unwrap_or_else(|| "false".to_string());
             let is_key = key_str == "true" || key_str == "yes" || key_str == "1";
 
             let stage = parse_tag_attr_value(attrs_str, "stage");
@@ -548,25 +553,22 @@ impl TimelineBuilder {
 
             // Find differences
             let mut differences = Vec::new();
-            let current_server_set: std::collections::HashSet<&str> =
-                current.servers_involved.iter().map(|s| s.as_str()).collect();
+            let current_server_set: std::collections::HashSet<&str> = current
+                .servers_involved
+                .iter()
+                .map(|s| s.as_str())
+                .collect();
             let past_server_set: std::collections::HashSet<&str> =
                 past.servers_involved.iter().map(|s| s.as_str()).collect();
 
             for s in &current_server_set {
                 if !past_server_set.contains(s) {
-                    differences.push(format!(
-                        "Server '{}' only in current investigation",
-                        s
-                    ));
+                    differences.push(format!("Server '{}' only in current investigation", s));
                 }
             }
             for s in &past_server_set {
                 if !current_server_set.contains(s) {
-                    differences.push(format!(
-                        "Server '{}' only in past investigation",
-                        s
-                    ));
+                    differences.push(format!("Server '{}' only in past investigation", s));
                 }
             }
 
@@ -579,18 +581,17 @@ impl TimelineBuilder {
             }
 
             // Compute similarity score
-            let server_sim = if current.servers_involved.is_empty()
-                && past.servers_involved.is_empty()
-            {
-                1.0
-            } else {
-                let union_size = current_server_set.union(&past_server_set).count();
-                if union_size == 0 {
-                    0.0
+            let server_sim =
+                if current.servers_involved.is_empty() && past.servers_involved.is_empty() {
+                    1.0
                 } else {
-                    common_servers.len() as f64 / union_size as f64
-                }
-            };
+                    let union_size = current_server_set.union(&past_server_set).count();
+                    if union_size == 0 {
+                        0.0
+                    } else {
+                        common_servers.len() as f64 / union_size as f64
+                    }
+                };
 
             let pattern_sim = if common_patterns.is_empty() {
                 0.0
@@ -606,8 +607,7 @@ impl TimelineBuilder {
                 }
             };
 
-            let similarity_score =
-                ((server_sim * 0.5 + pattern_sim * 0.5) * 100.0).round() / 100.0;
+            let similarity_score = ((server_sim * 0.5 + pattern_sim * 0.5) * 100.0).round() / 100.0;
 
             let comparison_narrative = format!(
                 "Investigation {} shares {} server(s) and {} pattern(s) with the current investigation. Similarity: {:.0}%.",
@@ -653,8 +653,7 @@ impl NarrativeGenerator {
             return "No events recorded in this timeline.".to_string();
         }
 
-        let key_moments: Vec<&TimelineEntry> =
-            entries.iter().filter(|e| e.is_key_moment).collect();
+        let key_moments: Vec<&TimelineEntry> = entries.iter().filter(|e| e.is_key_moment).collect();
         let servers: Vec<String> = {
             let mut s: Vec<String> = entries
                 .iter()
@@ -685,10 +684,7 @@ impl NarrativeGenerator {
 
         // Key moments
         if !key_moments.is_empty() {
-            parts.push(format!(
-                "{} key moment(s) identified.",
-                key_moments.len()
-            ));
+            parts.push(format!("{} key moment(s) identified.", key_moments.len()));
             for km in key_moments.iter().take(3) {
                 parts.push(format!(
                     "- [{}] {}: {}",
@@ -698,10 +694,7 @@ impl NarrativeGenerator {
                 ));
             }
             if key_moments.len() > 3 {
-                parts.push(format!(
-                    "  ...and {} more.",
-                    key_moments.len() - 3
-                ));
+                parts.push(format!("  ...and {} more.", key_moments.len() - 3));
             }
         }
 
@@ -732,10 +725,7 @@ impl NarrativeGenerator {
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("performed an action");
-        let decision = event
-            .get("decision")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let decision = event.get("decision").and_then(|v| v.as_str()).unwrap_or("");
         let tool = event
             .get("tool_name")
             .and_then(|v| v.as_str())
@@ -757,10 +747,7 @@ impl NarrativeGenerator {
                 time_str, server, tool, action
             ));
         } else {
-            story_parts.push(format!(
-                "At {}, {} {}.",
-                time_str, server, action
-            ));
+            story_parts.push(format!("At {}, {} {}.", time_str, server, action));
         }
 
         // Decision
@@ -778,15 +765,11 @@ impl NarrativeGenerator {
 
         // Risk assessment
         match risk {
-            "critical" => story_parts.push(
-                "This event is rated CRITICAL and requires immediate attention.".to_string(),
-            ),
-            "high" => story_parts.push(
-                "This event is rated HIGH risk and should be investigated.".to_string(),
-            ),
-            "medium" => story_parts.push(
-                "This event is rated MEDIUM risk.".to_string(),
-            ),
+            "critical" => story_parts
+                .push("This event is rated CRITICAL and requires immediate attention.".to_string()),
+            "high" => story_parts
+                .push("This event is rated HIGH risk and should be investigated.".to_string()),
+            "medium" => story_parts.push("This event is rated MEDIUM risk.".to_string()),
             _ => {}
         }
 
@@ -1018,38 +1001,27 @@ mod tests {
             make_event("e2", "file-manager", "2024-01-15T14:21:00Z"),
             make_event("e3", "web-browser", "2024-01-15T14:22:00Z"),
         ];
-        let evidence = vec![
-            make_evidence("ev1", "file-manager", "2024-01-15T14:20:30Z"),
-        ];
-        let findings = vec![
-            make_finding("SSH Key Exposed", "high", "file-manager"),
-        ];
+        let evidence = vec![make_evidence("ev1", "file-manager", "2024-01-15T14:20:30Z")];
+        let findings = vec![make_finding("SSH Key Exposed", "high", "file-manager")];
 
-        let timeline = TimelineBuilder::from_investigation(
-            "inv-001",
-            &events,
-            &evidence,
-            &findings,
-            "",
-        );
+        let timeline =
+            TimelineBuilder::from_investigation("inv-001", &events, &evidence, &findings, "");
 
         assert_eq!(timeline.investigation_id, "inv-001");
         // 3 events + 1 evidence + 1 finding = 5 entries
         assert_eq!(timeline.entries.len(), 5);
-        assert!(timeline.servers_involved.contains(&"file-manager".to_string()));
-        assert!(timeline.servers_involved.contains(&"web-browser".to_string()));
+        assert!(timeline
+            .servers_involved
+            .contains(&"file-manager".to_string()));
+        assert!(timeline
+            .servers_involved
+            .contains(&"web-browser".to_string()));
         assert!(!timeline.narrative_summary.is_empty());
     }
 
     #[test]
     fn test_from_investigation_empty() {
-        let timeline = TimelineBuilder::from_investigation(
-            "inv-empty",
-            &[],
-            &[],
-            &[],
-            "",
-        );
+        let timeline = TimelineBuilder::from_investigation("inv-empty", &[], &[], &[], "");
 
         assert_eq!(timeline.entries.len(), 0);
         assert!(timeline.servers_involved.is_empty());
@@ -1058,18 +1030,10 @@ mod tests {
 
     #[test]
     fn test_from_investigation_with_narrative() {
-        let events = vec![
-            make_event("e1", "srv", "2024-01-15T14:20:00Z"),
-        ];
+        let events = vec![make_event("e1", "srv", "2024-01-15T14:20:00Z")];
         let narrative = "The server performed a suspicious action.";
 
-        let timeline = TimelineBuilder::from_investigation(
-            "inv-002",
-            &events,
-            &[],
-            &[],
-            narrative,
-        );
+        let timeline = TimelineBuilder::from_investigation("inv-002", &events, &[], &[], narrative);
 
         assert_eq!(timeline.narrative_summary, narrative);
     }
@@ -1082,13 +1046,7 @@ mod tests {
             make_event("e2", "srv", "2024-01-15T14:20:00Z"),
         ];
 
-        let timeline = TimelineBuilder::from_investigation(
-            "inv-sort",
-            &events,
-            &[],
-            &[],
-            "",
-        );
+        let timeline = TimelineBuilder::from_investigation("inv-sort", &events, &[], &[], "");
 
         assert_eq!(timeline.entries[0].event_id, Some("e1".to_string()));
         assert_eq!(timeline.entries[1].event_id, Some("e2".to_string()));
@@ -1102,13 +1060,7 @@ mod tests {
             make_event("e2", "srv", "2024-01-15T15:30:00Z"),
         ];
 
-        let timeline = TimelineBuilder::from_investigation(
-            "inv-span",
-            &events,
-            &[],
-            &[],
-            "",
-        );
+        let timeline = TimelineBuilder::from_investigation("inv-span", &events, &[], &[], "");
 
         assert!(timeline.time_span.start < timeline.time_span.end);
         let duration = timeline.time_span.end - timeline.time_span.start;
@@ -1197,80 +1149,140 @@ Minimal entry
     #[test]
     fn test_entry_type_from_event_proxy() {
         let event = json!({"event_type": "proxy", "tool_name": "read_file"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::McpToolCall);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::McpToolCall
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_file_access() {
         let event = json!({"event_type": "file_access"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::FileAccess);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::FileAccess
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_network() {
         let event = json!({"event_type": "network"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::NetworkConnection);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::NetworkConnection
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_process() {
         let event = json!({"event_type": "process"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::ProcessExecution);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::ProcessExecution
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_policy() {
         let event = json!({"event_type": "policy"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::PolicyDecision);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::PolicyDecision
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_user_action() {
         let event = json!({"event_type": "user_action"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::UserAction);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::UserAction
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_by_tool_name() {
         let event = json!({"tool_name": "search_code"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::McpToolCall);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::McpToolCall
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_by_decision() {
         let event = json!({"decision": "deny"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::PolicyDecision);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::PolicyDecision
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_by_action_file() {
         let event = json!({"action": "file_read_operation"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::FileAccess);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::FileAccess
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_by_action_network() {
         let event = json!({"action": "network_connect"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::NetworkConnection);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::NetworkConnection
+        );
     }
 
     #[test]
     fn test_entry_type_from_event_default() {
         let event = json!({"some_field": "some_value"});
-        assert_eq!(TimelineEntryType::from_event(&event), TimelineEntryType::McpToolCall);
+        assert_eq!(
+            TimelineEntryType::from_event(&event),
+            TimelineEntryType::McpToolCall
+        );
     }
 
     #[test]
     fn test_entry_type_from_str_label() {
-        assert_eq!(TimelineEntryType::from_str_label("McpToolCall"), TimelineEntryType::McpToolCall);
-        assert_eq!(TimelineEntryType::from_str_label("file_access"), TimelineEntryType::FileAccess);
-        assert_eq!(TimelineEntryType::from_str_label("network"), TimelineEntryType::NetworkConnection);
-        assert_eq!(TimelineEntryType::from_str_label("process"), TimelineEntryType::ProcessExecution);
-        assert_eq!(TimelineEntryType::from_str_label("policy"), TimelineEntryType::PolicyDecision);
-        assert_eq!(TimelineEntryType::from_str_label("user"), TimelineEntryType::UserAction);
-        assert_eq!(TimelineEntryType::from_str_label("ai"), TimelineEntryType::AiAssessment);
-        assert_eq!(TimelineEntryType::from_str_label("note"), TimelineEntryType::InvestigatorNote);
-        assert_eq!(TimelineEntryType::from_str_label("unknown"), TimelineEntryType::McpToolCall);
+        assert_eq!(
+            TimelineEntryType::from_str_label("McpToolCall"),
+            TimelineEntryType::McpToolCall
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("file_access"),
+            TimelineEntryType::FileAccess
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("network"),
+            TimelineEntryType::NetworkConnection
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("process"),
+            TimelineEntryType::ProcessExecution
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("policy"),
+            TimelineEntryType::PolicyDecision
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("user"),
+            TimelineEntryType::UserAction
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("ai"),
+            TimelineEntryType::AiAssessment
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("note"),
+            TimelineEntryType::InvestigatorNote
+        );
+        assert_eq!(
+            TimelineEntryType::from_str_label("unknown"),
+            TimelineEntryType::McpToolCall
+        );
     }
 
     // -- Icon hint tests --
@@ -1291,100 +1303,90 @@ Minimal entry
 
     #[test]
     fn test_mark_key_moments_critical() {
-        let mut entries = vec![
-            TimelineEntry {
-                id: "e1".to_string(),
-                timestamp: Utc::now(),
-                entry_type: TimelineEntryType::McpToolCall,
-                server: "srv".to_string(),
-                description: "Normal call".to_string(),
-                severity: "critical".to_string(),
-                event_id: None,
-                is_key_moment: false,
-                connects_to: None,
-                stage: None,
-            },
-        ];
+        let mut entries = vec![TimelineEntry {
+            id: "e1".to_string(),
+            timestamp: Utc::now(),
+            entry_type: TimelineEntryType::McpToolCall,
+            server: "srv".to_string(),
+            description: "Normal call".to_string(),
+            severity: "critical".to_string(),
+            event_id: None,
+            is_key_moment: false,
+            connects_to: None,
+            stage: None,
+        }];
         TimelineBuilder::mark_key_moments(&mut entries);
         assert!(entries[0].is_key_moment);
     }
 
     #[test]
     fn test_mark_key_moments_high() {
-        let mut entries = vec![
-            TimelineEntry {
-                id: "e1".to_string(),
-                timestamp: Utc::now(),
-                entry_type: TimelineEntryType::McpToolCall,
-                server: "srv".to_string(),
-                description: "High risk call".to_string(),
-                severity: "high".to_string(),
-                event_id: None,
-                is_key_moment: false,
-                connects_to: None,
-                stage: None,
-            },
-        ];
+        let mut entries = vec![TimelineEntry {
+            id: "e1".to_string(),
+            timestamp: Utc::now(),
+            entry_type: TimelineEntryType::McpToolCall,
+            server: "srv".to_string(),
+            description: "High risk call".to_string(),
+            severity: "high".to_string(),
+            event_id: None,
+            is_key_moment: false,
+            connects_to: None,
+            stage: None,
+        }];
         TimelineBuilder::mark_key_moments(&mut entries);
         assert!(entries[0].is_key_moment);
     }
 
     #[test]
     fn test_mark_key_moments_policy_block() {
-        let mut entries = vec![
-            TimelineEntry {
-                id: "e1".to_string(),
-                timestamp: Utc::now(),
-                entry_type: TimelineEntryType::PolicyDecision,
-                server: "srv".to_string(),
-                description: "Request blocked by firewall rule".to_string(),
-                severity: "medium".to_string(),
-                event_id: None,
-                is_key_moment: false,
-                connects_to: None,
-                stage: None,
-            },
-        ];
+        let mut entries = vec![TimelineEntry {
+            id: "e1".to_string(),
+            timestamp: Utc::now(),
+            entry_type: TimelineEntryType::PolicyDecision,
+            server: "srv".to_string(),
+            description: "Request blocked by firewall rule".to_string(),
+            severity: "medium".to_string(),
+            event_id: None,
+            is_key_moment: false,
+            connects_to: None,
+            stage: None,
+        }];
         TimelineBuilder::mark_key_moments(&mut entries);
         assert!(entries[0].is_key_moment);
     }
 
     #[test]
     fn test_mark_key_moments_sensitive_file() {
-        let mut entries = vec![
-            TimelineEntry {
-                id: "e1".to_string(),
-                timestamp: Utc::now(),
-                entry_type: TimelineEntryType::FileAccess,
-                server: "srv".to_string(),
-                description: "Read SSH private key".to_string(),
-                severity: "info".to_string(),
-                event_id: None,
-                is_key_moment: false,
-                connects_to: None,
-                stage: None,
-            },
-        ];
+        let mut entries = vec![TimelineEntry {
+            id: "e1".to_string(),
+            timestamp: Utc::now(),
+            entry_type: TimelineEntryType::FileAccess,
+            server: "srv".to_string(),
+            description: "Read SSH private key".to_string(),
+            severity: "info".to_string(),
+            event_id: None,
+            is_key_moment: false,
+            connects_to: None,
+            stage: None,
+        }];
         TimelineBuilder::mark_key_moments(&mut entries);
         assert!(entries[0].is_key_moment);
     }
 
     #[test]
     fn test_mark_key_moments_info_not_key() {
-        let mut entries = vec![
-            TimelineEntry {
-                id: "e1".to_string(),
-                timestamp: Utc::now(),
-                entry_type: TimelineEntryType::McpToolCall,
-                server: "srv".to_string(),
-                description: "Normal operation".to_string(),
-                severity: "info".to_string(),
-                event_id: None,
-                is_key_moment: false,
-                connects_to: None,
-                stage: None,
-            },
-        ];
+        let mut entries = vec![TimelineEntry {
+            id: "e1".to_string(),
+            timestamp: Utc::now(),
+            entry_type: TimelineEntryType::McpToolCall,
+            server: "srv".to_string(),
+            description: "Normal operation".to_string(),
+            severity: "info".to_string(),
+            event_id: None,
+            is_key_moment: false,
+            connects_to: None,
+            stage: None,
+        }];
         TimelineBuilder::mark_key_moments(&mut entries);
         assert!(!entries[0].is_key_moment);
     }
@@ -1471,20 +1473,18 @@ Minimal entry
 
     #[test]
     fn test_link_related_entries_single() {
-        let mut entries = vec![
-            TimelineEntry {
-                id: "e1".to_string(),
-                timestamp: Utc::now(),
-                entry_type: TimelineEntryType::McpToolCall,
-                server: "srv".to_string(),
-                description: "Only entry".to_string(),
-                severity: "info".to_string(),
-                event_id: None,
-                is_key_moment: false,
-                connects_to: None,
-                stage: None,
-            },
-        ];
+        let mut entries = vec![TimelineEntry {
+            id: "e1".to_string(),
+            timestamp: Utc::now(),
+            entry_type: TimelineEntryType::McpToolCall,
+            server: "srv".to_string(),
+            description: "Only entry".to_string(),
+            severity: "info".to_string(),
+            event_id: None,
+            is_key_moment: false,
+            connects_to: None,
+            stage: None,
+        }];
         TimelineBuilder::link_related_entries(&mut entries);
         assert_eq!(entries[0].connects_to, None);
     }
@@ -1637,7 +1637,10 @@ Minimal entry
             investigation_id: "inv-1".to_string(),
             entries: entries.clone(),
             servers_involved: vec!["srv-a".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "Test".to_string(),
         };
 
@@ -1645,7 +1648,10 @@ Minimal entry
             investigation_id: "inv-2".to_string(),
             entries,
             servers_involved: vec!["srv-a".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "Test".to_string(),
         };
 
@@ -1662,43 +1668,45 @@ Minimal entry
 
         let current = InvestigationTimeline {
             investigation_id: "inv-1".to_string(),
-            entries: vec![
-                TimelineEntry {
-                    id: "e1".to_string(),
-                    timestamp: now,
-                    entry_type: TimelineEntryType::McpToolCall,
-                    server: "srv-a".to_string(),
-                    description: "Call".to_string(),
-                    severity: "info".to_string(),
-                    event_id: None,
-                    is_key_moment: false,
-                    connects_to: None,
-                    stage: None,
-                },
-            ],
+            entries: vec![TimelineEntry {
+                id: "e1".to_string(),
+                timestamp: now,
+                entry_type: TimelineEntryType::McpToolCall,
+                server: "srv-a".to_string(),
+                description: "Call".to_string(),
+                severity: "info".to_string(),
+                event_id: None,
+                is_key_moment: false,
+                connects_to: None,
+                stage: None,
+            }],
             servers_involved: vec!["srv-a".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "Test".to_string(),
         };
 
         let past = InvestigationTimeline {
             investigation_id: "inv-2".to_string(),
-            entries: vec![
-                TimelineEntry {
-                    id: "e1".to_string(),
-                    timestamp: now,
-                    entry_type: TimelineEntryType::NetworkConnection,
-                    server: "srv-b".to_string(),
-                    description: "Connect".to_string(),
-                    severity: "high".to_string(),
-                    event_id: None,
-                    is_key_moment: false,
-                    connects_to: None,
-                    stage: None,
-                },
-            ],
+            entries: vec![TimelineEntry {
+                id: "e1".to_string(),
+                timestamp: now,
+                entry_type: TimelineEntryType::NetworkConnection,
+                server: "srv-b".to_string(),
+                description: "Connect".to_string(),
+                severity: "high".to_string(),
+                event_id: None,
+                is_key_moment: false,
+                connects_to: None,
+                stage: None,
+            }],
             servers_involved: vec!["srv-b".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "Test".to_string(),
         };
 
@@ -1716,7 +1724,10 @@ Minimal entry
             investigation_id: "inv-1".to_string(),
             entries: Vec::new(),
             servers_involved: Vec::new(),
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "Test".to_string(),
         };
 
@@ -1744,7 +1755,10 @@ Minimal entry
             investigation_id: "inv-0".to_string(),
             entries: vec![entry_a.clone()],
             servers_involved: vec!["srv-a".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "".to_string(),
         };
 
@@ -1753,7 +1767,10 @@ Minimal entry
             investigation_id: "inv-1".to_string(),
             entries: vec![entry_a.clone()],
             servers_involved: vec!["srv-a".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "".to_string(),
         };
 
@@ -1765,14 +1782,15 @@ Minimal entry
                 ..entry_a
             }],
             servers_involved: vec!["srv-z".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "".to_string(),
         };
 
-        let comparisons = TimelineBuilder::compare_with_past(
-            &current,
-            &[past_different, past_similar],
-        );
+        let comparisons =
+            TimelineBuilder::compare_with_past(&current, &[past_different, past_similar]);
         assert_eq!(comparisons.len(), 2);
         assert!(comparisons[0].similarity_score >= comparisons[1].similarity_score);
         assert_eq!(comparisons[0].related_investigation_id, "inv-1");
@@ -1788,11 +1806,7 @@ Minimal entry
             make_event("evt-2", "other-srv", "2024-01-15T14:26:00Z"),
         ];
 
-        let timeline = TimelineBuilder::from_event_context(
-            "evt-target",
-            &target,
-            &surrounding,
-        );
+        let timeline = TimelineBuilder::from_event_context("evt-target", &target, &surrounding);
 
         assert_eq!(timeline.investigation_id, "evt-evt-target");
         assert_eq!(timeline.entries.len(), 3); // target + 2 surrounding
@@ -1818,24 +1832,20 @@ Minimal entry
     fn test_insert_investigator_notes() {
         let now = Utc::now();
         let later = now + chrono::Duration::seconds(30);
-        let mut entries = vec![
-            TimelineEntry {
-                id: "e1".to_string(),
-                timestamp: now,
-                entry_type: TimelineEntryType::McpToolCall,
-                server: "srv".to_string(),
-                description: "Original".to_string(),
-                severity: "info".to_string(),
-                event_id: None,
-                is_key_moment: false,
-                connects_to: None,
-                stage: None,
-            },
-        ];
+        let mut entries = vec![TimelineEntry {
+            id: "e1".to_string(),
+            timestamp: now,
+            entry_type: TimelineEntryType::McpToolCall,
+            server: "srv".to_string(),
+            description: "Original".to_string(),
+            severity: "info".to_string(),
+            event_id: None,
+            is_key_moment: false,
+            connects_to: None,
+            stage: None,
+        }];
 
-        let notes = vec![
-            (later, "This is suspicious.".to_string()),
-        ];
+        let notes = vec![(later, "This is suspicious.".to_string())];
 
         TimelineBuilder::insert_investigator_notes(&mut entries, &notes);
         assert_eq!(entries.len(), 2);
@@ -1890,10 +1900,22 @@ More text."#;
 
     #[test]
     fn test_format_duration() {
-        assert_eq!(format_duration(chrono::Duration::seconds(30)), "30 second(s)");
-        assert_eq!(format_duration(chrono::Duration::seconds(120)), "2 minute(s)");
-        assert_eq!(format_duration(chrono::Duration::seconds(7200)), "2 hour(s)");
-        assert_eq!(format_duration(chrono::Duration::seconds(172800)), "2 day(s)");
+        assert_eq!(
+            format_duration(chrono::Duration::seconds(30)),
+            "30 second(s)"
+        );
+        assert_eq!(
+            format_duration(chrono::Duration::seconds(120)),
+            "2 minute(s)"
+        );
+        assert_eq!(
+            format_duration(chrono::Duration::seconds(7200)),
+            "2 hour(s)"
+        );
+        assert_eq!(
+            format_duration(chrono::Duration::seconds(172800)),
+            "2 day(s)"
+        );
     }
 
     #[test]
@@ -1925,22 +1947,23 @@ More text."#;
         let now = Utc::now();
         let timeline = InvestigationTimeline {
             investigation_id: "inv-test".to_string(),
-            entries: vec![
-                TimelineEntry {
-                    id: "e1".to_string(),
-                    timestamp: now,
-                    entry_type: TimelineEntryType::McpToolCall,
-                    server: "srv".to_string(),
-                    description: "Test".to_string(),
-                    severity: "info".to_string(),
-                    event_id: Some("evt-1".to_string()),
-                    is_key_moment: true,
-                    connects_to: None,
-                    stage: Some("recon".to_string()),
-                },
-            ],
+            entries: vec![TimelineEntry {
+                id: "e1".to_string(),
+                timestamp: now,
+                entry_type: TimelineEntryType::McpToolCall,
+                server: "srv".to_string(),
+                description: "Test".to_string(),
+                severity: "info".to_string(),
+                event_id: Some("evt-1".to_string()),
+                is_key_moment: true,
+                connects_to: None,
+                stage: Some("recon".to_string()),
+            }],
             servers_involved: vec!["srv".to_string()],
-            time_span: TimeSpan { start: now, end: now },
+            time_span: TimeSpan {
+                start: now,
+                end: now,
+            },
             narrative_summary: "Test narrative".to_string(),
         };
 

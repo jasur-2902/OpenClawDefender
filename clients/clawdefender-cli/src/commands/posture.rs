@@ -141,7 +141,14 @@ pub fn run(action: &PostureAction) -> Result<()> {
             println!();
             println!("  Current Level:    {:?}", store.current_level);
             println!("  Description:      {}", store.current_level.description());
-            println!("  Auto-Adjust:      {}", if store.auto_adjust { "enabled" } else { "disabled" });
+            println!(
+                "  Auto-Adjust:      {}",
+                if store.auto_adjust {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
             println!("  Last Changed:     {}", store.last_changed.to_rfc3339());
             println!();
 
@@ -149,7 +156,11 @@ pub fn run(action: &PostureAction) -> Result<()> {
                 let recent = store.history.iter().rev().take(3);
                 println!("Recent changes:");
                 for change in recent {
-                    let auto_label = if change.automatic { "[AUTO]" } else { "[MANUAL]" };
+                    let auto_label = if change.automatic {
+                        "[AUTO]"
+                    } else {
+                        "[MANUAL]"
+                    };
                     println!(
                         "  {} {} {:?} → {:?}: {}",
                         change.timestamp.format("%Y-%m-%d %H:%M"),
@@ -195,7 +206,11 @@ pub fn run(action: &PostureAction) -> Result<()> {
             } else {
                 println!(
                     "Automatic posture adjustment is currently {}.",
-                    if store.auto_adjust { "enabled" } else { "disabled" }
+                    if store.auto_adjust {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
                 );
             }
         }
@@ -233,7 +248,8 @@ pub fn run(action: &PostureAction) -> Result<()> {
             }
 
             println!();
-            println!("  Showing {} of {} change(s)",
+            println!(
+                "  Showing {} of {} change(s)",
                 store.history.len().min(*limit),
                 store.history.len()
             );

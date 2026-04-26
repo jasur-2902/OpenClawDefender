@@ -364,7 +364,13 @@ impl SecurityKnowledgeBase {
         );
     }
 
-    pub fn record_prompt_response(&mut self, server: &str, tool: &str, target: &str, response: &str) {
+    pub fn record_prompt_response(
+        &mut self,
+        server: &str,
+        tool: &str,
+        target: &str,
+        response: &str,
+    ) {
         let pattern = format!("server={} tool={} target={}", server, tool, target);
 
         let pref = self
@@ -384,8 +390,8 @@ impl SecurityKnowledgeBase {
             pref.consistency = (pref.consistency * (pref.sample_count - 1) as f64 + 1.0)
                 / pref.sample_count as f64;
         } else {
-            pref.consistency = (pref.consistency * (pref.sample_count - 1) as f64)
-                / pref.sample_count as f64;
+            pref.consistency =
+                (pref.consistency * (pref.sample_count - 1) as f64) / pref.sample_count as f64;
             if pref.consistency < 0.5 {
                 pref.usual_response = response.to_string();
             }
@@ -657,10 +663,7 @@ impl SecurityKnowledgeBase {
         }
 
         self.last_updated = Utc::now();
-        warn!(
-            "Enforced entry cap: removed {} low-value entries",
-            removed
-        );
+        warn!("Enforced entry cap: removed {} low-value entries", removed);
     }
 
     // ========================================================================
@@ -673,11 +676,10 @@ impl SecurityKnowledgeBase {
                 .context("Failed to create knowledge base storage directory")?;
         }
 
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize knowledge base")?;
+        let json =
+            serde_json::to_string_pretty(self).context("Failed to serialize knowledge base")?;
 
-        fs::write(&self.storage_path, json)
-            .context("Failed to write knowledge base to disk")?;
+        fs::write(&self.storage_path, json).context("Failed to write knowledge base to disk")?;
 
         debug!("Saved knowledge base to {:?}", self.storage_path);
         Ok(())
@@ -1385,8 +1387,7 @@ mod tests {
         );
 
         assert_eq!(kb.false_positives.len(), 1);
-        assert!(kb
-            .false_positives[0]
+        assert!(kb.false_positives[0]
             .reason
             .contains("Investigation determined"));
     }
@@ -1525,7 +1526,10 @@ mod tests {
         };
 
         let verdict = kb.query(&query);
-        assert_eq!(verdict.classification, KnowledgeClassification::TrustedServer);
+        assert_eq!(
+            verdict.classification,
+            KnowledgeClassification::TrustedServer
+        );
     }
 
     #[test]
@@ -1583,11 +1587,7 @@ mod tests {
         );
 
         for _ in 0..6 {
-            kb.add_false_positive(
-                "server=mixed-server pattern=X",
-                "fp",
-                FPSource::UserDismiss,
-            );
+            kb.add_false_positive("server=mixed-server pattern=X", "fp", FPSource::UserDismiss);
         }
 
         for _ in 0..3 {

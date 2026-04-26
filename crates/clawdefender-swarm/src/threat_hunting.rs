@@ -783,8 +783,7 @@ pub fn extract_hunt_findings(text: &str) -> Vec<HuntFinding> {
         // Parse involved servers from body
         let involved_servers = parse_body_list(body, "Servers");
         let involved_events = parse_body_list(body, "Events");
-        let recommended_investigation =
-            parse_body_field(body, "Investigation").unwrap_or_default();
+        let recommended_investigation = parse_body_field(body, "Investigation").unwrap_or_default();
 
         findings.push(HuntFinding {
             id: String::new(), // Assigned later
@@ -1032,7 +1031,10 @@ Some finding description.
     #[test]
     fn test_parse_tag_attr_quoted() {
         assert_eq!(
-            parse_tag_attr(r#"[HUNT_FINDING pattern="cross-server" severity="high"]"#, "pattern"),
+            parse_tag_attr(
+                r#"[HUNT_FINDING pattern="cross-server" severity="high"]"#,
+                "pattern"
+            ),
             Some("cross-server".to_string())
         );
     }
@@ -1423,10 +1425,7 @@ Some finding description.
         }
     }
 
-    fn make_hunter(
-        provider: MockCloudProvider,
-        hunts_dir: PathBuf,
-    ) -> ThreatHunter {
+    fn make_hunter(provider: MockCloudProvider, hunts_dir: PathBuf) -> ThreatHunter {
         let client = Arc::new(CloudApiClient::new(Box::new(provider)));
         let sandbox = Arc::new(ToolSandbox::new());
         ThreatHunter::new(client, sandbox, "mock-model".to_string(), hunts_dir)
@@ -1443,10 +1442,7 @@ Some finding description.
     #[tokio::test]
     async fn test_start_hunt() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         let progress = hunter
             .start_hunt(HuntType::GeneralSweep, default_time_range())
@@ -1462,10 +1458,7 @@ Some finding description.
     #[tokio::test]
     async fn test_start_hunt_server_focused() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         let progress = hunter
             .start_hunt(
@@ -1484,10 +1477,7 @@ Some finding description.
     #[tokio::test]
     async fn test_start_hunt_pattern_search() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         let progress = hunter
             .start_hunt(
@@ -1505,10 +1495,7 @@ Some finding description.
     #[tokio::test]
     async fn test_start_hunt_historical_review() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         let progress = hunter
             .start_hunt(
@@ -1587,10 +1574,7 @@ Found 1 high-severity threat. Recommend immediate investigation.
     #[tokio::test]
     async fn test_cancel_hunt() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         let progress = hunter
             .start_hunt(HuntType::GeneralSweep, default_time_range())
@@ -1607,10 +1591,7 @@ Found 1 high-severity threat. Recommend immediate investigation.
     #[tokio::test]
     async fn test_cancel_nonexistent_hunt() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         let result = hunter.cancel_hunt("nonexistent").await;
         assert!(result.is_err());
@@ -1641,10 +1622,7 @@ Found 1 high-severity threat. Recommend immediate investigation.
 
         // Load from disk with a new hunter
         {
-            let hunter = make_hunter(
-                MockCloudProvider::new(vec![]),
-                hunts_dir,
-            );
+            let hunter = make_hunter(MockCloudProvider::new(vec![]), hunts_dir);
 
             let loaded = hunter.load_hunt_result(&hunt_id).await.unwrap();
             assert_eq!(loaded.hunt_id, hunt_id);
@@ -1655,10 +1633,7 @@ Found 1 high-severity threat. Recommend immediate investigation.
     #[tokio::test]
     async fn test_get_progress_running() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         let progress = hunter
             .start_hunt(HuntType::GeneralSweep, default_time_range())
@@ -1673,10 +1648,7 @@ Found 1 high-severity threat. Recommend immediate investigation.
     #[tokio::test]
     async fn test_list_hunts() {
         let dir = tempfile::tempdir().unwrap();
-        let hunter = make_hunter(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("hunts"),
-        );
+        let hunter = make_hunter(MockCloudProvider::new(vec![]), dir.path().join("hunts"));
 
         hunter
             .start_hunt(HuntType::GeneralSweep, default_time_range())

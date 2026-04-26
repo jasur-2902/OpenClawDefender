@@ -376,10 +376,7 @@ impl ScanToolExecutor {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "server_name is required".to_string())?;
 
-        let hours = input
-            .get("hours")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(24.0);
+        let hours = input.get("hours").and_then(|v| v.as_f64()).unwrap_or(24.0);
 
         // Placeholder — real implementation would query the event store
         let result = json!({
@@ -417,7 +414,11 @@ impl ScanToolExecutor {
 
         #[cfg(not(unix))]
         let (owner, group, permissions) = {
-            ("unknown".to_string(), "unknown".to_string(), "unknown".to_string())
+            (
+                "unknown".to_string(),
+                "unknown".to_string(),
+                "unknown".to_string(),
+            )
         };
 
         let result = json!({
@@ -498,7 +499,12 @@ impl ScanToolExecutor {
             {
                 // Deny path traversal and dangerous patterns in the argument
                 let arg = trimmed[allowed.len()..].trim();
-                if !arg.contains("..") && !arg.contains(';') && !arg.contains('|') && !arg.contains('`') && !arg.contains('$') {
+                if !arg.contains("..")
+                    && !arg.contains(';')
+                    && !arg.contains('|')
+                    && !arg.contains('`')
+                    && !arg.contains('$')
+                {
                     return true;
                 }
             }
@@ -518,11 +524,7 @@ impl Default for ScanToolExecutor {
 // ---------------------------------------------------------------------------
 
 /// Add contextual metadata to tool results before sending to the LLM.
-pub fn enrich_tool_result(
-    tool_name: &str,
-    _input: &Value,
-    raw_result: &str,
-) -> String {
+pub fn enrich_tool_result(tool_name: &str, _input: &Value, raw_result: &str) -> String {
     match tool_name {
         "read_file_extended" => {
             format!(
@@ -555,10 +557,9 @@ pub fn enrich_tool_result(
 /// Replaces `-----BEGIN ... PRIVATE KEY-----` through `-----END ... PRIVATE KEY-----`
 /// with a `[REDACTED: private key]` placeholder.
 pub fn redact_private_keys(content: &str) -> String {
-    let re = Regex::new(
-        r"(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-    )
-    .expect("private key regex must compile");
+    let re =
+        Regex::new(r"(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----")
+            .expect("private key regex must compile");
 
     re.replace_all(content, "[REDACTED: private key]")
         .to_string()
@@ -723,9 +724,7 @@ mod tests {
     #[test]
     fn test_scan_path_allows_launch_agents() {
         let executor = ScanToolExecutor::new();
-        assert!(executor.validate_scan_path(
-            "~/Library/LaunchAgents/com.example.plist"
-        ));
+        assert!(executor.validate_scan_path("~/Library/LaunchAgents/com.example.plist"));
     }
 
     #[test]
@@ -833,7 +832,9 @@ mod tests {
     #[test]
     fn test_scan_command_allows_firewall_check() {
         let executor = ScanToolExecutor::new();
-        assert!(executor.validate_scan_command("/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate"));
+        assert!(executor.validate_scan_command(
+            "/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate"
+        ));
     }
 
     #[test]

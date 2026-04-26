@@ -92,11 +92,7 @@ impl AgentActivityTracker {
             .collect()
     }
 
-    pub fn get_by_time_range(
-        &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> Vec<&AgentActivity> {
+    pub fn get_by_time_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<&AgentActivity> {
         self.activities
             .iter()
             .filter(|a| a.timestamp >= from && a.timestamp <= to)
@@ -423,10 +419,10 @@ impl AccuracyTracker {
         let first_half = &self.assessments[..mid];
         let second_half = &self.assessments[mid..];
 
-        let first_rate = first_half.iter().filter(|r| r.was_correct).count() as f64
-            / first_half.len() as f64;
-        let second_rate = second_half.iter().filter(|r| r.was_correct).count() as f64
-            / second_half.len() as f64;
+        let first_rate =
+            first_half.iter().filter(|r| r.was_correct).count() as f64 / first_half.len() as f64;
+        let second_rate =
+            second_half.iter().filter(|r| r.was_correct).count() as f64 / second_half.len() as f64;
 
         let diff = second_rate - first_rate;
         if diff > 0.05 {
@@ -708,11 +704,7 @@ impl AutonomyAuditTrail {
         summary
     }
 
-    pub fn get_entries_in_range(
-        &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> Vec<&AuditEntry> {
+    pub fn get_entries_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<&AuditEntry> {
         self.entries
             .iter()
             .filter(|e| e.timestamp >= from && e.timestamp <= to)
@@ -1165,12 +1157,10 @@ mod tests {
         let mut cd = CostDashboard::new();
         cd.record_operation("scan", 100, "s1");
         let now = Utc::now();
-        let results = cd.get_operations_in_range(now - Duration::hours(1), now + Duration::hours(1));
+        let results =
+            cd.get_operations_in_range(now - Duration::hours(1), now + Duration::hours(1));
         assert_eq!(results.len(), 1);
-        let empty = cd.get_operations_in_range(
-            now - Duration::hours(10),
-            now - Duration::hours(5),
-        );
+        let empty = cd.get_operations_in_range(now - Duration::hours(10), now - Duration::hours(5));
         assert_eq!(empty.len(), 0);
     }
 
@@ -1314,14 +1304,11 @@ mod tests {
         at.record_assessment("t", "b", false, None);
 
         let now = Utc::now();
-        let metrics =
-            at.get_metrics_for_period(now - Duration::hours(1), now + Duration::hours(1));
+        let metrics = at.get_metrics_for_period(now - Duration::hours(1), now + Duration::hours(1));
         assert_eq!(metrics.total_assessments, 2);
 
-        let empty_metrics = at.get_metrics_for_period(
-            now - Duration::hours(10),
-            now - Duration::hours(5),
-        );
+        let empty_metrics =
+            at.get_metrics_for_period(now - Duration::hours(10), now - Duration::hours(5));
         assert_eq!(empty_metrics.total_assessments, 0);
     }
 
@@ -1474,9 +1461,7 @@ mod tests {
             2
         );
         assert_eq!(
-            trail
-                .get_by_type(&AuditEntryType::PermissionGranted)
-                .len(),
+            trail.get_by_type(&AuditEntryType::PermissionGranted).len(),
             1
         );
     }
@@ -1484,9 +1469,18 @@ mod tests {
     #[test]
     fn test_audit_trail_get_by_level() {
         let mut trail = AutonomyAuditTrail::new();
-        trail.record(make_audit_entry(AuditEntryType::ActionExecuted, "supervised"));
-        trail.record(make_audit_entry(AuditEntryType::ActionExecuted, "autonomous"));
-        trail.record(make_audit_entry(AuditEntryType::ActionExecuted, "supervised"));
+        trail.record(make_audit_entry(
+            AuditEntryType::ActionExecuted,
+            "supervised",
+        ));
+        trail.record(make_audit_entry(
+            AuditEntryType::ActionExecuted,
+            "autonomous",
+        ));
+        trail.record(make_audit_entry(
+            AuditEntryType::ActionExecuted,
+            "supervised",
+        ));
 
         assert_eq!(trail.get_by_level("supervised").len(), 2);
         assert_eq!(trail.get_by_level("autonomous").len(), 1);
@@ -1528,7 +1522,8 @@ mod tests {
         let mut trail = AutonomyAuditTrail::new();
         trail.record(make_audit_entry(AuditEntryType::ActionExecuted, "s"));
         let now = Utc::now();
-        let results = trail.get_entries_in_range(now - Duration::hours(1), now + Duration::hours(1));
+        let results =
+            trail.get_entries_in_range(now - Duration::hours(1), now + Duration::hours(1));
         assert_eq!(results.len(), 1);
     }
 
@@ -1743,9 +1738,12 @@ mod tests {
             .record_operation("remediate", 1200, "block IP");
 
         // Accuracy with correction
-        let id = db
-            .accuracy_tracker
-            .record_assessment("threat", "malicious", true, Some("prod-db".to_string()));
+        let id = db.accuracy_tracker.record_assessment(
+            "threat",
+            "malicious",
+            true,
+            Some("prod-db".to_string()),
+        );
         db.accuracy_tracker
             .record_correction(id, "was actually benign");
 
@@ -1937,7 +1935,11 @@ mod tests {
 
     #[test]
     fn test_accuracy_trend_serde_roundtrip() {
-        for trend in [AccuracyTrend::Improving, AccuracyTrend::Stable, AccuracyTrend::Declining] {
+        for trend in [
+            AccuracyTrend::Improving,
+            AccuracyTrend::Stable,
+            AccuracyTrend::Declining,
+        ] {
             let json = serde_json::to_string(&trend).unwrap();
             let restored: AccuracyTrend = serde_json::from_str(&json).unwrap();
             assert_eq!(restored, trend);

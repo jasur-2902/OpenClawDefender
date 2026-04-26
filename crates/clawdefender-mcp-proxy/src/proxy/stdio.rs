@@ -592,11 +592,8 @@ impl StdioProxy {
                                                 let session_rule = build_session_allow_rule(&event);
                                                 let mut engine = self.policy_engine.write().await;
                                                 engine.add_session_rule(session_rule);
-                                                let record = mk_rec_self(
-                                                    &event,
-                                                    "allow_session",
-                                                    None,
-                                                );
+                                                let record =
+                                                    mk_rec_self(&event, "allow_session", None);
                                                 let _ = self.audit_tx.try_send(record);
                                             }
                                             Ok(Ok(UiResponse::Decision {
@@ -609,11 +606,8 @@ impl StdioProxy {
                                                 let perm_rule = build_session_allow_rule(&event);
                                                 let mut engine = self.policy_engine.write().await;
                                                 let _ = engine.add_permanent_rule(perm_rule);
-                                                let record = mk_rec_self(
-                                                    &event,
-                                                    "add_to_policy",
-                                                    None,
-                                                );
+                                                let record =
+                                                    mk_rec_self(&event, "add_to_policy", None);
                                                 let _ = self.audit_tx.try_send(record);
                                             }
                                             _ => {
@@ -626,8 +620,7 @@ impl StdioProxy {
                                                 let bytes = serialize_message(&block_resp);
                                                 proxy_writer.write_all(&bytes).await?;
                                                 proxy_writer.flush().await?;
-                                                let record =
-                                                    mk_rec_self(&event, "deny", None);
+                                                let record = mk_rec_self(&event, "deny", None);
                                                 let _ = self.audit_tx.try_send(record);
                                             }
                                         }
@@ -866,13 +859,14 @@ async fn handle_client_message(
                             let id = request_id(&msg_for_spawn);
 
                             // Helper to build audit records with server name.
-                            let mk_rec = |ev: &McpEvent, act: &str, rule: Option<&str>| -> AuditRecord {
-                                let mut r = build_audit_record(ev, act, rule);
-                                if r.server_name.is_none() {
-                                    r.server_name = sn_for_spawn.clone();
-                                }
-                                r
-                            };
+                            let mk_rec =
+                                |ev: &McpEvent, act: &str, rule: Option<&str>| -> AuditRecord {
+                                    let mut r = build_audit_record(ev, act, rule);
+                                    if r.server_name.is_none() {
+                                        r.server_name = sn_for_spawn.clone();
+                                    }
+                                    r
+                                };
 
                             // SAFETY: SLM output is advisory only. It enriches the UI display
                             // but does not influence the policy decision.
@@ -991,8 +985,7 @@ async fn handle_client_message(
                                             model: "local-slm".to_string(),
                                         };
                                         // Send a supplementary audit record with SLM analysis.
-                                        let mut record =
-                                            mk_rec(&event, "slm_analysis", None);
+                                        let mut record = mk_rec(&event, "slm_analysis", None);
                                         record.slm_analysis = Some(slm_record);
                                         let _ = audit_tx.try_send(record);
                                         debug!(
@@ -1238,7 +1231,11 @@ fn classify_risk_level(event: &McpEvent) -> String {
             let args_str = tc.arguments.to_string().to_lowercase();
 
             // CRITICAL: curl|sh patterns, credential theft, shell injection
-            if args_str.contains("curl") && (args_str.contains("| sh") || args_str.contains("|sh") || args_str.contains("| bash") || args_str.contains("|bash"))
+            if args_str.contains("curl")
+                && (args_str.contains("| sh")
+                    || args_str.contains("|sh")
+                    || args_str.contains("| bash")
+                    || args_str.contains("|bash"))
                 || args_str.contains("shell_injection")
             {
                 return "critical".to_string();
@@ -1246,9 +1243,19 @@ fn classify_risk_level(event: &McpEvent) -> String {
 
             // HIGH: accessing sensitive files
             let sensitive_paths = [
-                ".ssh/", "id_rsa", "id_ed25519", ".aws/credentials", ".env",
-                "/etc/shadow", "/etc/passwd", "browser/cookies", "keychain",
-                ".gnupg/", "private_key", ".npmrc", ".pypirc",
+                ".ssh/",
+                "id_rsa",
+                "id_ed25519",
+                ".aws/credentials",
+                ".env",
+                "/etc/shadow",
+                "/etc/passwd",
+                "browser/cookies",
+                "keychain",
+                ".gnupg/",
+                "private_key",
+                ".npmrc",
+                ".pypirc",
             ];
             for path in &sensitive_paths {
                 if args_str.contains(path) {
@@ -1257,22 +1264,32 @@ fn classify_risk_level(event: &McpEvent) -> String {
             }
 
             // HIGH: shell/command execution tools
-            if tool.contains("exec") || tool.contains("run_command") || tool.contains("bash")
-                || tool.contains("shell") || tool.contains("terminal")
+            if tool.contains("exec")
+                || tool.contains("run_command")
+                || tool.contains("bash")
+                || tool.contains("shell")
+                || tool.contains("terminal")
             {
                 return "high".to_string();
             }
 
             // MEDIUM: file writes, unknown tools
-            if tool.contains("write") || tool.contains("create") || tool.contains("delete")
-                || tool.contains("remove") || tool.contains("edit") || tool.contains("patch")
+            if tool.contains("write")
+                || tool.contains("create")
+                || tool.contains("delete")
+                || tool.contains("remove")
+                || tool.contains("edit")
+                || tool.contains("patch")
             {
                 return "medium".to_string();
             }
 
             // LOW: file reads, listing
-            if tool.contains("read") || tool.contains("list") || tool.contains("search")
-                || tool.contains("get") || tool.contains("view")
+            if tool.contains("read")
+                || tool.contains("list")
+                || tool.contains("search")
+                || tool.contains("get")
+                || tool.contains("view")
             {
                 return "low".to_string();
             }
@@ -1282,7 +1299,14 @@ fn classify_risk_level(event: &McpEvent) -> String {
         }
         McpEventKind::ResourceRead(rr) => {
             let uri = rr.uri.to_lowercase();
-            let sensitive = [".ssh/", "id_rsa", ".aws/", ".env", "/etc/shadow", "credentials"];
+            let sensitive = [
+                ".ssh/",
+                "id_rsa",
+                ".aws/",
+                ".env",
+                "/etc/shadow",
+                "credentials",
+            ];
             for s in &sensitive {
                 if uri.contains(s) {
                     return "high".to_string();
@@ -1303,15 +1327,25 @@ fn human_readable_action(event: &McpEvent) -> String {
             let tool = tc.tool_name.to_lowercase();
             if tool.contains("read_file") || tool.contains("file_read") {
                 "File Read".to_string()
-            } else if tool.contains("write_file") || tool.contains("file_write") || tool.contains("create_file") {
+            } else if tool.contains("write_file")
+                || tool.contains("file_write")
+                || tool.contains("create_file")
+            {
                 "File Write".to_string()
             } else if tool.contains("edit") || tool.contains("patch") || tool.contains("replace") {
                 "File Edit".to_string()
-            } else if tool.contains("run_command") || tool.contains("exec") || tool.contains("bash")
-                || tool.contains("shell") || tool.contains("terminal")
+            } else if tool.contains("run_command")
+                || tool.contains("exec")
+                || tool.contains("bash")
+                || tool.contains("shell")
+                || tool.contains("terminal")
             {
                 "Shell Command".to_string()
-            } else if tool.contains("search") || tool.contains("grep") || tool.contains("find") || tool.contains("glob") {
+            } else if tool.contains("search")
+                || tool.contains("grep")
+                || tool.contains("find")
+                || tool.contains("glob")
+            {
                 "Search".to_string()
             } else if tool.contains("list") || tool.contains("ls") || tool.contains("directory") {
                 "Directory Listing".to_string()
@@ -1335,7 +1369,12 @@ fn build_audit_record(event: &McpEvent, action: &str, rule_name: Option<&str>) -
 }
 
 /// Build an enriched audit record from an McpEvent with an explicit server name.
-fn build_enriched_audit_record(event: &McpEvent, action: &str, rule_name: Option<&str>, server_name: Option<&str>) -> AuditRecord {
+fn build_enriched_audit_record(
+    event: &McpEvent,
+    action: &str,
+    rule_name: Option<&str>,
+    server_name: Option<&str>,
+) -> AuditRecord {
     // Extract enriched fields from the event
     let (tool_name, arguments, jsonrpc_method) = match &event.kind {
         McpEventKind::ToolCall(tc) => (
@@ -1348,26 +1387,12 @@ fn build_enriched_audit_record(event: &McpEvent, action: &str, rule_name: Option
             Some(json!({"uri": rr.uri})),
             Some("resources/read".to_string()),
         ),
-        McpEventKind::SamplingRequest(_) => (
-            None,
-            None,
-            Some("sampling/createMessage".to_string()),
-        ),
-        McpEventKind::ListRequest => (
-            None,
-            None,
-            Some("tools/list".to_string()),
-        ),
-        McpEventKind::Other(m) => (
-            None,
-            None,
-            Some(m.clone()),
-        ),
-        McpEventKind::Notification(n) => (
-            None,
-            None,
-            Some(n.clone()),
-        ),
+        McpEventKind::SamplingRequest(_) => {
+            (None, None, Some("sampling/createMessage".to_string()))
+        }
+        McpEventKind::ListRequest => (None, None, Some("tools/list".to_string())),
+        McpEventKind::Other(m) => (None, None, Some(m.clone())),
+        McpEventKind::Notification(n) => (None, None, Some(n.clone())),
     };
 
     let classification = classify_risk_level(event);
@@ -1594,8 +1619,7 @@ fn build_audit_record_from_swarm_event(
 /// verify the path is not a symlink to prevent symlink-based redirection attacks.
 fn default_audit_log_path() -> PathBuf {
     let path = if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home)
-            .join(".local/share/rookbot/audit.jsonl")
+        PathBuf::from(home).join(".local/share/rookbot/audit.jsonl")
     } else {
         PathBuf::from("/tmp/clawdefender-audit.jsonl")
     };
@@ -1771,7 +1795,8 @@ any = true
         assert_eq!(record.rule_matched.as_deref(), Some("allow_rest"));
         // Enriched summary produces "File Read" for read_file tool calls
         assert!(
-            record.event_summary.contains("read_file") || record.event_summary.contains("File Read"),
+            record.event_summary.contains("read_file")
+                || record.event_summary.contains("File Read"),
             "event_summary '{}' should reference the tool",
             record.event_summary
         );

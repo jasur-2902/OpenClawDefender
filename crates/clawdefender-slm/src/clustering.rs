@@ -289,7 +289,12 @@ fn detect_kill_chain(existing: &[ClusterEvent], new_event: &ClusterEvent) -> boo
     let has_credential_access = existing.iter().any(|e| {
         if let Some(ref target) = e.target {
             let t = target.to_lowercase();
-            t.contains(".ssh") || t.contains("id_rsa") || t.contains("credentials") || t.contains("passwd") || t.contains("shadow") || t.contains("token")
+            t.contains(".ssh")
+                || t.contains("id_rsa")
+                || t.contains("credentials")
+                || t.contains("passwd")
+                || t.contains("shadow")
+                || t.contains("token")
         } else {
             false
         }
@@ -302,7 +307,12 @@ fn detect_kill_chain(existing: &[ClusterEvent], new_event: &ClusterEvent) -> boo
     // Also check the reverse: existing network event, new credential access.
     let new_is_credential = new_event.target.as_ref().map_or(false, |t| {
         let t = t.to_lowercase();
-        t.contains(".ssh") || t.contains("id_rsa") || t.contains("credentials") || t.contains("passwd") || t.contains("shadow") || t.contains("token")
+        t.contains(".ssh")
+            || t.contains("id_rsa")
+            || t.contains("credentials")
+            || t.contains("passwd")
+            || t.contains("shadow")
+            || t.contains("token")
     });
     let has_network = existing.iter().any(|e| {
         matches!(
@@ -716,7 +726,12 @@ mod tests {
         let buffer = ClusteringBuffer::new(tx, Duration::from_secs(300), 20);
 
         buffer
-            .add_event(make_event("server-a", "file_read", Some("/tmp/readme"), 0.1))
+            .add_event(make_event(
+                "server-a",
+                "file_read",
+                Some("/tmp/readme"),
+                0.1,
+            ))
             .await;
         buffer
             .add_event(make_event(
@@ -780,7 +795,12 @@ mod tests {
         let buffer = ClusteringBuffer::new(tx, Duration::from_secs(300), 20);
 
         buffer
-            .add_event(make_event("MyServer", "read_file", Some("/etc/passwd"), 0.85))
+            .add_event(make_event(
+                "MyServer",
+                "read_file",
+                Some("/etc/passwd"),
+                0.85,
+            ))
             .await;
 
         buffer.flush_all().await;
@@ -813,10 +833,7 @@ mod tests {
 
         let flushed = rx.recv().await.unwrap();
         assert_eq!(flushed.events.len(), 1);
-        assert_eq!(
-            flushed.events[0].target.as_deref(),
-            Some("/a")
-        );
+        assert_eq!(flushed.events[0].target.as_deref(), Some("/a"));
 
         // The new event should be in a new pending cluster.
         assert_eq!(buffer.pending_count().await, 1);

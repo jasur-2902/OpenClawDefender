@@ -213,11 +213,7 @@ impl OfflineIntelEngine {
         has_model: bool,
         policy_summary: &str,
     ) -> Result<Vec<SecurityTip>> {
-        let model_status = if has_model {
-            "loaded"
-        } else {
-            "not loaded"
-        };
+        let model_status = if has_model { "loaded" } else { "not loaded" };
 
         let prompt = format!(
             "Based on this system state, provide 3 actionable security tips. \
@@ -298,10 +294,7 @@ impl OfflineIntelEngine {
 
     /// Get a snapshot of all cached intelligence data.
     pub fn get_intelligence(&self) -> OfflineIntelligence {
-        self.cache
-            .read()
-            .map(|c| c.clone())
-            .unwrap_or_default()
+        self.cache.read().map(|c| c.clone()).unwrap_or_default()
     }
 
     /// Get cached server summaries.
@@ -322,10 +315,12 @@ impl OfflineIntelEngine {
 
     /// Get a cached anomaly explanation by event ID.
     pub fn get_anomaly_explanation(&self, event_id: &str) -> Option<AnomalyExplanation> {
-        self.cache
-            .read()
-            .ok()
-            .and_then(|c| c.anomaly_explanations.iter().find(|e| e.event_id == event_id).cloned())
+        self.cache.read().ok().and_then(|c| {
+            c.anomaly_explanations
+                .iter()
+                .find(|e| e.event_id == event_id)
+                .cloned()
+        })
     }
 }
 
@@ -362,7 +357,10 @@ fn explain_dimension(dimension: &str, score: f64, _event_desc: &str) -> String {
         "first_time_access" => {
             "This is the first time this server has accessed this resource.".to_string()
         }
-        _ => format!("Unusual behavior detected in the '{}' dimension.", dimension),
+        _ => format!(
+            "Unusual behavior detected in the '{}' dimension.",
+            dimension
+        ),
     }
 }
 
@@ -645,11 +643,7 @@ mod tests {
         let engine = OfflineIntelEngine::new();
 
         // Generate an anomaly explanation to populate cache.
-        let _ = engine.explain_anomaly(
-            "evt-cache",
-            &[("unknown_tool".to_string(), 0.5)],
-            "test",
-        );
+        let _ = engine.explain_anomaly("evt-cache", &[("unknown_tool".to_string(), 0.5)], "test");
 
         let intel = engine.get_intelligence();
         assert_eq!(intel.anomaly_explanations.len(), 1);
@@ -680,7 +674,11 @@ mod tests {
         let engine = OfflineIntelEngine::new();
 
         engine.explain_anomaly("evt-dup", &[("unknown_tool".to_string(), 0.5)], "first");
-        engine.explain_anomaly("evt-dup", &[("sensitive_target".to_string(), 0.9)], "updated");
+        engine.explain_anomaly(
+            "evt-dup",
+            &[("sensitive_target".to_string(), 0.9)],
+            "updated",
+        );
 
         let intel = engine.get_intelligence();
         // Should have only 1 entry for evt-dup, the latest one.

@@ -436,17 +436,15 @@ impl From<EsloggerEvent> for OsEvent {
             "login_login" => OsEventKind::LoginLogin,
             "login_logout" => OsEventKind::LoginLogout,
             "authentication" => {
-                let data: AuthenticationEventData =
-                    serde_json::from_value(ev.event.clone()).unwrap_or(AuthenticationEventData {
-                        success: false,
-                    });
+                let data: AuthenticationEventData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(AuthenticationEventData { success: false });
                 OsEventKind::Authentication {
                     success: data.success,
                 }
             }
             "xp_malware_detected" => {
-                let data: XpMalwareDetectedData =
-                    serde_json::from_value(ev.event.clone()).unwrap_or(XpMalwareDetectedData {
+                let data: XpMalwareDetectedData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(XpMalwareDetectedData {
                         name: String::new(),
                     });
                 OsEventKind::XpMalwareDetected {
@@ -454,38 +452,31 @@ impl From<EsloggerEvent> for OsEvent {
                 }
             }
             "gatekeeper_user_override" => {
-                let data: GatekeeperUserOverrideData =
-                    serde_json::from_value(ev.event.clone())
-                        .unwrap_or(GatekeeperUserOverrideData {
-                            path: String::new(),
-                        });
+                let data: GatekeeperUserOverrideData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(GatekeeperUserOverrideData {
+                        path: String::new(),
+                    });
                 OsEventKind::GatekeeperUserOverride {
                     path: sanitize_path(&data.path),
                 }
             }
             "get_task" => {
-                let data: GetTaskEventData =
-                    serde_json::from_value(ev.event.clone()).unwrap_or(GetTaskEventData {
-                        target_pid: 0,
-                    });
+                let data: GetTaskEventData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(GetTaskEventData { target_pid: 0 });
                 OsEventKind::GetTask {
                     target_pid: data.target_pid,
                 }
             }
             "trace" => {
-                let data: TraceEventData =
-                    serde_json::from_value(ev.event.clone()).unwrap_or(TraceEventData {
-                        target_pid: 0,
-                    });
+                let data: TraceEventData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(TraceEventData { target_pid: 0 });
                 OsEventKind::Trace {
                     target_pid: data.target_pid,
                 }
             }
             "proc_check" => {
-                let data: ProcCheckEventData =
-                    serde_json::from_value(ev.event.clone()).unwrap_or(ProcCheckEventData {
-                        target_pid: 0,
-                    });
+                let data: ProcCheckEventData = serde_json::from_value(ev.event.clone())
+                    .unwrap_or(ProcCheckEventData { target_pid: 0 });
                 OsEventKind::ProcCheck {
                     target_pid: data.target_pid,
                 }

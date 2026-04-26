@@ -90,8 +90,12 @@ impl ClamAvScanner {
         let file_data = std::fs::read(path)
             .with_context(|| format!("Failed to read file {}", path.display()))?;
 
-        let mut stream = UnixStream::connect(&self.socket_path)
-            .with_context(|| format!("Failed to connect to clamd at {}", self.socket_path.display()))?;
+        let mut stream = UnixStream::connect(&self.socket_path).with_context(|| {
+            format!(
+                "Failed to connect to clamd at {}",
+                self.socket_path.display()
+            )
+        })?;
 
         stream.set_read_timeout(Some(SOCKET_TIMEOUT))?;
         stream.set_write_timeout(Some(SOCKET_TIMEOUT))?;
@@ -325,7 +329,9 @@ fn is_apple_system_path(path: &Path) -> bool {
         "/sbin/",
         "/bin/",
     ];
-    APPLE_PREFIXES.iter().any(|prefix| path_str.starts_with(prefix))
+    APPLE_PREFIXES
+        .iter()
+        .any(|prefix| path_str.starts_with(prefix))
 }
 
 /// Send PING to clamd and check for PONG response.
@@ -412,40 +418,36 @@ impl ScanModule for ClamAvModule {
         let status = ClamAvScanner::detect();
 
         match status {
-            ClamAvStatus::NotInstalled => {
-                Ok(vec![Finding {
-                    id: "INFO-CLAMAV-001".into(),
-                    title: "ClamAV not available".into(),
-                    severity: Severity::Info,
-                    cvss: 0.0,
-                    category: ModuleCategory::Configuration,
-                    description: "ClamAV is not installed on this system. \
+            ClamAvStatus::NotInstalled => Ok(vec![Finding {
+                id: "INFO-CLAMAV-001".into(),
+                title: "ClamAV not available".into(),
+                severity: Severity::Info,
+                cvss: 0.0,
+                category: ModuleCategory::Configuration,
+                description: "ClamAV is not installed on this system. \
                         Install ClamAV for additional malware detection coverage. \
                         Run: brew install clamav"
-                        .into(),
-                    reproduction: None,
-                    evidence: Evidence::empty(),
-                    remediation: "Install ClamAV: brew install clamav && \
+                    .into(),
+                reproduction: None,
+                evidence: Evidence::empty(),
+                remediation: "Install ClamAV: brew install clamav && \
                         sudo freshclam && brew services start clamav"
-                        .into(),
-                }])
-            }
-            ClamAvStatus::NotRunning => {
-                Ok(vec![Finding {
-                    id: "INFO-CLAMAV-002".into(),
-                    title: "ClamAV daemon not running".into(),
-                    severity: Severity::Info,
-                    cvss: 0.0,
-                    category: ModuleCategory::Configuration,
-                    description: "ClamAV appears to be installed but the clamd daemon is not running. \
+                    .into(),
+            }]),
+            ClamAvStatus::NotRunning => Ok(vec![Finding {
+                id: "INFO-CLAMAV-002".into(),
+                title: "ClamAV daemon not running".into(),
+                severity: Severity::Info,
+                cvss: 0.0,
+                category: ModuleCategory::Configuration,
+                description: "ClamAV appears to be installed but the clamd daemon is not running. \
                         Start the daemon for real-time malware scanning."
-                        .into(),
-                    reproduction: None,
-                    evidence: Evidence::empty(),
-                    remediation: "Start clamd: brew services start clamav (or: sudo freshclam && clamd)"
-                        .into(),
-                }])
-            }
+                    .into(),
+                reproduction: None,
+                evidence: Evidence::empty(),
+                remediation:
+                    "Start clamd: brew services start clamav (or: sudo freshclam && clamd)".into(),
+            }]),
             ClamAvStatus::Available(socket_path) => {
                 let scanner = ClamAvScanner::new(socket_path);
                 let mut all_clamav_findings: Vec<ClamAvFinding> = Vec::new();
@@ -475,9 +477,10 @@ impl ScanModule for ClamAvModule {
                             .into(),
                         reproduction: None,
                         evidence: Evidence::empty(),
-                        remediation: "No action needed. Continue to keep ClamAV signatures updated \
+                        remediation:
+                            "No action needed. Continue to keep ClamAV signatures updated \
                             with: freshclam"
-                            .into(),
+                                .into(),
                     }])
                 } else {
                     let mut findings = Vec::new();
@@ -574,7 +577,9 @@ mod tests {
         assert!(is_apple_system_path(Path::new("/sbin/mount")));
         assert!(!is_apple_system_path(Path::new("/usr/local/bin/custom")));
         assert!(!is_apple_system_path(Path::new("/tmp/malware")));
-        assert!(!is_apple_system_path(Path::new("/Applications/App.app/Contents/MacOS/app")));
+        assert!(!is_apple_system_path(Path::new(
+            "/Applications/App.app/Contents/MacOS/app"
+        )));
     }
 
     #[test]

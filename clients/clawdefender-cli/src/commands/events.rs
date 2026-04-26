@@ -156,8 +156,14 @@ pub fn run(config: &ClawConfig, action: &EventsAction) -> Result<()> {
             println!("Event Detail");
             println!("  Timestamp:     {}", record.timestamp.to_rfc3339());
             println!("  Source:        {}", record.source);
-            println!("  Server:        {}", record.server_name.as_deref().unwrap_or("-"));
-            println!("  Method:        {}", record.jsonrpc_method.as_deref().unwrap_or("-"));
+            println!(
+                "  Server:        {}",
+                record.server_name.as_deref().unwrap_or("-")
+            );
+            println!(
+                "  Method:        {}",
+                record.jsonrpc_method.as_deref().unwrap_or("-")
+            );
             println!("  Action:        {}", record.action_taken);
             println!("  Summary:       {}", record.event_summary);
             if let Some(ref rule) = record.rule_matched {
@@ -234,7 +240,10 @@ fn parse_time_offset(offset: &str) -> Result<DateTime<Utc>> {
     } else if offset.ends_with('d') {
         (&offset[..offset.len() - 1], "days")
     } else {
-        anyhow::bail!("Invalid time offset: {}. Use format like '1h', '30m', or '2d'", offset);
+        anyhow::bail!(
+            "Invalid time offset: {}. Use format like '1h', '30m', or '2d'",
+            offset
+        );
     };
 
     let num: i64 = num_str.parse()?;

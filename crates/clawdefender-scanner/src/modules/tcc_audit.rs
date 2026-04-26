@@ -193,7 +193,9 @@ enum SigningStatus {
 }
 
 fn is_apple_client(client: &str) -> bool {
-    client.starts_with("com.apple.") || client.starts_with("/System/") || client.starts_with("/usr/")
+    client.starts_with("com.apple.")
+        || client.starts_with("/System/")
+        || client.starts_with("/usr/")
 }
 
 fn check_codesign(path: &Path) -> SigningStatus {
@@ -204,10 +206,7 @@ fn check_codesign(path: &Path) -> SigningStatus {
         }
     }
 
-    let output = match Command::new("codesign")
-        .args(["-dvv", &path_str])
-        .output()
-    {
+    let output = match Command::new("codesign").args(["-dvv", &path_str]).output() {
         Ok(o) => o,
         Err(_) => return SigningStatus::Unknown,
     };
@@ -257,7 +256,8 @@ fn resolve_bundle_id(bundle_id: &str) -> Option<PathBuf> {
                 let info_plist = path.join("Contents/Info.plist");
                 if let Ok(val) = plist::from_file::<_, plist::Value>(&info_plist) {
                     if let Some(dict) = val.as_dictionary() {
-                        if let Some(bid) = dict.get("CFBundleIdentifier").and_then(|v| v.as_string())
+                        if let Some(bid) =
+                            dict.get("CFBundleIdentifier").and_then(|v| v.as_string())
                         {
                             if bid == bundle_id {
                                 return Some(path);
@@ -398,7 +398,10 @@ fn analyze_entries(entries: &[TccEntry]) -> Vec<TccFinding> {
             let is_high = HIGH_SERVICES.contains(&entry.service.as_str());
 
             if (is_critical || is_high)
-                && matches!(signing, SigningStatus::Unsigned | SigningStatus::AdHocSigned)
+                && matches!(
+                    signing,
+                    SigningStatus::Unsigned | SigningStatus::AdHocSigned
+                )
             {
                 findings.push(TccFinding {
                     entry: entry.clone(),
@@ -537,7 +540,10 @@ fn friendly_service_name(service: &str) -> String {
         "kTCCServiceMediaLibrary" => "Media Library".to_string(),
         "kTCCServiceReminders" => "Reminders".to_string(),
         "kTCCServiceLocationServices" => "Location Services".to_string(),
-        other => other.strip_prefix("kTCCService").unwrap_or(other).to_string(),
+        other => other
+            .strip_prefix("kTCCService")
+            .unwrap_or(other)
+            .to_string(),
     }
 }
 
@@ -779,10 +785,7 @@ mod tests {
             classify_service("kTCCServiceScreenCapture"),
             Severity::Critical
         );
-        assert_eq!(
-            classify_service("kTCCServicePostEvent"),
-            Severity::Critical
-        );
+        assert_eq!(classify_service("kTCCServicePostEvent"), Severity::Critical);
         assert_eq!(
             classify_service("kTCCServiceListenEvent"),
             Severity::Critical
@@ -817,10 +820,7 @@ mod tests {
             friendly_service_name("kTCCServiceAccessibility"),
             "Accessibility (UI control)"
         );
-        assert_eq!(
-            friendly_service_name("kTCCServiceCamera"),
-            "Camera"
-        );
+        assert_eq!(friendly_service_name("kTCCServiceCamera"), "Camera");
         assert_eq!(
             friendly_service_name("kTCCServiceSystemPolicyAllFiles"),
             "Full Disk Access"
@@ -989,7 +989,10 @@ mod tests {
 
     #[test]
     fn test_tcc_risk_display() {
-        assert_eq!(TccRisk::CriticalPermission.to_string(), "Critical Permission");
+        assert_eq!(
+            TccRisk::CriticalPermission.to_string(),
+            "Critical Permission"
+        );
         assert_eq!(TccRisk::OrphanedEntry.to_string(), "Orphaned Entry");
         assert_eq!(
             TccRisk::UnsignedWithCritical.to_string(),
@@ -1028,7 +1031,9 @@ mod tests {
         let has_relevant_finding = findings.iter().any(|f| {
             matches!(
                 f.risk,
-                TccRisk::OrphanedEntry | TccRisk::CriticalPermission | TccRisk::UnsignedWithCritical
+                TccRisk::OrphanedEntry
+                    | TccRisk::CriticalPermission
+                    | TccRisk::UnsignedWithCritical
             )
         });
         assert!(has_relevant_finding);

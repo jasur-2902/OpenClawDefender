@@ -455,9 +455,7 @@ impl ScanOrchestrator {
             state
                 .user_responses
                 .insert(request_id.to_string(), response.to_string());
-            state
-                .pending_user_requests
-                .retain(|r| r.id != request_id);
+            state.pending_user_requests.retain(|r| r.id != request_id);
             return Ok(());
         }
         bail!("Scan not found: {}", scan_id);
@@ -489,11 +487,7 @@ impl ScanOrchestrator {
     }
 
     /// Execute a specific remediation.
-    pub async fn execute_remediation(
-        &self,
-        scan_id: &str,
-        remediation_id: &str,
-    ) -> Result<()> {
+    pub async fn execute_remediation(&self, scan_id: &str, remediation_id: &str) -> Result<()> {
         let mut scans = self.scans.lock().await;
         if let Some(state) = scans.get_mut(scan_id) {
             return state.remediation_engine.execute(remediation_id);
@@ -502,11 +496,7 @@ impl ScanOrchestrator {
     }
 
     /// Revert a specific remediation.
-    pub async fn revert_remediation(
-        &self,
-        scan_id: &str,
-        remediation_id: &str,
-    ) -> Result<()> {
+    pub async fn revert_remediation(&self, scan_id: &str, remediation_id: &str) -> Result<()> {
         let mut scans = self.scans.lock().await;
         if let Some(state) = scans.get_mut(scan_id) {
             return state.remediation_engine.revert(remediation_id);
@@ -524,7 +514,9 @@ impl ScanOrchestrator {
         // Build the API request
         let (request, tool_defs_count) = {
             let scans = self.scans.lock().await;
-            let state = scans.get(scan_id).ok_or_else(|| anyhow::anyhow!("Scan not found"))?;
+            let state = scans
+                .get(scan_id)
+                .ok_or_else(|| anyhow::anyhow!("Scan not found"))?;
 
             let tools = get_available_tools(&crate::agent_session::SessionType::Scan {
                 playbook: state.playbook.id.clone(),
@@ -706,10 +698,7 @@ impl ScanOrchestrator {
                 // Add findings
                 for mut finding in findings {
                     finding.stage = current_stage.clone();
-                    finding.id = format!(
-                        "FINDING-{}",
-                        state.findings.len() + 1
-                    );
+                    finding.id = format!("FINDING-{}", state.findings.len() + 1);
                     state.findings.push(finding);
                 }
 
@@ -767,19 +756,43 @@ impl ScanOrchestrator {
             let cost = estimate_cost(state.total_input_tokens, state.total_output_tokens);
 
             // Compute duration
-            let duration_secs = if let Ok(started) = chrono::DateTime::parse_from_rfc3339(&state.started_at) {
-                chrono::Utc::now().signed_duration_since(started).num_seconds().unsigned_abs()
-            } else {
-                0
-            };
+            let duration_secs =
+                if let Ok(started) = chrono::DateTime::parse_from_rfc3339(&state.started_at) {
+                    chrono::Utc::now()
+                        .signed_duration_since(started)
+                        .num_seconds()
+                        .unsigned_abs()
+                } else {
+                    0
+                };
 
             // Compute severity counts
             let total_findings = state.findings.len();
-            let critical_count = state.findings.iter().filter(|f| f.severity == FindingSeverity::Critical).count();
-            let high_count = state.findings.iter().filter(|f| f.severity == FindingSeverity::High).count();
-            let medium_count = state.findings.iter().filter(|f| f.severity == FindingSeverity::Medium).count();
-            let low_count = state.findings.iter().filter(|f| f.severity == FindingSeverity::Low).count();
-            let info_count = state.findings.iter().filter(|f| f.severity == FindingSeverity::Info).count();
+            let critical_count = state
+                .findings
+                .iter()
+                .filter(|f| f.severity == FindingSeverity::Critical)
+                .count();
+            let high_count = state
+                .findings
+                .iter()
+                .filter(|f| f.severity == FindingSeverity::High)
+                .count();
+            let medium_count = state
+                .findings
+                .iter()
+                .filter(|f| f.severity == FindingSeverity::Medium)
+                .count();
+            let low_count = state
+                .findings
+                .iter()
+                .filter(|f| f.severity == FindingSeverity::Low)
+                .count();
+            let info_count = state
+                .findings
+                .iter()
+                .filter(|f| f.severity == FindingSeverity::Info)
+                .count();
 
             let playbook_name = state.playbook.name.clone();
 
@@ -838,9 +851,7 @@ impl ScanOrchestrator {
 
     async fn save_scan_result(&self, result: &AiScanResult) -> Result<()> {
         tokio::fs::create_dir_all(&self.scans_dir).await?;
-        let path = self
-            .scans_dir
-            .join(format!("{}.json", result.scan_id));
+        let path = self.scans_dir.join(format!("{}.json", result.scan_id));
         let data = serde_json::to_string_pretty(result)?;
         tokio::fs::write(path, data).await?;
         Ok(())
@@ -885,8 +896,7 @@ fn extract_findings(text: &str) -> Vec<ScanFinding> {
         let severity = FindingSeverity::from_str(&severity_str);
 
         let title = parse_body_field(body, "Title").unwrap_or_else(|| "Untitled finding".into());
-        let description =
-            parse_body_field(body, "Description").unwrap_or_else(|| body.to_string());
+        let description = parse_body_field(body, "Description").unwrap_or_else(|| body.to_string());
         let evidence_hint = parse_body_field(body, "Evidence").unwrap_or_default();
         let remediation_hint = parse_body_field(body, "Remediation").unwrap_or_default();
 
@@ -954,12 +964,11 @@ fn extract_summary(text: &str) -> String {
         let after = text[idx + 13..].trim();
         if !after.is_empty() {
             // Strip common prefixes like ":" or "-"
-            let cleaned = after.trim_start_matches(|c: char| c == ':' || c == '-' || c == '\n' || c.is_whitespace());
+            let cleaned = after.trim_start_matches(|c: char| {
+                c == ':' || c == '-' || c == '\n' || c.is_whitespace()
+            });
             // Take only the first paragraph (up to double newline or 200 chars)
-            let first_para = cleaned
-                .split("\n\n")
-                .next()
-                .unwrap_or(cleaned);
+            let first_para = cleaned.split("\n\n").next().unwrap_or(cleaned);
             let summary = if first_para.len() > 200 {
                 // Find a sentence boundary near 200 chars
                 let truncated = &first_para[..200];
@@ -976,11 +985,7 @@ fn extract_summary(text: &str) -> String {
     }
 
     // Fall back: take last paragraph, capped at 200 chars
-    let last_para = text
-        .rsplit("\n\n")
-        .next()
-        .unwrap_or(text)
-        .trim();
+    let last_para = text.rsplit("\n\n").next().unwrap_or(text).trim();
     if last_para.len() > 200 {
         let truncated = &last_para[..200];
         if let Some(end) = truncated.rfind(". ") {
@@ -1036,12 +1041,10 @@ fn deduplicate_findings(findings: &mut Vec<ScanFinding>) {
 }
 
 fn titles_similar(a: &str, b: &str) -> bool {
-    let terms_a: std::collections::HashSet<&str> = a.split_whitespace()
-        .filter(|w| w.len() > 3)
-        .collect();
-    let terms_b: std::collections::HashSet<&str> = b.split_whitespace()
-        .filter(|w| w.len() > 3)
-        .collect();
+    let terms_a: std::collections::HashSet<&str> =
+        a.split_whitespace().filter(|w| w.len() > 3).collect();
+    let terms_b: std::collections::HashSet<&str> =
+        b.split_whitespace().filter(|w| w.len() > 3).collect();
     if terms_a.is_empty() || terms_b.is_empty() {
         return false;
     }
@@ -1082,7 +1085,9 @@ That's concerning.
         assert_eq!(findings[0].title, "Hardcoded API key in MCP config");
         assert!(findings[0].description.contains("hardcoded API key"));
         assert_eq!(findings[0].evidence_ids, vec!["ev-scan-001-3"]);
-        assert!(findings[0].remediation_hint.contains("environment variable"));
+        assert!(findings[0]
+            .remediation_hint
+            .contains("environment variable"));
     }
 
     #[test]
@@ -1202,10 +1207,7 @@ Top priority: fix the exposed SSH key.
             parse_tag_attr("[FINDING severity=CRITICAL]", "severity"),
             Some("CRITICAL".to_string())
         );
-        assert_eq!(
-            parse_tag_attr("[FINDING severity=HIGH]", "missing"),
-            None
-        );
+        assert_eq!(parse_tag_attr("[FINDING severity=HIGH]", "missing"), None);
     }
 
     #[test]
@@ -1219,16 +1221,16 @@ Top priority: fix the exposed SSH key.
             parse_body_field(body, "Description"),
             Some("It's really bad".to_string())
         );
-        assert_eq!(
-            parse_body_field(body, "Evidence"),
-            Some("ev-1".to_string())
-        );
+        assert_eq!(parse_body_field(body, "Evidence"), Some("ev-1".to_string()));
         assert_eq!(parse_body_field(body, "Missing"), None);
     }
 
     #[test]
     fn test_finding_severity_from_str() {
-        assert_eq!(FindingSeverity::from_str("CRITICAL"), FindingSeverity::Critical);
+        assert_eq!(
+            FindingSeverity::from_str("CRITICAL"),
+            FindingSeverity::Critical
+        );
         assert_eq!(FindingSeverity::from_str("HIGH"), FindingSeverity::High);
         assert_eq!(FindingSeverity::from_str("MEDIUM"), FindingSeverity::Medium);
         assert_eq!(FindingSeverity::from_str("LOW"), FindingSeverity::Low);
@@ -1236,7 +1238,10 @@ Top priority: fix the exposed SSH key.
         assert_eq!(FindingSeverity::from_str("unknown"), FindingSeverity::High);
         // Case insensitive
         assert_eq!(FindingSeverity::from_str("high"), FindingSeverity::High);
-        assert_eq!(FindingSeverity::from_str("Critical"), FindingSeverity::Critical);
+        assert_eq!(
+            FindingSeverity::from_str("Critical"),
+            FindingSeverity::Critical
+        );
     }
 
     #[test]
@@ -1439,10 +1444,7 @@ Top priority: fix the exposed SSH key.
         }
     }
 
-    fn make_orchestrator(
-        provider: MockCloudProvider,
-        scans_dir: PathBuf,
-    ) -> ScanOrchestrator {
+    fn make_orchestrator(provider: MockCloudProvider, scans_dir: PathBuf) -> ScanOrchestrator {
         let client = Arc::new(CloudApiClient::new(Box::new(provider)));
         let sandbox = Arc::new(ToolSandbox::new());
         ScanOrchestrator::new(client, sandbox, "mock-model".to_string(), scans_dir)
@@ -1451,10 +1453,7 @@ Top priority: fix the exposed SSH key.
     #[tokio::test]
     async fn test_start_scan() {
         let dir = tempfile::tempdir().unwrap();
-        let orch = make_orchestrator(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("scans"),
-        );
+        let orch = make_orchestrator(MockCloudProvider::new(vec![]), dir.path().join("scans"));
 
         let progress = orch.start_scan("mcp_security_audit").await.unwrap();
         assert!(progress.scan_id.starts_with("scan-"));
@@ -1467,10 +1466,7 @@ Top priority: fix the exposed SSH key.
     #[tokio::test]
     async fn test_start_scan_unknown_playbook() {
         let dir = tempfile::tempdir().unwrap();
-        let orch = make_orchestrator(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("scans"),
-        );
+        let orch = make_orchestrator(MockCloudProvider::new(vec![]), dir.path().join("scans"));
 
         let result = orch.start_scan("nonexistent_playbook").await;
         assert!(result.is_err());
@@ -1507,7 +1503,9 @@ Found 1 medium-severity issue. Overall posture: Good.
         assert_eq!(result.status, ScanStatus::Completed);
         assert_eq!(result.findings.len(), 1);
         assert_eq!(result.findings[0].severity, FindingSeverity::Medium);
-        assert!(result.stages_completed.contains(&"Server Inventory".to_string()));
+        assert!(result
+            .stages_completed
+            .contains(&"Server Inventory".to_string()));
         assert!(result.summary.contains("Overall posture"));
     }
 
@@ -1539,10 +1537,7 @@ Found 1 medium-severity issue. Overall posture: Good.
     #[tokio::test]
     async fn test_cancel_scan() {
         let dir = tempfile::tempdir().unwrap();
-        let orch = make_orchestrator(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("scans"),
-        );
+        let orch = make_orchestrator(MockCloudProvider::new(vec![]), dir.path().join("scans"));
 
         let progress = orch.start_scan("mcp_security_audit").await.unwrap();
         let scan_id = progress.scan_id.clone();
@@ -1556,10 +1551,7 @@ Found 1 medium-severity issue. Overall posture: Good.
     #[tokio::test]
     async fn test_cancel_nonexistent_scan() {
         let dir = tempfile::tempdir().unwrap();
-        let orch = make_orchestrator(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("scans"),
-        );
+        let orch = make_orchestrator(MockCloudProvider::new(vec![]), dir.path().join("scans"));
 
         let result = orch.cancel_scan("nonexistent").await;
         assert!(result.is_err());
@@ -1587,10 +1579,7 @@ Found 1 medium-severity issue. Overall posture: Good.
 
         // Load from disk with a new orchestrator
         {
-            let orch = make_orchestrator(
-                MockCloudProvider::new(vec![]),
-                scans_dir,
-            );
+            let orch = make_orchestrator(MockCloudProvider::new(vec![]), scans_dir);
 
             let loaded = orch.load_scan_result(&scan_id).await.unwrap();
             assert_eq!(loaded.scan_id, scan_id);
@@ -1601,10 +1590,7 @@ Found 1 medium-severity issue. Overall posture: Good.
     #[tokio::test]
     async fn test_get_progress_running() {
         let dir = tempfile::tempdir().unwrap();
-        let orch = make_orchestrator(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("scans"),
-        );
+        let orch = make_orchestrator(MockCloudProvider::new(vec![]), dir.path().join("scans"));
 
         let progress = orch.start_scan("mcp_security_audit").await.unwrap();
         let scan_id = progress.scan_id.clone();
@@ -1618,10 +1604,7 @@ Found 1 medium-severity issue. Overall posture: Good.
     #[tokio::test]
     async fn test_respond_to_request() {
         let dir = tempfile::tempdir().unwrap();
-        let orch = make_orchestrator(
-            MockCloudProvider::new(vec![]),
-            dir.path().join("scans"),
-        );
+        let orch = make_orchestrator(MockCloudProvider::new(vec![]), dir.path().join("scans"));
 
         let progress = orch.start_scan("mcp_security_audit").await.unwrap();
         let scan_id = progress.scan_id.clone();

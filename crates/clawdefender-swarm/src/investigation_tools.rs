@@ -215,10 +215,7 @@ impl InvestigationContext {
                     )
                 })
                 .collect();
-            parts.push(format!(
-                "### Past Investigations\n{}",
-                summaries.join("\n")
-            ));
+            parts.push(format!("### Past Investigations\n{}", summaries.join("\n")));
         }
 
         if !self.user_decisions.is_empty() {
@@ -450,11 +447,7 @@ impl InvestigationToolExecutor {
     }
 
     /// Main dispatcher for investigation tool calls.
-    pub async fn execute_tool(
-        &self,
-        tool_name: &str,
-        input: &Value,
-    ) -> Result<String, String> {
+    pub async fn execute_tool(&self, tool_name: &str, input: &Value) -> Result<String, String> {
         match tool_name {
             "get_full_session" => self.get_full_session(input),
             "get_prompt_context" => self.get_prompt_context(input),
@@ -489,9 +482,7 @@ impl InvestigationToolExecutor {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "server_name is required".to_string())?;
 
-        let session_id = input
-            .get("session_id")
-            .and_then(|v| v.as_str());
+        let session_id = input.get("session_id").and_then(|v| v.as_str());
 
         let result = json!({
             "server_name": server_name,
@@ -617,9 +608,7 @@ impl InvestigationToolExecutor {
     }
 
     fn get_user_decisions(&self, input: &Value) -> Result<String, String> {
-        let server_name = input
-            .get("server_name")
-            .and_then(|v| v.as_str());
+        let server_name = input.get("server_name").and_then(|v| v.as_str());
 
         let result = json!({
             "server_name": server_name,
@@ -725,7 +714,10 @@ pub fn get_investigation_prompt(
     context: &InvestigationContext,
 ) -> String {
     let target_section = match target {
-        InvestigationTarget::Event { event_id, event_data } => {
+        InvestigationTarget::Event {
+            event_id,
+            event_data,
+        } => {
             format!(
                 "## Mission\n\
                  You are investigating a security event.\n\n\
@@ -742,7 +734,10 @@ pub fn get_investigation_prompt(
                 serde_json::to_string_pretty(event_data).unwrap_or_default()
             )
         }
-        InvestigationTarget::Alert { alert_id, alert_data } => {
+        InvestigationTarget::Alert {
+            alert_id,
+            alert_data,
+        } => {
             format!(
                 "## Mission\n\
                  You are investigating a security alert. Determine if this is a **true positive** \
@@ -949,10 +944,7 @@ mod tests {
     async fn test_get_full_session() {
         let executor = InvestigationToolExecutor::new();
         let result = executor
-            .execute_tool(
-                "get_full_session",
-                &json!({ "server_name": "test-server" }),
-            )
+            .execute_tool("get_full_session", &json!({ "server_name": "test-server" }))
             .await;
         assert!(result.is_ok());
         let output = result.unwrap();
@@ -978,9 +970,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_full_session_missing_server_name() {
         let executor = InvestigationToolExecutor::new();
-        let result = executor
-            .execute_tool("get_full_session", &json!({}))
-            .await;
+        let result = executor.execute_tool("get_full_session", &json!({})).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("server_name is required"));
     }
@@ -989,10 +979,7 @@ mod tests {
     async fn test_get_prompt_context() {
         let executor = InvestigationToolExecutor::new();
         let result = executor
-            .execute_tool(
-                "get_prompt_context",
-                &json!({ "event_id": "evt-123" }),
-            )
+            .execute_tool("get_prompt_context", &json!({ "event_id": "evt-123" }))
             .await;
         assert!(result.is_ok());
         let output = result.unwrap();
@@ -1014,10 +1001,7 @@ mod tests {
     async fn test_trace_data_flow() {
         let executor = InvestigationToolExecutor::new();
         let result = executor
-            .execute_tool(
-                "trace_data_flow",
-                &json!({ "event_id": "evt-456" }),
-            )
+            .execute_tool("trace_data_flow", &json!({ "event_id": "evt-456" }))
             .await;
         assert!(result.is_ok());
         let output = result.unwrap();
@@ -1029,9 +1013,7 @@ mod tests {
     #[tokio::test]
     async fn test_trace_data_flow_missing_event_id() {
         let executor = InvestigationToolExecutor::new();
-        let result = executor
-            .execute_tool("trace_data_flow", &json!({}))
-            .await;
+        let result = executor.execute_tool("trace_data_flow", &json!({})).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("event_id is required"));
     }
@@ -1112,10 +1094,7 @@ mod tests {
     async fn test_compare_servers_missing_server_a() {
         let executor = InvestigationToolExecutor::new();
         let result = executor
-            .execute_tool(
-                "compare_servers",
-                &json!({ "server_b": "db-01" }),
-            )
+            .execute_tool("compare_servers", &json!({ "server_b": "db-01" }))
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("server_a is required"));
@@ -1125,10 +1104,7 @@ mod tests {
     async fn test_compare_servers_missing_server_b() {
         let executor = InvestigationToolExecutor::new();
         let result = executor
-            .execute_tool(
-                "compare_servers",
-                &json!({ "server_a": "web-01" }),
-            )
+            .execute_tool("compare_servers", &json!({ "server_a": "web-01" }))
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("server_b is required"));
@@ -1187,10 +1163,7 @@ mod tests {
     async fn test_suggest_investigation_missing_fields() {
         let executor = InvestigationToolExecutor::new();
         let result = executor
-            .execute_tool(
-                "suggest_investigation",
-                &json!({ "target_type": "server" }),
-            )
+            .execute_tool("suggest_investigation", &json!({ "target_type": "server" }))
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("target_id is required"));

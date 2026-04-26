@@ -84,8 +84,8 @@ impl GgufBackend {
 
         // SECURITY: Refuse to load model files that are symlinks to prevent
         // an attacker from redirecting model loading to an unexpected location.
-        let sym_meta = std::fs::symlink_metadata(path)
-            .context("failed to read model symlink metadata")?;
+        let sym_meta =
+            std::fs::symlink_metadata(path).context("failed to read model symlink metadata")?;
         if sym_meta.file_type().is_symlink() {
             anyhow::bail!(
                 "Model file is a symlink (potential security risk): {}",
@@ -112,8 +112,7 @@ impl GgufBackend {
         );
 
         // Initialize the llama.cpp backend (global init, safe to call multiple times)
-        let backend =
-            LlamaBackend::init().context("failed to initialize llama.cpp backend")?;
+        let backend = LlamaBackend::init().context("failed to initialize llama.cpp backend")?;
 
         // Configure model loading parameters
         let model_params = if config.use_gpu {
@@ -214,8 +213,7 @@ impl GgufBackend {
     /// Call this after model activation for optimal triage latency.
     pub fn warm_triage_cache(&mut self, triage_system_prompt: &str) -> Result<()> {
         let cache_dir = dirs_cache_path()?;
-        std::fs::create_dir_all(&cache_dir)
-            .context("failed to create triage cache directory")?;
+        std::fs::create_dir_all(&cache_dir).context("failed to create triage cache directory")?;
 
         let cache_path = cache_dir.join(format!("{}_triage.session", self.model_name));
 
@@ -223,8 +221,7 @@ impl GgufBackend {
         let model = &self.model;
         let config = &self.config;
 
-        let n_ctx = NonZeroU32::new(config.context_size)
-            .unwrap_or(NonZeroU32::new(2048).unwrap());
+        let n_ctx = NonZeroU32::new(config.context_size).unwrap_or(NonZeroU32::new(2048).unwrap());
 
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(Some(n_ctx))
@@ -289,9 +286,7 @@ impl GgufBackend {
 
     /// Check if triage cache is warmed and available.
     pub fn is_triage_cache_ready(&self) -> bool {
-        self.triage_cache_path
-            .as_ref()
-            .is_some_and(|p| p.exists())
+        self.triage_cache_path.as_ref().is_some_and(|p| p.exists())
     }
 }
 
@@ -341,8 +336,7 @@ fn run_inference_with_mode(
 ) -> Result<String> {
     let start = Instant::now();
 
-    let n_ctx = NonZeroU32::new(config.context_size)
-        .unwrap_or(NonZeroU32::new(2048).unwrap());
+    let n_ctx = NonZeroU32::new(config.context_size).unwrap_or(NonZeroU32::new(2048).unwrap());
 
     let ctx_params = LlamaContextParams::default()
         .with_n_ctx(Some(n_ctx))
@@ -400,10 +394,7 @@ fn run_inference_with_mode(
             }
             Err(e) => {
                 warn!(error = ?e, "Grammar sampler failed, falling back to greedy");
-                LlamaSampler::chain_simple([
-                    LlamaSampler::temp(0.0),
-                    LlamaSampler::greedy(),
-                ])
+                LlamaSampler::chain_simple([LlamaSampler::temp(0.0), LlamaSampler::greedy()])
             }
         }
     } else {

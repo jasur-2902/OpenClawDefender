@@ -51,8 +51,7 @@ pub struct CatalogModel {
 
 /// All-zeros placeholder means "skip verification" (used only for custom downloads).
 #[allow(dead_code)]
-const PLACEHOLDER_SHA256: &str =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+const PLACEHOLDER_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Return the curated catalog of local GGUF models.
 pub fn catalog() -> Vec<CatalogModel> {
@@ -240,11 +239,7 @@ fn detect_ram_bytes() -> Option<u64> {
             .ok()?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         // MemTotal:       16384000 kB
-        let kb: u64 = stdout
-            .split_whitespace()
-            .nth(1)?
-            .parse()
-            .ok()?;
+        let kb: u64 = stdout.split_whitespace().nth(1)?.parse().ok()?;
         Some(kb * 1024)
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -351,15 +346,15 @@ pub fn cloud_providers() -> Vec<CloudProvider> {
                 CloudModel {
                     id: "gemini-3-flash-preview".into(),
                     display_name: "Gemini 3 Flash".into(),
-                    cost_per_1k_input: 0.0005,    // $0.50/M
-                    cost_per_1k_output: 0.003,     // $3.00/M
+                    cost_per_1k_input: 0.0005, // $0.50/M
+                    cost_per_1k_output: 0.003, // $3.00/M
                     recommended: true,
                 },
                 CloudModel {
                     id: "gemini-2.5-flash".into(),
                     display_name: "Gemini 2.5 Flash".into(),
-                    cost_per_1k_input: 0.0003,    // $0.30/M
-                    cost_per_1k_output: 0.0025,    // $2.50/M
+                    cost_per_1k_input: 0.0003,  // $0.30/M
+                    cost_per_1k_output: 0.0025, // $2.50/M
                     recommended: false,
                 },
                 CloudModel {
@@ -386,19 +381,11 @@ pub fn cloud_providers() -> Vec<CloudProvider> {
 #[serde(tag = "type")]
 pub enum ActiveModelConfig {
     /// A model from the curated catalog, downloaded locally.
-    LocalCatalog {
-        model_id: String,
-        path: PathBuf,
-    },
+    LocalCatalog { model_id: String, path: PathBuf },
     /// A user-supplied local GGUF file.
-    LocalCustom {
-        path: PathBuf,
-    },
+    LocalCustom { path: PathBuf },
     /// A cloud API model.
-    CloudApi {
-        provider: String,
-        model: String,
-    },
+    CloudApi { provider: String, model: String },
     /// No model configured.
     None,
 }
@@ -552,7 +539,11 @@ mod tests {
     fn cloud_providers_have_recommended_models() {
         for p in cloud_providers() {
             let has_recommended = p.models.iter().any(|m| m.recommended);
-            assert!(has_recommended, "provider {} lacks a recommended model", p.id);
+            assert!(
+                has_recommended,
+                "provider {} lacks a recommended model",
+                p.id
+            );
         }
     }
 

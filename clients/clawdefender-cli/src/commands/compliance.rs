@@ -47,10 +47,7 @@ pub fn check(framework: String) -> anyhow::Result<()> {
             println!("(Full CIS benchmark checks will be available in a future version)");
         }
         other => {
-            anyhow::bail!(
-                "Unknown framework: {}\nSupported frameworks: cis",
-                other
-            );
+            anyhow::bail!("Unknown framework: {}\nSupported frameworks: cis", other);
         }
     }
 

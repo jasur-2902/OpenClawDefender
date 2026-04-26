@@ -114,7 +114,9 @@ fn set_level(level: &str, server: Option<&str>) -> Result<()> {
     let mut state = load_autonomy_state()?;
 
     if let Some(srv) = server {
-        state.server_levels.insert(srv.to_string(), level_upper.clone());
+        state
+            .server_levels
+            .insert(srv.to_string(), level_upper.clone());
         println!("Set autonomy level for \"{}\": {}", srv, level_upper);
     } else {
         state.global_level = level_upper.clone();
@@ -170,7 +172,10 @@ fn log(limit: usize, config: &ClawConfig) -> Result<()> {
         return Ok(());
     }
 
-    println!("  {:<20} {:<20} {:<10} EVENT", "TIMESTAMP", "SOURCE", "ACTION");
+    println!(
+        "  {:<20} {:<20} {:<10} EVENT",
+        "TIMESTAMP", "SOURCE", "ACTION"
+    );
     println!("  {}", "-".repeat(80));
 
     for record in records.iter().rev() {

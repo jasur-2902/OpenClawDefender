@@ -283,10 +283,7 @@ fn resolve_clawdefender_path() -> String {
     }
 
     // Fallback: search PATH for "rookbot".
-    if let Ok(output) = std::process::Command::new("which")
-        .arg("rookbot")
-        .output()
-    {
+    if let Ok(output) = std::process::Command::new("which").arg("rookbot").output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() {

@@ -630,7 +630,10 @@ impl DriftDetector {
             rule_hashes,
         };
 
-        info!("Policy baseline established with {} rules", snapshot.rules.len());
+        info!(
+            "Policy baseline established with {} rules",
+            snapshot.rules.len()
+        );
     }
 
     // Config drift
@@ -722,7 +725,10 @@ impl DriftDetector {
                             added_to_feed_at: indicator.added_at,
                             description: format!(
                                 "Historical event {} on {} matched newly added {} indicator {}",
-                                event.id, event.server_name, indicator.indicator_type, indicator.value
+                                event.id,
+                                event.server_name,
+                                indicator.indicator_type,
+                                indicator.value
                             ),
                         });
                     }
@@ -806,11 +812,7 @@ impl DriftDetector {
     }
 
     /// Generate narrative for drift report
-    fn generate_narrative(
-        server_name: &str,
-        dimensions: &[DriftDimension],
-        score: f64,
-    ) -> String {
+    fn generate_narrative(server_name: &str, dimensions: &[DriftDimension], score: f64) -> String {
         let mut narrative = format!(
             "Server '{}' exhibits drift score of {:.2}. ",
             server_name, score
@@ -873,7 +875,10 @@ impl DriftDetector {
                 baseline.consecutive_drift_days = 0;
                 baseline.last_updated = Utc::now();
 
-                info!("Baseline auto-updated for server {} after 30 days of stable drift", name);
+                info!(
+                    "Baseline auto-updated for server {} after 30 days of stable drift",
+                    name
+                );
             }
         }
     }
@@ -1026,7 +1031,9 @@ mod tests {
         let mut baseline = create_test_baseline("test-server");
 
         // Add 25% more paths to trigger scope creep
-        baseline.current_file_paths.insert("/new/path/1".to_string());
+        baseline
+            .current_file_paths
+            .insert("/new/path/1".to_string());
 
         detector.establish_baseline("test-server", baseline);
         let drift = detector.check_scope_creep("test-server");
@@ -1119,7 +1126,9 @@ mod tests {
         let mut detector = DriftDetector::new();
         let mut baseline = create_test_baseline("test-server");
 
-        baseline.current_network_hosts.insert("malicious.com".to_string());
+        baseline
+            .current_network_hosts
+            .insert("malicious.com".to_string());
 
         detector.establish_baseline("test-server", baseline);
         let drift = detector.check_network_drift("test-server");
@@ -1721,9 +1730,15 @@ mod tests {
         let mut baseline = create_test_baseline("test-server");
 
         // Add 3 new hosts: 3 * 0.25 = 0.75
-        baseline.current_network_hosts.insert("host1.com".to_string());
-        baseline.current_network_hosts.insert("host2.com".to_string());
-        baseline.current_network_hosts.insert("host3.com".to_string());
+        baseline
+            .current_network_hosts
+            .insert("host1.com".to_string());
+        baseline
+            .current_network_hosts
+            .insert("host2.com".to_string());
+        baseline
+            .current_network_hosts
+            .insert("host3.com".to_string());
 
         detector.establish_baseline("test-server", baseline);
         let drift = detector.check_network_drift("test-server");

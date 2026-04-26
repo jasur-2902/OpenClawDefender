@@ -207,14 +207,18 @@ async fn handle_client(
                     let learning_count = profiles.iter().filter(|p| p.learning_mode).count();
                     let monitoring_count = total - learning_count;
 
-                    let auto_block_stats = ai_ctx.decision_engine.as_ref()
+                    let auto_block_stats = ai_ctx
+                        .decision_engine
+                        .as_ref()
                         .and_then(|de| de.try_read().ok())
-                        .map(|de| serde_json::json!({
-                            "total_auto_blocks": de.stats.total_auto_blocks,
-                            "total_overrides": de.stats.total_overrides,
-                            "override_rate": de.stats.override_rate,
-                            "auto_block_enabled": de.auto_block_enabled,
-                        }));
+                        .map(|de| {
+                            serde_json::json!({
+                                "total_auto_blocks": de.stats.total_auto_blocks,
+                                "total_overrides": de.stats.total_overrides,
+                                "override_rate": de.stats.override_rate,
+                                "auto_block_enabled": de.auto_block_enabled,
+                            })
+                        });
 
                     serde_json::json!({
                         "enabled": ai_ctx.behavioral_enabled,

@@ -332,7 +332,10 @@ impl AutonomyFramework {
                 timestamp: Utc::now(),
                 from_level: self.global_level,
                 to_level: level,
-                reason: format!("Global level changed from {} to {}", self.global_level, level),
+                reason: format!(
+                    "Global level changed from {} to {}",
+                    self.global_level, level
+                ),
                 auto: false,
             };
             info!(
@@ -387,16 +390,15 @@ impl AutonomyFramework {
         }
 
         let effective = self.effective_level(action.server.as_deref());
-        let required = self.action_permissions
+        let required = self
+            .action_permissions
             .get(&action.category)
             .copied()
             .unwrap_or_else(|| action.category.required_level());
 
         if effective >= required {
             // At L2 with medium-risk actions, use countdown instead of direct approval
-            if effective == AutonomyLevel::L2ConfirmAndAct
-                && action.risk == ActionRisk::Medium
-            {
+            if effective == AutonomyLevel::L2ConfirmAndAct && action.risk == ActionRisk::Medium {
                 return PermissionResult::CountdownConfirm {
                     description: format!(
                         "Medium-risk action: {} — will execute in countdown",
@@ -406,9 +408,7 @@ impl AutonomyFramework {
                 };
             }
             // At L3 with medium-risk actions, also use countdown
-            if effective == AutonomyLevel::L3AutoLowRisk
-                && action.risk == ActionRisk::Medium
-            {
+            if effective == AutonomyLevel::L3AutoLowRisk && action.risk == ActionRisk::Medium {
                 return PermissionResult::CountdownConfirm {
                     description: format!(
                         "Medium-risk action: {} — will execute in countdown",
@@ -578,12 +578,7 @@ impl AutonomyFramework {
     // -----------------------------------------------------------------------
 
     /// Log an action and its permission result.
-    pub fn log_action(
-        &mut self,
-        action: &AgentAction,
-        result: &PermissionResult,
-        executed: bool,
-    ) {
+    pub fn log_action(&mut self, action: &AgentAction, result: &PermissionResult, executed: bool) {
         let entry = AgentActionLog {
             id: action.id,
             timestamp: Utc::now(),
@@ -778,12 +773,7 @@ mod tests {
     use serde_json::json;
 
     fn make_action(category: ActionCategory) -> AgentAction {
-        AgentAction::new(
-            category,
-            format!("Test {:?}", category),
-            None,
-            json!({}),
-        )
+        AgentAction::new(category, format!("Test {:?}", category), None, json!({}))
     }
 
     fn make_action_with_server(category: ActionCategory, server: &str) -> AgentAction {
@@ -824,26 +814,50 @@ mod tests {
 
     #[test]
     fn test_low_risk_categories() {
-        assert_eq!(ActionCategory::UpdateNoiseFilter.risk_level(), ActionRisk::Low);
-        assert_eq!(ActionCategory::AdjustAnomalyThreshold.risk_level(), ActionRisk::Low);
-        assert_eq!(ActionCategory::UpdateKnowledgeBase.risk_level(), ActionRisk::Low);
+        assert_eq!(
+            ActionCategory::UpdateNoiseFilter.risk_level(),
+            ActionRisk::Low
+        );
+        assert_eq!(
+            ActionCategory::AdjustAnomalyThreshold.risk_level(),
+            ActionRisk::Low
+        );
+        assert_eq!(
+            ActionCategory::UpdateKnowledgeBase.risk_level(),
+            ActionRisk::Low
+        );
         assert_eq!(ActionCategory::GenerateReport.risk_level(), ActionRisk::Low);
     }
 
     #[test]
     fn test_medium_risk_categories() {
-        assert_eq!(ActionCategory::AddPolicyRule.risk_level(), ActionRisk::Medium);
-        assert_eq!(ActionCategory::ModifyTrustLevel.risk_level(), ActionRisk::Medium);
+        assert_eq!(
+            ActionCategory::AddPolicyRule.risk_level(),
+            ActionRisk::Medium
+        );
+        assert_eq!(
+            ActionCategory::ModifyTrustLevel.risk_level(),
+            ActionRisk::Medium
+        );
         assert_eq!(ActionCategory::BlockServer.risk_level(), ActionRisk::Medium);
-        assert_eq!(ActionCategory::EnableAutoBlock.risk_level(), ActionRisk::Medium);
+        assert_eq!(
+            ActionCategory::EnableAutoBlock.risk_level(),
+            ActionRisk::Medium
+        );
     }
 
     #[test]
     fn test_high_risk_categories() {
-        assert_eq!(ActionCategory::RemovePolicyRule.risk_level(), ActionRisk::High);
+        assert_eq!(
+            ActionCategory::RemovePolicyRule.risk_level(),
+            ActionRisk::High
+        );
         assert_eq!(ActionCategory::UnwrapServer.risk_level(), ActionRisk::High);
         assert_eq!(ActionCategory::KillProcess.risk_level(), ActionRisk::High);
-        assert_eq!(ActionCategory::ModifySystemConfig.risk_level(), ActionRisk::High);
+        assert_eq!(
+            ActionCategory::ModifySystemConfig.risk_level(),
+            ActionRisk::High
+        );
     }
 
     #[test]

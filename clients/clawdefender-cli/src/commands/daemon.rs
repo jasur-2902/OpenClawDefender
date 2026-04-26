@@ -291,11 +291,7 @@ fn status(config: &ClawConfig) -> Result<()> {
                     if let Some(subsystems) = json.get("subsystems").and_then(|v| v.as_object()) {
                         println!("\n  Subsystems:");
                         for (name, status) in subsystems {
-                            println!(
-                                "    {}: {}",
-                                name,
-                                status.as_str().unwrap_or("unknown")
-                            );
+                            println!("    {}: {}", name, status.as_str().unwrap_or("unknown"));
                         }
                     }
 
@@ -449,7 +445,9 @@ fn logs(follow: bool, lines: usize, level: Option<String>) -> Result<()> {
 fn install_helper() -> Result<()> {
     // Check for sudo.
     if unsafe { libc::geteuid() } != 0 {
-        anyhow::bail!("This command requires sudo privileges.\nRun: sudo rookbot daemon install-helper");
+        anyhow::bail!(
+            "This command requires sudo privileges.\nRun: sudo rookbot daemon install-helper"
+        );
     }
 
     println!("Installing privileged eslogger helper...");
@@ -522,7 +520,9 @@ fn install_helper() -> Result<()> {
 fn uninstall_helper() -> Result<()> {
     // Check for sudo.
     if unsafe { libc::geteuid() } != 0 {
-        anyhow::bail!("This command requires sudo privileges.\nRun: sudo rookbot daemon uninstall-helper");
+        anyhow::bail!(
+            "This command requires sudo privileges.\nRun: sudo rookbot daemon uninstall-helper"
+        );
     }
 
     println!("Uninstalling privileged eslogger helper...");
@@ -582,7 +582,10 @@ fn install(launch_at_login: bool) -> Result<()> {
     let cli_install = install_bin_dir.join("rookbot");
 
     if daemon_install.exists() {
-        println!("  Daemon binary already exists: {}", daemon_install.display());
+        println!(
+            "  Daemon binary already exists: {}",
+            daemon_install.display()
+        );
     } else {
         fs::copy(&daemon_bin, &daemon_install)?;
         #[cfg(unix)]

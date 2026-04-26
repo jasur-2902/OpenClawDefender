@@ -125,7 +125,11 @@ pub fn build_user_prompt(request: &AnalysisRequest) -> String {
             prompt.push_str("Arguments (truncated): ");
             let args_str = arguments.to_string();
             let safe_args = if args_str.len() > 500 {
-                format!("{}... [truncated, {} bytes total]", &args_str[..500], args_str.len())
+                format!(
+                    "{}... [truncated, {} bytes total]",
+                    &args_str[..500],
+                    args_str.len()
+                )
             } else {
                 args_str
             };
@@ -143,7 +147,11 @@ pub fn build_user_prompt(request: &AnalysisRequest) -> String {
             // SECURITY: Truncate sampling content to prevent leaking user data.
             prompt.push_str("Content (truncated): ");
             let safe_content = if content.len() > 500 {
-                format!("{}... [truncated, {} bytes total]", &content[..500], content.len())
+                format!(
+                    "{}... [truncated, {} bytes total]",
+                    &content[..500],
+                    content.len()
+                )
             } else {
                 content.clone()
             };

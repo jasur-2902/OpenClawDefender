@@ -94,18 +94,18 @@ pub fn generate_daily_report(date: Option<String>, output: Option<PathBuf>) -> R
             "1 medium-severity alert requires attention".to_string(),
             "All MCP servers operating within policy".to_string(),
         ],
-        action_items: vec![
-            clawdefender_swarm::report_system::ActionItem {
-                priority: "Medium".to_string(),
-                description: "Review medium-severity alert: Unusual network pattern".to_string(),
-            },
-        ],
+        action_items: vec![clawdefender_swarm::report_system::ActionItem {
+            priority: "Medium".to_string(),
+            description: "Review medium-severity alert: Unusual network pattern".to_string(),
+        }],
         agent_actions_taken: 0,
         agent_actions_suggested: 1,
     };
 
     let mut generator = ReportGenerator::new();
-    let report = generator.generate_daily_brief(&data).map_err(|e| anyhow::anyhow!(e))?;
+    let report = generator
+        .generate_daily_brief(&data)
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     // Read the generated report content
     let markdown = std::fs::read_to_string(&report.file_path)?;
@@ -139,7 +139,10 @@ pub fn generate_weekly_report(date: Option<String>, output: Option<PathBuf>) -> 
 
     let start_date = end_date - chrono::Duration::days(7);
 
-    println!("Generating weekly report for {} to {}...", start_date, end_date);
+    println!(
+        "Generating weekly report for {} to {}...",
+        start_date, end_date
+    );
 
     // Gather data from daemon/database
     // For now, create placeholder report
@@ -181,10 +184,13 @@ pub fn generate_weekly_report(date: Option<String>, output: Option<PathBuf>) -> 
     );
 
     // Save report
-    let report_id = format!("{:x}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs());
+    let report_id = format!(
+        "{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
     let report_file = reports_dir.join(format!("weekly_{}.md", report_id));
     std::fs::write(&report_file, &markdown)?;
 
@@ -212,7 +218,8 @@ pub fn generate_incident_report(investigation_id: &str, output: Option<PathBuf>)
     let investigations_dir = PathBuf::from(std::env::var_os("HOME").expect("HOME not set"))
         .join(".local/share/rookbot/investigations");
 
-    let inv_store = clawdefender_swarm::investigation_store::InvestigationStore::with_dir(investigations_dir)?;
+    let inv_store =
+        clawdefender_swarm::investigation_store::InvestigationStore::with_dir(investigations_dir)?;
     let investigation = inv_store.load(investigation_id)?;
 
     println!("Generating incident report for investigation: {investigation_id}...");
@@ -279,7 +286,11 @@ pub fn generate_incident_report(investigation_id: &str, output: Option<PathBuf>)
         } else {
             investigation.impact.data_modified.join(", ")
         },
-        if investigation.impact.data_exfiltrated { "YES" } else { "NO" },
+        if investigation.impact.data_exfiltrated {
+            "YES"
+        } else {
+            "NO"
+        },
         investigation
             .recommendations
             .iter()
@@ -374,10 +385,13 @@ pub fn generate_compliance_report(framework: &str, output: Option<PathBuf>) -> R
     );
 
     // Save report
-    let report_id = format!("{:x}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs());
+    let report_id = format!(
+        "{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
     let report_file = reports_dir.join(format!("compliance_{}_{}.md", framework, report_id));
     std::fs::write(&report_file, &markdown)?;
 

@@ -190,9 +190,7 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
             &format!("MCP server HTTP endpoint reachable ({})", http_url),
             http_reachable,
         ) {
-            out.hint(
-                "Run `rookbot serve` or `rookbot daemon start` to start the MCP server.",
-            );
+            out.hint("Run `rookbot serve` or `rookbot daemon start` to start the MCP server.");
         }
     }
 
@@ -374,13 +372,17 @@ fn check_macos_version(out: &Output) -> bool {
                 true
             } else {
                 out.check(&format!("macOS version ({version}) — requires 13+"), false);
-                out.hint("Rookbot requires macOS 13 (Ventura) or later for Endpoint Security support.");
+                out.hint(
+                    "Rookbot requires macOS 13 (Ventura) or later for Endpoint Security support.",
+                );
                 false
             }
         }
         _ => {
             out.warn("Could not detect macOS version (not macOS?)");
-            out.hint("Rookbot is designed for macOS. Some features may not work on other platforms.");
+            out.hint(
+                "Rookbot is designed for macOS. Some features may not work on other platforms.",
+            );
             false
         }
     }

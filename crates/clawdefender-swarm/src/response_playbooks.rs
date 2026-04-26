@@ -31,24 +31,14 @@ pub struct ResponsePlaybook {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PlaybookTrigger {
-    KillChainConfirmed {
-        min_stage: u8,
-        min_confidence: f64,
-    },
-    BlocklistMatch {
-        server_name_pattern: Option<String>,
-    },
+    KillChainConfirmed { min_stage: u8, min_confidence: f64 },
+    BlocklistMatch { server_name_pattern: Option<String> },
     CriticalAlert,
     ExfiltrationDetected,
     PromptInjectionDetected,
     PostureReachesCritical,
-    InferenceFailureSpike {
-        threshold: u32,
-        window_minutes: u32,
-    },
-    CustomTrigger {
-        condition: String,
-    },
+    InferenceFailureSpike { threshold: u32, window_minutes: u32 },
+    CustomTrigger { condition: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,7 +124,10 @@ impl CircuitBreaker {
         self.cleanup_old_triggers();
 
         if self.check_cooldown() {
-            debug!("Circuit breaker cooldown active, blocking playbook {}", playbook_id);
+            debug!(
+                "Circuit breaker cooldown active, blocking playbook {}",
+                playbook_id
+            );
             return false;
         }
 
@@ -184,7 +177,8 @@ impl CircuitBreaker {
 
     fn cleanup_old_triggers(&mut self) {
         let five_minutes_ago = Utc::now() - Duration::minutes(5);
-        self.recent_triggers.retain(|(ts, _)| *ts > five_minutes_ago);
+        self.recent_triggers
+            .retain(|(ts, _)| *ts > five_minutes_ago);
     }
 }
 
@@ -231,9 +225,7 @@ pub fn check_trigger_match(trigger: &PlaybookTrigger, context: &TriggerContext) 
             }
         }
         PlaybookTrigger::CriticalAlert => context.trigger_type == "critical_alert",
-        PlaybookTrigger::ExfiltrationDetected => {
-            context.trigger_type == "exfiltration_detected"
-        }
+        PlaybookTrigger::ExfiltrationDetected => context.trigger_type == "exfiltration_detected",
         PlaybookTrigger::PromptInjectionDetected => {
             context.trigger_type == "prompt_injection_detected"
         }
@@ -282,7 +274,9 @@ impl PlaybookManager {
             ResponsePlaybook {
                 id: "pb-kill-chain-response".to_string(),
                 name: "Kill Chain Response".to_string(),
-                description: "Respond to confirmed kill chain activity at stage 3+ with high confidence".to_string(),
+                description:
+                    "Respond to confirmed kill chain activity at stage 3+ with high confidence"
+                        .to_string(),
                 trigger: PlaybookTrigger::KillChainConfirmed {
                     min_stage: 3,
                     min_confidence: 0.75,
@@ -306,7 +300,8 @@ impl PlaybookManager {
                     },
                     PlaybookAction {
                         action_type: "LaunchInvestigation".to_string(),
-                        description: "Launch an automated investigation into the kill chain".to_string(),
+                        description: "Launch an automated investigation into the kill chain"
+                            .to_string(),
                         parameters: json!({}),
                         delay_after_secs: 1,
                         continue_on_failure: true,
@@ -404,7 +399,8 @@ impl PlaybookManager {
                     },
                     PlaybookAction {
                         action_type: "CreateAlert".to_string(),
-                        description: "Create a high severity alert for prompt injection".to_string(),
+                        description: "Create a high severity alert for prompt injection"
+                            .to_string(),
                         parameters: json!({"severity": "high"}),
                         delay_after_secs: 0,
                         continue_on_failure: true,
@@ -432,7 +428,8 @@ impl PlaybookManager {
                 actions: vec![
                     PlaybookAction {
                         action_type: "BlockNetwork".to_string(),
-                        description: "Block outgoing network connections from the server".to_string(),
+                        description: "Block outgoing network connections from the server"
+                            .to_string(),
                         parameters: json!({}),
                         delay_after_secs: 0,
                         continue_on_failure: false,
@@ -448,7 +445,8 @@ impl PlaybookManager {
                     },
                     PlaybookAction {
                         action_type: "CreateAlert".to_string(),
-                        description: "Create a critical severity alert for exfiltration".to_string(),
+                        description: "Create a critical severity alert for exfiltration"
+                            .to_string(),
                         parameters: json!({"severity": "critical"}),
                         delay_after_secs: 0,
                         continue_on_failure: true,
@@ -456,7 +454,8 @@ impl PlaybookManager {
                     },
                     PlaybookAction {
                         action_type: "LaunchInvestigation".to_string(),
-                        description: "Launch investigation into the exfiltration attempt".to_string(),
+                        description: "Launch investigation into the exfiltration attempt"
+                            .to_string(),
                         parameters: json!({}),
                         delay_after_secs: 1,
                         continue_on_failure: true,
@@ -511,7 +510,8 @@ impl PlaybookManager {
                     },
                     PlaybookAction {
                         action_type: "LowerPosture".to_string(),
-                        description: "Lower posture to Normal during degraded operation".to_string(),
+                        description: "Lower posture to Normal during degraded operation"
+                            .to_string(),
                         parameters: json!({"level": "normal"}),
                         delay_after_secs: 0,
                         continue_on_failure: true,
@@ -533,7 +533,8 @@ impl PlaybookManager {
                 actions: vec![
                     PlaybookAction {
                         action_type: "CreateAlert".to_string(),
-                        description: "Create a medium severity alert for the new server".to_string(),
+                        description: "Create a medium severity alert for the new server"
+                            .to_string(),
                         parameters: json!({"severity": "medium"}),
                         delay_after_secs: 0,
                         continue_on_failure: true,
@@ -549,7 +550,8 @@ impl PlaybookManager {
                     },
                     PlaybookAction {
                         action_type: "SuggestWrap".to_string(),
-                        description: "Suggest wrapping the server with security controls".to_string(),
+                        description: "Suggest wrapping the server with security controls"
+                            .to_string(),
                         parameters: json!({}),
                         delay_after_secs: 0,
                         continue_on_failure: true,
@@ -595,10 +597,7 @@ impl PlaybookManager {
 
         for (pb_id, pb_name, autonomy, actions) in matching {
             if !self.circuit_breaker.should_allow(&pb_id) {
-                info!(
-                    "Circuit breaker blocked playbook '{}', skipping",
-                    pb_name
-                );
+                info!("Circuit breaker blocked playbook '{}', skipping", pb_name);
                 let execution = PlaybookExecution {
                     id: Uuid::new_v4(),
                     playbook_id: pb_id.clone(),
@@ -618,13 +617,7 @@ impl PlaybookManager {
 
             self.circuit_breaker.record_trigger(&pb_id);
 
-            let execution = self.simulate_execution(
-                &pb_id,
-                &pb_name,
-                &autonomy,
-                &actions,
-                context,
-            );
+            let execution = self.simulate_execution(&pb_id, &pb_name, &autonomy, &actions, context);
             executions.push(execution);
         }
 
@@ -720,11 +713,7 @@ impl PlaybookManager {
     // ========================================================================
 
     /// Test a playbook against a trigger context without recording in history.
-    pub fn test_playbook(
-        &self,
-        id: &str,
-        context: &TriggerContext,
-    ) -> Option<PlaybookExecution> {
+    pub fn test_playbook(&self, id: &str, context: &TriggerContext) -> Option<PlaybookExecution> {
         let pb = self.playbooks.iter().find(|p| p.id == id)?;
 
         if !check_trigger_match(&pb.trigger, context) {
@@ -864,8 +853,8 @@ impl PlaybookManager {
         let path = Self::config_path();
 
         if path.exists() {
-            let data =
-                fs::read_to_string(&path).map_err(|e| format!("Failed to read playbooks: {}", e))?;
+            let data = fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read playbooks: {}", e))?;
             let custom: Vec<ResponsePlaybook> = serde_json::from_str(&data)
                 .map_err(|e| format!("Failed to parse playbooks: {}", e))?;
 
@@ -1006,12 +995,8 @@ mod tests {
         let trigger = PlaybookTrigger::BlocklistMatch {
             server_name_pattern: Some("malicious".to_string()),
         };
-        let ctx = make_context_with_server(
-            "blocklist_match",
-            "malicious-server-42",
-            "matched",
-            1.0,
-        );
+        let ctx =
+            make_context_with_server("blocklist_match", "malicious-server-42", "matched", 1.0);
         assert!(check_trigger_match(&trigger, &ctx));
     }
 
@@ -1387,7 +1372,10 @@ mod tests {
         assert_eq!(executions[0].playbook_id, "pb-prompt-injection-block");
         assert_eq!(executions[0].status, ExecutionStatus::Completed);
         // L0 means all actions should be approved
-        assert!(executions[0].action_results.iter().all(|r| r.permission_result == "approved"));
+        assert!(executions[0]
+            .action_results
+            .iter()
+            .all(|r| r.permission_result == "approved"));
     }
 
     #[test]
@@ -1437,8 +1425,7 @@ mod tests {
         let all = mgr.get_execution_history(None, 10);
         assert_eq!(all.len(), 2);
 
-        let injection_only =
-            mgr.get_execution_history(Some("pb-prompt-injection-block"), 10);
+        let injection_only = mgr.get_execution_history(Some("pb-prompt-injection-block"), 10);
         assert_eq!(injection_only.len(), 1);
     }
 
@@ -1561,7 +1548,9 @@ mod tests {
     fn test_l0_playbook_full_execution() {
         let mgr = PlaybookManager::new();
         let ctx = make_context("prompt_injection_detected", "injection", 0.9);
-        let exec = mgr.test_playbook("pb-prompt-injection-block", &ctx).unwrap();
+        let exec = mgr
+            .test_playbook("pb-prompt-injection-block", &ctx)
+            .unwrap();
         assert_eq!(exec.status, ExecutionStatus::Completed);
         assert_eq!(exec.actions_blocked, 0);
         assert_eq!(exec.actions_executed, 4);

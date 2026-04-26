@@ -41,9 +41,7 @@ const CRITICAL_PATHS: &[&str] = &[
 pub fn rate_uncorrelated(event: &OsEvent, project_dir: Option<&str>) -> Severity {
     match &event.kind {
         // Critical: kext loads, XProtect malware, external network
-        OsEventKind::Kextload { .. } | OsEventKind::XpMalwareDetected { .. } => {
-            Severity::Critical
-        }
+        OsEventKind::Kextload { .. } | OsEventKind::XpMalwareDetected { .. } => Severity::Critical,
         OsEventKind::Connect { address, .. } => {
             if is_external_address(address) {
                 Severity::Critical

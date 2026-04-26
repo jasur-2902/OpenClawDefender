@@ -121,10 +121,7 @@ impl EvidenceStore {
 
         // Extract resource keys and register auto-links
         for key in extract_resource_keys(tool_name, &tool_input) {
-            self.auto_links
-                .entry(key)
-                .or_default()
-                .push(id.clone());
+            self.auto_links.entry(key).or_default().push(id.clone());
         }
 
         self.items.push(item);
@@ -636,9 +633,6 @@ mod tests {
         assert_eq!(deserialized.scan_id, store.scan_id);
         assert_eq!(deserialized.items.len(), 1);
         assert_eq!(deserialized.items[0].relevance, Relevance::Relevant);
-        assert_eq!(
-            deserialized.finding_links.get("f-1").unwrap(),
-            &vec![eid]
-        );
+        assert_eq!(deserialized.finding_links.get("f-1").unwrap(), &vec![eid]);
     }
 }

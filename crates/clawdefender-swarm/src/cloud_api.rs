@@ -200,15 +200,9 @@ impl AnthropicProvider {
     }
 
     fn parse_response(&self, body: &Value) -> Result<AgentResponse, CloudError> {
-        let id = body["id"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string();
+        let id = body["id"].as_str().unwrap_or("unknown").to_string();
 
-        let model = body["model"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string();
+        let model = body["model"].as_str().unwrap_or("unknown").to_string();
 
         let stop_reason = match body["stop_reason"].as_str() {
             Some("end_turn") => StopReason::EndTurn,
@@ -223,12 +217,8 @@ impl AnthropicProvider {
             output_tokens: body["usage"]["output_tokens"].as_u64().unwrap_or(0),
         };
 
-        let content = self.parse_content_blocks(
-            body["content"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default(),
-        );
+        let content =
+            self.parse_content_blocks(body["content"].as_array().cloned().unwrap_or_default());
 
         Ok(AgentResponse {
             id,
@@ -242,18 +232,16 @@ impl AnthropicProvider {
     fn parse_content_blocks(&self, blocks: Vec<Value>) -> Vec<ContentBlock> {
         blocks
             .into_iter()
-            .filter_map(|block| {
-                match block["type"].as_str()? {
-                    "text" => Some(ContentBlock::Text {
-                        text: block["text"].as_str().unwrap_or("").to_string(),
-                    }),
-                    "tool_use" => Some(ContentBlock::ToolUse {
-                        id: block["id"].as_str().unwrap_or("").to_string(),
-                        name: block["name"].as_str().unwrap_or("").to_string(),
-                        input: block["input"].clone(),
-                    }),
-                    _ => None,
-                }
+            .filter_map(|block| match block["type"].as_str()? {
+                "text" => Some(ContentBlock::Text {
+                    text: block["text"].as_str().unwrap_or("").to_string(),
+                }),
+                "tool_use" => Some(ContentBlock::ToolUse {
+                    id: block["id"].as_str().unwrap_or("").to_string(),
+                    name: block["name"].as_str().unwrap_or("").to_string(),
+                    input: block["input"].clone(),
+                }),
+                _ => None,
             })
             .collect()
     }
@@ -300,10 +288,7 @@ impl CloudProvider for AnthropicProvider {
         }
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(CloudError::UnexpectedResponse(format!(
-                "HTTP {status}: {text}"
-            ))
-            .into());
+            return Err(CloudError::UnexpectedResponse(format!("HTTP {status}: {text}")).into());
         }
 
         let resp_body: Value = resp.json().await.map_err(|e| {
@@ -444,22 +429,14 @@ impl OpenAIProvider {
 
     /// Parse an OpenAI response into our unified format.
     fn parse_response(body: &Value) -> Result<AgentResponse, CloudError> {
-        let id = body["id"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string();
+        let id = body["id"].as_str().unwrap_or("unknown").to_string();
 
-        let model = body["model"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string();
+        let model = body["model"].as_str().unwrap_or("unknown").to_string();
 
         let choice = body["choices"]
             .as_array()
             .and_then(|c| c.first())
-            .ok_or_else(|| {
-                CloudError::UnexpectedResponse("no choices in response".to_string())
-            })?;
+            .ok_or_else(|| CloudError::UnexpectedResponse("no choices in response".to_string()))?;
 
         let finish_reason = choice["finish_reason"].as_str().unwrap_or("");
         let stop_reason = match finish_reason {
@@ -489,15 +466,9 @@ impl OpenAIProvider {
         if let Some(tool_calls) = choice["message"]["tool_calls"].as_array() {
             for tc in tool_calls {
                 let id = tc["id"].as_str().unwrap_or("").to_string();
-                let name = tc["function"]["name"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
-                let args_str = tc["function"]["arguments"]
-                    .as_str()
-                    .unwrap_or("{}");
-                let input: Value =
-                    serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
+                let name = tc["function"]["name"].as_str().unwrap_or("").to_string();
+                let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
+                let input: Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
 
                 content.push(ContentBlock::ToolUse { id, name, input });
             }
@@ -560,10 +531,7 @@ impl CloudProvider for OpenAIProvider {
         }
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(CloudError::UnexpectedResponse(format!(
-                "HTTP {status}: {text}"
-            ))
-            .into());
+            return Err(CloudError::UnexpectedResponse(format!("HTTP {status}: {text}")).into());
         }
 
         let resp_body: Value = resp.json().await.map_err(|e| {
@@ -752,21 +720,15 @@ impl CloudApiClient {
         // 2. Budget check
         if let Some(guard) = &self.cost_guard {
             guard.check_budget().await.map_err(|e| match e {
-                BudgetExceededError::SessionBudget { used, limit } => {
-                    CloudError::BudgetExceeded(format!(
-                        "Session budget exceeded: ${used:.4} of ${limit:.4}"
-                    ))
-                }
-                BudgetExceededError::DailyBudget { used, limit } => {
-                    CloudError::BudgetExceeded(format!(
-                        "Daily budget exceeded: ${used:.4} of ${limit:.4}"
-                    ))
-                }
-                BudgetExceededError::MonthlyBudget { used, limit } => {
-                    CloudError::BudgetExceeded(format!(
-                        "Monthly budget exceeded: ${used:.4} of ${limit:.4}"
-                    ))
-                }
+                BudgetExceededError::SessionBudget { used, limit } => CloudError::BudgetExceeded(
+                    format!("Session budget exceeded: ${used:.4} of ${limit:.4}"),
+                ),
+                BudgetExceededError::DailyBudget { used, limit } => CloudError::BudgetExceeded(
+                    format!("Daily budget exceeded: ${used:.4} of ${limit:.4}"),
+                ),
+                BudgetExceededError::MonthlyBudget { used, limit } => CloudError::BudgetExceeded(
+                    format!("Monthly budget exceeded: ${used:.4} of ${limit:.4}"),
+                ),
             })?;
         }
 
@@ -1305,10 +1267,7 @@ mod tests {
         assert_eq!(openai_tools.len(), 1);
         assert_eq!(openai_tools[0]["type"], "function");
         assert_eq!(openai_tools[0]["function"]["name"], "query_events");
-        assert_eq!(
-            openai_tools[0]["function"]["parameters"]["type"],
-            "object"
-        );
+        assert_eq!(openai_tools[0]["function"]["parameters"]["type"], "object");
     }
 
     // -- Message content serialization ---------------------------------------

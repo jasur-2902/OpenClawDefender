@@ -5,8 +5,7 @@ use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
 /// Base URL for GitHub releases.
-const RELEASE_BASE_URL: &str =
-    "https://github.com/rookbot-io/rookbot/releases/latest/download";
+const RELEASE_BASE_URL: &str = "https://github.com/rookbot-io/rookbot/releases/latest/download";
 
 /// Trait for downloading RookBot binaries. Mockable for testing.
 #[async_trait]

@@ -160,10 +160,7 @@ impl AutoInstaller {
 
         match status {
             InstallationStatus::Installed { path, version } => {
-                info!(
-                    "RookBot already installed at {:?} (v{})",
-                    path, version
-                );
+                info!("RookBot already installed at {:?} (v{})", path, version);
                 return Ok(InstallResult::AlreadyInstalled { path, version });
             }
             InstallationStatus::Outdated {

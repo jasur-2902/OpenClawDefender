@@ -468,7 +468,10 @@ impl SmartAlertEngine {
         record.count += 1;
         record.last_dismissed = now;
 
-        debug!("Recorded dismissal for pattern {}: count {}", pattern, record.count);
+        debug!(
+            "Recorded dismissal for pattern {}: count {}",
+            pattern, record.count
+        );
 
         // Generate suggestion on 5th dismissal
         if record.count >= 5 && !record.suggested {

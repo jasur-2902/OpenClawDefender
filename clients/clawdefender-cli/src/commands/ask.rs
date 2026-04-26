@@ -77,7 +77,10 @@ pub async fn ask_question(question: &str) -> Result<()> {
     // Print response
     println!("{}", response.content);
     println!();
-    println!("(Tokens: {} in, {} out)", response.input_tokens, response.output_tokens);
+    println!(
+        "(Tokens: {} in, {} out)",
+        response.input_tokens, response.output_tokens
+    );
 
     Ok(())
 }

@@ -201,10 +201,7 @@ impl InvestigationStore {
     }
 
     /// List investigations from the index, optionally filtered.
-    pub fn list(
-        &self,
-        filter: Option<&InvestigationSearchQuery>,
-    ) -> Vec<InvestigationIndexEntry> {
+    pub fn list(&self, filter: Option<&InvestigationSearchQuery>) -> Vec<InvestigationIndexEntry> {
         let mut results: Vec<InvestigationIndexEntry> = self
             .index
             .entries
@@ -227,10 +224,7 @@ impl InvestigationStore {
     }
 
     /// Search investigations with full-text matching across narratives and answers.
-    pub fn search(
-        &self,
-        query: &InvestigationSearchQuery,
-    ) -> Result<Vec<InvestigationIndexEntry>> {
+    pub fn search(&self, query: &InvestigationSearchQuery) -> Result<Vec<InvestigationIndexEntry>> {
         let search_text = match &query.text {
             Some(t) if !t.is_empty() => t.to_lowercase(),
             _ => return Ok(self.list(Some(query))),
@@ -445,8 +439,8 @@ impl InvestigationParser {
         let tag_end = after.find(']')?;
         let tag = &after[..tag_end];
 
-        let verdict_type = parse_tag_quoted_attr(tag, "type")
-            .or_else(|| parse_tag_attr_simple(tag, "type"))?;
+        let verdict_type =
+            parse_tag_quoted_attr(tag, "type").or_else(|| parse_tag_attr_simple(tag, "type"))?;
         let confidence_str = parse_tag_attr_simple(tag, "confidence").unwrap_or_default();
         let confidence: f64 = confidence_str.parse().unwrap_or(0.5);
 
@@ -454,9 +448,7 @@ impl InvestigationParser {
             "falsepositive" | "false_positive" | "false positive" => Verdict::FalsePositive,
             "benign" => Verdict::Benign,
             "suspicious" => Verdict::Suspicious,
-            "confirmedthreat" | "confirmed_threat" | "confirmed threat" => {
-                Verdict::ConfirmedThreat
-            }
+            "confirmedthreat" | "confirmed_threat" | "confirmed threat" => Verdict::ConfirmedThreat,
             _ => return None,
         };
 
@@ -477,8 +469,7 @@ impl InvestigationParser {
             .unwrap_or(false);
         let blast_radius =
             parse_body_field(body, "blast_radius").unwrap_or_else(|| "unknown".to_string());
-        let severity =
-            parse_body_field(body, "severity").unwrap_or_else(|| "unknown".to_string());
+        let severity = parse_body_field(body, "severity").unwrap_or_else(|| "unknown".to_string());
 
         Some(ImpactAssessment {
             data_accessed,
@@ -573,9 +564,11 @@ impl InvestigationParser {
                     || line.starts_with("9.")
             })
             .map(|line| {
-                line.trim_start_matches(|c: char| c == '-' || c == '*' || c == '.' || c.is_ascii_digit())
-                    .trim()
-                    .to_string()
+                line.trim_start_matches(|c: char| {
+                    c == '-' || c == '*' || c == '.' || c.is_ascii_digit()
+                })
+                .trim()
+                .to_string()
             })
             .filter(|s| !s.is_empty())
             .collect()
@@ -782,7 +775,10 @@ fn render_investigation_markdown(result: &InvestigationResult) -> String {
         "**Date:** {}  \n",
         result.started_at.format("%B %d, %Y %H:%M UTC")
     ));
-    md.push_str(&format!("**Target:** {} ({})  \n", result.target_summary, result.target_type));
+    md.push_str(&format!(
+        "**Target:** {} ({})  \n",
+        result.target_summary, result.target_type
+    ));
     md.push_str(&format!(
         "**Verdict:** {:?} (confidence: {:.0}%)  \n",
         result.verdict,
@@ -951,7 +947,12 @@ mod tests {
         r1_updated.verdict = Verdict::ConfirmedThreat;
         store.save(&r1_updated).unwrap();
         assert_eq!(store.index.entries.len(), 2); // No duplicate
-        let entry = store.index.entries.iter().find(|e| e.id == "inv-001").unwrap();
+        let entry = store
+            .index
+            .entries
+            .iter()
+            .find(|e| e.id == "inv-001")
+            .unwrap();
         assert_eq!(entry.verdict, Verdict::ConfirmedThreat);
     }
 
@@ -1296,10 +1297,7 @@ RECOMMENDATIONS:
         assert!(answers.what_happened.contains("accessed sensitive files"));
         assert!(answers.why_it_happened.contains("prompt injection"));
         assert!(answers.part_of_larger.is_some());
-        assert!(answers
-            .part_of_larger
-            .unwrap()
-            .contains("reconnaissance"));
+        assert!(answers.part_of_larger.unwrap().contains("reconnaissance"));
         assert!(answers.impact_description.contains("system files"));
         assert_eq!(answers.recommendations.len(), 3);
         assert!(answers.recommendations[0].contains("Block access"));

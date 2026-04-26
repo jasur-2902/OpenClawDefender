@@ -62,7 +62,10 @@ pub fn run(config: &ClawConfig, out: &Output, ipc: &DaemonClient) -> Result<()> 
         if guard_reachable {
             out.kv("Guard API", &format!("running (http://{})", guard_addr));
         } else {
-            out.kv("Guard API", &format!("not reachable (http://{})", guard_addr));
+            out.kv(
+                "Guard API",
+                &format!("not reachable (http://{})", guard_addr),
+            );
         }
     } else {
         out.kv("Guard API", "disabled");

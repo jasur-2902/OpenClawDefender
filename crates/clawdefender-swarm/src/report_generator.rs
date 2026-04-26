@@ -201,10 +201,7 @@ impl ReportGenerator {
             "| Medium | {} |\n",
             report.risk_assessment.medium_count
         ));
-        md.push_str(&format!(
-            "| Low | {} |\n",
-            report.risk_assessment.low_count
-        ));
+        md.push_str(&format!("| Low | {} |\n", report.risk_assessment.low_count));
         md.push_str(&format!(
             "| Info | {} |\n\n",
             report.risk_assessment.info_count
@@ -214,10 +211,7 @@ impl ReportGenerator {
         if !report.findings.is_empty() {
             md.push_str("## Findings\n\n");
             for finding in &report.findings {
-                md.push_str(&format!(
-                    "### [{}] {}\n\n",
-                    finding.severity, finding.title
-                ));
+                md.push_str(&format!("### [{}] {}\n\n", finding.severity, finding.title));
                 md.push_str(&format!("**Stage:** {}  \n", finding.stage));
                 md.push_str(&format!("**Description:** {}  \n", finding.description));
                 if !finding.evidence_summary.is_empty() {
@@ -458,7 +452,8 @@ impl ReportGenerator {
 
     /// Compare two scan results to identify new, resolved, and persistent findings.
     pub fn compare_scans(current: &AiScanResult, previous: &AiScanResult) -> ScanComparison {
-        let current_titles: Vec<String> = current.findings.iter().map(|f| f.title.clone()).collect();
+        let current_titles: Vec<String> =
+            current.findings.iter().map(|f| f.title.clone()).collect();
         let previous_titles: Vec<String> =
             previous.findings.iter().map(|f| f.title.clone()).collect();
 
@@ -493,9 +488,7 @@ impl ReportGenerator {
 
         ScanComparison {
             previous_scan_id: previous.scan_id.clone(),
-            previous_scan_date: previous
-                .started_at
-                .clone(),
+            previous_scan_date: previous.started_at.clone(),
             new_findings,
             resolved_findings,
             persistent_findings,
@@ -509,9 +502,7 @@ impl ReportGenerator {
 // ---------------------------------------------------------------------------
 
 /// Build the risk assessment from scan findings.
-fn build_risk_assessment(
-    findings: &[crate::scan_orchestrator::ScanFinding],
-) -> RiskAssessment {
+fn build_risk_assessment(findings: &[crate::scan_orchestrator::ScanFinding]) -> RiskAssessment {
     let mut critical = 0u32;
     let mut high = 0u32;
     let mut medium = 0u32;
@@ -569,7 +560,8 @@ fn build_report_findings(
 
             let evidence_summary = build_evidence_summary(&f.id, &f.evidence_ids, evidence_data);
 
-            let remediation = find_remediation_for_finding(&f.id, &f.remediation_hint, remediations);
+            let remediation =
+                find_remediation_for_finding(&f.id, &f.remediation_hint, remediations);
 
             ReportFinding {
                 severity: severity.to_string(),
@@ -771,15 +763,16 @@ fn compute_risk_score(findings: &[crate::scan_orchestrator::ScanFinding]) -> u32
 /// Check if a title matches any title in a list (exact or substring match).
 fn titles_match_any(title: &str, candidates: &[String]) -> bool {
     let title_lower = title.to_lowercase();
-    candidates
-        .iter()
-        .any(|c| c.to_lowercase() == title_lower || c.to_lowercase().contains(&title_lower) || title_lower.contains(&c.to_lowercase()))
+    candidates.iter().any(|c| {
+        c.to_lowercase() == title_lower
+            || c.to_lowercase().contains(&title_lower)
+            || title_lower.contains(&c.to_lowercase())
+    })
 }
 
 /// Get the reports storage directory.
 fn reports_directory() -> PathBuf {
-    let home = std::env::var("HOME")
-        .unwrap_or_else(|_| ".".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home).join(".local/share/rookbot/reports")
 }
 
@@ -865,9 +858,7 @@ fn markdown_to_html(md: &str) -> String {
             }
             let content = &trimmed[2..];
             // Handle checkbox syntax
-            let content = content
-                .replace("[ ] ", "")
-                .replace("[x] ", "");
+            let content = content.replace("[ ] ", "").replace("[x] ", "");
             html.push_str(&format!("<li>{}</li>\n", apply_inline_formatting(&content)));
             continue;
         } else if in_list && trimmed.is_empty() {
@@ -891,11 +882,14 @@ fn markdown_to_html(md: &str) -> String {
 
 /// Apply severity badge CSS classes to [SEVERITY] tags in headings.
 fn apply_severity_badges(text: &str) -> String {
-    text.replace("[CRITICAL]", "<span class=\"severity-critical\">CRITICAL</span>")
-        .replace("[HIGH]", "<span class=\"severity-high\">HIGH</span>")
-        .replace("[MEDIUM]", "<span class=\"severity-medium\">MEDIUM</span>")
-        .replace("[LOW]", "<span class=\"severity-low\">LOW</span>")
-        .replace("[INFO]", "<span class=\"severity-info\">INFO</span>")
+    text.replace(
+        "[CRITICAL]",
+        "<span class=\"severity-critical\">CRITICAL</span>",
+    )
+    .replace("[HIGH]", "<span class=\"severity-high\">HIGH</span>")
+    .replace("[MEDIUM]", "<span class=\"severity-medium\">MEDIUM</span>")
+    .replace("[LOW]", "<span class=\"severity-low\">LOW</span>")
+    .replace("[INFO]", "<span class=\"severity-info\">INFO</span>")
 }
 
 /// Apply inline markdown formatting (bold, italic).
@@ -962,11 +956,26 @@ mod tests {
 
     fn make_test_scan_result(findings: Vec<ScanFinding>) -> AiScanResult {
         let total_findings = findings.len();
-        let critical_count = findings.iter().filter(|f| f.severity == FindingSeverity::Critical).count();
-        let high_count = findings.iter().filter(|f| f.severity == FindingSeverity::High).count();
-        let medium_count = findings.iter().filter(|f| f.severity == FindingSeverity::Medium).count();
-        let low_count = findings.iter().filter(|f| f.severity == FindingSeverity::Low).count();
-        let info_count = findings.iter().filter(|f| f.severity == FindingSeverity::Info).count();
+        let critical_count = findings
+            .iter()
+            .filter(|f| f.severity == FindingSeverity::Critical)
+            .count();
+        let high_count = findings
+            .iter()
+            .filter(|f| f.severity == FindingSeverity::High)
+            .count();
+        let medium_count = findings
+            .iter()
+            .filter(|f| f.severity == FindingSeverity::Medium)
+            .count();
+        let low_count = findings
+            .iter()
+            .filter(|f| f.severity == FindingSeverity::Low)
+            .count();
+        let info_count = findings
+            .iter()
+            .filter(|f| f.severity == FindingSeverity::Info)
+            .count();
         AiScanResult {
             scan_id: "scan-test-001".to_string(),
             playbook_id: "mcp_security_audit".to_string(),
@@ -1021,9 +1030,10 @@ mod tests {
             make_test_finding("FINDING-2", FindingSeverity::Medium, "Weak firewall rules"),
         ];
         let result = make_test_scan_result(findings);
-        let remediations = vec![
-            make_test_remediation("FINDING-1", "Restrict SSH key access"),
-        ];
+        let remediations = vec![make_test_remediation(
+            "FINDING-1",
+            "Restrict SSH key access",
+        )];
 
         let report = gen
             .generate(&result, None, &remediations, ReportFormat::Markdown, None)
@@ -1046,7 +1056,13 @@ mod tests {
         let custom = "This is a custom executive summary.".to_string();
 
         let report = gen
-            .generate(&result, None, &[], ReportFormat::Markdown, Some(custom.clone()))
+            .generate(
+                &result,
+                None,
+                &[],
+                ReportFormat::Markdown,
+                Some(custom.clone()),
+            )
             .unwrap();
 
         assert_eq!(report.executive_summary, custom);
@@ -1074,13 +1090,13 @@ mod tests {
     #[test]
     fn test_render_markdown_contains_sections() {
         let gen = ReportGenerator::new();
-        let findings = vec![
-            make_test_finding("FINDING-1", FindingSeverity::Critical, "Critical bug"),
-        ];
+        let findings = vec![make_test_finding(
+            "FINDING-1",
+            FindingSeverity::Critical,
+            "Critical bug",
+        )];
         let result = make_test_scan_result(findings);
-        let remediations = vec![
-            make_test_remediation("FINDING-1", "Fix critical bug"),
-        ];
+        let remediations = vec![make_test_remediation("FINDING-1", "Fix critical bug")];
 
         let report = gen
             .generate(&result, None, &remediations, ReportFormat::Markdown, None)
@@ -1122,9 +1138,11 @@ mod tests {
     #[test]
     fn test_render_html_structure() {
         let gen = ReportGenerator::new();
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::High, "HTML test finding"),
-        ];
+        let findings = vec![make_test_finding(
+            "F-1",
+            FindingSeverity::High,
+            "HTML test finding",
+        )];
         let result = make_test_scan_result(findings);
 
         let report = gen
@@ -1162,9 +1180,7 @@ mod tests {
 
     #[test]
     fn test_auto_generate_summary_critical() {
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::Critical, "Bad"),
-        ];
+        let findings = vec![make_test_finding("F-1", FindingSeverity::Critical, "Bad")];
         let result = make_test_scan_result(findings);
 
         let summary = auto_generate_summary(&result);
@@ -1174,9 +1190,11 @@ mod tests {
 
     #[test]
     fn test_auto_generate_summary_high() {
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::High, "Concerning"),
-        ];
+        let findings = vec![make_test_finding(
+            "F-1",
+            FindingSeverity::High,
+            "Concerning",
+        )];
         let result = make_test_scan_result(findings);
 
         let summary = auto_generate_summary(&result);
@@ -1186,9 +1204,7 @@ mod tests {
 
     #[test]
     fn test_auto_generate_summary_routine() {
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::Low, "Minor"),
-        ];
+        let findings = vec![make_test_finding("F-1", FindingSeverity::Low, "Minor")];
         let result = make_test_scan_result(findings);
 
         let summary = auto_generate_summary(&result);
@@ -1231,18 +1247,14 @@ mod tests {
 
     #[test]
     fn test_risk_assessment_medium() {
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::Medium, "A"),
-        ];
+        let findings = vec![make_test_finding("F-1", FindingSeverity::Medium, "A")];
         let ra = build_risk_assessment(&findings);
         assert_eq!(ra.overall_level, "MEDIUM");
     }
 
     #[test]
     fn test_risk_assessment_info_only() {
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::Info, "A"),
-        ];
+        let findings = vec![make_test_finding("F-1", FindingSeverity::Info, "A")];
         let ra = build_risk_assessment(&findings);
         assert_eq!(ra.overall_level, "INFO");
         assert_eq!(ra.info_count, 1);
@@ -1290,9 +1302,11 @@ mod tests {
 
     #[test]
     fn test_remediation_plan_no_remediations() {
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::High, "Something bad"),
-        ];
+        let findings = vec![make_test_finding(
+            "F-1",
+            FindingSeverity::High,
+            "Something bad",
+        )];
 
         let plan = build_remediation_plan(&findings, &[]);
 
@@ -1309,9 +1323,11 @@ mod tests {
             make_test_finding("F-1", FindingSeverity::High, "Existing issue"),
             make_test_finding("F-2", FindingSeverity::Medium, "Brand new issue"),
         ]);
-        let previous = make_test_scan_result(vec![
-            make_test_finding("F-1", FindingSeverity::High, "Existing issue"),
-        ]);
+        let previous = make_test_scan_result(vec![make_test_finding(
+            "F-1",
+            FindingSeverity::High,
+            "Existing issue",
+        )]);
 
         let cmp = ReportGenerator::compare_scans(&current, &previous);
 
@@ -1325,9 +1341,11 @@ mod tests {
 
     #[test]
     fn test_compare_scans_resolved_findings() {
-        let current = make_test_scan_result(vec![
-            make_test_finding("F-1", FindingSeverity::Low, "Minor thing"),
-        ]);
+        let current = make_test_scan_result(vec![make_test_finding(
+            "F-1",
+            FindingSeverity::Low,
+            "Minor thing",
+        )]);
         let previous = make_test_scan_result(vec![
             make_test_finding("F-1", FindingSeverity::High, "Major issue"),
             make_test_finding("F-2", FindingSeverity::Low, "Minor thing"),
@@ -1343,9 +1361,11 @@ mod tests {
 
     #[test]
     fn test_compare_scans_stable() {
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::Medium, "Same issue"),
-        ];
+        let findings = vec![make_test_finding(
+            "F-1",
+            FindingSeverity::Medium,
+            "Same issue",
+        )];
         let current = make_test_scan_result(findings.clone());
         let previous = make_test_scan_result(findings);
 
@@ -1375,9 +1395,11 @@ mod tests {
     #[test]
     fn test_save_and_load_report() {
         let gen = ReportGenerator::new();
-        let result = make_test_scan_result(vec![
-            make_test_finding("F-1", FindingSeverity::Medium, "Test finding"),
-        ]);
+        let result = make_test_scan_result(vec![make_test_finding(
+            "F-1",
+            FindingSeverity::Medium,
+            "Test finding",
+        )]);
 
         let report = gen
             .generate(&result, None, &[], ReportFormat::Markdown, None)
@@ -1415,9 +1437,11 @@ mod tests {
         let reports_dir = tmp.path();
 
         let gen = ReportGenerator::new();
-        let result = make_test_scan_result(vec![
-            make_test_finding("F-1", FindingSeverity::High, "Found something"),
-        ]);
+        let result = make_test_scan_result(vec![make_test_finding(
+            "F-1",
+            FindingSeverity::High,
+            "Found something",
+        )]);
         let report = gen
             .generate(&result, None, &[], ReportFormat::Markdown, None)
             .unwrap();
@@ -1438,9 +1462,11 @@ mod tests {
     #[test]
     fn test_report_no_evidence_no_remediations() {
         let gen = ReportGenerator::new();
-        let findings = vec![
-            make_test_finding("F-1", FindingSeverity::Info, "Informational"),
-        ];
+        let findings = vec![make_test_finding(
+            "F-1",
+            FindingSeverity::Info,
+            "Informational",
+        )];
         // Clear evidence_ids
         let mut result = make_test_scan_result(findings);
         result.findings[0].evidence_ids.clear();
@@ -1458,9 +1484,11 @@ mod tests {
     #[test]
     fn test_report_serde_roundtrip() {
         let gen = ReportGenerator::new();
-        let result = make_test_scan_result(vec![
-            make_test_finding("F-1", FindingSeverity::High, "Test"),
-        ]);
+        let result = make_test_scan_result(vec![make_test_finding(
+            "F-1",
+            FindingSeverity::High,
+            "Test",
+        )]);
 
         let report = gen
             .generate(&result, None, &[], ReportFormat::Markdown, None)
@@ -1569,7 +1597,8 @@ mod tests {
 
     #[test]
     fn test_evidence_summary_without_chain_data() {
-        let summary = build_evidence_summary("F-1", &["ev-1".to_string(), "ev-2".to_string()], None);
+        let summary =
+            build_evidence_summary("F-1", &["ev-1".to_string(), "ev-2".to_string()], None);
         assert!(summary.contains("2 evidence item(s)"));
         assert!(summary.contains("ev-1"));
     }
