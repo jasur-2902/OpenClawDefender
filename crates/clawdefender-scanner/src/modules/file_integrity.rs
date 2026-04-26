@@ -411,7 +411,6 @@ fn violations_to_findings(violations: Vec<IntegrityViolation>) -> Vec<Finding> {
 
         let prefix = severity.finding_id_prefix();
         let id = format!("FIM-{prefix}-{:03}", id_counter);
-        id_counter += 1;
 
         let cvss_vec = match severity {
             Severity::High => CvssVector {

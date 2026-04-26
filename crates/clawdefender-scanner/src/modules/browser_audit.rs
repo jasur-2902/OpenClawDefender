@@ -1061,9 +1061,7 @@ pub fn detect_login_anomalies(
 fn audit_browser_extensions() -> Vec<Finding> {
     let extensions = enumerate_all_extensions();
     let mut findings = Vec::new();
-    let mut id_counter: u32 = 1;
-
-    for ext in &extensions {
+    for (id_counter, ext) in (1_u32..).zip(extensions.iter()) {
         let risk = assess_extension_risk(ext);
         // Only report Medium+ risks as findings (or Info for known-malicious)
         if risk.risk_level < Severity::Low {
@@ -1072,7 +1070,6 @@ fn audit_browser_extensions() -> Vec<Finding> {
 
         let prefix = risk.risk_level.finding_id_prefix();
         let id = format!("BROWEXT-{prefix}-{:03}", id_counter);
-        id_counter += 1;
 
         let title = format!(
             "{} extension: {} ({})",
