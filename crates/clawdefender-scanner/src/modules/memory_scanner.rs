@@ -164,7 +164,7 @@ fn select_scan_targets() -> Vec<ProcessTarget> {
         }
 
         // Skip our own process
-        if name.contains("clawdefender") || name.contains("ClawDefender") {
+        if name.contains("clawdefender") || name.contains("RookBot") {
             continue;
         }
 

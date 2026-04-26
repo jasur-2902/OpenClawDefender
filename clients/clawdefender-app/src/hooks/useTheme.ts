@@ -15,7 +15,7 @@ function resolveTheme(setting: ThemeSetting): "light" | "dark" {
 
 function applyTheme(effective: "light" | "dark") {
   document.documentElement.setAttribute("data-theme", effective);
-  localStorage.setItem("clawdefender-theme-effective", effective);
+  localStorage.setItem("rookbot-theme-effective", effective);
 }
 
 export function useTheme() {
@@ -27,11 +27,11 @@ export function useTheme() {
       .then((s) => {
         settingRef.current = s.theme;
         applyTheme(resolveTheme(s.theme));
-        localStorage.setItem("clawdefender-theme-setting", s.theme);
+        localStorage.setItem("rookbot-theme-setting", s.theme);
       })
       .catch(() => {
         // Use cached setting from localStorage
-        const cached = localStorage.getItem("clawdefender-theme-setting") as ThemeSetting | null;
+        const cached = localStorage.getItem("rookbot-theme-setting") as ThemeSetting | null;
         if (cached) {
           settingRef.current = cached;
           applyTheme(resolveTheme(cached));
@@ -43,10 +43,10 @@ export function useTheme() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
-    listen<ThemeSetting>("clawdefender://theme-changed", (event) => {
+    listen<ThemeSetting>("rookbot://theme-changed", (event) => {
       settingRef.current = event.payload;
       applyTheme(resolveTheme(event.payload));
-      localStorage.setItem("clawdefender-theme-setting", event.payload);
+      localStorage.setItem("rookbot-theme-setting", event.payload);
     }).then((fn) => {
       unlisten = fn;
     });

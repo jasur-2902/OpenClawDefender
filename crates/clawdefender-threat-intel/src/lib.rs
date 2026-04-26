@@ -1,4 +1,4 @@
-//! Threat intelligence feed client for ClawDefender.
+//! Threat intelligence feed client for RookBot.
 //!
 //! This crate provides:
 //! - Feed format type definitions (manifest, blocklist, rules, patterns, IoCs, profiles)

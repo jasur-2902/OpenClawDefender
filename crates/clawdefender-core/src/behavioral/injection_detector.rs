@@ -464,7 +464,7 @@ impl InjectionDetector {
 
     /// Returns the safe replacement content for blocked messages.
     pub fn blocked_content() -> &'static str {
-        "Content blocked by ClawDefender due to suspected prompt injection."
+        "Content blocked by RookBot due to suspected prompt injection."
     }
 
     /// Returns the current threshold.
@@ -842,7 +842,7 @@ mod tests {
     #[test]
     fn test_blocked_content_message() {
         let msg = InjectionDetector::blocked_content();
-        assert!(msg.contains("ClawDefender"));
+        assert!(msg.contains("RookBot"));
         assert!(msg.contains("blocked"));
     }
 

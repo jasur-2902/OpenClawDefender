@@ -1,4 +1,4 @@
-//! Security-focused integration tests for ClawDefender core.
+//! Security-focused integration tests for RookBot core.
 //!
 //! These tests verify that security hardening measures work correctly,
 //! including path canonicalization, regex protection, and rate limiting.

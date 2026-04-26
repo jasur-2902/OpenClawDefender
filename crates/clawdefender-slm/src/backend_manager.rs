@@ -13,7 +13,8 @@ use tracing::warn;
 use crate::SlmService;
 use crate::engine::{SlmResponse, SlmStats};
 use crate::task_router::{
-    RateLimitStatus, RoutingDecision as TaskRoutingDecision, RoutingPreferences, TaskRouter,
+    FeatureRoutingConfig, RateLimitStatus, RoutingDecision as TaskRoutingDecision,
+    RoutingPreferences, TaskRouter,
 };
 
 /// Manages two independent AI backends: local SLM (always-on, fast)
@@ -525,6 +526,16 @@ impl AiBackendManager {
     /// Get rate limit status for cloud calls.
     pub fn get_rate_limit_status(&self) -> RateLimitStatus {
         self.router.rate_limit_status()
+    }
+
+    /// Update per-feature routing configuration.
+    pub fn update_feature_routing(&self, config: FeatureRoutingConfig) {
+        self.router.update_feature_routing(config);
+    }
+
+    /// Get current per-feature routing configuration.
+    pub fn get_feature_routing(&self) -> FeatureRoutingConfig {
+        self.router.get_feature_routing()
     }
 }
 

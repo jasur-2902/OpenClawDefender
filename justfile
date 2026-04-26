@@ -27,22 +27,22 @@ build-release: release
 
 # Build release and install both binaries to /usr/local/bin
 install: release
-    cp target/release/clawdefender /usr/local/bin/
-    cp target/release/clawdefender-daemon /usr/local/bin/
+    cp target/release/clawdefender /usr/local/bin/rookbot
+    cp target/release/clawdefender-daemon /usr/local/bin/rookbot-daemon
 
 # Build release, install to /usr/local/bin, and run init
 install-local: release
-    cp target/release/clawdefender /usr/local/bin/
-    cp target/release/clawdefender-daemon /usr/local/bin/
-    clawdefender init
+    cp target/release/clawdefender /usr/local/bin/rookbot
+    cp target/release/clawdefender-daemon /usr/local/bin/rookbot-daemon
+    rookbot init
 
 # Build release tarball and checksum (for local packaging)
 package: release
     mkdir -p dist
-    cp target/release/clawdefender dist/clawdefender
-    cp target/release/clawdefender-daemon dist/clawdefender-daemon
-    cd dist && tar czf clawdefender-macos-$(uname -m).tar.gz clawdefender clawdefender-daemon
-    cd dist && shasum -a 256 clawdefender-macos-$(uname -m).tar.gz > clawdefender-macos-$(uname -m).tar.gz.sha256
+    cp target/release/clawdefender dist/rookbot
+    cp target/release/clawdefender-daemon dist/rookbot-daemon
+    cd dist && tar czf rookbot-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz rookbot rookbot-daemon
+    cd dist && shasum -a 256 rookbot-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz > rookbot-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz.sha256
     @echo "Package created in dist/"
 
 # Run integration tests (builds workspace first, then runs e2e + policy fixture tests)
@@ -84,10 +84,12 @@ bump-version VERSION:
     sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' tests/mock-eslogger/Cargo.toml
     # tauri.conf.json
     sed -i '' 's/"version": ".*"/"version": "{{VERSION}}"/' clients/clawdefender-app/src-tauri/tauri.conf.json
-    # package.json
+    # package.json (Tauri app)
     cd clients/clawdefender-app && npm version "{{VERSION}}" --no-git-tag-version --allow-same-version
+    # npm package
+    cd npm && npm version "{{VERSION}}" --no-git-tag-version --allow-same-version
     # Homebrew formula and cask
-    sed -i '' 's/version ".*"/version "{{VERSION}}"/' Formula/clawdefender.rb
+    sed -i '' 's/version ".*"/version "{{VERSION}}"/' Formula/rookbot.rb
     sed -i '' 's/version ".*"/version "{{VERSION}}"/' Homebrew/clawdefender-app.rb
     # Network extension Info.plist
     sed -i '' 's|<string>[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[^<]*</string>|<string>{{VERSION}}</string>|' extensions/clawdefender-network/Info.plist
@@ -119,13 +121,13 @@ dev-app:
 build-sidecar:
     cargo build -p clawdefender-daemon --release
     mkdir -p clients/clawdefender-app/src-tauri/binaries
-    cp target/release/clawdefender-daemon clients/clawdefender-app/src-tauri/binaries/clawdefender-daemon-$(rustc -vV | grep host | cut -d' ' -f2)
+    cp target/release/clawdefender-daemon clients/clawdefender-app/src-tauri/binaries/rookbot-daemon-$(rustc -vV | grep host | cut -d' ' -f2)
 
 # Build the .dmg installer
 build-dmg:
     cargo build -p clawdefender-daemon --release
     mkdir -p clients/clawdefender-app/src-tauri/binaries
-    cp target/release/clawdefender-daemon "clients/clawdefender-app/src-tauri/binaries/clawdefender-daemon-$(rustc -vV | grep host | cut -d' ' -f2)"
+    cp target/release/clawdefender-daemon "clients/clawdefender-app/src-tauri/binaries/rookbot-daemon-$(rustc -vV | grep host | cut -d' ' -f2)"
     cd clients/clawdefender-app && npm install && cargo tauri build
 
 # Build .dmg for a specific target (e.g., aarch64-apple-darwin or x86_64-apple-darwin)

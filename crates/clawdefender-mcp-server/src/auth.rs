@@ -1,7 +1,7 @@
 //! HTTP authentication for the MCP server.
 //!
 //! On daemon startup a random 256-bit token is generated and written to
-//! `~/.local/share/clawdefender/server-token`.  HTTP clients must present
+//! `~/.local/share/rookbot/server-token`.  HTTP clients must present
 //! this token via `Authorization: Bearer <token>`.
 
 use std::fs;

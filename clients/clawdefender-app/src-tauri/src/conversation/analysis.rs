@@ -1,4 +1,4 @@
-//! Drag-and-drop file, URL, and config analysis for Ask Claw.
+//! Drag-and-drop file, URL, and config analysis for Ask Rook.
 //!
 //! All analysis is read-only — files are never executed, URLs are never fetched.
 //! Content is sanitized before any SLM interaction.

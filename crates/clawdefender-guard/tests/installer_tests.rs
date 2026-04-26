@@ -1,4 +1,4 @@
-//! Integration tests for the ClawDefender auto-installer system.
+//! Integration tests for the RookBot auto-installer system.
 
 use clawdefender_guard::installer::{
     detect::{self, InstallationStatus},
@@ -161,7 +161,7 @@ async fn test_fallback_mode_skips_install() {
     let installer = AutoInstaller::new(Box::new(downloader), ConsentMode::FallbackOnly);
     let tmp = TempDir::new().unwrap();
     let installer = installer
-        .with_base_dir(tmp.path().join(".clawdefender"))
+        .with_base_dir(tmp.path().join(".rookbot"))
         .with_shell_config(tmp.path().join(".zshrc"));
 
     let result = installer.install().await.unwrap();
@@ -177,7 +177,7 @@ fn test_metadata_write_and_read() {
 
     let meta = InstallMetadata::new(
         "0.1.0",
-        Path::new("/home/user/.clawdefender/bin/clawdefender"),
+        Path::new("/home/user/.rookbot/bin/clawdefender"),
         "macos-arm64",
     );
     meta.write_to(&meta_path).unwrap();
@@ -188,7 +188,7 @@ fn test_metadata_write_and_read() {
     assert_eq!(loaded.install_method, "auto");
     assert_eq!(
         loaded.install_path,
-        "/home/user/.clawdefender/bin/clawdefender"
+        "/home/user/.rookbot/bin/clawdefender"
     );
 }
 
@@ -225,7 +225,7 @@ fn test_path_addition_to_shell_config() {
     std::fs::write(&config_path, "# existing config\nexport FOO=bar\n").unwrap();
 
     // Simulate adding PATH (replicate what AutoInstaller does)
-    let path_line = format!("export PATH=\"$HOME/.clawdefender/bin:$PATH\" {PATH_MARKER}");
+    let path_line = format!("export PATH=\"$HOME/.rookbot/bin:$PATH\" {PATH_MARKER}");
     let mut content = std::fs::read_to_string(&config_path).unwrap();
     content.push_str(&path_line);
     content.push('\n');
@@ -234,7 +234,7 @@ fn test_path_addition_to_shell_config() {
     // Verify it was added
     let final_content = std::fs::read_to_string(&config_path).unwrap();
     assert!(final_content.contains(PATH_MARKER));
-    assert!(final_content.contains(".clawdefender/bin"));
+    assert!(final_content.contains(".rookbot/bin"));
 }
 
 #[test]
@@ -243,7 +243,7 @@ fn test_path_removal_from_shell_config() {
     let config_path = tmp.path().join(".zshrc");
 
     let content = format!(
-        "# existing config\nexport FOO=bar\nexport PATH=\"$HOME/.clawdefender/bin:$PATH\" {PATH_MARKER}\n"
+        "# existing config\nexport FOO=bar\nexport PATH=\"$HOME/.rookbot/bin:$PATH\" {PATH_MARKER}\n"
     );
     std::fs::write(&config_path, &content).unwrap();
 
@@ -279,7 +279,7 @@ fn test_path_removal_nonexistent_file() {
 #[tokio::test]
 async fn test_full_install_with_mock() {
     let tmp = TempDir::new().unwrap();
-    let base_dir = tmp.path().join(".clawdefender");
+    let base_dir = tmp.path().join(".rookbot");
     let shell_config = tmp.path().join(".zshrc");
 
     // Create initial shell config
@@ -297,7 +297,7 @@ async fn test_full_install_with_mock() {
     match result {
         InstallResult::Installed { path, version } => {
             assert_eq!(version, "0.1.0");
-            assert!(path.to_string_lossy().contains(".clawdefender/bin"));
+            assert!(path.to_string_lossy().contains(".rookbot/bin"));
             // Binary should exist
             assert!(path.exists());
             // Metadata should exist
@@ -313,7 +313,7 @@ async fn test_full_install_with_mock() {
 #[tokio::test]
 async fn test_install_already_installed() {
     let tmp = TempDir::new().unwrap();
-    let base_dir = tmp.path().join(".clawdefender");
+    let base_dir = tmp.path().join(".rookbot");
     let bin_dir = base_dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
 
@@ -343,7 +343,7 @@ async fn test_install_already_installed() {
 #[tokio::test]
 async fn test_rollback_on_download_failure() {
     let tmp = TempDir::new().unwrap();
-    let base_dir = tmp.path().join(".clawdefender");
+    let base_dir = tmp.path().join(".rookbot");
     let shell_config = tmp.path().join(".zshrc");
     std::fs::write(&shell_config, "# config\n").unwrap();
 
@@ -368,7 +368,7 @@ async fn test_rollback_on_download_failure() {
 #[test]
 fn test_uninstall_removes_binary_and_path() {
     let tmp = TempDir::new().unwrap();
-    let base_dir = tmp.path().join(".clawdefender");
+    let base_dir = tmp.path().join(".rookbot");
     let bin_dir = base_dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
 
@@ -402,7 +402,7 @@ fn test_uninstall_removes_binary_and_path() {
 #[test]
 fn test_uninstall_with_config_removal() {
     let tmp = TempDir::new().unwrap();
-    let base_dir = tmp.path().join(".clawdefender");
+    let base_dir = tmp.path().join(".rookbot");
     let bin_dir = base_dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
 

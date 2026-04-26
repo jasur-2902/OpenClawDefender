@@ -1,7 +1,7 @@
 //! Level 1 (Transparent) certification tests.
 //!
 //! Verifies that the MCP server survives adversarial conditions introduced
-//! by the ClawDefender proxy: blocked calls, prompt delays, added latency.
+//! by the RookBot proxy: blocked calls, prompt delays, added latency.
 
 use std::time::Duration;
 

@@ -92,7 +92,7 @@ function routeEvent(data: RoutingEvent) {
     return;
   }
 
-  // Priority 1: Policy prompt — handled by PromptContainer via clawdefender://prompt event
+  // Priority 1: Policy prompt — handled by PromptContainer via rookbot://prompt event
   // No routing needed here since prompts go through eventStore.addPrompt
 
   // Priority 2: Dangerous alert
@@ -155,17 +155,17 @@ export function startNotificationRouter(): () => void {
   const unlisteners: UnlistenFn[] = [];
 
   // Listen for humanized events
-  listen<HumanizedEvent>("clawdefender://humanized-event", (e) => {
+  listen<HumanizedEvent>("rookbot://humanized-event", (e) => {
     routeEvent({ event: e.payload });
   }).then((fn) => unlisteners.push(fn));
 
   // Listen for intelligent alerts
-  listen<IntelligentAlert>("clawdefender://intelligent-alert", (e) => {
+  listen<IntelligentAlert>("rookbot://intelligent-alert", (e) => {
     routeEvent({ alert: e.payload });
   }).then((fn) => unlisteners.push(fn));
 
   // Listen for legacy alert events (backward compatibility)
-  listen<IntelligentAlert>("clawdefender://alert", (e) => {
+  listen<IntelligentAlert>("rookbot://alert", (e) => {
     routeEvent({
       alert: {
         id: e.payload.id,

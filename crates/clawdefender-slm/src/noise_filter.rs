@@ -152,7 +152,7 @@ impl Default for NoiseFilter {
 
 impl NoiseFilter {
     /// Create a new noise filter with built-in profiles and optional custom
-    /// rules from the config file at `~/.config/clawdefender/noise.toml`.
+    /// rules from the config file at `~/.config/rookbot/noise.toml`.
     pub fn new() -> Self {
         let profiles = builtin_profiles()
             .into_iter()

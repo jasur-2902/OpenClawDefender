@@ -1,4 +1,4 @@
-//! OpenAPI 3.1 specification for the ClawDefender Guard REST API.
+//! OpenAPI 3.1 specification for the RookBot Guard REST API.
 
 /// Return the OpenAPI 3.1 YAML specification as a string.
 pub fn openapi_spec() -> &'static str {

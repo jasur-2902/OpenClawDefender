@@ -47,10 +47,13 @@ use crate::engine::{HeuristicSlmBackend, RiskLevel, SlmBackend, SlmConfig, SlmEn
 pub use backend_manager::{
     AiBackendManager, AiRequest, AiResponse, AiStatus, BackendStatus, LocalModelInfo, TaskType,
 };
-pub use task_router::{RateLimitStatus, RoutingDecision, RoutingPreferences, TaskRouter};
+pub use task_router::{
+    AiFeature, FeatureBackendPreference, FeatureRoutingConfig, RateLimitStatus, RoutingDecision,
+    RoutingPreferences, TaskRouter,
+};
 
 /// Top-level service that owns the SLM engine and exposes a simple API
-/// for the rest of ClawDefender.
+/// for the rest of RookBot.
 ///
 /// Supports an automatic fallback chain: if the primary engine fails,
 /// the service tries the fallback engine before giving up.
@@ -353,7 +356,7 @@ impl SlmService {
                 if stats.using_gpu { "GPU" } else { "CPU" }
             )
         } else {
-            "No model loaded - place a GGUF model in ~/.local/share/clawdefender/models/"
+            "No model loaded - place a GGUF model in ~/.local/share/rookbot/models/"
                 .to_string()
         }
     }

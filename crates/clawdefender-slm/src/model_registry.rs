@@ -294,7 +294,7 @@ pub struct CloudModel {
     pub cost_per_1k_input: f64,
     /// Cost per 1K output tokens (USD).
     pub cost_per_1k_output: f64,
-    /// Whether this model is recommended for ClawDefender.
+    /// Whether this model is recommended for RookBot.
     pub recommended: bool,
 }
 
@@ -349,18 +349,25 @@ pub fn cloud_providers() -> Vec<CloudProvider> {
             api_endpoint: "https://generativelanguage.googleapis.com/v1beta".into(),
             models: vec![
                 CloudModel {
-                    id: "gemini-2.0-flash".into(),
-                    display_name: "Gemini Flash".into(),
-                    cost_per_1k_input: 0.0001,
-                    cost_per_1k_output: 0.0004,
+                    id: "gemini-3-flash-preview".into(),
+                    display_name: "Gemini 3 Flash".into(),
+                    cost_per_1k_input: 0.0005,    // $0.50/M
+                    cost_per_1k_output: 0.003,     // $3.00/M
+                    recommended: true,
+                },
+                CloudModel {
+                    id: "gemini-2.5-flash".into(),
+                    display_name: "Gemini 2.5 Flash".into(),
+                    cost_per_1k_input: 0.0003,    // $0.30/M
+                    cost_per_1k_output: 0.0025,    // $2.50/M
                     recommended: false,
                 },
                 CloudModel {
                     id: "gemini-2.5-pro".into(),
-                    display_name: "Gemini Pro".into(),
+                    display_name: "Gemini 2.5 Pro".into(),
                     cost_per_1k_input: 0.00125,
                     cost_per_1k_output: 0.01,
-                    recommended: true,
+                    recommended: false,
                 },
             ],
         },

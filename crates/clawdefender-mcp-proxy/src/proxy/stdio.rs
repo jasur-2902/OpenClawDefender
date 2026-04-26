@@ -537,7 +537,7 @@ impl StdioProxy {
                         self.metrics.inc_blocked();
                         if let Some(id) = request_id(&msg) {
                             let block_resp =
-                                make_block_response(&id, "Blocked by ClawDefender policy", None);
+                                make_block_response(&id, "Blocked by RookBot policy", None);
                             let bytes = serialize_message(&block_resp);
                             proxy_writer.write_all(&bytes).await?;
                             proxy_writer.flush().await?;
@@ -620,7 +620,7 @@ impl StdioProxy {
                                                 // Deny or timeout
                                                 let block_resp = make_block_response(
                                                     &id,
-                                                    &format!("ClawDefender: {prompt_msg}"),
+                                                    &format!("RookBot: {prompt_msg}"),
                                                     None,
                                                 );
                                                 let bytes = serialize_message(&block_resp);
@@ -637,7 +637,7 @@ impl StdioProxy {
                                         if let Some(id) = request_id(&msg) {
                                             let block_resp = make_block_response(
                                                 &id,
-                                                &format!("ClawDefender: {prompt_msg}"),
+                                                &format!("RookBot: {prompt_msg}"),
                                                 None,
                                             );
                                             let bytes = serialize_message(&block_resp);
@@ -813,7 +813,7 @@ async fn handle_client_message(
                     metrics.inc_blocked();
                     if let Some(id) = request_id(&raw_msg.parsed) {
                         let block_resp =
-                            make_block_response(&id, "Blocked by ClawDefender policy", None);
+                            make_block_response(&id, "Blocked by RookBot policy", None);
                         let bytes = serialize_message(&block_resp);
                         client_tx
                             .send(bytes)
@@ -834,7 +834,7 @@ async fn handle_client_message(
                             if let Some(id) = request_id(&raw_msg.parsed) {
                                 let block_resp = make_block_response(
                                     &id,
-                                    "ClawDefender: too many pending prompts",
+                                    "RookBot: too many pending prompts",
                                     None,
                                 );
                                 let bytes = serialize_message(&block_resp);
@@ -963,7 +963,7 @@ async fn handle_client_message(
                                     if let Some(ref id) = id {
                                         let block_resp = make_block_response(
                                             id,
-                                            &format!("ClawDefender: {prompt_msg}"),
+                                            &format!("RookBot: {prompt_msg}"),
                                             None,
                                         );
                                         let bytes = serialize_message(&block_resp);
@@ -1587,7 +1587,7 @@ fn build_audit_record_from_swarm_event(
     }
 }
 
-/// Return the default audit log path (~/.local/share/clawdefender/audit.jsonl).
+/// Return the default audit log path (~/.local/share/rookbot/audit.jsonl).
 ///
 /// Security: The returned path is under the user's home directory. The caller
 /// (FileAuditLogger) creates the file with O_APPEND which is safe, but we
@@ -1595,7 +1595,7 @@ fn build_audit_record_from_swarm_event(
 fn default_audit_log_path() -> PathBuf {
     let path = if let Some(home) = std::env::var_os("HOME") {
         PathBuf::from(home)
-            .join(".local/share/clawdefender/audit.jsonl")
+            .join(".local/share/rookbot/audit.jsonl")
     } else {
         PathBuf::from("/tmp/clawdefender-audit.jsonl")
     };
@@ -1705,7 +1705,7 @@ any = true
     fn test_make_block_response_with_rule_data() {
         let resp = make_block_response(
             &JsonRpcId::Number(1),
-            "ClawDefender: exec blocked",
+            "RookBot: exec blocked",
             Some(("block_exec", "blocked")),
         );
         match resp {

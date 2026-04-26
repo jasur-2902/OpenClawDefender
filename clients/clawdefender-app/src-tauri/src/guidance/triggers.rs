@@ -136,15 +136,15 @@ fn emit_guidance(app: &AppHandle, milestone: &GuidanceMilestone) {
     let delivery = &milestone.delivery;
 
     if delivery.contains("toast") {
-        let _ = app.emit("clawdefender://guidance-toast", &event);
+        let _ = app.emit("rookbot://guidance-toast", &event);
     }
     if delivery.contains("claw_message") {
-        let _ = app.emit("clawdefender://guidance-claw-message", &event);
+        let _ = app.emit("rookbot://guidance-claw-message", &event);
     }
     if delivery.contains("inline_hint") {
-        let _ = app.emit("clawdefender://guidance-hint", &event);
+        let _ = app.emit("rookbot://guidance-hint", &event);
     }
     if delivery.contains("prompt_overlay") {
-        let _ = app.emit("clawdefender://guidance-overlay", &event);
+        let _ = app.emit("rookbot://guidance-overlay", &event);
     }
 }

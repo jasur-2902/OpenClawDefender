@@ -27,26 +27,26 @@ export function NotificationLayer() {
     },
     [addPrompt]
   );
-  useTauriEvent<PendingPrompt>("clawdefender://prompt", handlePrompt);
+  useTauriEvent<PendingPrompt>("rookbot://prompt", handlePrompt);
 
   // Listen for auto-block events
   const handleAutoBlock = useCallback((payload: AutoBlockInfo) => {
     setToasts((prev) => [...prev, payload]);
   }, []);
-  useTauriEvent<AutoBlockInfo>("clawdefender://auto-block", handleAutoBlock);
+  useTauriEvent<AutoBlockInfo>("rookbot://auto-block", handleAutoBlock);
 
   // Listen for alert events
   const handleAlert = useCallback((payload: AlertData) => {
     setAlerts((prev) => [...prev, payload]);
   }, []);
-  useTauriEvent<AlertData>("clawdefender://alert", handleAlert);
+  useTauriEvent<AlertData>("rookbot://alert", handleAlert);
 
   // Listen for intelligent-alert events (from Agent 2's alert engine)
   const handleIntelligentAlert = useCallback(() => {
     fetchAlerts();
     fetchStats();
   }, [fetchAlerts, fetchStats]);
-  useTauriEvent<IntelligentAlert>("clawdefender://intelligent-alert", handleIntelligentAlert);
+  useTauriEvent<IntelligentAlert>("rookbot://intelligent-alert", handleIntelligentAlert);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

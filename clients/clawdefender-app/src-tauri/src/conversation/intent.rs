@@ -109,7 +109,7 @@ const INTENT_RULES: &[KeywordRule] = &[
         exact_phrases: &[
             "is the daemon running",
             "daemon status",
-            "is clawdefender running",
+            "is rookbot running",
             "service status",
             "is protection active",
             "are you running",
@@ -1033,7 +1033,7 @@ mod tests {
         for msg in &[
             "Is the daemon running?",
             "Daemon status",
-            "Is ClawDefender running?",
+            "Is RookBot running?",
             "Service status",
             "Is protection active?",
             "Are you running?",

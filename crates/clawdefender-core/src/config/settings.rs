@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-/// Top-level ClawDefender configuration, loaded from a TOML file.
+/// Top-level RookBot configuration, loaded from a TOML file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClawConfig {
     /// Path to the Unix domain socket for daemon-UI IPC.
@@ -255,7 +255,7 @@ pub struct ThreatIntelConfig {
 }
 
 fn default_feed_url() -> String {
-    "https://feed.clawdefender.io/v1/".to_string()
+    "https://feed.rookbot.io/v1/".to_string()
 }
 
 fn default_update_interval_hours() -> u64 {
@@ -301,7 +301,7 @@ impl Default for GuardApiConfig {
     }
 }
 
-/// Configuration for the ClawDefender MCP server.
+/// Configuration for the RookBot MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     /// Whether the MCP server is enabled.
@@ -619,19 +619,19 @@ pub struct UiConfig {
 // --- Default value functions ---
 
 fn default_socket_path() -> PathBuf {
-    dirs_next_fallback(".local/share/clawdefender/clawdefender.sock")
+    dirs_next_fallback(".local/share/rookbot/rookbot.sock")
 }
 
 fn default_audit_log_path() -> PathBuf {
-    dirs_next_fallback(".local/share/clawdefender/audit.jsonl")
+    dirs_next_fallback(".local/share/rookbot/audit.jsonl")
 }
 
 fn default_policy_path() -> PathBuf {
-    dirs_next_fallback(".config/clawdefender/policy.toml")
+    dirs_next_fallback(".config/rookbot/policy.toml")
 }
 
 fn default_sensor_config_path() -> PathBuf {
-    dirs_next_fallback(".config/clawdefender/sensor.toml")
+    dirs_next_fallback(".config/rookbot/sensor.toml")
 }
 
 fn default_max_size_mb() -> u64 {

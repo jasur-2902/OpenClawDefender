@@ -1,4 +1,4 @@
-//! Security & Evasion Tests for ClawDefender Behavioral Engine
+//! Security & Evasion Tests for RookBot Behavioral Engine
 //!
 //! These tests validate the behavioral engine's resilience against adversarial
 //! scenarios including baseline poisoning, path obfuscation, kill chain evasion,
@@ -133,7 +133,7 @@ fn make_network_event(host: &str, port: u16) -> BehavioralEvent {
 /// Test that injecting 10% malicious events during learning does NOT normalize
 /// sensitive path access after learning completes.
 ///
-/// Attack scenario: A compromised agent that knows about ClawDefender tries to
+/// Attack scenario: A compromised agent that knows about RookBot tries to
 /// slowly inject ~/.ssh/ reads during the learning phase to train the baseline
 /// into accepting them as normal.
 #[test]

@@ -181,7 +181,7 @@ fn handle_tools_list(id: Option<Value>) -> JsonRpcResponse {
             "tools": [
                 {
                     "name": "checkIntent",
-                    "description": "Check whether a planned action is allowed by ClawDefender policy. Call this BEFORE performing any sensitive operation to verify it will be permitted.",
+                    "description": "Check whether a planned action is allowed by RookBot policy. Call this BEFORE performing any sensitive operation to verify it will be permitted.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
-const DISMISS_KEY = "clawdefender-update-dismissed-at";
+const DISMISS_KEY = "rookbot-update-dismissed-at";
 const DISMISS_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -90,8 +90,8 @@ export function UpdateBanner() {
       <div className="flex-1 min-w-0">
         <p className="text-sm text-[var(--color-text-primary)]">
           {downloaded
-            ? `ClawDefender ${update.version} is ready. Restart to complete the update.`
-            : `ClawDefender ${update.version} is available.`}
+            ? `RookBot ${update.version} is ready. Restart to complete the update.`
+            : `RookBot ${update.version} is available.`}
         </p>
         {update.body && showNotes && (
           <p className="text-xs text-[var(--color-text-secondary)] mt-1 max-h-20 overflow-y-auto whitespace-pre-wrap">

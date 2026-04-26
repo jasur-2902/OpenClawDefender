@@ -1,4 +1,4 @@
-//! Network-specific policy engine for ClawDefender.
+//! Network-specific policy engine for RookBot.
 //!
 //! Decides whether each outbound connection from an AI agent should be allowed,
 //! blocked, or prompted to the user. Combines static rules, IoC intelligence,

@@ -99,7 +99,7 @@ impl Default for SandboxConfig {
 fn default_allowed_paths() -> Vec<String> {
     vec![
         "~/Library/Application Support/Claude/claude_desktop_config.json".into(),
-        "~/.config/clawdefender/*".into(),
+        "~/.config/rookbot/*".into(),
         "~/.ssh/config".into(),
         "~/.zshrc".into(),
         "~/.bashrc".into(),
@@ -677,7 +677,7 @@ mod tests {
     #[test]
     fn test_path_validation_allows_clawdefender_config() {
         let s = sandbox();
-        assert!(s.validate_path("~/.config/clawdefender/settings.toml"));
+        assert!(s.validate_path("~/.config/rookbot/settings.toml"));
     }
 
     #[test]

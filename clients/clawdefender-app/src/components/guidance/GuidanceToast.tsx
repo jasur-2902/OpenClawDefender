@@ -24,7 +24,7 @@ export function GuidanceToastContainer() {
 
   useEffect(() => {
     const unlisten = listen<GuidanceEvent>(
-      "clawdefender://guidance-toast",
+      "rookbot://guidance-toast",
       (event) => {
         const { milestone } = event.payload;
         setToasts((prev) => [...prev.slice(-2), { id: milestone.id, milestone }]);

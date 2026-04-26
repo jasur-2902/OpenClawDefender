@@ -3,7 +3,7 @@ name = "clawdefender-guard"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Agent self-protection guard for ClawDefender"
+description = "Agent self-protection guard for RookBot"
 
 [dependencies]
 clawdefender-core = { path = "../clawdefender-core" }

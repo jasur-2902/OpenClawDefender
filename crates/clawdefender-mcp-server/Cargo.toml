@@ -3,7 +3,7 @@ name = "clawdefender-mcp-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "MCP server that lets AI agents declare intent, request permission, and report actions to ClawDefender"
+description = "MCP server that lets AI agents declare intent, request permission, and report actions to RookBot"
 
 [dependencies]
 clawdefender-core = { path = "../clawdefender-core" }

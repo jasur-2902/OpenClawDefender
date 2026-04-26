@@ -3,7 +3,7 @@ name = "clawdefender-tui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Terminal UI for ClawDefender interactive prompts and dashboards"
+description = "Terminal UI for RookBot interactive prompts and dashboards"
 
 [dependencies]
 clawdefender-core = { path = "../clawdefender-core" }

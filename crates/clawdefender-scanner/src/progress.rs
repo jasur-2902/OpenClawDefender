@@ -98,7 +98,7 @@ impl ScanProgress {
         );
 
         let mut lines = vec![
-            format!("{BOLD}ClawDefender Security Scan{RESET}"),
+            format!("{BOLD}RookBot Security Scan{RESET}"),
             bar,
             format!(
                 "  Elapsed: {CYAN}{elapsed_str}{RESET}  |  ETA: {CYAN}{eta_str}{RESET}  |  Running: {running}"

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::commands::{mcp_config_paths, extract_servers};
 use super::capabilities::{infer_capabilities, suggest_trust_level, ServerCapabilities};
 
 /// Information about a newly detected MCP server not yet in known_servers.json.
@@ -23,6 +24,8 @@ pub struct KnownServerEntry {
     pub client: String,
     pub trust_level: String,
     pub acknowledged: bool,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub overrides: HashMap<String, String>,
 }
 
 /// Top-level structure of known_servers.json.
@@ -53,7 +56,7 @@ pub struct DiscoveredServer {
 
 fn known_servers_path() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-    home.join(".local/share/clawdefender/known_servers.json")
+    home.join(".local/share/rookbot/known_servers.json")
 }
 
 /// Read the known servers file from disk. Returns default if not found.
@@ -97,6 +100,7 @@ pub fn acknowledge_server(server_name: &str, trust_level: &str) -> Result<(), St
                 client: String::new(),
                 trust_level: trust_level.to_string(),
                 acknowledged: true,
+                overrides: HashMap::new(),
             },
         );
     }
@@ -114,49 +118,77 @@ pub fn get_known_server_names() -> Vec<String> {
     data.servers.keys().cloned().collect()
 }
 
+/// Set the trust level for a server, persisting to known_servers.json.
+pub fn set_server_trust_level(server_name: &str, trust_level: &str) -> Result<(), String> {
+    let valid = ["trusted", "default", "standard", "cautious", "restricted"];
+    if !valid.contains(&trust_level) {
+        return Err(format!("Invalid trust level '{}'. Must be one of: {}", trust_level, valid.join(", ")));
+    }
+    let mut data = load_known_servers();
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Some(entry) = data.servers.get_mut(server_name) {
+        entry.trust_level = trust_level.to_string();
+    } else {
+        data.servers.insert(
+            server_name.to_string(),
+            KnownServerEntry {
+                first_seen: now,
+                client: String::new(),
+                trust_level: trust_level.to_string(),
+                acknowledged: true,
+                overrides: HashMap::new(),
+            },
+        );
+    }
+    save_known_servers(&data)
+}
+
+/// Get the trust level and overrides for a server.
+pub fn get_server_trust_info(server_name: &str) -> (String, HashMap<String, String>) {
+    let data = load_known_servers();
+    match data.servers.get(server_name) {
+        Some(entry) => (entry.trust_level.clone(), entry.overrides.clone()),
+        None => ("default".to_string(), HashMap::new()),
+    }
+}
+
+/// Set a permission override for a server.
+pub fn set_server_permission_override(server_name: &str, permission: &str, action: &str) -> Result<(), String> {
+    let valid_actions = ["allow", "deny"];
+    if !valid_actions.contains(&action) {
+        return Err(format!("Invalid action '{}'. Must be 'allow' or 'deny'.", action));
+    }
+    let mut data = load_known_servers();
+    let now = chrono::Utc::now().to_rfc3339();
+    let entry = data.servers.entry(server_name.to_string()).or_insert_with(|| KnownServerEntry {
+        first_seen: now,
+        client: String::new(),
+        trust_level: "default".to_string(),
+        acknowledged: true,
+        overrides: HashMap::new(),
+    });
+    entry.overrides.insert(permission.to_string(), action.to_string());
+    save_known_servers(&data)
+}
+
+/// Remove a permission override for a server.
+pub fn reset_server_permission_override(server_name: &str, permission: &str) -> Result<(), String> {
+    let mut data = load_known_servers();
+    if let Some(entry) = data.servers.get_mut(server_name) {
+        entry.overrides.remove(permission);
+        save_known_servers(&data)
+    } else {
+        Ok(()) // nothing to reset
+    }
+}
+
 /// Detect all MCP servers across all client config files (non-Tauri, standalone version).
 /// This reads config files directly without going through Tauri commands.
 pub fn discover_all_servers() -> Vec<DiscoveredServer> {
-    let home = match dirs::home_dir() {
-        Some(h) => h,
-        None => return Vec::new(),
-    };
-
-    let clients_info: Vec<(&str, &str, Vec<PathBuf>)> = vec![
-        (
-            "claude",
-            "Claude Desktop",
-            vec![
-                home.join("Library/Application Support/Claude/config.json"),
-                home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-            ],
-        ),
-        (
-            "cursor",
-            "Cursor",
-            vec![home.join(".cursor/mcp.json")],
-        ),
-        (
-            "vscode",
-            "VS Code",
-            vec![home.join(".vscode/mcp.json")],
-        ),
-        (
-            "windsurf",
-            "Windsurf",
-            vec![home.join(".codeium/windsurf/mcp_config.json")],
-        ),
-    ];
-
     let mut servers = Vec::new();
 
-    for (client_name, display_name, paths) in clients_info {
-        let config_path = match paths.iter().find(|p| p.exists()) {
-            Some(p) => p,
-            None => continue,
-        };
-
-        let contents = match std::fs::read_to_string(config_path) {
+    for (config_path, client_name, display_name) in mcp_config_paths() {
+        let contents = match std::fs::read_to_string(&config_path) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -166,20 +198,12 @@ pub fn discover_all_servers() -> Vec<DiscoveredServer> {
             Err(_) => continue,
         };
 
-        let key = if config.get("mcpServers").and_then(|v| v.as_object()).is_some() {
-            "mcpServers"
-        } else if config.get("servers").and_then(|v| v.as_object()).is_some() {
-            "servers"
-        } else {
-            "mcpServers"
-        };
-
-        let servers_obj = match config.get(key).and_then(|v| v.as_object()) {
+        let servers_obj = match extract_servers(&config) {
             Some(obj) => obj,
             None => continue,
         };
 
-        for (name, entry) in servers_obj {
+        for (name, entry) in &servers_obj {
             let mut command = Vec::new();
             if let Some(cmd) = entry.get("command").and_then(|v| v.as_str()) {
                 command.push(cmd.to_string());
@@ -247,6 +271,7 @@ pub fn detect_new_servers() -> Vec<NewServerInfo> {
                     client: ns.client_name.clone(),
                     trust_level: ns.suggested_trust_level.clone(),
                     acknowledged: false,
+                    overrides: HashMap::new(),
                 });
         }
         let _ = save_known_servers(&data);
@@ -314,6 +339,7 @@ mod tests {
                 client: "claude".to_string(),
                 trust_level: "standard".to_string(),
                 acknowledged: true,
+                overrides: HashMap::new(),
             },
         );
 

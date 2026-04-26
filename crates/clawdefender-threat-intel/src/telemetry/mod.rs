@@ -1,7 +1,7 @@
-//! Anonymous telemetry system for ClawDefender.
+//! Anonymous telemetry system for RookBot.
 //!
 //! This module implements an opt-in, privacy-preserving telemetry system that
-//! collects aggregate usage data to help improve ClawDefender's threat detection.
+//! collects aggregate usage data to help improve RookBot's threat detection.
 //!
 //! # Privacy Guarantees
 //!

@@ -255,7 +255,7 @@ impl ScheduledAnalysisManager {
     pub fn new() -> Self {
         let config_path = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".local/share/clawdefender/scheduled_analysis.json");
+            .join(".local/share/rookbot/scheduled_analysis.json");
 
         let mut manager = Self {
             schedules: Vec::new(),

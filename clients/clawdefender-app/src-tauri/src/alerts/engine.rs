@@ -187,7 +187,7 @@ pub fn process_event(event: &AuditEvent, events_buffer: &[AuditEvent]) -> Vec<In
             vec![
                 make_action("restrict", "Restrict Server", "restrict"),
                 make_action("view", "View Details", "view_details"),
-                make_action("ask", "Ask Claw", "ask_claw"),
+                make_action("ask", "Ask Rook", "ask_claw"),
             ],
             None,
         );

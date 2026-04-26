@@ -1,4 +1,4 @@
-//! ClawDefender daemon orchestration logic.
+//! RookBot daemon orchestration logic.
 //!
 //! The [`Daemon`] struct ties together the MCP proxy, policy engine,
 //! audit logger, sensor subsystem (process tree, eslogger, FSEvents),
@@ -57,7 +57,7 @@ use clawdefender_tui::{EventRecord, PendingPrompt};
 
 use event_router::{BehavioralEngines, EventRouter, EventRouterConfig};
 
-/// The main daemon that orchestrates all ClawDefender subsystems.
+/// The main daemon that orchestrates all RookBot subsystems.
 #[allow(dead_code)]
 pub struct Daemon {
     config: ClawConfig,
@@ -208,7 +208,7 @@ impl Daemon {
         let (ioc_database, blocklist_matcher, rule_pack_manager, telemetry_aggregator, feed_client) =
             if config.threat_intel.enabled {
                 let data_dir = if let Some(home) = std::env::var_os("HOME") {
-                    PathBuf::from(home).join(".local/share/clawdefender/threat-intel")
+                    PathBuf::from(home).join(".local/share/rookbot/threat-intel")
                 } else {
                     PathBuf::from("/tmp/clawdefender/threat-intel")
                 };
@@ -632,7 +632,7 @@ impl Daemon {
     /// Starts IPC server, sensor subsystem, audit writer, MCP server,
     /// and signal handlers, then runs until a signal is received.
     pub async fn run(self) -> Result<()> {
-        info!("ClawDefender daemon starting (standalone mode)");
+        info!("RookBot daemon starting (standalone mode)");
 
         // Write PID file.
         let pid_path = pid_file_path();
@@ -940,12 +940,12 @@ impl Daemon {
         Ok(())
     }
 
-    /// Main entry point for `clawdefender proxy -- <command> [args...]`.
+    /// Main entry point for `rookbot proxy -- <command> [args...]`.
     ///
     /// Spawns the MCP proxy, sensor subsystem, audit writer, TUI (or headless),
     /// and signal handlers, then runs until the proxy finishes or a signal is received.
     pub async fn run_proxy(self, command: String, args: Vec<String>) -> Result<()> {
-        info!("ClawDefender daemon starting");
+        info!("RookBot daemon starting");
 
         // Write PID file.
         let pid_path = pid_file_path();
@@ -1042,7 +1042,7 @@ impl Daemon {
                 let llm_client: Arc<dyn LlmClient> = Arc::new(HttpLlmClient::new(keystore));
 
                 let data_dir = if let Some(home) = std::env::var_os("HOME") {
-                    PathBuf::from(home).join(".local/share/clawdefender")
+                    PathBuf::from(home).join(".local/share/rookbot")
                 } else {
                     PathBuf::from("/tmp/clawdefender")
                 };
@@ -1078,7 +1078,7 @@ impl Daemon {
         // --- Chat server (only if swarm is active) ---
         let chat_server_handle = if let Some(ref commander) = swarm_commander {
             let data_dir = if let Some(home) = std::env::var_os("HOME") {
-                PathBuf::from(home).join(".local/share/clawdefender")
+                PathBuf::from(home).join(".local/share/rookbot")
             } else {
                 PathBuf::from("/tmp/clawdefender")
             };
@@ -1404,7 +1404,7 @@ impl Daemon {
 
 /// Load the server authentication token from disk, or generate a new one if absent.
 ///
-/// The token is stored at `~/.local/share/clawdefender/server-token` with 0600 permissions.
+/// The token is stored at `~/.local/share/rookbot/server-token` with 0600 permissions.
 /// Both the MCP server and Guard API share this token.
 fn load_or_generate_server_token() -> String {
     // Try reading existing token first.
@@ -1604,9 +1604,9 @@ fn spawn_sensor_config_watcher(
 /// Path for the daemon PID file.
 fn pid_file_path() -> PathBuf {
     if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home).join(".local/share/clawdefender/clawdefender.pid")
+        PathBuf::from(home).join(".local/share/rookbot/rookbot.pid")
     } else {
-        PathBuf::from("/tmp/clawdefender.pid")
+        PathBuf::from("/tmp/rookbot.pid")
     }
 }
 
@@ -1881,10 +1881,11 @@ window_ms = 1000
     }
 
     #[test]
-    fn slm_service_disabled_without_model() {
+    fn slm_service_enabled_with_heuristic_fallback_when_no_model() {
         let slm_config = SlmEngineConfig::default();
         let svc = SlmService::new(slm_config, true);
-        assert!(!svc.is_enabled());
+        // When enabled=true but no model file, heuristic backend takes over
+        assert!(svc.is_enabled());
     }
 
     #[test]

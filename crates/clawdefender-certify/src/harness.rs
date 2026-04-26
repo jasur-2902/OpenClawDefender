@@ -147,7 +147,7 @@ impl McpHarness {
         Ok(())
     }
 
-    /// Send a raw JSON-RPC error to the server's stdin (simulating ClawDefender blocking).
+    /// Send a raw JSON-RPC error to the server's stdin (simulating RookBot blocking).
     pub async fn send_raw(&mut self, raw: &str) -> Result<()> {
         self.stdin_tx
             .send(raw.to_string())

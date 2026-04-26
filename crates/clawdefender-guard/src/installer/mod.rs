@@ -1,6 +1,6 @@
-//! Auto-Installation & Bootstrap system for ClawDefender.
+//! Auto-Installation & Bootstrap system for RookBot.
 //!
-//! This module provides automatic installation of ClawDefender on machines
+//! This module provides automatic installation of RookBot on machines
 //! where it isn't already present. It handles platform detection, downloading,
 //! checksum verification, installation, PATH setup, and rollback on failure.
 
@@ -67,11 +67,11 @@ fn atty_is_interactive() -> bool {
 /// Result of the installation process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallResult {
-    /// ClawDefender was already installed and up to date.
+    /// RookBot was already installed and up to date.
     AlreadyInstalled { path: PathBuf, version: String },
-    /// ClawDefender was freshly installed.
+    /// RookBot was freshly installed.
     Installed { path: PathBuf, version: String },
-    /// ClawDefender was upgraded from an older version.
+    /// RookBot was upgraded from an older version.
     Upgraded {
         path: PathBuf,
         old_version: String,
@@ -118,12 +118,12 @@ impl AutoInstaller {
         self
     }
 
-    /// Get the base directory for ClawDefender installation.
+    /// Get the base directory for RookBot installation.
     fn base_dir(&self) -> PathBuf {
         self.base_dir_override.clone().unwrap_or_else(|| {
             dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("/tmp"))
-                .join(".clawdefender")
+                .join(".rookbot")
         })
     }
 
@@ -146,7 +146,7 @@ impl AutoInstaller {
 
     /// Run the full installation process.
     pub async fn install(&self) -> Result<InstallResult> {
-        info!("Starting ClawDefender auto-installer");
+        info!("Starting RookBot auto-installer");
         info!("Platform: {}", self.platform.platform_string());
 
         // Step 1: Check existing installation
@@ -161,7 +161,7 @@ impl AutoInstaller {
         match status {
             InstallationStatus::Installed { path, version } => {
                 info!(
-                    "ClawDefender already installed at {:?} (v{})",
+                    "RookBot already installed at {:?} (v{})",
                     path, version
                 );
                 return Ok(InstallResult::AlreadyInstalled { path, version });
@@ -172,14 +172,14 @@ impl AutoInstaller {
                 latest,
             } => {
                 info!(
-                    "ClawDefender outdated at {:?} (v{} -> v{})",
+                    "RookBot outdated at {:?} (v{} -> v{})",
                     path, current, latest
                 );
                 // Continue to upgrade flow
                 return self.upgrade(&path, &current, &latest).await;
             }
             InstallationStatus::NotInstalled => {
-                info!("ClawDefender not found, proceeding with installation");
+                info!("RookBot not found, proceeding with installation");
             }
         }
 
@@ -320,14 +320,14 @@ impl AutoInstaller {
             .write_to(&self.metadata_path())
             .context("Failed to write installation metadata")?;
 
-        info!("ClawDefender v{version} installed to {:?}", bin_path);
+        info!("RookBot v{version} installed to {:?}", bin_path);
         Ok(())
     }
 
-    /// Add ClawDefender bin directory to PATH via shell config.
+    /// Add RookBot bin directory to PATH via shell config.
     fn add_to_path(&self) -> Result<()> {
         let shell_config = self.shell_config();
-        let path_line = format!("export PATH=\"$HOME/.clawdefender/bin:$PATH\" {PATH_MARKER}");
+        let path_line = format!("export PATH=\"$HOME/.rookbot/bin:$PATH\" {PATH_MARKER}");
 
         // Check if already present
         if shell_config.exists() {

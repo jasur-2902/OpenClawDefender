@@ -1,9 +1,9 @@
 //! # clawdefender-core
 //!
-//! Core type system for ClawDefender -- a firewall for AI agents.
+//! Core type system for RookBot -- a firewall for AI agents.
 //!
 //! This crate defines the shared types, traits, and protocols used across all
-//! ClawDefender components: the MCP proxy, the eslogger sensor, the policy engine,
+//! RookBot components: the MCP proxy, the eslogger sensor, the policy engine,
 //! the audit subsystem, and the macOS menu-bar UI.
 
 pub mod audit;

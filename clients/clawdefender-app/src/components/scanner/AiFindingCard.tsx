@@ -198,7 +198,7 @@ export function AiFindingCard({ finding, scanId, animate }: Props) {
                 : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-purple-400 hover:bg-purple-500/10"
             }`}
           >
-            Ask Claw
+            Ask Rook
           </button>
           <span className="text-xs text-[var(--color-text-muted)] ml-auto">
             {new Date(finding.discovered_at).toLocaleTimeString()}
@@ -235,11 +235,11 @@ export function AiFindingCard({ finding, scanId, animate }: Props) {
         </div>
       )}
 
-      {/* Ask Claw panel */}
+      {/* Ask Rook panel */}
       {askClaw && (
         <div className="border-t border-purple-500/30 px-4 py-3 bg-purple-500/5 space-y-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-purple-400">Ask Claw AI</span>
+            <span className="text-xs font-semibold text-purple-400">Ask Rook AI</span>
             {askClaw.loading && (
               <span className="text-xs text-purple-400/60 animate-pulse">Analyzing...</span>
             )}

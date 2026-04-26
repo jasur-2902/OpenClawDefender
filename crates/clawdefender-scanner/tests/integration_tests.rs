@@ -372,7 +372,7 @@ fn test_html_report_contains_elements() {
 
     let html = report::render_html(&report);
     assert!(html.contains("<!DOCTYPE html>"));
-    assert!(html.contains("ClawDefender Scan Report"));
+    assert!(html.contains("RookBot Scan Report"));
     assert!(html.contains("Test Finding"));
     assert!(html.contains("summary-card"));
     assert!(html.contains("HIGH"));
@@ -418,7 +418,7 @@ fn test_progress_render_with_timing() {
     ]);
 
     let output = progress.render();
-    assert!(output.contains("ClawDefender Security Scan"));
+    assert!(output.contains("RookBot Security Scan"));
     assert!(output.contains("0%"));
     assert!(output.contains("pending"));
 

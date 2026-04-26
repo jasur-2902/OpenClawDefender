@@ -3,7 +3,7 @@ use std::path::PathBuf;
 /// Get the daemon socket path (must match ClawConfig::default_socket_path).
 pub fn socket_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".local/share/clawdefender/clawdefender.sock")
+    PathBuf::from(home).join(".local/share/rookbot/rookbot.sock")
 }
 
 /// Check if the daemon is running by checking if the socket exists
@@ -19,7 +19,7 @@ pub fn is_daemon_running() -> bool {
 /// Start the daemon process directly (bypassing the CLI).
 pub fn start_daemon_process() -> Result<(), String> {
     let daemon_bin = find_daemon_binary()
-        .ok_or_else(|| "ClawDefender daemon binary not found. Build with `cargo build -p clawdefender-daemon` or install to /usr/local/bin.".to_string())?;
+        .ok_or_else(|| "RookBot daemon binary not found. Build with `cargo build -p clawdefender-daemon` or install to /usr/local/bin.".to_string())?;
 
     tracing::info!(path = %daemon_bin.display(), "Starting daemon directly");
 
@@ -78,7 +78,7 @@ pub fn stop_daemon_process() -> Result<(), String> {
 
     // Fall back to PID file
     let home = std::env::var("HOME").unwrap_or_default();
-    let pid_path = PathBuf::from(&home).join(".local/share/clawdefender/clawdefender.pid");
+    let pid_path = PathBuf::from(&home).join(".local/share/rookbot/rookbot.pid");
     if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
         if let Ok(pid) = pid_str.trim().parse::<i32>() {
             unsafe { libc::kill(pid, libc::SIGTERM); }
@@ -91,7 +91,7 @@ pub fn stop_daemon_process() -> Result<(), String> {
     Err("Could not find running daemon to stop".to_string())
 }
 
-/// Find the `clawdefender-daemon` binary by searching sidecar location,
+/// Find the `rookbot-daemon` binary by searching sidecar location,
 /// system install paths, and workspace target directories (for development).
 fn find_daemon_binary() -> Option<PathBuf> {
     let home = std::env::var("HOME").unwrap_or_default();

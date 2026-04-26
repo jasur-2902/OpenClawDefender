@@ -1,4 +1,4 @@
-//! Multi-agent swarm coordination for ClawDefender.
+//! Multi-agent swarm coordination for RookBot.
 
 pub mod audit_hasher;
 pub mod chat;

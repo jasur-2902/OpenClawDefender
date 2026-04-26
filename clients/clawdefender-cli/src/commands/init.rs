@@ -241,23 +241,23 @@ fn config_dir() -> Result<PathBuf> {
     // provide a clear message instead of a confusing "Permission denied".
     if dot_config.exists() && fs::metadata(&dot_config).is_ok() {
         // Try creating a temp probe to check writability
-        let probe = dot_config.join(".clawdefender_probe");
+        let probe = dot_config.join(".rookbot_probe");
         if fs::create_dir(&probe).is_err() {
             anyhow::bail!(
                 "~/.config exists but is not writable by your user.\n\
                  Fix with: sudo chown $(whoami) ~/.config\n\
-                 Or manually create: mkdir -p ~/.config/clawdefender"
+                 Or manually create: mkdir -p ~/.config/rookbot"
             );
         }
         let _ = fs::remove_dir(&probe);
     }
 
-    Ok(dot_config.join("clawdefender"))
+    Ok(dot_config.join("rookbot"))
 }
 
 fn data_dir() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").context("HOME environment variable not set")?;
-    Ok(PathBuf::from(home).join(".local/share/clawdefender"))
+    Ok(PathBuf::from(home).join(".local/share/rookbot"))
 }
 
 #[cfg(test)]

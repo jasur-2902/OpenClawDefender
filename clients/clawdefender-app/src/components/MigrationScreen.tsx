@@ -126,7 +126,7 @@ export function MigrationScreen({
             className="text-sm"
             style={{ color: "var(--color-text-secondary)" }}
           >
-            ClawDefender found your existing configuration and data.
+            RookBot found your existing configuration and data.
           </p>
         </div>
 
@@ -237,7 +237,7 @@ export function MigrationScreen({
                 color: "var(--color-text-on-accent)",
               }}
             >
-              Continue to ClawDefender
+              Continue to RookBot
             </button>
           )}
         </div>

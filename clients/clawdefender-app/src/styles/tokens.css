@@ -1,62 +1,129 @@
 /*
- * ClawDefender Design Tokens
+ * RookBot Design Tokens
  *
  * Single source of truth for all visual design values.
- * Dark mode is the default (:root). Light mode uses [data-theme="light"].
+ * Apple HIG-inspired light theme is the default.
  *
- * See docs/design/visual-identity.md for full documentation.
+ * New token names (--bg-*, --ink-*, --accent, --line, etc.) are canonical.
+ * Legacy token names (--color-bg-*, --color-text-*, etc.) are aliased below
+ * so existing components continue to work during migration.
  */
 
 /* ------------------------------------------------------------------ */
-/* Color Tokens                                                        */
+/* New Design System Tokens (Apple HIG Light Theme)                    */
 /* ------------------------------------------------------------------ */
 
 :root {
-  /* Base */
-  --color-bg-primary: #0f0f0f;
-  --color-bg-secondary: #1a1a1a;
-  --color-bg-tertiary: #252525;
-  --color-bg-sunken: #0a0a0a;
-  --color-text-primary: #e5e5e5;
-  --color-text-secondary: #a3a3a3;
-  --color-text-muted: #6b7280;
-  --color-border: #2a2a2a;
-  --color-border-subtle: #1f1f1f;
-
   /* Accent */
-  --color-accent: #38bdf8;
-  --color-accent-hover: #7dd3fc;
-  --color-accent-active: #0ea5e9;
-  --color-accent-subtle: rgba(56, 189, 248, 0.12);
-  --color-accent-text: #7dd3fc;
+  --accent-h: 220;
+  --accent: oklch(0.62 0.18 var(--accent-h));
+  --accent-soft: oklch(0.62 0.18 var(--accent-h) / 0.10);
+  --accent-line: oklch(0.62 0.18 var(--accent-h) / 0.30);
+  --accent-ink: oklch(0.20 0.05 var(--accent-h));
 
-  /* Safe (green) */
-  --color-safe: #22c55e;
-  --color-safe-light: rgba(34, 197, 94, 0.10);
-  --color-safe-dark: #4ade80;
-  --color-safe-subtle: rgba(34, 197, 94, 0.15);
-  --color-safe-border: #22c55e;
+  /* Backgrounds: window bg, content bg, grouped table bg */
+  --bg-0: oklch(0.965 0.003 250);   /* sidebar / window chrome */
+  --bg-1: oklch(1.00 0 0);           /* content surface */
+  --bg-2: oklch(0.965 0.003 250);   /* sunken / groove */
+  --bg-3: oklch(0.93 0.004 250);    /* divider strip */
+  --bg-4: oklch(0.88 0.005 250);
 
-  /* Danger (red) */
-  --color-danger: #ef4444;
-  --color-danger-light: rgba(239, 68, 68, 0.10);
-  --color-danger-dark: #f87171;
-  --color-danger-subtle: rgba(239, 68, 68, 0.15);
-  --color-danger-border: #ef4444;
+  /* Lines / borders */
+  --line: oklch(0.90 0.004 250);
+  --line-soft: oklch(0.94 0.003 250);
+  --line-strong: oklch(0.82 0.005 250);
 
-  /* Warning (amber) */
-  --color-warning: #f59e0b;
-  --color-warning-light: rgba(245, 158, 11, 0.10);
-  --color-warning-dark: #fbbf24;
-  --color-warning-subtle: rgba(245, 158, 11, 0.15);
-  --color-warning-border: #f59e0b;
+  /* Ink: 0=primary text, 1=secondary, 2=tertiary, 3=quaternary, 4=disabled */
+  --ink-0: oklch(0.18 0.01 250);
+  --ink-1: oklch(0.32 0.012 250);
+  --ink-2: oklch(0.50 0.012 250);
+  --ink-3: oklch(0.62 0.012 250);
+  --ink-4: oklch(0.74 0.010 250);
 
-  /* Info (blue) */
-  --color-info: #3b82f6;
-  --color-info-light: rgba(59, 130, 246, 0.10);
-  --color-info-dark: #60a5fa;
-  --color-info-subtle: rgba(59, 130, 246, 0.15);
-  --color-info-border: #3b82f6;
+  /* Semantic colors */
+  --green: oklch(0.62 0.16 152);
+  --green-soft: oklch(0.62 0.16 152 / 0.12);
+  --amber: oklch(0.72 0.15 78);
+  --amber-soft: oklch(0.72 0.15 78 / 0.14);
+  --red: oklch(0.60 0.20 22);
+  --red-soft: oklch(0.60 0.20 22 / 0.10);
+  --violet: oklch(0.58 0.18 295);
+  --violet-soft: oklch(0.58 0.18 295 / 0.10);
+
+  /* Border radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 22px;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.06);
+  --shadow-md: 0 4px 16px oklch(0 0 0 / 0.08);
+  --shadow-lg: 0 16px 40px oklch(0 0 0 / 0.10);
+
+  /* ---------------------------------------------------------------- */
+  /* Legacy Aliases (map old token names to new tokens)                */
+  /* ---------------------------------------------------------------- */
+
+  /* Base backgrounds */
+  --color-bg-primary: var(--bg-1);
+  --color-bg-secondary: var(--bg-0);
+  --color-bg-tertiary: var(--bg-2);
+  --color-bg-sunken: var(--bg-3);
+
+  /* Text */
+  --color-text-primary: var(--ink-0);
+  --color-text-secondary: var(--ink-1);
+  --color-text-muted: var(--ink-2);
+
+  /* Borders */
+  --color-border: var(--line);
+  --color-border-subtle: var(--line-soft);
+
+  /* Accent aliases */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-ink);
+  --color-accent-active: var(--accent-ink);
+  --color-accent-subtle: var(--accent-soft);
+  --color-accent-text: var(--accent-ink);
+
+  /* Semantic aliases */
+  --color-safe: var(--green);
+  --color-safe-light: var(--green-soft);
+  --color-safe-dark: var(--green);
+  --color-safe-subtle: var(--green-soft);
+  --color-safe-border: var(--green);
+  --color-success: var(--green);
+
+  --color-danger: var(--red);
+  --color-danger-light: var(--red-soft);
+  --color-danger-dark: var(--red);
+  --color-danger-subtle: var(--red-soft);
+  --color-danger-border: var(--red);
+
+  --color-warning: var(--amber);
+  --color-warning-light: var(--amber-soft);
+  --color-warning-dark: var(--amber);
+  --color-warning-subtle: var(--amber-soft);
+  --color-warning-border: var(--amber);
+
+  --color-info: var(--accent);
+  --color-info-light: var(--accent-soft);
+  --color-info-dark: var(--accent);
+  --color-info-subtle: var(--accent-soft);
+  --color-info-border: var(--accent);
+
+  /* Shadow aliases */
+  --shadow-card: var(--shadow-sm);
+  --shadow-card-hover: var(--shadow-md);
+  --shadow-dropdown: var(--shadow-md);
+  --shadow-toast: var(--shadow-md);
 
   /* ---------------------------------------------------------------- */
   /* Animation Tokens                                                  */
@@ -71,22 +138,6 @@
   --ease-in-out: ease-in-out;
 
   /* ---------------------------------------------------------------- */
-  /* Shadow Tokens                                                     */
-  /* ---------------------------------------------------------------- */
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.5);
-  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.4);
-
-  /* ---------------------------------------------------------------- */
-  /* Border Radius Tokens                                              */
-  /* ---------------------------------------------------------------- */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-full: 9999px;
-
-  /* ---------------------------------------------------------------- */
   /* Z-Index Scale                                                     */
   /* ---------------------------------------------------------------- */
   --z-base: 0;
@@ -99,128 +150,67 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Light Mode Overrides                                                */
+/* Dark Theme (Apple HIG Dark Appearance)                              */
 /* ------------------------------------------------------------------ */
 
-[data-theme="light"] {
-  /* Base */
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f8f9fa;
-  --color-bg-tertiary: #f0f1f3;
-  --color-bg-sunken: #edeef0;
-  --color-text-primary: #1a1a1a;
-  --color-text-secondary: #6b7280;
-  --color-text-muted: #737b88;
-  --color-border: #e5e7eb;
-  --color-border-subtle: #f0f1f3;
-
+[data-theme="dark"] {
   /* Accent */
-  --color-accent: #0284c7;
-  --color-accent-hover: #0369a1;
-  --color-accent-active: #075985;
-  --color-accent-subtle: rgba(2, 132, 199, 0.08);
-  --color-accent-text: #0369a1;
+  --accent: oklch(0.72 0.16 var(--accent-h));
+  --accent-soft: oklch(0.72 0.16 var(--accent-h) / 0.15);
+  --accent-line: oklch(0.72 0.16 var(--accent-h) / 0.35);
+  --accent-ink: oklch(0.90 0.06 var(--accent-h));
 
-  /* Safe (green) */
-  --color-safe: #16a34a;
-  --color-safe-light: rgba(22, 163, 74, 0.08);
-  --color-safe-dark: #15803d;
-  --color-safe-subtle: rgba(22, 163, 74, 0.12);
-  --color-safe-border: #16a34a;
+  /* Backgrounds */
+  --bg-0: oklch(0.17 0.005 250);   /* sidebar / window chrome */
+  --bg-1: oklch(0.21 0.006 250);   /* content surface */
+  --bg-2: oklch(0.25 0.007 250);   /* sunken / groove */
+  --bg-3: oklch(0.29 0.008 250);   /* divider strip */
+  --bg-4: oklch(0.33 0.008 250);
 
-  /* Danger (red) */
-  --color-danger: #dc2626;
-  --color-danger-light: rgba(220, 38, 38, 0.08);
-  --color-danger-dark: #b91c1c;
-  --color-danger-subtle: rgba(220, 38, 38, 0.12);
-  --color-danger-border: #dc2626;
+  /* Lines / borders */
+  --line: oklch(0.32 0.006 250);
+  --line-soft: oklch(0.28 0.005 250);
+  --line-strong: oklch(0.40 0.008 250);
 
-  /* Warning (amber) */
-  --color-warning: #d97706;
-  --color-warning-light: rgba(217, 119, 6, 0.08);
-  --color-warning-dark: #b45309;
-  --color-warning-subtle: rgba(217, 119, 6, 0.12);
-  --color-warning-border: #d97706;
+  /* Ink */
+  --ink-0: oklch(0.93 0.006 250);
+  --ink-1: oklch(0.78 0.008 250);
+  --ink-2: oklch(0.62 0.008 250);
+  --ink-3: oklch(0.50 0.008 250);
+  --ink-4: oklch(0.40 0.006 250);
 
-  /* Info (blue) */
-  --color-info: #2563eb;
-  --color-info-light: rgba(37, 99, 235, 0.08);
-  --color-info-dark: #1d4ed8;
-  --color-info-subtle: rgba(37, 99, 235, 0.12);
-  --color-info-border: #2563eb;
+  /* Semantic colors — brighter for dark backgrounds */
+  --green: oklch(0.72 0.16 152);
+  --green-soft: oklch(0.72 0.16 152 / 0.15);
+  --amber: oklch(0.78 0.14 78);
+  --amber-soft: oklch(0.78 0.14 78 / 0.18);
+  --red: oklch(0.68 0.18 22);
+  --red-soft: oklch(0.68 0.18 22 / 0.15);
+  --violet: oklch(0.68 0.16 295);
+  --violet-soft: oklch(0.68 0.16 295 / 0.15);
 
-  /* Shadows — lighter for light mode */
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.1);
-  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12);
-  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.1);
+  /* Shadows — darker for dark mode */
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.25);
+  --shadow-md: 0 4px 16px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 16px 40px oklch(0 0 0 / 0.45);
 }
 
-/* ------------------------------------------------------------------ */
-/* System Dark Mode (CSS fallback before JS hydrates data-theme)       */
-/* ------------------------------------------------------------------ */
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-bg-primary: #0f0f0f;
-    --color-bg-secondary: #1a1a1a;
-    --color-bg-tertiary: #252525;
-    --color-bg-sunken: #0a0a0a;
-    --color-text-primary: #e5e5e5;
-    --color-text-secondary: #a3a3a3;
-    --color-text-muted: #6b7280;
-    --color-border: #2a2a2a;
-    --color-border-subtle: #1f1f1f;
-  }
+/* Dark-mode scrollbar overrides */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 0.18);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(1 0 0 / 0.30);
+  background-clip: padding-box;
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --color-bg-primary: #ffffff;
-    --color-bg-secondary: #f8f9fa;
-    --color-bg-tertiary: #f0f1f3;
-    --color-bg-sunken: #edeef0;
-    --color-text-primary: #1a1a1a;
-    --color-text-secondary: #6b7280;
-    --color-text-muted: #737b88;
-    --color-border: #e5e7eb;
-    --color-border-subtle: #f0f1f3;
-
-    --color-accent: #0284c7;
-    --color-accent-hover: #0369a1;
-    --color-accent-active: #075985;
-    --color-accent-subtle: rgba(2, 132, 199, 0.08);
-    --color-accent-text: #0369a1;
-
-    --color-safe: #16a34a;
-    --color-safe-light: rgba(22, 163, 74, 0.08);
-    --color-safe-dark: #15803d;
-    --color-safe-subtle: rgba(22, 163, 74, 0.12);
-    --color-safe-border: #16a34a;
-
-    --color-danger: #dc2626;
-    --color-danger-light: rgba(220, 38, 38, 0.08);
-    --color-danger-dark: #b91c1c;
-    --color-danger-subtle: rgba(220, 38, 38, 0.12);
-    --color-danger-border: #dc2626;
-
-    --color-warning: #d97706;
-    --color-warning-light: rgba(217, 119, 6, 0.08);
-    --color-warning-dark: #b45309;
-    --color-warning-subtle: rgba(217, 119, 6, 0.12);
-    --color-warning-border: #d97706;
-
-    --color-info: #2563eb;
-    --color-info-light: rgba(37, 99, 235, 0.08);
-    --color-info-dark: #1d4ed8;
-    --color-info-subtle: rgba(37, 99, 235, 0.12);
-    --color-info-border: #2563eb;
-
-    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
-    --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.1);
-    --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12);
-    --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
+/* Dark select options */
+[data-theme="dark"] select option {
+  background-color: var(--bg-1);
+  color: var(--ink-0);
 }
 
 /* ------------------------------------------------------------------ */

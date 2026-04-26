@@ -17,10 +17,10 @@ impl Provider {
     /// Return a stable string identifier for this provider.
     pub fn service_name(&self) -> String {
         match self {
-            Provider::Anthropic => "com.clawdefender.api-key.anthropic".to_string(),
-            Provider::OpenAi => "com.clawdefender.api-key.openai".to_string(),
+            Provider::Anthropic => "com.rookbot.api-key.anthropic".to_string(),
+            Provider::OpenAi => "com.rookbot.api-key.openai".to_string(),
             Provider::Custom { base_url } => {
-                format!("com.clawdefender.api-key.custom.{}", base_url)
+                format!("com.rookbot.api-key.custom.{}", base_url)
             }
         }
     }

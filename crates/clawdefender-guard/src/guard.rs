@@ -119,7 +119,7 @@ impl AgentGuard {
         let daemon_available = conn.try_connect().unwrap_or(false);
 
         if daemon_available {
-            info!("Connected to ClawDefender daemon at {socket}");
+            info!("Connected to RookBot daemon at {socket}");
             let _policy_toml = generate_policy_toml(&self.name, &self.permissions);
             // In a full implementation, we'd send GuardRegister here.
             // For now, we still use the fallback engine for action checks.

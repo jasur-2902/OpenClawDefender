@@ -240,7 +240,7 @@ fn test_evidence_record_message() {
 fn test_render_terminal() {
     let report = make_test_report();
     let output = report::render_terminal(&report);
-    assert!(output.contains("ClawDefender Security Scan Report"));
+    assert!(output.contains("RookBot Security Scan Report"));
     assert!(output.contains("test-server"));
     assert!(output.contains("CRITICAL"));
     assert!(output.contains("CRIT-001"));
@@ -261,7 +261,7 @@ fn test_render_html() {
     let report = make_test_report();
     let html = report::render_html(&report);
     assert!(html.contains("<!DOCTYPE html>"));
-    assert!(html.contains("ClawDefender Scan Report"));
+    assert!(html.contains("RookBot Scan Report"));
     assert!(html.contains("CRIT-001"));
     assert!(html.contains("Canary data detected"));
 }

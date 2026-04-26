@@ -1,4 +1,4 @@
-//! Query execution engine for Ask Claw.
+//! Query execution engine for Ask Rook.
 //!
 //! Maps classified intents to backend query plans, executes them against
 //! AppState data sources (IPC client, event buffer, profiles DB, policy files),
@@ -711,13 +711,13 @@ fn exec_get_behavioral_status(state: &AppState) -> Result<serde_json::Value, Str
 fn exec_get_feed_status() -> Result<serde_json::Value, String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let manifest_path = std::path::PathBuf::from(&home)
-        .join(".local/share/clawdefender/threat-intel/manifest.json");
+        .join(".local/share/rookbot/threat-intel/manifest.json");
 
     if !manifest_path.exists() {
         return serde_json::to_value(&FeedStatus {
             version: "not configured".to_string(),
             last_updated: "never".to_string(),
-            next_check: "run clawdefender feed update to initialize".to_string(),
+            next_check: "run rookbot feed update to initialize".to_string(),
             entries_count: 0,
         })
         .map_err(|e| e.to_string());
@@ -772,7 +772,7 @@ fn exec_get_slm_status(state: &AppState) -> Result<serde_json::Value, String> {
 fn exec_get_profiles() -> Result<serde_json::Value, String> {
     let db_path = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        .join(".local/share/clawdefender/profiles.db");
+        .join(".local/share/rookbot/profiles.db");
 
     if !db_path.exists() {
         return Ok(serde_json::json!([]));
@@ -843,7 +843,7 @@ fn exec_get_profiles() -> Result<serde_json::Value, String> {
 fn exec_get_policy() -> Result<serde_json::Value, String> {
     let path = dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/clawdefender/policy.toml");
+        .join(".config/rookbot/policy.toml");
 
     if !path.exists() {
         return Ok(serde_json::json!({
@@ -889,7 +889,7 @@ fn exec_check_server_reputation(
 
     let home = std::env::var("HOME").unwrap_or_default();
     let blocklist_path = std::path::PathBuf::from(&home)
-        .join(".local/share/clawdefender/threat-intel/blocklist.json");
+        .join(".local/share/rookbot/threat-intel/blocklist.json");
 
     if !blocklist_path.exists() {
         return Ok(serde_json::json!({
@@ -941,7 +941,7 @@ fn exec_check_server_reputation(
 fn exec_get_blocklist_matches() -> Result<serde_json::Value, String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let blocklist_path = std::path::PathBuf::from(&home)
-        .join(".local/share/clawdefender/threat-intel/blocklist.json");
+        .join(".local/share/rookbot/threat-intel/blocklist.json");
 
     if !blocklist_path.exists() {
         return Ok(serde_json::json!([]));
@@ -1120,7 +1120,7 @@ fn exec_add_rule(params: &HashMap<String, serde_json::Value>) -> Result<serde_js
 
     let policy_path = dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/clawdefender/policy.toml");
+        .join(".config/rookbot/policy.toml");
 
     // Read or create policy
     let mut doc: toml::Value = if policy_path.exists() {
@@ -1153,7 +1153,7 @@ fn exec_add_rule(params: &HashMap<String, serde_json::Value>) -> Result<serde_js
 
     // Build rule table
     let mut rule_table = toml::map::Map::new();
-    rule_table.insert("description".to_string(), toml::Value::String(format!("Added by Ask Claw")));
+    rule_table.insert("description".to_string(), toml::Value::String(format!("Added by Ask Rook")));
     rule_table.insert("action".to_string(), toml::Value::String(action.to_string()));
     rule_table.insert("priority".to_string(), toml::Value::Integer(50));
     rule_table.insert("enabled".to_string(), toml::Value::Boolean(true));

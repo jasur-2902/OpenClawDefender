@@ -238,7 +238,7 @@ fn render_chat_page(event_id: &str, event_summary: &str, swarm_verdict: &str) ->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClawDefender - Event Chat</title>
+    <title>RookBot - Event Chat</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -385,7 +385,7 @@ fn render_chat_page(event_id: &str, event_summary: &str, swarm_verdict: &str) ->
 </head>
 <body>
     <div class="header">
-        <h1>ClawDefender Chat</h1>
+        <h1>RookBot Chat</h1>
         <div class="event-info">
             <div class="label">Event</div>
             <div class="value" id="event-summary">{summary_escaped}</div>
@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let html = String::from_utf8(body.to_vec()).unwrap();
-        assert!(html.contains("ClawDefender Chat"));
+        assert!(html.contains("RookBot Chat"));
         assert!(html.contains("evt-001"));
     }
 

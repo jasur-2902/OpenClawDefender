@@ -7,6 +7,7 @@ pub mod ipc_client;
 mod monitor;
 mod scanner;
 mod state;
+mod tools;
 mod tray;
 mod windows;
 
@@ -177,6 +178,15 @@ pub fn run() {
                 }
             }
 
+            // Load per-feature routing overrides from config.toml
+            if let Some(app_state) = app.try_state::<AppState>() {
+                let routing_config = commands::load_feature_routing_config();
+                if routing_config.has_overrides() {
+                    app_state.ai_backends.update_feature_routing(routing_config);
+                    tracing::info!("Loaded per-feature routing overrides from config.toml");
+                }
+            }
+
             // Phase 2: Initialize cloud agent session manager if an API key is available.
             if let Some(app_state) = app.try_state::<AppState>() {
                 // Try Anthropic first, then OpenAI, then Google
@@ -226,7 +236,7 @@ pub fn run() {
                     // Build cost tracker
                     let home = dirs::home_dir().unwrap_or_default();
                     let db_path = home
-                        .join(".local/share/clawdefender/swarm_usage.db");
+                        .join(".local/share/rookbot/swarm_usage.db");
                     if let Some(parent) = db_path.parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
@@ -259,7 +269,7 @@ pub fn run() {
 
                         // Build sessions directory
                         let sessions_dir = home
-                            .join(".local/share/clawdefender/agent_sessions");
+                            .join(".local/share/rookbot/agent_sessions");
 
                         // Create the AgentSessionManager
                         let session_manager = std::sync::Arc::new(
@@ -302,7 +312,7 @@ pub fn run() {
                             clawdefender_swarm::tool_sandbox::ToolSandbox::new(),
                         );
 
-                        let scans_dir = home.join(".local/share/clawdefender/ai_scans");
+                        let scans_dir = home.join(".local/share/rookbot/ai_scans");
 
                         let scan_orch = std::sync::Arc::new(
                             clawdefender_swarm::scan_orchestrator::ScanOrchestrator::new(
@@ -341,7 +351,7 @@ pub fn run() {
                             clawdefender_swarm::tool_sandbox::ToolSandbox::new(),
                         );
 
-                        let hunts_dir = home.join(".local/share/clawdefender/threat_hunts");
+                        let hunts_dir = home.join(".local/share/rookbot/threat_hunts");
 
                         let hunt_model = model.clone();
 
@@ -426,7 +436,7 @@ pub fn run() {
                 // Read the setting; default is false (off)
                 let clipboard_enabled = {
                     let home = dirs::home_dir().unwrap_or_default();
-                    let config_path = home.join(".config/clawdefender/config.toml");
+                    let config_path = home.join(".config/rookbot/config.toml");
                     if config_path.exists() {
                         std::fs::read_to_string(&config_path)
                             .ok()
@@ -454,7 +464,7 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
                     let home = dirs::home_dir().unwrap_or_default();
-                    let scans_dir = home.join(".local/share/clawdefender/scans");
+                    let scans_dir = home.join(".local/share/rookbot/scans");
                     let has_previous_scans = scans_dir.exists()
                         && std::fs::read_dir(&scans_dir)
                             .map(|entries| entries.filter_map(|e| e.ok()).count() > 0)
@@ -474,6 +484,7 @@ pub fn run() {
                             String::new(),
                             all_modules,
                             300,
+                            None,
                         ).await {
                             Ok(scan_id) => {
                                 tracing::info!("Auto-scan started: {}", scan_id);
@@ -514,6 +525,7 @@ pub fn run() {
             commands::get_scan_progress,
             commands::get_scan_results,
             commands::apply_scan_fix,
+            commands::enrich_scan_finding,
             commands::run_doctor,
             commands::get_system_info,
             commands::respond_to_prompt,
@@ -569,6 +581,11 @@ pub fn run() {
             commands::get_routing_preferences,
             commands::update_routing_preferences,
             commands::get_rate_limit_status,
+            commands::get_feature_routing,
+            commands::update_feature_routing,
+            commands::reset_feature_routing,
+            commands::get_ask_claw_backend,
+            commands::set_ask_claw_backend,
             commands::get_active_model,
             commands::list_available_models,
             commands::get_slm_analysis_for_prompt,
@@ -665,7 +682,7 @@ pub fn run() {
             commands::get_investigation_progress,
             commands::get_investigation_result,
             commands::cancel_investigation,
-            // Ask Claw AI commands
+            // Ask Rook AI commands
             commands::ask_claw_ai,
             commands::get_ask_claw_mode,
             commands::approve_claw_action,

@@ -18,7 +18,7 @@ pub fn render_terminal(report: &ScanReport) -> String {
     let mut out = String::new();
 
     out.push_str(&format!(
-        "\n{}ClawDefender Security Scan Report{}\n",
+        "\n{}RookBot Security Scan Report{}\n",
         BOLD, RESET
     ));
     out.push_str(&format!("Target: {}\n", report.target));
@@ -104,7 +104,7 @@ pub fn render_json(report: &ScanReport) -> anyhow::Result<String> {
 pub fn render_html(report: &ScanReport) -> String {
     let mut html = String::new();
     html.push_str("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n");
-    html.push_str("<title>ClawDefender Scan Report</title>\n");
+    html.push_str("<title>RookBot Scan Report</title>\n");
     html.push_str("<style>\n");
     html.push_str("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 2em; background: #1a1a2e; color: #e0e0e0; }\n");
     html.push_str("h1 { color: #00d4ff; }\n");
@@ -123,7 +123,7 @@ pub fn render_html(report: &ScanReport) -> String {
     html.push_str("details[open] .evidence { display: block; }\n");
     html.push_str("</style></head><body>\n");
 
-    html.push_str("<h1>ClawDefender Security Scan Report</h1>\n");
+    html.push_str("<h1>RookBot Security Scan Report</h1>\n");
     html.push_str(&format!(
         "<p>Target: <code>{}</code></p>\n",
         html_escape(&report.target)

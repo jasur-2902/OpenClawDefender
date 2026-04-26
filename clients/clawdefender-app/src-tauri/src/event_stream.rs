@@ -27,7 +27,7 @@ use crate::state::{AppState, AuditEvent, PendingPrompt};
 //      arguments, jsonrpc_method, classification, policy_action
 //    - Writes to audit.jsonl via FileAuditLogger
 //
-// 3. FileAuditLogger writes to ~/.local/share/clawdefender/audit.jsonl:
+// 3. FileAuditLogger writes to ~/.local/share/rookbot/audit.jsonl:
 //    - JSON-lines format, one AuditRecord per line
 //    - Session-start/session-end records include server_name
 //    - Log rotation and retention handled automatically
@@ -144,7 +144,7 @@ pub struct SlmAnalysisField {
 /// where an attacker replaces audit.jsonl with a symlink to a malicious file.
 pub fn audit_log_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".local/share/clawdefender/audit.jsonl")
+    PathBuf::from(home).join(".local/share/rookbot/audit.jsonl")
 }
 
 /// Check that the audit log path is a regular file (not a symlink).
@@ -610,7 +610,7 @@ fn sanitize_path_for_notification(path: &str) -> String {
 /// Check whether the user has notifications enabled in config.toml.
 fn notifications_enabled_in_config() -> bool {
     let home = std::env::var("HOME").unwrap_or_default();
-    let path = std::path::PathBuf::from(home).join(".config/clawdefender/config.toml");
+    let path = std::path::PathBuf::from(home).join(".config/rookbot/config.toml");
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return true, // default to enabled if config is missing
@@ -700,7 +700,7 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
 
         send_native_notification(
             app,
-            "ClawDefender \u{2014} Security Alert",
+            "RookBot \u{2014} Security Alert",
             &format!("{} \u{2014} {}", event.server_name, event.action),
             true,
         );
@@ -757,7 +757,7 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
         };
         send_native_notification(
             app,
-            "ClawDefender \u{2014} Action Required",
+            "RookBot \u{2014} Action Required",
             &format!("{} wants to {}", event.server_name, resource_display),
             true,
         );
@@ -776,7 +776,7 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
 
         send_native_notification(
             app,
-            "ClawDefender \u{2014} Blocked",
+            "RookBot \u{2014} Blocked",
             &format!("Blocked {} by {}", event.action, event.server_name),
             false,
         );
@@ -796,7 +796,7 @@ fn process_event(app: &AppHandle, event: AuditEvent) {
         let is_new = state.push_alert(alert.clone());
         if is_new {
             // Emit the intelligent alert to the frontend for real-time notification.
-            if let Err(e) = app.emit("clawdefender://intelligent-alert", &alert) {
+            if let Err(e) = app.emit("rookbot://intelligent-alert", &alert) {
                 debug!(error = %e, "Failed to emit intelligent alert");
             }
         }
@@ -1044,8 +1044,8 @@ mod tests {
     fn test_audit_log_path_contains_expected_suffix() {
         let path = audit_log_path();
         assert!(
-            path.to_string_lossy().ends_with(".local/share/clawdefender/audit.jsonl"),
-            "path should end with .local/share/clawdefender/audit.jsonl, got: {}",
+            path.to_string_lossy().ends_with(".local/share/rookbot/audit.jsonl"),
+            "path should end with .local/share/rookbot/audit.jsonl, got: {}",
             path.display()
         );
     }

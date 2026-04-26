@@ -96,7 +96,7 @@ fn check_not_executable(cis_id: &str, title: &str, category: &str, cis_level: u8
         actual: "Check could not be executed".to_string(),
         passed: false,
         severity: Severity::Info,
-        remediation: "Run ClawDefender with appropriate permissions to complete this check.".to_string(),
+        remediation: "Run RookBot with appropriate permissions to complete this check.".to_string(),
         cis_level,
     }
 }

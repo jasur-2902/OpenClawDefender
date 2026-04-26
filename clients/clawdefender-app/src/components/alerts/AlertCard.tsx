@@ -262,7 +262,7 @@ export function AlertCard({ alert, compact }: AlertCardProps) {
           state={{ prefill: `Tell me about the alert: ${alert.title}` }}
           className="text-xs px-2.5 py-1 rounded border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
         >
-          Ask Claw
+          Ask Rook
         </Link>
         <button
           onClick={handleDismiss}

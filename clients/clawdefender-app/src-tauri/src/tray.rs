@@ -88,10 +88,10 @@ pub fn update_tray(app: &AppHandle, status: TrayStatus) {
 
     let tooltip = match status {
         TrayStatus::Protected => {
-            format!("ClawDefender — Protected ({} servers)", data.servers_proxied)
+            format!("RookBot — Protected ({} servers)", data.servers_proxied)
         }
-        TrayStatus::Warning => "ClawDefender — Warning".to_string(),
-        TrayStatus::Error => "ClawDefender — Not Running".to_string(),
+        TrayStatus::Warning => "RookBot — Warning".to_string(),
+        TrayStatus::Error => "RookBot — Not Running".to_string(),
     };
 
     if let Ok(guard) = TRAY_HANDLE.lock() {
@@ -103,9 +103,9 @@ pub fn update_tray(app: &AppHandle, status: TrayStatus) {
 
     // Also update the menu header text.
     let label = match status {
-        TrayStatus::Protected => "ClawDefender — Protected",
-        TrayStatus::Warning => "ClawDefender — Warning",
-        TrayStatus::Error => "ClawDefender — Not Running",
+        TrayStatus::Protected => "RookBot — Protected",
+        TrayStatus::Warning => "RookBot — Warning",
+        TrayStatus::Error => "RookBot — Not Running",
     };
     // Re-build menu with updated header (Tauri v2 menus are immutable, so
     // we replace the whole menu).
@@ -129,13 +129,13 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         blocked_today: 0,
         daemon_connected: false,
     };
-    let menu = build_menu(app, "ClawDefender — Starting\u{2026}", &initial_data)?;
+    let menu = build_menu(app, "RookBot — Starting\u{2026}", &initial_data)?;
     let icon = make_status_icon(TrayStatus::Warning); // yellow while loading
 
     let tray = TrayIconBuilder::new()
         .icon(icon)
         .icon_as_template(false) // we need color, not monochrome
-        .tooltip("ClawDefender")
+        .tooltip("RookBot")
         .menu(&menu)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "open_dashboard" => {
@@ -149,7 +149,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
-                let _ = app.emit("clawdefender://navigate", "/timeline");
+                let _ = app.emit("rookbot://navigate", "/timeline");
             }
             "view_audit" => {
                 // Show the main window and emit a navigation event so the
@@ -158,7 +158,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
-                let _ = app.emit("clawdefender://navigate", "/audit");
+                let _ = app.emit("rookbot://navigate", "/audit");
             }
             "toggle_protection" => {
                 let connected = app
@@ -278,7 +278,7 @@ fn build_menu(
     };
     let pause_resume = MenuItemBuilder::with_id("toggle_protection", pause_label).build(app)?;
 
-    let quit = MenuItemBuilder::with_id("quit", "Quit ClawDefender").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "Quit RookBot").build(app)?;
 
     let mut builder = MenuBuilder::new(app)
         .text("header", header)

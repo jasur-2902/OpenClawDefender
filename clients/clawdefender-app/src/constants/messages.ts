@@ -1,5 +1,5 @@
 /**
- * ClawDefender Message Constants
+ * RookBot Message Constants
  *
  * All user-facing strings live here. Never hardcode a user-facing string.
  * Import from this file instead.
@@ -102,7 +102,7 @@ export const ONBOARDING_FDA = {
   whatIfSkip:
     "Without it, I can still protect servers you add manually -- I just will not be able to discover them on my own.",
   guidance:
-    "Open System Settings, go to Privacy & Security, then Full Disk Access, and toggle ClawDefender on. I will wait here.",
+    "Open System Settings, go to Privacy & Security, then Full Disk Access, and toggle RookBot on. I will wait here.",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ export const EMPTY_STATES: Record<string, EmptyState> = {
     headline: "Hey. I'm Claw.",
     body: "Ask me anything about your security, or drag a file here for analysis.",
     cta: "Am I safe right now?",
-    ctaSecondary: "What has Claude been doing today?",
+    ctaSecondary: "What has Claw been doing today?",
   },
 } as const;
 
@@ -485,7 +485,7 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     title: "Claw's daemon is not running.",
     body: "I cannot monitor your AI tools right now.",
     recommended:
-      "Open ClawDefender to start the daemon, or run `clawdefender daemon start` in your terminal.",
+      "Open RookBot to start the daemon, or run `rookbot daemon start` in your terminal.",
     cta: "Start daemon",
     ctaSecondary: "Learn more",
   },
@@ -501,7 +501,7 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     title: "I lost connection to the daemon.",
     body: "Trying to reconnect. Monitoring is paused until the connection is restored.",
     recommended:
-      "If this does not resolve in a few seconds, try restarting ClawDefender.",
+      "If this does not resolve in a few seconds, try restarting RookBot.",
     cta: "Restart",
     ctaSecondary: "Learn more",
   },
@@ -525,7 +525,7 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     title: "I do not have Full Disk Access.",
     body: "This means I cannot see some process activity, which creates blind spots in monitoring. Your protection score is lower than it could be.",
     recommended:
-      "Grant Full Disk Access to ClawDefender in System Settings > Privacy & Security.",
+      "Grant Full Disk Access to RookBot in System Settings > Privacy & Security.",
     cta: "Open System Settings",
     ctaSecondary: "Learn more",
   },
@@ -572,7 +572,7 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     title: "I could not set up monitoring for {serverName}.",
     body: "I do not have permission to modify its launch configuration.",
     recommended:
-      "Check that ClawDefender has write access to the MCP client's config file, or run the setup with elevated permissions.",
+      "Check that RookBot has write access to the MCP client's config file, or run the setup with elevated permissions.",
     cta: "Fix permissions",
     ctaSecondary: "Learn more",
   },
@@ -580,7 +580,7 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     title: "I could not set up monitoring for {serverName}.",
     body: "The MCP client's configuration format has changed and I do not recognize the new structure yet.",
     recommended:
-      "Check for a ClawDefender update. If none is available, you can configure the proxy manually.",
+      "Check for a RookBot update. If none is available, you can configure the proxy manually.",
     cta: "Check for updates",
     ctaSecondary: "Learn more",
   },
@@ -594,7 +594,7 @@ export const ERROR_MESSAGES: Record<string, ErrorMessage> = {
   ipcCallFailed: {
     title: "Something went wrong.",
     body: "I had trouble completing that request. Your data is safe -- this is a temporary issue.",
-    recommended: "Try again in a moment. If this keeps happening, restarting ClawDefender usually fixes it.",
+    recommended: "Try again in a moment. If this keeps happening, restarting RookBot usually fixes it.",
     cta: "Try again",
     ctaSecondary: "Dismiss",
   },
@@ -657,7 +657,7 @@ export const THREAT_LEVEL_INFO: Record<string, ThreatLevelInfo> = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Ask Claw
+// Ask Rook
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -684,11 +684,11 @@ export const NOTIFICATION_BATCH = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Ask Claw
+// Ask Rook
 // ---------------------------------------------------------------------------
 
 export const ASK_CLAW = {
-  inputPlaceholder: "Ask Claw anything...",
+  inputPlaceholder: "Ask Rook anything...",
   thinkingIndicator: "Let me check...",
   firstTimeGreeting: "Hey. I'm Claw. Ask me anything about your security, or drag a file here for analysis.",
   errorGeneric: "I ran into a problem trying to answer that.",

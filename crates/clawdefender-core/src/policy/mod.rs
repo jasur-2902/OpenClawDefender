@@ -1,6 +1,6 @@
 //! Policy engine types and traits.
 //!
-//! Policies are the rules that ClawDefender enforces. Each incoming event is evaluated
+//! Policies are the rules that RookBot enforces. Each incoming event is evaluated
 //! against the active policy set to produce an action: allow, block, prompt the
 //! user, or just log.
 

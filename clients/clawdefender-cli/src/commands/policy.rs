@@ -1,4 +1,4 @@
-//! `clawdefender policy list/add/test/reload/template-list/template-apply/suggest` commands.
+//! `rookbot policy list/add/test/reload/template-list/template-apply/suggest` commands.
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
@@ -21,7 +21,7 @@ use serde_json::Value;
 pub fn list(policy_path: &Path) -> Result<()> {
     if !policy_path.exists() {
         bail!(
-            "Policy file not found: {}\nRun `clawdefender init` to create defaults.",
+            "Policy file not found: {}\nRun `rookbot init` to create defaults.",
             policy_path.display()
         );
     }
@@ -63,7 +63,7 @@ pub fn list(policy_path: &Path) -> Result<()> {
 pub fn add(policy_path: &Path) -> Result<()> {
     if !policy_path.exists() {
         bail!(
-            "Policy file not found: {}\nRun `clawdefender init` to create defaults.",
+            "Policy file not found: {}\nRun `rookbot init` to create defaults.",
             policy_path.display()
         );
     }
@@ -119,7 +119,7 @@ pub fn add(policy_path: &Path) -> Result<()> {
 pub fn test_fixture(fixture_path: &Path, policy_path: &Path) -> Result<()> {
     if !policy_path.exists() {
         bail!(
-            "Policy file not found: {}\nRun `clawdefender init` to create defaults.",
+            "Policy file not found: {}\nRun `rookbot init` to create defaults.",
             policy_path.display()
         );
     }
@@ -227,7 +227,7 @@ pub fn template_list() -> Result<()> {
         println!("  {:<16} {}", name, description);
     }
     println!();
-    println!("Apply a template: clawdefender policy template-apply <name>");
+    println!("Apply a template: rookbot policy template-apply <name>");
     Ok(())
 }
 
@@ -237,7 +237,7 @@ pub fn template_apply(name: &str, policy_path: &Path) -> Result<()> {
         .iter()
         .find(|(n, _, _)| *n == name)
         .ok_or_else(|| anyhow::anyhow!(
-            "Unknown template: {name}\nRun `clawdefender policy template-list` to see available templates."
+            "Unknown template: {name}\nRun `rookbot policy template-list` to see available templates."
         ))?;
 
     // Backup existing policy if it exists.
@@ -258,7 +258,7 @@ pub fn template_apply(name: &str, policy_path: &Path) -> Result<()> {
 
     println!("Applied '{}' template to {}", name, policy_path.display());
     println!();
-    println!("Review your policy: clawdefender policy list");
+    println!("Review your policy: rookbot policy list");
 
     Ok(())
 }

@@ -1,4 +1,4 @@
-//! Rate limiting for Ask Claw conversation actions.
+//! Rate limiting for Ask Rook conversation actions.
 //!
 //! Prevents abuse by enforcing per-minute limits on messages, control actions,
 //! and file analyses. Uses a sliding window approach with VecDeque of timestamps.

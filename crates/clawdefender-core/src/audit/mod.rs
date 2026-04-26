@@ -1,6 +1,6 @@
 //! Audit logging for policy decisions and events.
 //!
-//! Every event that flows through ClawDefender is recorded as an [`AuditRecord`] in
+//! Every event that flows through RookBot is recorded as an [`AuditRecord`] in
 //! a JSON-lines file for post-hoc analysis and compliance.
 
 pub mod logger;

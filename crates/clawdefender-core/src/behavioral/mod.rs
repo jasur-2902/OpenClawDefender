@@ -1,4 +1,4 @@
-//! Behavioral baseline engine for ClawDefender.
+//! Behavioral baseline engine for RookBot.
 //!
 //! Builds per-server behavioral profiles by observing MCP and OS events during
 //! a learning phase. After learning, profiles are updated incrementally using

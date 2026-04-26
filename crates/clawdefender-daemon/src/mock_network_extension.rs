@@ -95,7 +95,7 @@ pub struct MockConnectEvent {
 ///
 /// SECURITY: Fail-open design — when the daemon is unavailable (which is the
 /// default state for the mock), all connections default to Allow. This ensures
-/// network connectivity is never broken by ClawDefender failures.
+/// network connectivity is never broken by RookBot failures.
 ///
 /// SECURITY: Non-agent traffic is always allowed immediately (step 1 of
 /// evaluate_connect). The mock never filters, blocks, or logs user traffic.

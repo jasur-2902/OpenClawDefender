@@ -1,4 +1,4 @@
-//! Downloader for ClawDefender binaries from GitHub releases.
+//! Downloader for RookBot binaries from GitHub releases.
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
@@ -6,9 +6,9 @@ use sha2::{Digest, Sha256};
 
 /// Base URL for GitHub releases.
 const RELEASE_BASE_URL: &str =
-    "https://github.com/clawdefender/clawdefender/releases/latest/download";
+    "https://github.com/rookbot-io/rookbot/releases/latest/download";
 
-/// Trait for downloading ClawDefender binaries. Mockable for testing.
+/// Trait for downloading RookBot binaries. Mockable for testing.
 #[async_trait]
 pub trait Downloader: Send + Sync {
     /// Download content from the given URL.
@@ -190,11 +190,11 @@ mod tests {
     fn test_build_urls() {
         assert_eq!(
             build_download_url("macos-arm64"),
-            "https://github.com/clawdefender/clawdefender/releases/latest/download/clawdefender-macos-arm64"
+            "https://github.com/rookbot-io/rookbot/releases/latest/download/rookbot-macos-arm64"
         );
         assert_eq!(
             build_checksum_url("linux-x86_64"),
-            "https://github.com/clawdefender/clawdefender/releases/latest/download/clawdefender-linux-x86_64.sha256"
+            "https://github.com/rookbot-io/rookbot/releases/latest/download/rookbot-linux-x86_64.sha256"
         );
     }
 }

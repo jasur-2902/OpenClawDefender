@@ -223,12 +223,12 @@ export function Dashboard() {
     [addPrompt]
   );
 
-  useTauriEvent<AuditEvent>("clawdefender://event", handleNewEvent);
+  useTauriEvent<AuditEvent>("rookbot://event", handleNewEvent);
   useTauriEvent<{ daemon_running: boolean }>(
-    "clawdefender://status-change",
+    "rookbot://status-change",
     handleStatusChange
   );
-  useTauriEvent<PendingPrompt>("clawdefender://prompt", handlePrompt);
+  useTauriEvent<PendingPrompt>("rookbot://prompt", handlePrompt);
 
   const blockedCount = events.filter((e) => {
     const d = e.decision.toLowerCase();

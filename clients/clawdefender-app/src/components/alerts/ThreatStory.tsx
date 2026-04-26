@@ -107,7 +107,7 @@ export function ThreatStory({
           const isExpanded = expandedStep === step.step_number;
 
           return (
-            <div key={step.step_number} className="relative pb-4" role="listitem" aria-label={`Step ${step.step_number}: ${step.description}${step.was_blocked ? ", blocked by ClawDefender" : ", allowed"}`}>
+            <div key={step.step_number} className="relative pb-4" role="listitem" aria-label={`Step ${step.step_number}: ${step.description}${step.was_blocked ? ", blocked by RookBot" : ", allowed"}`}>
               {/* Connecting line */}
               {!isLast && (
                 <div
@@ -166,7 +166,7 @@ export function ThreatStory({
                       )}
                       {step.was_blocked && (
                         <span className="text-[10px] text-[var(--color-safe)]">
-                          ClawDefender stopped this
+                          RookBot stopped this
                         </span>
                       )}
                     </div>
@@ -220,7 +220,7 @@ export function ThreatStory({
             state={{ prefill: `Tell me more about the ${narrative.pattern_name} kill chain.` }}
             className="text-xs text-[var(--color-accent)] hover:underline"
           >
-            Ask Claw for more details
+            Ask Rook for more details
           </Link>
         </div>
 

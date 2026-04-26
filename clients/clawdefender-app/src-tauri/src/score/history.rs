@@ -6,7 +6,7 @@ use super::calculator::ScoreSnapshot;
 fn db_path() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
     std::path::PathBuf::from(home)
-        .join(".local/share/clawdefender/score_history.db")
+        .join(".local/share/rookbot/score_history.db")
 }
 
 /// Open (or create) the score history database with the schema in place.

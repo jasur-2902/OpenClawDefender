@@ -37,7 +37,7 @@ impl ProfileStore {
     /// Default database path.
     pub fn default_path() -> PathBuf {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        PathBuf::from(home).join(".local/share/clawdefender/profiles.db")
+        PathBuf::from(home).join(".local/share/rookbot/profiles.db")
     }
 
     fn init_schema(&self) -> Result<()> {

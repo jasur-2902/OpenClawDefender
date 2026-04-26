@@ -1,32 +1,52 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { PageHeader } from "../components/PageHeader";
-import { ThreatStory } from "../components/alerts/ThreatStory";
-import { LiveInvestigationView } from "../components/investigation/LiveInvestigationView";
 import { useAlertStore } from "../stores/alertStore";
 import { useToastStore } from "../components/notifications/ToastContainer";
-import { getThreatColor, type ThreatLevel } from "../utils/threatLevel";
-import type { IntelligentAlert, AlertAction, InvestigationProgress } from "../types";
-import { truncateEnd } from "../utils/textUtils";
+import {
+  Icon,
+  Card,
+  Badge,
+  Btn,
+} from "../components/design";
+import type {
+  IntelligentAlert,
+  AlertAction,
+  InvestigationProgress,
+} from "../types";
 import { useAiStatus } from "../hooks/useAiStatus";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+function severityColor(sev: string): string {
+  switch (sev) {
+    case "dangerous":
+    case "critical":
+      return "var(--red)";
+    case "suspicious":
+    case "high":
+      return "var(--amber)";
+    case "unusual":
+    case "medium":
+      return "var(--violet)";
+    case "info":
+    case "low":
+    default:
+      return "var(--ink-2)";
+  }
+}
+
 function relativeTime(ts: string): string {
   try {
-    const now = Date.now();
-    const then = new Date(ts).getTime();
-    const diffMs = now - then;
-    const diffMin = Math.floor(diffMs / 60_000);
-    if (diffMin < 1) return "just now";
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
-    const diffDay = Math.floor(diffHr / 24);
-    return `${diffDay}d ago`;
+    const diff = Date.now() - new Date(ts).getTime();
+    const min = Math.floor(diff / 60_000);
+    if (min < 1) return "just now";
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    return `${Math.floor(hr / 24)}d ago`;
   } catch {
     return ts;
   }
@@ -40,28 +60,8 @@ function formatFullTime(ts: string): string {
   }
 }
 
-const severityLabels: Record<string, string> = {
-  dangerous: "Dangerous",
-  suspicious: "Suspicious",
-  unusual: "Unusual",
-  info: "Info",
-};
-
-function getSeverityBg(severity: string): string {
-  switch (severity) {
-    case "dangerous":
-      return "var(--color-danger-subtle)";
-    case "suspicious":
-      return "var(--color-warning-subtle)";
-    case "unusual":
-      return "var(--color-info-subtle)";
-    default:
-      return "var(--color-info-subtle)";
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Component
+// AlertDetail Screen
 // ---------------------------------------------------------------------------
 
 export function AlertDetail() {
@@ -70,12 +70,12 @@ export function AlertDetail() {
   const resolveAlert = useAlertStore((s) => s.resolveAlert);
   const dismissAlert = useAlertStore((s) => s.dismissAlert);
   const addToast = useToastStore((s) => s.addToast);
+  const { canInvestigate } = useAiStatus();
 
   const [alert, setAlert] = useState<IntelligentAlert | null>(null);
   const [loading, setLoading] = useState(true);
   const [investigationId, setInvestigationId] = useState<string | null>(null);
   const [startingInvestigation, setStartingInvestigation] = useState(false);
-  const { canInvestigate } = useAiStatus();
 
   useEffect(() => {
     if (!id) return;
@@ -94,27 +94,18 @@ export function AlertDetail() {
       switch (action.action_type) {
         case "restrict":
           await resolveAlert(alert.id, "restricted");
-          addToast({ title: "Done. I'll keep an eye on it.", severity: "success" });
-          if (alert.server_name) {
-            navigate(`/tools/${encodeURIComponent(alert.server_name)}`);
-          } else {
-            navigate("/alerts");
-          }
+          addToast({ title: "Done. Restricted.", severity: "success" });
+          navigate("/alerts");
           break;
         case "allow":
           try {
-            if (action.params) {
-              await invoke("add_rule", { rule: action.params });
-            }
+            if (action.params) await invoke("add_rule", { rule: action.params });
             await resolveAlert(alert.id, "allowed");
-            addToast({
-              title: "Got it. I added a rule so this won't be blocked again.",
-              severity: "success",
-            });
-            navigate("/alerts");
+            addToast({ title: "Allowed. Rule added.", severity: "success" });
           } catch {
             addToast({ title: "Could not add that rule.", severity: "danger" });
           }
+          navigate("/alerts");
           break;
         case "dismiss":
           await dismissAlert(alert.id);
@@ -133,24 +124,6 @@ export function AlertDetail() {
     [alert, resolveAlert, dismissAlert, addToast, navigate]
   );
 
-  const handleRestrict = useCallback(async () => {
-    if (!alert) return;
-    await resolveAlert(alert.id, "restricted");
-    addToast({ title: "Done. I'll keep an eye on it.", severity: "success" });
-    if (alert.server_name) {
-      navigate(`/tools/${encodeURIComponent(alert.server_name)}`);
-    } else {
-      navigate("/alerts");
-    }
-  }, [alert, resolveAlert, addToast, navigate]);
-
-  const handleKeepBlocking = useCallback(async () => {
-    if (!alert) return;
-    await resolveAlert(alert.id, "kept_blocking");
-    addToast({ title: "Got it. I'll keep blocking this.", severity: "success" });
-    navigate("/alerts");
-  }, [alert, resolveAlert, addToast, navigate]);
-
   const handleDismiss = useCallback(async () => {
     if (!alert) return;
     await dismissAlert(alert.id);
@@ -158,324 +131,476 @@ export function AlertDetail() {
     navigate("/alerts");
   }, [alert, dismissAlert, addToast, navigate]);
 
+  // Loading
   if (loading) {
     return (
-      <div className="p-6">
-        <PageHeader
-          title="Alert Detail"
-          breadcrumbs={[{ label: "Alerts", to: "/alerts" }, { label: "Loading..." }]}
-        />
-        <div className="flex justify-center py-16">
-          <span className="text-sm text-[var(--color-text-muted)]">Loading...</span>
+      <div
+        className="cd-scroll"
+        style={{
+          padding: 24,
+          maxWidth: 1080,
+          margin: "0 auto",
+          overflowY: "auto",
+          height: "100%",
+        }}
+      >
+        <button
+          onClick={() => navigate("/alerts")}
+          style={{
+            fontSize: 11.5,
+            color: "var(--ink-2)",
+            marginBottom: 14,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          {"\u2190"} Back
+        </button>
+        <div style={{ textAlign: "center", padding: 40, color: "var(--ink-3)" }}>
+          Loading...
         </div>
       </div>
     );
   }
 
+  // Not found
   if (!alert) {
     return (
-      <div className="p-6">
-        <PageHeader
-          title="Alert Not Found"
-          breadcrumbs={[{ label: "Alerts", to: "/alerts" }, { label: "Not Found" }]}
-        />
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-            This alert may have been dismissed or does not exist.
-          </p>
-          <Link to="/alerts" className="text-sm text-[var(--color-accent)] hover:underline">
-            Back to Alerts
-          </Link>
+      <div
+        className="cd-scroll"
+        style={{
+          padding: 24,
+          maxWidth: 1080,
+          margin: "0 auto",
+          overflowY: "auto",
+          height: "100%",
+        }}
+      >
+        <button
+          onClick={() => navigate("/alerts")}
+          style={{
+            fontSize: 11.5,
+            color: "var(--ink-2)",
+            marginBottom: 14,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          {"\u2190"} Back
+        </button>
+        <div
+          style={{
+            textAlign: "center",
+            padding: 60,
+            color: "var(--ink-2)",
+            fontSize: 14,
+          }}
+        >
+          Alert not found. It may have been dismissed.
         </div>
       </div>
     );
   }
 
-  const color = getThreatColor((alert.severity || "info") as ThreatLevel);
-  const bg = getSeverityBg(alert.severity);
-  const label = severityLabels[alert.severity] || "Info";
-  const isResolved = alert.status === "resolved" || alert.status === "dismissed";
-  const isKillChain = !!alert.kill_chain;
+  const sc = severityColor(alert.severity);
+  const isResolved =
+    alert.status === "resolved" || alert.status === "dismissed";
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
-      <PageHeader
-        title="Alert Detail"
-        breadcrumbs={[
-          { label: "Alerts", to: "/alerts" },
-          {
-            label: truncateEnd(alert.title, 40),
-          },
-        ]}
-      />
-
-      {/* Alert header card */}
-      <div
-        className="rounded-lg border-l-[3px] bg-[var(--color-bg-secondary)] border border-[var(--color-border)] p-5"
-        style={{ borderLeftColor: color }}
+    <div
+      className="cd-scroll"
+      style={{
+        padding: 24,
+        maxWidth: 1080,
+        margin: "0 auto",
+        overflowY: "auto",
+        height: "100%",
+      }}
+    >
+      {/* Back */}
+      <button
+        onClick={() => navigate("/alerts")}
+        style={{
+          fontSize: 11.5,
+          color: "var(--ink-2)",
+          marginBottom: 14,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+        }}
       >
-        <div className="flex items-center gap-2 mb-3">
-          <span
-            role="status"
-            aria-label={`${label} severity alert`}
-            className="inline-flex items-center text-[10px] uppercase font-semibold tracking-wide px-2 py-0.5 rounded-full"
-            style={{ color, backgroundColor: bg }}
-          >
-            {label}
-          </span>
-          {isKillChain && (
-            <span className="inline-flex items-center text-[10px] uppercase font-semibold tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-danger-subtle)] text-[var(--color-danger)]">
-              Kill Chain
-            </span>
-          )}
-          <span className="text-xs text-[var(--color-text-muted)]">
-            {relativeTime(alert.created_at)}
-          </span>
-          {isResolved && (
-            <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]">
-              {alert.status === "dismissed" ? "Dismissed" : "Resolved"}
-            </span>
-          )}
-        </div>
+        {"\u2190"} Back
+      </button>
 
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
-          {alert.title}
-        </h2>
-
-        <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-          {alert.description}
-        </p>
-
-        {/* AI Analysis Section */}
-        {(alert.ai_summary || alert.ai_risk_level) && (
-          <div className="mb-4 px-4 py-3 rounded-lg bg-[var(--color-info-subtle)] border border-[var(--color-info-border)]">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-accent)]" aria-hidden="true" />
-              <span className="text-xs font-semibold text-[var(--color-text-primary)] uppercase tracking-wide">
-                AI Analysis
-              </span>
-              {alert.ai_risk_level && (
-                <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-[var(--color-accent-subtle)] text-[var(--color-accent)]">
-                  {alert.ai_risk_level} risk
-                </span>
-              )}
-              {alert.ai_confidence != null && (
-                <span className="text-[10px] text-[var(--color-text-muted)]">
-                  {(alert.ai_confidence * 100).toFixed(0)}% confidence
-                </span>
-              )}
-            </div>
-            {alert.ai_summary && (
-              <p className="text-sm text-[var(--color-text-primary)] mb-2">
-                {alert.ai_summary}
-              </p>
-            )}
-            {alert.ai_recommendation && (
-              <p className="text-sm text-[var(--color-text-secondary)]">
-                Recommended: {alert.ai_recommendation}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Recommendation (fallback to non-AI recommendation) */}
-        {alert.recommendation && !alert.ai_recommendation && (
+      {/* Hero header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 14,
+          marginBottom: 18,
+        }}
+      >
+        <div
+          style={{
+            width: 6,
+            alignSelf: "stretch",
+            borderRadius: 3,
+            background: sc,
+            marginTop: 2,
+          }}
+        />
+        <div style={{ flex: 1 }}>
           <div
-            className="text-sm text-[var(--color-text-secondary)] mb-4 px-3 py-2 rounded-md border-l-2 bg-[var(--color-bg-tertiary)]"
-            style={{ borderLeftColor: color }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 6,
+            }}
           >
-            {alert.recommendation}
-          </div>
-        )}
-        {alert.ai_recommendation && (
-          <div
-            className="text-sm text-[var(--color-text-secondary)] mb-4 px-3 py-2 rounded-md border-l-2 bg-[var(--color-bg-tertiary)]"
-            style={{ borderLeftColor: color }}
-          >
-            {alert.ai_recommendation}
-          </div>
-        )}
-
-        {/* Dedup */}
-        {alert.dedup_count > 1 && (
-          <p className="text-xs text-[var(--color-text-muted)] mb-4">
-            This has happened {alert.dedup_count} times
-          </p>
-        )}
-
-        {/* Metadata grid */}
-        <div className="grid grid-cols-3 gap-4 text-sm mb-4">
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-0.5">Server</p>
-            <p className="text-[var(--color-text-primary)] font-medium">
-              {alert.server_name ? (
-                <Link
-                  to={`/tools/${encodeURIComponent(alert.server_name)}`}
-                  className="text-[var(--color-accent)] hover:underline"
-                >
-                  {alert.server_name}
-                </Link>
-              ) : (
-                "Unknown"
-              )}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-0.5">First Seen</p>
-            <p className="text-[var(--color-text-primary)]">
+            <Badge color={sc}>{alert.severity}</Badge>
+            <Badge color="var(--ink-2)" mono>
+              {alert.id.slice(0, 12)}
+            </Badge>
+            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
               {formatFullTime(alert.created_at)}
-            </p>
+            </span>
+            {isResolved && (
+              <Badge color="var(--ink-3)">
+                {alert.status === "dismissed" ? "Dismissed" : "Resolved"}
+              </Badge>
+            )}
           </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-0.5">Type</p>
-            <p className="text-[var(--color-text-primary)] capitalize">
-              {alert.alert_type.replace(/_/g, " ")}
-            </p>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 22,
+              fontWeight: 600,
+              letterSpacing: -0.3,
+            }}
+          >
+            {alert.title}
+          </h1>
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 13.5,
+              color: "var(--ink-2)",
+              lineHeight: 1.5,
+            }}
+          >
+            {alert.description}
           </div>
         </div>
-
-        {/* Source events */}
-        {alert.source_events.length > 0 && (
-          <div className="mb-4">
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">
-              Related Events ({alert.source_events.length})
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {alert.source_events.slice(0, 6).map((eid) => (
-                <span
-                  key={eid}
-                  className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]"
-                >
-                  {eid.slice(0, 8)}
-                </span>
-              ))}
-              {alert.source_events.length > 6 && (
-                <span className="text-[10px] text-[var(--color-text-muted)]">
-                  +{alert.source_events.length - 6} more
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Action buttons */}
         {!isResolved && (
-          <div className="flex items-center gap-2 pt-3 border-t border-[var(--color-border)] flex-wrap">
-            {alert.actions.map((action) => (
-              <button
-                key={action.id}
-                onClick={() => handleAction(action)}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                  action.action_type === "restrict"
-                    ? "border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)]"
-                    : action.action_type === "allow"
-                      ? "bg-[var(--color-safe)] text-white hover:opacity-90 border-transparent"
-                      : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
-                }`}
-              >
-                {action.label}
-              </button>
-            ))}
-            {alert.server_name && !alert.actions.some((a) => a.action_type === "restrict") && (
-              <button
-                onClick={handleRestrict}
-                className="text-xs px-3 py-1.5 rounded-lg border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)] transition-colors"
-              >
-                Restrict this tool
-              </button>
-            )}
-            {alert.alert_type === "block" && (
-              <button
-                onClick={handleKeepBlocking}
-                className="text-xs px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
-              >
-                Keep blocking
-              </button>
-            )}
-            <button
+          <div style={{ display: "flex", gap: 6 }}>
+            <Btn
+              kind="primary"
+              icon="search"
+              disabled={
+                !canInvestigate ||
+                startingInvestigation ||
+                !!investigationId
+              }
               onClick={async () => {
-                if (!alert) return;
                 setStartingInvestigation(true);
                 try {
-                  const result = await invoke<InvestigationProgress>("start_investigation", {
-                    targetType: "alert",
-                    targetId: alert.id,
-                    targetData: { title: alert.title, description: alert.description, severity: alert.severity },
-                    depth: "standard",
-                  });
+                  const result = await invoke<InvestigationProgress>(
+                    "start_investigation",
+                    {
+                      targetType: "alert",
+                      targetId: alert.id,
+                      targetData: {
+                        title: alert.title,
+                        description: alert.description,
+                        severity: alert.severity,
+                      },
+                      depth: "standard",
+                    }
+                  );
                   setInvestigationId(result.investigation_id);
                 } catch {
                   // ok
                 }
                 setStartingInvestigation(false);
               }}
-              disabled={startingInvestigation || !!investigationId || !canInvestigate}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-              title={!canInvestigate ? "Requires Cloud API -- set up in Settings" : undefined}
             >
               {startingInvestigation ? "Starting..." : "Investigate"}
-            </button>
-            <Link
-              to="/ask"
-              state={{ prefill: `Tell me about alert: ${alert.title}` }}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
-            >
-              Ask Claw about this
-            </Link>
-            <button
-              onClick={handleDismiss}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)] transition-colors ml-auto"
-            >
+            </Btn>
+            <Btn kind="danger" icon="lock" onClick={handleDismiss}>
+              Block server
+            </Btn>
+            <Btn kind="ghost" onClick={handleDismiss}>
               Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Resolved info */}
-        {isResolved && alert.resolved_at && (
-          <div className="pt-3 border-t border-[var(--color-border)]">
-            <p className="text-xs text-[var(--color-text-muted)]">
-              {alert.status === "dismissed" ? "Dismissed" : "Resolved"}{" "}
-              {relativeTime(alert.resolved_at)}
-              {alert.resolved_by && ` -- ${alert.resolved_by}`}
-            </p>
+            </Btn>
           </div>
         )}
       </div>
 
-      {/* Investigation results */}
-      {investigationId && (
-        <section aria-label="AI Investigation">
-          <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-            AI Investigation
-          </h3>
-          <div className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-4">
-            <LiveInvestigationView
-              investigationId={investigationId}
-              onComplete={() => {}}
-              onCancel={() => setInvestigationId(null)}
-            />
-          </div>
-        </section>
+      {/* AI Verdict card */}
+      {(alert.ai_summary || alert.ai_recommendation) && (
+        <Card
+          title="AI Verdict"
+          style={{
+            marginBottom: 14,
+            borderColor: "color-mix(in oklch, var(--violet) 35%, var(--line))",
+          }}
+          action={
+            alert.ai_confidence != null ? (
+              <Badge color="var(--red)" mono>
+                conf {alert.ai_confidence.toFixed(2)}
+              </Badge>
+            ) : undefined
+          }
+        >
+          {alert.ai_summary && (
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--ink-1)",
+                lineHeight: 1.6,
+                marginBottom: alert.ai_recommendation ? 8 : 0,
+              }}
+            >
+              {alert.ai_summary}
+            </div>
+          )}
+          {alert.ai_recommendation && (
+            <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+              Recommended: {alert.ai_recommendation}
+            </div>
+          )}
+        </Card>
       )}
 
-      {/* Kill chain: ThreatStory */}
-      {isKillChain && alert.kill_chain && (
-        <section aria-label="Threat story">
-          <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-            Attack Chain
-          </h3>
-          <div className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] p-5">
-            <ThreatStory
-              narrative={alert.kill_chain}
-              recommendation={alert.recommendation}
-              serverName={alert.server_name}
-              onAction={alert.server_name ? handleRestrict : undefined}
-              actionLabel="Restrict this server"
-            />
+      {/* Kill chain (ThreatStory) */}
+      {alert.kill_chain && (
+        <Card
+          title={`ThreatStory \u2014 ${alert.kill_chain.pattern_name}`}
+          style={{ marginBottom: 14 }}
+        >
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginBottom: 14, lineHeight: 1.5 }}>
+            {alert.kill_chain.summary}
           </div>
-        </section>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${alert.kill_chain.steps.length}, 1fr)`,
+              gap: 8,
+              position: "relative",
+            }}
+          >
+            {alert.kill_chain.steps.map((s, i) => (
+              <div key={i}>
+                <div style={{ position: "relative", marginBottom: 12 }}>
+                  {i < alert.kill_chain!.steps.length - 1 && (
+                    <div
+                      style={{
+                        height: 2,
+                        background: sc,
+                        position: "absolute",
+                        top: 11,
+                        left: 24,
+                        right: -8,
+                      }}
+                    />
+                  )}
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 999,
+                      background: sc,
+                      color: "var(--bg-0)",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fontFamily: "var(--font-mono)",
+                      position: "relative",
+                      zIndex: 1,
+                    }}
+                  >
+                    {i + 1}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    color: sc,
+                    fontFamily: "var(--font-mono)",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {relativeTime(s.timestamp)}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    marginTop: 2,
+                  }}
+                >
+                  Step {s.step_number}
+                </div>
+                <button
+                  onClick={() => navigate(`/activity/${s.event_id}`)}
+                  style={{
+                    marginTop: 6,
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10.5,
+                    color: "var(--ink-2)",
+                    textAlign: "left",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  {s.description}
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
+
+      {/* 2-column: Recommended actions + Evidence */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.3fr 1fr",
+          gap: 14,
+        }}
+      >
+        {/* Recommended actions */}
+        <Card title="Recommended actions" padded={false}>
+          {alert.actions.length > 0 ? (
+            alert.actions.map((action, i) => (
+              <div
+                key={action.id}
+                style={{
+                  padding: "14px 16px",
+                  borderBottom:
+                    i < alert.actions.length - 1
+                      ? "1px solid var(--line-soft)"
+                      : "none",
+                  display: "flex",
+                  gap: 10,
+                }}
+              >
+                <Icon
+                  name={
+                    action.action_type === "restrict"
+                      ? "lock"
+                      : action.action_type === "allow"
+                        ? "shield"
+                        : "key"
+                  }
+                  size={16}
+                  color={
+                    action.action_type === "restrict"
+                      ? "var(--red)"
+                      : "var(--accent)"
+                  }
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 500 }}>
+                    {action.label}
+                  </div>
+                </div>
+                <Btn
+                  size="sm"
+                  kind={
+                    action.action_type === "restrict" ? "danger" : "accent"
+                  }
+                  onClick={() => handleAction(action)}
+                >
+                  Apply
+                </Btn>
+              </div>
+            ))
+          ) : (
+            <div style={{ padding: 16 }}>
+              <div
+                style={{
+                  padding: "14px 16px",
+                  display: "flex",
+                  gap: 10,
+                }}
+              >
+                <Icon name="lock" size={16} color="var(--red)" />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 500 }}>
+                    {alert.recommendation || "Review and take action"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* Evidence */}
+        <Card title="Evidence">
+          {alert.source_events.length > 0 ? (
+            alert.source_events.slice(0, 8).map((eid) => (
+              <button
+                key={eid}
+                onClick={() => navigate(`/activity/${eid}`)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 10px",
+                  background: "var(--bg-2)",
+                  borderRadius: 6,
+                  marginBottom: 6,
+                  textAlign: "left",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <Icon name="activity" size={13} color="var(--ink-2)" />
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: "var(--ink-1)",
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {eid.length > 20 ? eid.slice(0, 20) + "\u2026" : eid}
+                </span>
+                <Icon name="chevron" size={11} color="var(--ink-3)" />
+              </button>
+            ))
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+              No evidence events linked.
+            </div>
+          )}
+          {alert.source_events.length > 8 && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                textAlign: "center",
+                padding: 4,
+              }}
+            >
+              +{alert.source_events.length - 8} more events
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { ASK_CLAW } from "../constants/messages";
 import { DragDropZone } from "../components/conversation/DragDropZone";
 import { ConfirmationCard } from "../components/conversation/ConfirmationCard";
 import { useAiStatus } from "../hooks/useAiStatus";
+import { Icon, Rook, Badge, Btn } from "../components/design";
 import type { AskClawAIResponse, SuggestedAction, ToolCallInfo, ContextReference } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -20,7 +21,7 @@ interface ActionButtonData {
   id: string;
   label: string;
   action: ActionTypeData;
-  style: string; // "primary" | "secondary" | "danger"
+  style: string;
   requires_confirmation: boolean;
 }
 
@@ -62,13 +63,7 @@ function renderMarkdown(text: string | undefined | null): React.ReactNode[] {
       parts.push(<strong key={key++}>{match[2]}</strong>);
     } else if (match[3] && match[4]) {
       parts.push(
-        <a
-          key={key++}
-          href={match[4]}
-          className="text-[var(--color-accent)] hover:underline"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <a key={key++} href={match[4]} style={{ color: "var(--accent)" }} target="_blank" rel="noopener noreferrer">
           {match[3]}
         </a>,
       );
@@ -93,56 +88,21 @@ function getSuggestions(lastIntentId?: string): readonly string[] {
 // Rich Data Renderers
 // ---------------------------------------------------------------------------
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    good: { label: "OK", cls: "bg-[var(--color-safe-subtle)] text-[var(--color-safe)]" },
-    warning: { label: "Warning", cls: "bg-[var(--color-warning-subtle)] text-[var(--color-warning)]" },
-    error: { label: "Error", cls: "bg-[var(--color-danger-subtle)] text-[var(--color-danger)]" },
-  };
-  const s = map[status] ?? { label: status, cls: "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]" };
-  return (
-    <span className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full ${s.cls}`}>
-      {s.label}
-    </span>
-  );
-}
-
-function DecisionBadge({ decision }: { decision: string }) {
-  const d = decision.toLowerCase();
-  if (d === "allowed" || d === "allow") {
-    return (
-      <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--color-safe-subtle)] text-[var(--color-safe)]">
-        allowed
-      </span>
-    );
-  }
-  if (d === "blocked" || d === "block" || d === "denied" || d === "deny") {
-    return (
-      <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--color-danger-subtle)] text-[var(--color-danger)]">
-        blocked
-      </span>
-    );
-  }
-  return (
-    <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]">
-      {decision}
-    </span>
-  );
-}
-
 function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
   const type = data.type as string;
 
   if (type === "status_summary") {
     const items = (data.items ?? []) as Array<{ label: string; value: string; status: string }>;
     return (
-      <div className="mt-2 space-y-1">
+      <div style={{ marginTop: 10, display: "grid", gap: 4 }}>
         {items.map((item) => (
-          <div key={item.label} className="flex items-center justify-between text-sm">
-            <span className="text-[var(--color-text-secondary)]">{item.label}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[var(--color-text-primary)]">{item.value}</span>
-              <StatusBadge status={item.status} />
+          <div key={item.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12.5 }}>
+            <span style={{ color: "var(--ink-2)" }}>{item.label}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "var(--ink-0)" }}>{item.value}</span>
+              <Badge color={item.status === "good" ? "var(--green)" : item.status === "warning" ? "var(--amber)" : "var(--red)"}>
+                {item.status === "good" ? "OK" : item.status}
+              </Badge>
             </div>
           </div>
         ))}
@@ -157,43 +117,37 @@ function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
     }>;
     const total = (data.total ?? events.length) as number;
     return (
-      <div className="mt-2 space-y-1">
+      <div style={{ marginTop: 10, display: "grid", gap: 4 }}>
         {events.map((evt) => (
-          <div key={evt.id} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-[var(--color-bg-tertiary)]">
-            <span className="text-[var(--color-text-secondary)] w-16 shrink-0 font-mono">
-              {formatRelativeTime(evt.timestamp)}
-            </span>
-            <span className="text-[var(--color-accent)] w-24 truncate shrink-0">{evt.server_name}</span>
-            <span className="text-[var(--color-text-primary)] flex-1 truncate">{evt.description}</span>
-            <DecisionBadge decision={evt.decision} />
+          <div key={evt.id} style={{
+            display: "flex", alignItems: "center", gap: 8, fontSize: 11,
+            fontFamily: "var(--font-mono)", padding: "6px 10px",
+            background: "var(--bg-2)", borderRadius: 6,
+          }}>
+            <span style={{ color: "var(--ink-3)", width: 60, flexShrink: 0 }}>{formatRelativeTime(evt.timestamp)}</span>
+            <span style={{ color: "var(--accent)", width: 90, flexShrink: 0 }}>{evt.server_name}</span>
+            <span style={{ color: "var(--ink-1)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{evt.description}</span>
+            <Badge color={evt.decision === "allowed" || evt.decision === "allow" ? "var(--green)" : "var(--red)"}>{evt.decision}</Badge>
           </div>
         ))}
         {total > events.length && (
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            ...and {total - events.length} more
-          </p>
+          <p style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 4 }}>...and {total - events.length} more</p>
         )}
       </div>
     );
   }
 
   if (type === "server_list") {
-    const servers = (data.servers ?? []) as Array<{
-      name: string; wrapped: boolean; status: string; events_count: number;
-    }>;
+    const servers = (data.servers ?? []) as Array<{ name: string; wrapped: boolean; status: string; events_count: number }>;
     return (
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
         {servers.map((srv) => (
-          <div key={srv.name} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-medium text-[var(--color-text-primary)]">{srv.name}</span>
-              <span className={`inline-block w-2 h-2 rounded-full ${
-                srv.status === "running" ? "bg-[var(--color-safe)]" : "bg-[var(--color-text-secondary)]"
-              }`} />
+          <div key={srv.name} style={{ padding: 12, background: "var(--bg-2)", borderRadius: 8, border: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink-0)" }}>{srv.name}</span>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: srv.status === "running" ? "var(--green)" : "var(--ink-3)" }} />
             </div>
-            <div className="text-xs text-[var(--color-text-secondary)]">
-              {srv.events_count} events{srv.wrapped ? " | wrapped" : ""}
-            </div>
+            <div style={{ fontSize: 11, color: "var(--ink-2)" }}>{srv.events_count} events{srv.wrapped ? " | wrapped" : ""}</div>
           </div>
         ))}
       </div>
@@ -202,124 +156,71 @@ function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
 
   if (type === "metric") {
     return (
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-2xl font-bold text-[var(--color-text-primary)]">{data.value as string}</span>
-        <span className="text-sm text-[var(--color-text-secondary)]">{data.label as string}</span>
-        {data.trend != null && <span className="text-xs text-[var(--color-text-muted)]">{String(data.trend)}</span>}
+      <div style={{ marginTop: 10, display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: "var(--ink-0)" }}>{data.value as string}</span>
+        <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{data.label as string}</span>
       </div>
     );
   }
 
   if (type === "risk_assessment") {
     const riskLevel = data.risk_level as string;
-    const riskColor = riskLevel === "critical" || riskLevel === "high"
-      ? "var(--color-danger)" : riskLevel === "medium" ? "var(--color-warning)" : "var(--color-safe)";
+    const riskColor = riskLevel === "critical" || riskLevel === "high" ? "var(--red)" : riskLevel === "medium" ? "var(--amber)" : "var(--green)";
     return (
-      <div className="mt-2 rounded-lg border p-3" style={{ borderColor: riskColor }}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium" style={{ color: riskColor }}>{riskLevel.toUpperCase()}</span>
-          <span className="text-sm text-[var(--color-text-primary)]">{data.subject as string}</span>
+      <div style={{ marginTop: 10, padding: 12, borderRadius: 10, border: `1px solid ${riskColor}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <Badge color={riskColor}>{riskLevel.toUpperCase()}</Badge>
+          <span style={{ fontSize: 12.5, color: "var(--ink-0)" }}>{data.subject as string}</span>
         </div>
-        <p className="text-sm text-[var(--color-text-secondary)]">{data.explanation as string}</p>
-        {(data.factors as string[] | undefined)?.length ? (
-          <ul className="mt-1 list-disc list-inside text-xs text-[var(--color-text-muted)]">
-            {(data.factors as string[]).map((f, i) => <li key={i}>{f}</li>)}
-          </ul>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (type === "scan_summary") {
-    return (
-      <div className="mt-2 flex items-center gap-4 text-sm">
-        <span className="text-[var(--color-text-primary)] font-medium">{data.total_findings as number} findings</span>
-        {(data.critical as number) > 0 && <span className="text-[var(--color-danger)]">{data.critical as number} critical</span>}
-        {(data.high as number) > 0 && <span className="text-[var(--color-warning)]">{data.high as number} high</span>}
-        {(data.medium as number) > 0 && <span className="text-[var(--color-info)]">{data.medium as number} medium</span>}
-        {(data.low as number) > 0 && <span className="text-[var(--color-text-secondary)]">{data.low as number} low</span>}
+        <p style={{ fontSize: 12.5, color: "var(--ink-2)", margin: 0 }}>{data.explanation as string}</p>
       </div>
     );
   }
 
   if (type === "ai_tool_calls") {
-    const toolCalls = (data.tool_calls ?? []) as Array<{ tool_name: string; description: string; success: boolean }>;
-    const suggestedActions = (data.suggested_actions ?? []) as Array<{ id: string; action_type: string; description: string; preview: string | null; requires_approval: boolean }>;
-    const contextRefs = (data.context_references ?? []) as Array<{ ref_type: string; ref_id: string; label: string }>;
+    const suggestedActions = (data.suggested_actions ?? []) as Array<{ id: string; action_type: string; label: string; description: string; requires_confirmation: boolean }>;
+    const contextRefs = (data.context_references ?? data.context_refs ?? []) as Array<{ ref_type: string; id: string; label: string }>;
 
     return (
-      <div className="mt-2 space-y-2">
-        {toolCalls.length > 0 && (
-          <div className="space-y-1">
-            {toolCalls.map((tc, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-                <span>{tc.success ? "\u2713" : "\u2717"}</span>
-                <span className="font-medium">{tc.tool_name}</span>
-                <span className="text-[var(--color-text-muted)]">{tc.description}</span>
-              </div>
-            ))}
-          </div>
-        )}
+      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
         {suggestedActions.length > 0 && (
-          <div className="space-y-1 pt-1">
+          <div style={{ display: "grid", gap: 4 }}>
             {suggestedActions.map((action) => (
-              <div
-                key={action.id}
-                className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-2"
-              >
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium text-[var(--color-text-primary)]">
-                    {action.description}
-                  </span>
-                  {action.preview && (
-                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 truncate">
-                      {action.preview}
-                    </p>
-                  )}
+              <div key={action.id} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: 10, borderRadius: 8, border: "1px solid var(--accent-line)", background: "var(--bg-1)",
+              }}>
+                <div style={{ flex: 1 }}>
+                  <Icon name="sparkles" size={13} color="var(--accent)" />
+                  <span style={{ fontSize: 12, marginLeft: 6, color: "var(--ink-0)" }}>{action.label || action.description}</span>
                 </div>
-                <div className="flex items-center gap-1 shrink-0 ml-2">
-                  <button
-                    onClick={async () => {
-                      try {
-                        await invoke("approve_claw_action", { actionId: action.id });
-                      } catch {
-                        // ok
-                      }
-                    }}
-                    className="px-2 py-1 text-[10px] rounded bg-[var(--color-accent)] text-white hover:opacity-90"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await invoke("reject_claw_action", { actionId: action.id });
-                      } catch {
-                        // ok
-                      }
-                    }}
-                    className="px-2 py-1 text-[10px] rounded border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
-                  >
-                    Skip
-                  </button>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <Btn size="sm" kind="primary" onClick={async () => { try { await invoke("approve_claw_action", { actionId: action.id }); } catch { /* ok */ } }}>Apply</Btn>
+                  <Btn size="sm" kind="ghost" onClick={async () => { try { await invoke("reject_claw_action", { actionId: action.id }); } catch { /* ok */ } }}>Not now</Btn>
                 </div>
               </div>
             ))}
           </div>
         )}
         {contextRefs.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {contextRefs.map((ref, i) => (
-              <span
-                key={i}
-                className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] text-[var(--color-accent)] cursor-default"
-                title={`${ref.ref_type}: ${ref.ref_id}`}
-              >
+              <span key={i} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: "var(--bg-2)", color: "var(--accent)" }} title={`${ref.ref_type}: ${ref.id}`}>
                 {ref.label}
               </span>
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (type === "scan_summary") {
+    return (
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12, fontSize: 12.5 }}>
+        <span style={{ color: "var(--ink-0)", fontWeight: 500 }}>{data.total_findings as number} findings</span>
+        {(data.critical as number) > 0 && <span style={{ color: "var(--red)" }}>{data.critical as number} critical</span>}
+        {(data.high as number) > 0 && <span style={{ color: "var(--amber)" }}>{data.high as number} high</span>}
       </div>
     );
   }
@@ -343,57 +244,36 @@ export function AskClaw() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingConfirmations, setPendingConfirmations] = useState<Map<string, string>>(new Map());
   const [aiMode, setAiMode] = useState<string | null>(null);
-  const [lastToolCalls, setLastToolCalls] = useState<ToolCallInfo[]>([]);
-  const [lastSuggestedActions, setLastSuggestedActions] = useState<SuggestedAction[]>([]);
-  const [lastContextRefs, setLastContextRefs] = useState<ContextReference[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [historySearch, setHistorySearch] = useState("");
+  const [backendPref, setBackendPref] = useState<"cloud" | "local" | "auto">("auto");
+  const [switchingBackend, setSwitchingBackend] = useState(false);
+  const [, setLastToolCalls] = useState<ToolCallInfo[]>([]);
+  const [, setLastSuggestedActions] = useState<SuggestedAction[]>([]);
+  const [, setLastContextRefs] = useState<ContextReference[]>([]);
 
   const daemonRunning = useEventStore((s) => s.daemonRunning);
   const { status: aiStatus, cloudActive, localActive } = useAiStatus();
   const {
-    messages,
-    isLoading,
-    conversationId,
-    conversations,
-    loadLatestConversation,
-    startNewConversation,
-    addUserMessage,
-    addClawResponse,
-    setCurrentPage,
-    loadConversation,
-    listConversations,
-    deleteConversation,
-    searchConversations,
+    messages, isLoading, conversationId, conversations,
+    loadLatestConversation, startNewConversation, addUserMessage, addClawResponse,
+    setCurrentPage, loadConversation, listConversations,
   } = useConversationStore();
 
-  // Track current page in context
-  useEffect(() => {
-    setCurrentPage("/ask");
-  }, [setCurrentPage]);
+  useEffect(() => { setCurrentPage("/ask"); }, [setCurrentPage]);
 
-  // Fetch AI mode on mount
   useEffect(() => {
     invoke<string>("get_ask_claw_mode")
-      .then((mode) => {
-        try {
-          // Mode comes as JSON string like "\"Cloud\""
-          setAiMode(JSON.parse(mode));
-        } catch {
-          setAiMode(mode);
-        }
-      })
+      .then((mode) => { try { setAiMode(JSON.parse(mode)); } catch { setAiMode(mode); } })
       .catch(() => setAiMode("Pattern"));
+    invoke<string>("get_ask_claw_backend")
+      .then((pref) => setBackendPref(pref as "cloud" | "local" | "auto"))
+      .catch(() => {});
   }, []);
 
-  // Load conversation on mount
-  useEffect(() => {
-    loadLatestConversation();
-  }, [loadLatestConversation]);
+  useEffect(() => { loadLatestConversation(); }, [loadLatestConversation]);
+  useEffect(() => { listConversations(); }, [listConversations]);
 
-  // Handle pre-populated question from navigation state (AskClawButton)
   useEffect(() => {
-    const state = location.state as { question?: string; context?: string } | null;
+    const state = location.state as { question?: string } | null;
     if (state?.question) {
       setInputValue(state.question);
       window.history.replaceState({}, "");
@@ -401,687 +281,291 @@ export function AskClaw() {
     }
   }, [location.state]);
 
-  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    if (feedRef.current) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
-    }
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [messages, isThinking]);
 
-  // Focus input after response renders
   useEffect(() => {
-    if (!isThinking && messages.length > 0) {
-      inputRef.current?.focus();
-    }
+    if (!isThinking && messages.length > 0) inputRef.current?.focus();
   }, [isThinking, messages.length]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const maxHeight = 4 * 24;
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
   }, [inputValue]);
 
-  // Get the last intent ID for context-sensitive suggestions
   const lastIntentId = [...messages].reverse().find((m) => m.role === "claw")?.intentId;
 
-  // Submit a message
-  const submitMessage = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || isThinking) return;
+  const switchBackend = useCallback(async (target: "cloud" | "local") => {
+    if (target === backendPref || switchingBackend) return;
+    setSwitchingBackend(true);
+    try {
+      const modeStr = await invoke<string>("set_ask_claw_backend", { backend: target });
+      setBackendPref(target);
+      try { setAiMode(JSON.parse(modeStr)); } catch { setAiMode(modeStr); }
+    } catch (err) { console.error("Failed to switch backend:", err); }
+    finally { setSwitchingBackend(false); }
+  }, [backendPref, switchingBackend]);
 
-      setInputValue("");
-      setError(null);
-      setMessageHistory((prev) => [...prev, trimmed]);
-      setHistoryIndex(-1);
-      setIsThinking(true);
+  const submitMessage = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || isThinking) return;
+    setInputValue("");
+    setError(null);
+    setMessageHistory((prev) => [...prev, trimmed]);
+    setHistoryIndex(-1);
+    setIsThinking(true);
+    await addUserMessage(trimmed);
 
-      await addUserMessage(trimmed);
-
-      try {
-        // Try AI-powered ask first if Cloud/LocalSlm mode
-        let aiHandled = false;
-        if (aiMode === "Cloud" || aiMode === "LocalSlm") {
-          try {
-            const contextJson = useConversationStore.getState().getContextJson();
-            const aiResponseStr = await invoke<string>("ask_claw_ai", {
-              input: trimmed,
-              contextJson,
-            });
-            const aiResponse: AskClawAIResponse = JSON.parse(aiResponseStr);
-
-            // Store tool calls and suggestions for display
-            setLastToolCalls(aiResponse.tool_calls_made ?? []);
-            setLastSuggestedActions(aiResponse.suggested_actions ?? []);
-            setLastContextRefs(aiResponse.context_references ?? []);
-
-            const clawMsg: ConversationMessage = {
-              id: aiResponse.conversation_id || `claw-ai-${Date.now()}`,
-              role: "claw",
-              contentText: aiResponse.response_text,
-              contentRichJson: aiResponse.tool_calls_made?.length
-                ? JSON.stringify({
-                    type: "ai_tool_calls",
-                    tool_calls: aiResponse.tool_calls_made,
-                    suggested_actions: aiResponse.suggested_actions,
-                    context_references: aiResponse.context_references,
-                  })
-                : undefined,
-              timestamp: new Date().toISOString(),
-            };
-
-            await addClawResponse(clawMsg);
-            aiHandled = true;
-          } catch {
-            // Fall through to pattern-based
-          }
-        }
-
-        if (!aiHandled) {
+    try {
+      let aiHandled = false;
+      if (aiMode === "Cloud" || aiMode === "LocalSlm") {
+        try {
           const contextJson = useConversationStore.getState().getContextJson();
-          const responseJson = await invoke<string>("ask_claw", {
-            input: trimmed,
-            contextJson,
-          });
-          const response = JSON.parse(responseJson);
-
+          const aiResponseStr = await invoke<string>("ask_claw_ai", { input: trimmed, contextJson });
+          const aiResponse: AskClawAIResponse = JSON.parse(aiResponseStr);
+          setLastToolCalls(aiResponse.tool_calls ?? []);
+          setLastSuggestedActions(aiResponse.suggested_actions ?? []);
+          setLastContextRefs(aiResponse.context_refs ?? []);
           const clawMsg: ConversationMessage = {
-            id: response.turn_id || `claw-${Date.now()}`,
+            id: aiResponse.turn_id || `claw-ai-${Date.now()}`,
             role: "claw",
-            contentText: response.message,
-            contentRichJson: response.structured_data
-              ? JSON.stringify(response.structured_data)
+            contentText: aiResponse.message,
+            contentRichJson: aiResponse.tool_calls?.length
+              ? JSON.stringify({ type: "ai_tool_calls", tool_calls: aiResponse.tool_calls, suggested_actions: aiResponse.suggested_actions, context_references: aiResponse.context_refs })
               : undefined,
-            actionsJson: response.actions?.length
-              ? JSON.stringify(response.actions)
-              : undefined,
-            intentId: response.intent_id,
-            timestamp: response.timestamp || new Date().toISOString(),
+            timestamp: aiResponse.timestamp || new Date().toISOString(),
           };
-
           await addClawResponse(clawMsg);
-
-          // Check if any action requires confirmation
-          const actions: ActionButtonData[] = response.actions ?? [];
-          const confirmAction = actions.find((a: ActionButtonData) => a.requires_confirmation);
-          if (confirmAction) {
-            setPendingConfirmations((prev) => {
-              const next = new Map(prev);
-              next.set(clawMsg.id, JSON.stringify(confirmAction.action));
-              return next;
-            });
-          }
-        }
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setIsThinking(false);
-      }
-    },
-    [isThinking, addUserMessage, addClawResponse],
-  );
-
-  // Handle action button clicks
-  const handleAction = useCallback(
-    async (action: ActionTypeData, requiresConfirmation: boolean, msgId?: string) => {
-      if (requiresConfirmation && msgId) {
-        setPendingConfirmations((prev) => {
-          const next = new Map(prev);
-          next.set(msgId, JSON.stringify(action));
-          return next;
-        });
-        return;
+          aiHandled = true;
+        } catch { /* Fall through */ }
       }
 
-      switch (action.type) {
-        case "navigate":
-          navigate(action.page);
-          break;
-        case "tauri_command":
-          try {
-            setIsThinking(true);
-            const contextJson = useConversationStore.getState().getContextJson();
-            const responseJson = await invoke<string>("confirm_action", {
-              actionJson: JSON.stringify(action),
-              state: contextJson,
-            });
-            const response = JSON.parse(responseJson);
-            const clawMsg: ConversationMessage = {
-              id: response.turn_id || `claw-${Date.now()}`,
-              role: "claw",
-              contentText: response.message,
-              contentRichJson: response.structured_data
-                ? JSON.stringify(response.structured_data)
-                : undefined,
-              actionsJson: response.actions?.length
-                ? JSON.stringify(response.actions)
-                : undefined,
-              intentId: response.intent_id,
-              timestamp: response.timestamp || new Date().toISOString(),
-            };
-            await addClawResponse(clawMsg);
-          } catch (e) {
-            setError(String(e));
-          } finally {
-            setIsThinking(false);
-          }
-          break;
-        case "follow_up":
-          await submitMessage(action.message);
-          break;
-        case "copy_to_clipboard":
-          await navigator.clipboard.writeText(action.text);
-          break;
-      }
-    },
-    [navigate, submitMessage, addClawResponse],
-  );
-
-  // Handle confirmation
-  const handleConfirm = useCallback(
-    async (msgId: string) => {
-      const actionJson = pendingConfirmations.get(msgId);
-      if (!actionJson) return;
-
-      setPendingConfirmations((prev) => {
-        const next = new Map(prev);
-        next.delete(msgId);
-        return next;
-      });
-
-      setIsThinking(true);
-      try {
+      if (!aiHandled) {
         const contextJson = useConversationStore.getState().getContextJson();
-        const responseJson = await invoke<string>("confirm_action", {
-          actionJson,
-          state: contextJson,
-        });
+        const responseJson = await invoke<string>("ask_claw", { input: trimmed, contextJson });
         const response = JSON.parse(responseJson);
         const clawMsg: ConversationMessage = {
           id: response.turn_id || `claw-${Date.now()}`,
           role: "claw",
           contentText: response.message,
-          contentRichJson: response.structured_data
-            ? JSON.stringify(response.structured_data)
-            : undefined,
-          actionsJson: response.actions?.length
-            ? JSON.stringify(response.actions)
-            : undefined,
+          contentRichJson: response.structured_data ? JSON.stringify(response.structured_data) : undefined,
+          actionsJson: response.actions?.length ? JSON.stringify(response.actions) : undefined,
           intentId: response.intent_id,
           timestamp: response.timestamp || new Date().toISOString(),
         };
         await addClawResponse(clawMsg);
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setIsThinking(false);
+        const actions: ActionButtonData[] = response.actions ?? [];
+        const confirmAction = actions.find((a: ActionButtonData) => a.requires_confirmation);
+        if (confirmAction) {
+          setPendingConfirmations((prev) => { const next = new Map(prev); next.set(clawMsg.id, JSON.stringify(confirmAction.action)); return next; });
+        }
       }
-    },
-    [pendingConfirmations, addClawResponse],
-  );
+    } catch (e) { setError(String(e)); }
+    finally { setIsThinking(false); }
+  }, [isThinking, addUserMessage, addClawResponse, aiMode]);
 
-  // Handle cancel confirmation
-  const handleCancelConfirm = useCallback(
-    async (msgId: string) => {
-      setPendingConfirmations((prev) => {
-        const next = new Map(prev);
-        next.delete(msgId);
-        return next;
+  const handleAction = useCallback(async (action: ActionTypeData, requiresConfirmation: boolean, msgId?: string) => {
+    if (requiresConfirmation && msgId) {
+      setPendingConfirmations((prev) => { const next = new Map(prev); next.set(msgId, JSON.stringify(action)); return next; });
+      return;
+    }
+    switch (action.type) {
+      case "navigate": navigate(action.page); break;
+      case "tauri_command":
+        try {
+          setIsThinking(true);
+          const contextJson = useConversationStore.getState().getContextJson();
+          const responseJson = await invoke<string>("confirm_action", { actionJson: JSON.stringify(action), state: contextJson });
+          const response = JSON.parse(responseJson);
+          await addClawResponse({
+            id: response.turn_id || `claw-${Date.now()}`, role: "claw", contentText: response.message,
+            contentRichJson: response.structured_data ? JSON.stringify(response.structured_data) : undefined,
+            actionsJson: response.actions?.length ? JSON.stringify(response.actions) : undefined,
+            intentId: response.intent_id, timestamp: response.timestamp || new Date().toISOString(),
+          });
+        } catch (e) { setError(String(e)); }
+        finally { setIsThinking(false); }
+        break;
+      case "follow_up": await submitMessage(action.message); break;
+      case "copy_to_clipboard": await navigator.clipboard.writeText(action.text); break;
+    }
+  }, [navigate, submitMessage, addClawResponse]);
+
+  const handleConfirm = useCallback(async (msgId: string) => {
+    const actionJson = pendingConfirmations.get(msgId);
+    if (!actionJson) return;
+    setPendingConfirmations((prev) => { const next = new Map(prev); next.delete(msgId); return next; });
+    setIsThinking(true);
+    try {
+      const contextJson = useConversationStore.getState().getContextJson();
+      const responseJson = await invoke<string>("confirm_action", { actionJson, state: contextJson });
+      const response = JSON.parse(responseJson);
+      await addClawResponse({
+        id: response.turn_id || `claw-${Date.now()}`, role: "claw", contentText: response.message,
+        contentRichJson: response.structured_data ? JSON.stringify(response.structured_data) : undefined,
+        actionsJson: response.actions?.length ? JSON.stringify(response.actions) : undefined,
+        intentId: response.intent_id, timestamp: response.timestamp || new Date().toISOString(),
       });
+    } catch (e) { setError(String(e)); }
+    finally { setIsThinking(false); }
+  }, [pendingConfirmations, addClawResponse]);
 
-      const clawMsg: ConversationMessage = {
-        id: `cancel-${Date.now()}`,
-        role: "claw",
-        contentText: ASK_CLAW.confirmCancelled,
-        timestamp: new Date().toISOString(),
-      };
-      await addClawResponse(clawMsg);
-    },
-    [addClawResponse],
-  );
+  const handleCancelConfirm = useCallback(async (msgId: string) => {
+    setPendingConfirmations((prev) => { const next = new Map(prev); next.delete(msgId); return next; });
+    await addClawResponse({ id: `cancel-${Date.now()}`, role: "claw", contentText: ASK_CLAW.confirmCancelled, timestamp: new Date().toISOString() });
+  }, [addClawResponse]);
 
-  // Handle file drop
-  const handleFileDrop = useCallback(
-    async (path: string) => {
-      await addUserMessage(`Analyze this file for security risks:\n${path}`);
-      setIsThinking(true);
+  const handleFileDrop = useCallback(async (path: string) => {
+    await addUserMessage(`Analyze this file for security risks:\n${path}`);
+    setIsThinking(true);
+    try {
+      const isConfig = /\.(json|ya?ml|toml|ini|conf|cfg)$/i.test(path);
+      const resultRaw = await invoke<string>(isConfig ? "analyze_config" : "analyze_file", { path });
+      const result = JSON.parse(resultRaw);
+      await addClawResponse({
+        id: `analysis-${Date.now()}`, role: "claw", contentText: result.summary ?? result.message ?? "Analysis complete.",
+        contentRichJson: result.structured_data ? JSON.stringify(result.structured_data) : undefined,
+        actionsJson: result.actions?.length ? JSON.stringify(result.actions) : undefined,
+        intentId: "analyze.file", timestamp: new Date().toISOString(),
+      });
+    } catch {
+      await addClawResponse({ id: `error-${Date.now()}`, role: "claw", contentText: ASK_CLAW.errorGeneric, timestamp: new Date().toISOString() });
+    } finally { setIsThinking(false); }
+  }, [addUserMessage, addClawResponse]);
 
-      try {
-        const isConfig = /\.(json|ya?ml|toml|ini|conf|cfg)$/i.test(path);
-        const command = isConfig ? "analyze_config" : "analyze_file";
-        const resultRaw = await invoke<string>(command, { path });
-        const result = JSON.parse(resultRaw);
+  const handleUrlDrop = useCallback(async (url: string) => {
+    await addUserMessage(`[Dropped URL: ${url}]`);
+    setIsThinking(true);
+    try {
+      const resultRaw = await invoke<string>("analyze_url", { url });
+      const result = JSON.parse(resultRaw);
+      await addClawResponse({
+        id: `analysis-${Date.now()}`, role: "claw", contentText: result.summary ?? result.message ?? "Analysis complete.",
+        contentRichJson: result.structured_data ? JSON.stringify(result.structured_data) : undefined,
+        actionsJson: result.actions?.length ? JSON.stringify(result.actions) : undefined,
+        intentId: "analyze.url", timestamp: new Date().toISOString(),
+      });
+    } catch {
+      await addClawResponse({ id: `error-${Date.now()}`, role: "claw", contentText: ASK_CLAW.errorGeneric, timestamp: new Date().toISOString() });
+    } finally { setIsThinking(false); }
+  }, [addUserMessage, addClawResponse]);
 
-        const clawMsg: ConversationMessage = {
-          id: `analysis-${Date.now()}`,
-          role: "claw",
-          contentText: result.summary ?? result.message ?? "Analysis complete.",
-          contentRichJson: result.structured_data
-            ? JSON.stringify(result.structured_data)
-            : undefined,
-          actionsJson: result.actions?.length
-            ? JSON.stringify(result.actions)
-            : undefined,
-          intentId: "analyze.file",
-          timestamp: new Date().toISOString(),
-        };
-        await addClawResponse(clawMsg);
-      } catch {
-        const errorMsg: ConversationMessage = {
-          id: `error-${Date.now()}`,
-          role: "claw",
-          contentText: ASK_CLAW.errorGeneric,
-          timestamp: new Date().toISOString(),
-        };
-        await addClawResponse(errorMsg);
-      } finally {
-        setIsThinking(false);
-      }
-    },
-    [addUserMessage, addClawResponse],
-  );
-
-  // Handle URL drop
-  const handleUrlDrop = useCallback(
-    async (url: string) => {
-      await addUserMessage(`[Dropped URL: ${url}]`);
-      setIsThinking(true);
-
-      try {
-        const resultRaw = await invoke<string>("analyze_url", { url });
-        const result = JSON.parse(resultRaw);
-
-        const clawMsg: ConversationMessage = {
-          id: `analysis-${Date.now()}`,
-          role: "claw",
-          contentText: result.summary ?? result.message ?? "Analysis complete.",
-          contentRichJson: result.structured_data
-            ? JSON.stringify(result.structured_data)
-            : undefined,
-          actionsJson: result.actions?.length
-            ? JSON.stringify(result.actions)
-            : undefined,
-          intentId: "analyze.url",
-          timestamp: new Date().toISOString(),
-        };
-        await addClawResponse(clawMsg);
-      } catch {
-        const errorMsg: ConversationMessage = {
-          id: `error-${Date.now()}`,
-          role: "claw",
-          contentText: ASK_CLAW.errorGeneric,
-          timestamp: new Date().toISOString(),
-        };
-        await addClawResponse(errorMsg);
-      } finally {
-        setIsThinking(false);
-      }
-    },
-    [addUserMessage, addClawResponse],
-  );
-
-  // Keyboard handling for the input
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submitMessage(inputValue);
-    } else if (e.key === "Escape") {
-      setInputValue("");
-    } else if (e.key === "ArrowUp" && inputValue === "") {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitMessage(inputValue); }
+    else if (e.key === "Escape") { setInputValue(""); }
+    else if (e.key === "ArrowUp" && inputValue === "") {
       e.preventDefault();
       if (messageHistory.length > 0) {
-        const newIndex =
-          historyIndex === -1
-            ? messageHistory.length - 1
-            : Math.max(0, historyIndex - 1);
+        const newIndex = historyIndex === -1 ? messageHistory.length - 1 : Math.max(0, historyIndex - 1);
         setHistoryIndex(newIndex);
         setInputValue(messageHistory[newIndex]);
       }
     }
   }
 
-  // Parse actions from a message
   function parseActions(msg: ConversationMessage): ActionButtonData[] {
     if (!msg.actionsJson) return [];
-    try {
-      return JSON.parse(msg.actionsJson);
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(msg.actionsJson); } catch { return []; }
   }
 
-  // Parse rich data from a message
   function parseRichData(msg: ConversationMessage): Record<string, unknown> | null {
     if (!msg.contentRichJson) return null;
-    try {
-      return JSON.parse(msg.contentRichJson);
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(msg.contentRichJson); } catch { return null; }
   }
-
-  // -- Render ---------------------------------------------------------------
 
   const isEmpty = messages.length === 0 && !isLoading;
   const showDaemonWarning = !daemonRunning;
   const suggestions = getSuggestions(lastIntentId);
 
-  const actionStyleClasses: Record<string, string> = {
-    primary: "bg-[var(--color-accent)] text-white hover:opacity-90",
-    secondary: "border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
-    danger: "bg-[var(--color-danger)] text-white hover:opacity-90",
-  };
-
   return (
     <DragDropZone onFileDrop={handleFileDrop} onUrlDrop={handleUrlDrop}>
-      <div className="flex flex-col h-full max-h-screen">
-        {/* Header */}
-        <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
-                Ask Claw
-              </h1>
-              <span className="text-xs text-[var(--color-text-secondary)]">
-                {cloudActive
-                  ? `Powered by ${aiStatus?.cloud.provider ?? 'Cloud'} ${aiStatus?.cloud.model ?? ''}`
-                  : localActive
-                    ? `Powered by ${aiStatus?.local.model_name ?? 'Local'} (local)`
-                    : 'Offline Mode'}
-              </span>
-            </div>
-            <p className="text-xs text-[var(--color-text-secondary)]">
-              Ask anything about your security — Cmd+K from anywhere
-            </p>
+      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", height: "100%" }}>
+        {/* Conversation sidebar */}
+        <aside style={{ borderRight: "1px solid var(--line)", padding: 14, background: "var(--bg-1)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <Btn kind="accent" icon="sparkles" style={{ width: "100%", justifyContent: "center", marginBottom: 12 }}
+            onClick={() => { startNewConversation(); setPendingConfirmations(new Map()); }}>
+            New conversation
+          </Btn>
+          <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8, padding: "0 4px" }}>History</div>
+          <div style={{ flex: 1, overflowY: "auto" }} className="cd-scroll">
+            {conversations.length === 0 && (
+              <p style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "center", padding: "20px 4px" }}>No conversations yet</p>
+            )}
+            {conversations.map((conv) => {
+              const isActive = conv.id === conversationId;
+              return (
+                <button key={conv.id}
+                  onClick={() => { loadConversation(conv.id); setPendingConfirmations(new Map()); }}
+                  style={{
+                    width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 6, marginBottom: 2,
+                    background: isActive ? "var(--bg-2)" : "transparent",
+                    color: isActive ? "var(--ink-0)" : "var(--ink-2)",
+                    border: "none", cursor: "pointer",
+                  }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {conv.lastMessagePreview || conv.summary || "Empty conversation"}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                    {formatRelativeTime(conv.updatedAt)}
+                  </div>
+                </button>
+              );
+            })}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setShowHistory((prev) => !prev);
-                if (!showHistory) {
-                  listConversations();
-                }
-              }}
-              className={`rounded-md border px-3 py-1.5 text-xs transition-colors duration-150 ${
-                showHistory
-                  ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-                  : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)]"
-              }`}
-            >
-              History
-            </button>
-            <button
-              onClick={() => {
-                startNewConversation();
-                setPendingConfirmations(new Map());
-              }}
-              className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
-            >
-              {ASK_CLAW.newConversation}
-            </button>
+        </aside>
+
+        {/* Chat area */}
+        <div style={{ display: "grid", gridTemplateRows: "auto 1fr auto", overflow: "hidden" }}>
+          {/* Header */}
+          <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon name="chat" size={15} color="var(--accent)" />
+            <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--ink-0)", flex: 1 }}>Ask Rook</h2>
+            <Badge color="var(--violet)" mono>
+              <Icon name="cloud" size={10} color="var(--violet)" />
+              {aiMode === "Cloud" ? `Powered by ${aiStatus?.cloud.provider ?? "Claude"}` : aiMode === "LocalSlm" ? `Local: ${aiStatus?.local.model_name ?? "SLM"}` : "Offline"}
+            </Badge>
+            {(cloudActive || localActive) && (
+              <div style={{ display: "flex", borderRadius: 6, border: "1px solid var(--line)", overflow: "hidden" }}>
+                <button onClick={() => switchBackend("cloud")} disabled={!cloudActive || switchingBackend}
+                  style={{
+                    padding: "4px 10px", fontSize: 11, fontWeight: 500, border: "none", cursor: cloudActive ? "pointer" : "not-allowed",
+                    background: (backendPref === "cloud" || (backendPref === "auto" && aiMode === "Cloud")) ? "var(--accent)" : "transparent",
+                    color: (backendPref === "cloud" || (backendPref === "auto" && aiMode === "Cloud")) ? "white" : "var(--ink-2)",
+                    opacity: cloudActive ? 1 : 0.4,
+                  }}>Cloud</button>
+                <button onClick={() => switchBackend("local")} disabled={!localActive || switchingBackend}
+                  style={{
+                    padding: "4px 10px", fontSize: 11, fontWeight: 500, border: "none", cursor: localActive ? "pointer" : "not-allowed",
+                    background: (backendPref === "local" || (backendPref === "auto" && aiMode === "LocalSlm")) ? "var(--accent)" : "transparent",
+                    color: (backendPref === "local" || (backendPref === "auto" && aiMode === "LocalSlm")) ? "white" : "var(--ink-2)",
+                    opacity: localActive ? 1 : 0.4,
+                  }}>Local</button>
+              </div>
+            )}
           </div>
-        </header>
 
-        {/* Body: optional sidebar + main chat area */}
-        <div className="flex flex-1 min-h-0">
-          {/* History sidebar */}
-          {showHistory && (
-            <aside
-              className="flex flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]"
-              style={{ width: 280, minWidth: 280 }}
-            >
-              {/* Search */}
-              <div className="px-3 py-3 border-b border-[var(--color-border)]">
-                <input
-                  type="text"
-                  placeholder="Search conversations..."
-                  value={historySearch}
-                  onChange={(e) => {
-                    setHistorySearch(e.target.value);
-                    const q = e.target.value.trim();
-                    if (q) {
-                      searchConversations(q);
-                    } else {
-                      listConversations();
-                    }
-                  }}
-                  className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] text-xs px-3 py-1.5 placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-colors duration-150"
-                />
-              </div>
-
-              {/* Conversation list */}
-              <div className="flex-1 overflow-y-auto">
-                {conversations.length === 0 && (
-                  <p className="px-3 py-6 text-xs text-[var(--color-text-muted)] text-center">
-                    No conversations yet
-                  </p>
-                )}
-                {conversations.map((conv) => {
-                  const isActive = conv.id === conversationId;
-                  return (
-                    <div
-                      key={conv.id}
-                      onClick={() => {
-                        loadConversation(conv.id);
-                        setPendingConfirmations(new Map());
-                      }}
-                      className={`group relative cursor-pointer px-3 py-2.5 border-b border-[var(--color-border)] transition-colors duration-100 hover:bg-[var(--color-bg-tertiary)] ${
-                        isActive
-                          ? "border-l-2 border-l-[var(--color-accent)] bg-[var(--color-bg-tertiary)]"
-                          : "border-l-2 border-l-transparent"
-                      }`}
-                    >
-                      <p className="text-xs text-[var(--color-text-primary)] truncate pr-5">
-                        {conv.lastMessagePreview || conv.summary || "Empty conversation"}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
-                          {conv.messageCount} message{conv.messageCount !== 1 ? "s" : ""}
-                        </span>
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
-                          {formatRelativeTime(conv.updatedAt)}
-                        </span>
-                      </div>
-
-                      {/* Delete button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteConversation(conv.id);
-                        }}
-                        className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--color-danger)] hover:bg-[var(--color-bg-primary)] transition-all duration-100"
-                        aria-label="Delete conversation"
-                      >
-                        {"\u00D7"}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </aside>
-          )}
-
-          {/* Main chat column */}
-          <div className="flex flex-col flex-1 min-w-0">
-            {/* Daemon warning */}
+          {/* Messages */}
+          <div ref={feedRef} className="cd-scroll" style={{ overflowY: "auto", padding: "20px 24px" }}>
             {showDaemonWarning && (
-              <div
-                className="mx-6 mt-4 px-4 py-3 rounded-md bg-[var(--color-warning-light)] border border-[var(--color-warning)] text-sm text-[var(--color-text-primary)]"
-                role="alert"
-              >
+              <div style={{ padding: 12, marginBottom: 16, borderRadius: 10, background: "var(--amber-soft)", border: "1px solid color-mix(in oklch, var(--amber) 30%, transparent)", fontSize: 12.5, color: "var(--ink-1)" }}>
                 {ASK_CLAW.offlineMessage}
               </div>
             )}
+            {isLoading && <div style={{ display: "flex", justifyContent: "center", padding: "40px 0", color: "var(--ink-3)" }}>Loading conversation...</div>}
 
-            {/* Conversation feed */}
-            <div
-              ref={feedRef}
-              className="flex-1 overflow-y-auto px-6 py-4 space-y-4 scroll-smooth"
-              role="log"
-              aria-label="Conversation with Claw"
-              aria-live="polite"
-            >
-              {isLoading && (
-                <div className="flex items-center justify-center py-12 text-[var(--color-text-secondary)]">
-                  Loading conversation...
+            {isEmpty && !isLoading && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", textAlign: "center" }}>
+                <div style={{ width: 48, height: 48, borderRadius: 999, background: "var(--accent-soft)", display: "grid", placeItems: "center", marginBottom: 16 }}>
+                  <Rook size={24} color="var(--accent)" />
                 </div>
-              )}
-
-              {/* Empty / first-time state */}
-              {isEmpty && !isLoading && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-12 h-12 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center mb-4">
-                    <span className="text-lg text-[var(--color-accent)]">{"\u25C8"}</span>
-                  </div>
-                  <p className="text-[var(--color-text-primary)] text-base mb-2">
-                    {ASK_CLAW.firstTimeGreeting}
-                  </p>
-                  <div className="flex flex-wrap justify-center gap-2 mt-6" role="group" aria-label="Suggested questions">
-                    {ASK_CLAW.suggestions.default.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => submitMessage(suggestion)}
-                        className="px-3 py-1.5 text-sm rounded-full border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Messages */}
-              {messages.map((msg) => {
-                const actions = parseActions(msg);
-                const richData = parseRichData(msg);
-                const isUser = msg.role === "user";
-                const hasConfirmation = pendingConfirmations.has(msg.id);
-
-                return (
-                  <div
-                    key={msg.id}
-                    className={`flex ${isUser ? "justify-end" : "justify-start gap-2"}`}
-                    aria-label={isUser ? `You said: ${msg.contentText}` : `Claw said: ${msg.contentText}`}
-                  >
-                    {/* Claw avatar */}
-                    {!isUser && (
-                      <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
-                        <span className="text-xs text-[var(--color-accent)]">C</span>
-                      </div>
-                    )}
-
-                    <div className={`max-w-[75%] space-y-1`}>
-                      <div
-                        className={`rounded-lg px-4 py-3 text-sm ${
-                          isUser
-                            ? "bg-[var(--color-accent-subtle)] text-[var(--color-text-primary)]"
-                            : "bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text-primary)]"
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{renderMarkdown(msg.contentText)}</p>
-
-                        {/* Structured rich data */}
-                        {richData && <StructuredDataCard data={richData} />}
-
-                        {/* Action buttons */}
-                        {actions.length > 0 && !hasConfirmation && (
-                          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Suggested actions">
-                            {actions.map((action) => (
-                              <button
-                                key={action.id}
-                                onClick={() =>
-                                  handleAction(action.action, action.requires_confirmation, msg.id)
-                                }
-                                className={`px-3 py-1 text-xs rounded-md transition-colors duration-150 ${
-                                  actionStyleClasses[action.style] ?? actionStyleClasses.secondary
-                                }`}
-                              >
-                                {action.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Confirmation card */}
-                      {hasConfirmation && (
-                        <ConfirmationCard
-                          description={msg.contentText}
-                          onConfirm={() => handleConfirm(msg.id)}
-                          onCancel={() => handleCancelConfirm(msg.id)}
-                        />
-                      )}
-
-                      {/* Timestamp */}
-                      <p className={`text-xs text-[var(--color-text-muted)] ${isUser ? "text-right" : ""}`}>
-                        {formatRelativeTime(msg.timestamp)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Thinking indicator */}
-              {isThinking && (
-                <div className="flex justify-start gap-2" role="status" aria-label="Claw is thinking">
-                  <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
-                    <span className="text-xs text-[var(--color-accent)]">C</span>
-                  </div>
-                  <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-4 py-3 text-sm text-[var(--color-text-secondary)]">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-accent)] animate-analysis-pulse" aria-hidden="true" />
-                      {ASK_CLAW.thinkingIndicator}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Error state */}
-              {error && (
-                <div className="flex justify-start gap-2" role="alert">
-                  <div className="w-6 h-6 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-1">
-                    <span className="text-xs text-[var(--color-accent)]">C</span>
-                  </div>
-                  <div className="bg-[var(--color-bg-secondary)] rounded-lg px-4 py-3 text-sm text-[var(--color-text-primary)] border border-[var(--color-danger)]">
-                    <p>{ASK_CLAW.errorGeneric}</p>
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        onClick={() => {
-                          setError(null);
-                          if (messageHistory.length > 0) {
-                            submitMessage(messageHistory[messageHistory.length - 1]);
-                          }
-                        }}
-                        className="px-3 py-1 text-xs rounded-md bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity duration-150"
-                      >
-                        {ASK_CLAW.errorRetry}
-                      </button>
-                      <button
-                        onClick={() => setError(null)}
-                        className="px-3 py-1 text-xs rounded-md border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors duration-150"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Context-sensitive suggestions */}
-            {messages.length > 0 && !isThinking && (
-              <div className="px-6 py-2 border-t border-[var(--color-border)]">
-                <div className="flex flex-wrap gap-2">
-                  {suggestions.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => submitMessage(s)}
-                      disabled={isThinking}
-                      className="rounded-full border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors duration-150"
-                    >
+                <p style={{ fontSize: 14, color: "var(--ink-0)", marginBottom: 4 }}>{ASK_CLAW.firstTimeGreeting}</p>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 20 }}>
+                  {ASK_CLAW.suggestions.default.map((s) => (
+                    <button key={s} onClick={() => submitMessage(s)}
+                      style={{ padding: "7px 14px", fontSize: 12, borderRadius: 999, border: "1px solid var(--line)", background: "transparent", color: "var(--ink-2)", cursor: "pointer" }}>
                       {s}
                     </button>
                   ))}
@@ -1089,37 +573,110 @@ export function AskClaw() {
               </div>
             )}
 
-            {/* Input area */}
-            <div className="border-t border-[var(--color-border)] px-6 py-4">
-              <div className="flex items-end gap-3">
-                <label htmlFor="ask-claw-input" className="sr-only">
-                  Message Claw
-                </label>
-                <textarea
-                  ref={inputRef}
-                  id="ask-claw-input"
-                  data-ask-claw-input
-                  rows={1}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleInputKeyDown}
-                  placeholder={ASK_CLAW.inputPlaceholder}
-                  disabled={isThinking}
-                  className="flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm px-4 py-2.5 placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] disabled:opacity-50 transition-colors duration-150"
-                  aria-label="Ask Claw a question"
-                />
-                <button
-                  onClick={() => submitMessage(inputValue)}
-                  disabled={!inputValue.trim() || isThinking}
-                  className="px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity duration-150"
-                  aria-label="Send message"
-                >
-                  Send
-                </button>
+            <div style={{ maxWidth: 760, margin: "0 auto", display: "grid", gap: 16 }}>
+              {messages.map((msg) => {
+                const actions = parseActions(msg);
+                const richData = parseRichData(msg);
+                const isUser = msg.role === "user";
+                const hasConfirmation = pendingConfirmations.has(msg.id);
+                return (
+                  <div key={msg.id}>
+                    {isUser ? (
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{ maxWidth: "75%", padding: "10px 14px", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", borderRadius: 10, fontSize: 13, color: "var(--ink-0)" }}>
+                          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{renderMarkdown(msg.contentText)}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 999, flexShrink: 0, background: "var(--accent-soft)", display: "grid", placeItems: "center", marginTop: 2 }}>
+                          <Rook size={16} color="var(--accent)" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* Tool call chips */}
+                          {richData && richData.type === "ai_tool_calls" && (richData.tool_calls as Array<{ tool_name: string; summary: string }>)?.length > 0 && (
+                            <div style={{ marginBottom: 10, display: "grid", gap: 4 }}>
+                              {(richData.tool_calls as Array<{ tool_name: string; summary: string }>).map((t, j) => (
+                                <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>
+                                  <Icon name="search" size={11} color="var(--accent)" />
+                                  <span style={{ color: "var(--accent)" }}>{t.tool_name}</span>
+                                  <span>&rarr;</span>
+                                  <span>{t.summary}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg-2)", fontSize: 13.5, color: "var(--ink-0)", lineHeight: 1.6 }}>
+                            <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{renderMarkdown(msg.contentText)}</p>
+                            {richData && <StructuredDataCard data={richData} />}
+                            {actions.length > 0 && !hasConfirmation && (
+                              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {actions.map((action) => (
+                                  <Btn key={action.id} size="sm"
+                                    kind={action.style === "primary" ? "primary" : action.style === "danger" ? "danger" : "soft"}
+                                    onClick={() => handleAction(action.action, action.requires_confirmation, msg.id)}>
+                                    {action.label}
+                                  </Btn>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {hasConfirmation && <ConfirmationCard description={msg.contentText} onConfirm={() => handleConfirm(msg.id)} onCancel={() => handleCancelConfirm(msg.id)} />}
+                          <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 4 }}>{formatRelativeTime(msg.timestamp)}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {isThinking && (
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, flexShrink: 0, background: "var(--accent-soft)", display: "grid", placeItems: "center" }}>
+                    <Rook size={16} color="var(--accent)" />
+                  </div>
+                  <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg-2)", fontSize: 13, color: "var(--ink-2)" }}>
+                    <span className="cd-pulse">{ASK_CLAW.thinkingIndicator}</span>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, flexShrink: 0, background: "var(--red-soft)", display: "grid", placeItems: "center" }}>
+                    <Rook size={16} color="var(--red)" />
+                  </div>
+                  <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg-2)", border: "1px solid var(--red)", fontSize: 13, color: "var(--ink-0)" }}>
+                    <p style={{ margin: 0 }}>{ASK_CLAW.errorGeneric}</p>
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      <Btn size="sm" kind="primary" onClick={() => { setError(null); if (messageHistory.length > 0) submitMessage(messageHistory[messageHistory.length - 1]); }}>{ASK_CLAW.errorRetry}</Btn>
+                      <Btn size="sm" kind="ghost" onClick={() => setError(null)}>Dismiss</Btn>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Composer */}
+          <div style={{ padding: "14px 24px", borderTop: "1px solid var(--line)" }}>
+            {messages.length > 0 && !isThinking && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {suggestions.map((s) => (
+                  <button key={s} onClick={() => submitMessage(s)} disabled={isThinking}
+                    style={{ padding: "5px 12px", fontSize: 11, borderRadius: 999, border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--ink-2)", cursor: "pointer" }}>
+                    {s}
+                  </button>
+                ))}
               </div>
-              <p className="mt-1.5 text-xs text-[var(--color-text-secondary)]">
-                Enter to send, Shift+Enter for new line, Escape to clear
-              </p>
+            )}
+            <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", gap: 8, alignItems: "flex-end", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 12, padding: 10 }}>
+              <textarea ref={inputRef} id="ask-claw-input" data-ask-claw-input rows={1}
+                value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleInputKeyDown}
+                placeholder="Ask Rook anything -- 'is FileManager safe?', 'block all network for shell-runner'..."
+                disabled={isThinking}
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--ink-0)", fontSize: 13, resize: "none", minHeight: 22, maxHeight: 120, lineHeight: 1.5 }} />
+              <Btn kind={inputValue.trim() ? "primary" : "soft"} icon="send" onClick={() => submitMessage(inputValue)} disabled={!inputValue.trim() || isThinking}>Send</Btn>
             </div>
           </div>
         </div>

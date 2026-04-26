@@ -1,8 +1,8 @@
 [package]
 name = "clawdefender-app"
 version = "0.5.0-beta"
-description = "ClawDefender - MCP Security Monitor"
-authors = ["ClawDefender Team"]
+description = "RookBot - MCP Security Monitor"
+authors = ["RookBot Team"]
 edition = "2021"
 
 [lib]

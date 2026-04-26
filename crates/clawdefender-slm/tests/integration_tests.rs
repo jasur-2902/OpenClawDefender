@@ -1,4 +1,4 @@
-//! Integration tests for the ClawDefender SLM crate.
+//! Integration tests for the RookBot SLM crate.
 //!
 //! Tests the full pipeline: event → noise filter → SLM analysis,
 //! mock SLM service behavior, and sanitizer + validator interaction.

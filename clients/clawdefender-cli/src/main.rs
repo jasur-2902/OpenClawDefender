@@ -1,18 +1,42 @@
-//! CLI client for interacting with the ClawDefender daemon.
+//! CLI client for interacting with the Rookbot daemon.
 
 mod commands;
+pub mod ipc_client;
+pub mod output;
 
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-/// ClawDefender — a firewall for AI agents.
+use output::Output;
+
+/// Rookbot — a firewall for AI agents.
 #[derive(Parser, Debug)]
-#[command(name = "clawdefender", version, about)]
+#[command(name = "rookbot", version, about = "Rookbot — a firewall for AI agents")]
 struct Cli {
     /// Path to the config file.
     #[arg(long, global = true)]
     config: Option<PathBuf>,
+
+    /// Output as JSON (machine-readable).
+    #[arg(long, global = true)]
+    json: bool,
+
+    /// Minimal output, exit codes only.
+    #[arg(long, short = 'q', global = true)]
+    quiet: bool,
+
+    /// Custom IPC socket path.
+    #[arg(long, global = true)]
+    socket: Option<PathBuf>,
+
+    /// Disable ANSI colors.
+    #[arg(long, global = true)]
+    no_color: bool,
+
+    /// Verbose debug output.
+    #[arg(long, short = 'v', global = true)]
+    verbose: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -20,10 +44,13 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Initialize ClawDefender configuration directory with defaults.
+    /// Show version and build info.
+    Version,
+
+    /// Initialize Rookbot configuration directory with defaults.
     Init,
 
-    /// Wrap an MCP server so ClawDefender intercepts its communication.
+    /// Wrap an MCP server so Rookbot intercepts its communication.
     Wrap {
         /// Name of the MCP server in the client config (e.g. "filesystem-server").
         server_name: Option<String>,
@@ -54,7 +81,7 @@ enum Commands {
         server_command: Vec<String>,
     },
 
-    /// Check ClawDefender and MCP client status.
+    /// Check Rookbot and MCP client status.
     Status,
 
     /// Manage policy rules.
@@ -90,7 +117,7 @@ enum Commands {
         n: usize,
     },
 
-    /// Run diagnostic checks on your ClawDefender installation.
+    /// Run diagnostic checks on your Rookbot installation.
     Doctor,
 
     /// Manage local SLM models.
@@ -126,10 +153,10 @@ enum Commands {
         list: bool,
     },
 
-    /// Manage the ClawDefender daemon lifecycle.
+    /// Manage the Rookbot daemon lifecycle.
     Daemon {
         #[command(subcommand)]
-        action: DaemonAction,
+        action: commands::daemon::DaemonAction,
     },
 
     /// Manage the behavioral baseline engine.
@@ -159,7 +186,7 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
-    /// Start the ClawDefender MCP server (cooperative security endpoint).
+    /// Start the Rookbot MCP server (cooperative security endpoint).
     Serve {
         /// Use stdio transport (default).
         #[arg(long, default_value = "true")]
@@ -212,43 +239,114 @@ enum Commands {
         server: String,
     },
 
-    /// Run a security scan against an MCP server.
+    /// Run security scans and manage findings.
     Scan {
-        /// Server command and arguments (everything after --).
-        #[arg(last = true)]
-        server_command: Vec<String>,
+        #[command(subcommand)]
+        action: commands::scan::ScanAction,
+    },
 
-        /// Total scan timeout in seconds.
-        #[arg(long, default_value = "1800")]
-        timeout: Option<u64>,
+    // ── New commands ────────────────────────────────────────────────
 
-        /// Comma-separated list of module names to run.
-        #[arg(long)]
-        modules: Option<String>,
+    /// Live event stream (like `tail -f` for security events).
+    Watch(commands::watch::WatchArgs),
 
-        /// Output results as JSON.
-        #[arg(long)]
-        json: bool,
+    /// Query and view historical security events.
+    Events {
+        #[command(subcommand)]
+        action: commands::events::EventsAction,
+    },
 
-        /// Write an HTML report to this file.
-        #[arg(long)]
-        html: Option<PathBuf>,
+    /// Manage security alerts.
+    Alerts {
+        #[command(subcommand)]
+        action: commands::alerts::AlertsAction,
+    },
 
-        /// Write the report to this file.
-        #[arg(long, short)]
-        output: Option<PathBuf>,
+    /// Ask the AI security assistant a question.
+    Ask(commands::ask::AskArgs),
 
-        /// Minimum severity threshold for exit codes: critical, high, medium, low, info.
-        #[arg(long)]
-        threshold: Option<String>,
+    /// Run an AI-powered security investigation.
+    Investigate {
+        #[command(subcommand)]
+        action: commands::investigate::InvestigateAction,
+    },
 
-        /// Path to a baseline report JSON for delta comparison.
-        #[arg(long)]
-        baseline: Option<PathBuf>,
+    /// Proactive threat hunting.
+    Hunt {
+        #[command(subcommand)]
+        action: commands::hunt::HuntAction,
+    },
 
-        /// List available scan modules and exit.
-        #[arg(long)]
-        list_modules: bool,
+    /// Generate security reports.
+    Report {
+        #[command(subcommand)]
+        action: commands::report::ReportAction,
+    },
+
+    /// Manage MCP servers (protect, block, trust).
+    Server {
+        #[command(subcommand)]
+        action: commands::server::ServerAction,
+    },
+
+    /// Agent autonomy framework controls.
+    Autonomy {
+        #[command(subcommand)]
+        action: commands::autonomy::AutonomyAction,
+    },
+
+    /// Manage automated response playbooks.
+    Playbook {
+        #[command(subcommand)]
+        action: commands::playbook::PlaybookAction,
+    },
+
+    /// Manage the security knowledge base.
+    Knowledge {
+        #[command(subcommand)]
+        action: commands::knowledge::KnowledgeAction,
+    },
+
+    /// File integrity monitoring.
+    Fim {
+        #[command(subcommand)]
+        action: commands::fim::FimAction,
+    },
+
+    /// Data management: export, import, reset.
+    Data {
+        #[command(subcommand)]
+        action: commands::data::DataAction,
+    },
+
+    /// Manage cloud API connection and budget.
+    Cloud {
+        #[command(subcommand)]
+        action: commands::cloud::CloudAction,
+    },
+
+    /// Unified AI backend status.
+    Ai {
+        #[command(subcommand)]
+        action: commands::ai::AiAction,
+    },
+
+    /// Threat posture management.
+    Posture {
+        #[command(subcommand)]
+        action: commands::posture::PostureAction,
+    },
+
+    /// Compliance checking and benchmarks.
+    Compliance {
+        #[command(subcommand)]
+        action: commands::compliance::ComplianceAction,
+    },
+
+    /// YARA rule scanning.
+    Yara {
+        #[command(subcommand)]
+        action: commands::yara::YaraAction,
     },
 }
 
@@ -299,18 +397,6 @@ enum ConfigAction {
     },
     /// List all providers and their configuration status.
     ListApiKeys,
-}
-
-#[derive(Subcommand, Debug)]
-enum DaemonAction {
-    /// Start the daemon as a background process.
-    Start,
-    /// Stop the running daemon.
-    Stop,
-    /// Show daemon status and subsystem information.
-    Status,
-    /// Restart the daemon (stop then start).
-    Restart,
 }
 
 #[derive(Subcommand, Debug)]
@@ -458,7 +544,7 @@ enum PolicyAction {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // CRITICAL: All logging MUST go to stderr. When the CLI runs as
-    // `clawdefender proxy -- ...`, any output to stdout that isn't JSON-RPC
+    // `rookbot proxy -- ...`, any output to stdout that isn't JSON-RPC
     // will poison the MCP stream and break Claude Desktop.
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
@@ -466,10 +552,28 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
+
+    // Build the Output context from global flags.
+    let out = Output::new(cli.json, cli.quiet, cli.no_color, cli.verbose);
+
     let config_path = cli.config.unwrap_or_else(default_config_path);
     let config = clawdefender_core::config::ClawConfig::load(&config_path)?;
 
+    // Build the shared IPC client.
+    let ipc = ipc_client::DaemonClient::from_config(&config, cli.socket.as_ref());
+
     match cli.command {
+        Commands::Version => {
+            out.data(&serde_json::json!({
+                "name": "rookbot",
+                "version": env!("CARGO_PKG_VERSION"),
+            }), |_| {
+                println!("rookbot {}", env!("CARGO_PKG_VERSION"));
+                println!("  Target: {}", std::env::consts::ARCH);
+                println!("  OS: {}", std::env::consts::OS);
+            });
+        }
+
         Commands::Init => commands::init::run(&config)?,
 
         Commands::Wrap {
@@ -482,7 +586,7 @@ async fn main() -> anyhow::Result<()> {
             } else if let Some(name) = server_name {
                 commands::wrap::run(&name, &client)?;
             } else {
-                anyhow::bail!("Either provide a server name or use --all.\n\nUsage:\n  clawdefender wrap <SERVER_NAME>\n  clawdefender wrap --all");
+                anyhow::bail!("Either provide a server name or use --all.\n\nUsage:\n  rookbot wrap <SERVER_NAME>\n  rookbot wrap --all");
             }
         }
 
@@ -498,7 +602,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Status => {
-            commands::status::run(&config)?;
+            commands::status::run(&config, &out, &ipc)?;
         }
 
         Commands::Policy { action } => match action {
@@ -538,7 +642,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Doctor => {
-            commands::doctor::run(&config)?;
+            commands::doctor::run(&config, &out)?;
         }
 
         Commands::Model { action } => {
@@ -555,16 +659,13 @@ async fn main() -> anyhow::Result<()> {
             } else if let Some(id) = event_id {
                 commands::chat::start_chat(&id).await?;
             } else {
-                anyhow::bail!("Provide an event ID or use --list to see sessions.\nUsage: clawdefender chat <event_id>");
+                anyhow::bail!("Provide an event ID or use --list to see sessions.\nUsage: rookbot chat <event_id>");
             }
         }
 
-        Commands::Daemon { action } => match action {
-            DaemonAction::Start => commands::daemon::start(&config)?,
-            DaemonAction::Stop => commands::daemon::stop(&config)?,
-            DaemonAction::Status => commands::daemon::status(&config)?,
-            DaemonAction::Restart => commands::daemon::restart(&config)?,
-        },
+        Commands::Daemon { action } => {
+            commands::daemon::execute(action, &config)?;
+        }
 
         Commands::Behavioral { action } => match action {
             BehavioralAction::Status => commands::behavioral::status(&config)?,
@@ -606,29 +707,72 @@ async fn main() -> anyhow::Result<()> {
             GuardAction::Test { file } => commands::guard::test(&config, &file)?,
         },
 
-        Commands::Scan {
-            server_command,
-            timeout,
-            modules,
-            json,
-            html,
-            output,
-            threshold,
-            baseline,
-            list_modules,
-        } => {
-            commands::scan::run(
-                server_command,
-                timeout,
-                modules,
-                json,
-                html,
-                output,
-                threshold,
-                baseline,
-                list_modules,
-            )
-            .await?;
+        Commands::Scan { action } => {
+            match action {
+                commands::scan::ScanAction::Run {
+                    playbook,
+                    ai,
+                    signatures_only,
+                    quick,
+                    full,
+                    timeout,
+                    modules,
+                    json,
+                    html,
+                    output,
+                    threshold,
+                    baseline,
+                    server_command,
+                } => {
+                    commands::scan::run_scan(
+                        playbook,
+                        ai,
+                        signatures_only,
+                        quick,
+                        full,
+                        server_command,
+                        timeout,
+                        modules,
+                        json,
+                        html,
+                        output,
+                        threshold,
+                        baseline,
+                    )
+                    .await?;
+                }
+                commands::scan::ScanAction::Results {
+                    scan_id,
+                    severity,
+                    format,
+                } => {
+                    commands::scan::show_results(scan_id, severity, format)?;
+                }
+                commands::scan::ScanAction::History { limit } => {
+                    commands::scan::show_history(limit)?;
+                }
+                commands::scan::ScanAction::Fix {
+                    finding_id,
+                    safe,
+                    all,
+                    dry_run,
+                } => {
+                    commands::scan::apply_fix(finding_id, safe, all, dry_run)?;
+                }
+                commands::scan::ScanAction::Revert { remediation_id } => {
+                    commands::scan::revert_remediation(remediation_id)?;
+                }
+                commands::scan::ScanAction::Export {
+                    scan_id,
+                    format,
+                    output,
+                } => {
+                    commands::scan::export_report(scan_id, format, output)?;
+                }
+                commands::scan::ScanAction::ListModules => {
+                    commands::scan::list_modules()?;
+                }
+            }
         }
 
         Commands::Feed { action } => match action {
@@ -667,6 +811,149 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Reputation { server } => {
             commands::threat_intel::check_reputation(&config, &server)?
+        }
+
+        // ── New commands ────────────────────────────────────────────
+
+        Commands::Watch(args) => {
+            commands::watch::run(&config, &args)?;
+        }
+
+        Commands::Events { action } => {
+            commands::events::run(&config, &action)?;
+        }
+
+        Commands::Alerts { action } => {
+            commands::alerts::run(&config, &action)?;
+        }
+
+        Commands::Ask(args) => {
+            if args.chat {
+                commands::ask::run_interactive_chat().await?;
+            } else if let Some(ref question) = args.question {
+                commands::ask::ask_question(question).await?;
+            } else {
+                anyhow::bail!(
+                    "Provide a question or use --chat for interactive mode.\n\
+                     Usage: rookbot ask \"What alerts are active?\"\n\
+                     Usage: rookbot ask --chat"
+                );
+            }
+        }
+
+        Commands::Investigate { action } => {
+            match action {
+                commands::investigate::InvestigateAction::Run { target, depth } => {
+                    commands::investigate::run_investigation(&target, &depth).await?;
+                }
+                commands::investigate::InvestigateAction::List { limit, verdict } => {
+                    commands::investigate::list_investigations(limit, verdict)?;
+                }
+                commands::investigate::InvestigateAction::Show { investigation_id } => {
+                    commands::investigate::show_investigation(&investigation_id)?;
+                }
+                commands::investigate::InvestigateAction::Resume { investigation_id } => {
+                    commands::investigate::resume_investigation(&investigation_id).await?;
+                }
+            }
+        }
+
+        Commands::Hunt { action } => {
+            match action {
+                commands::hunt::HuntAction::Run { r#type, server, pattern, period } => {
+                    commands::hunt::run_hunt(&r#type, server, pattern, period).await?;
+                }
+                commands::hunt::HuntAction::List { limit } => {
+                    commands::hunt::list_hunts(limit)?;
+                }
+                commands::hunt::HuntAction::Show { hunt_id } => {
+                    commands::hunt::show_hunt(&hunt_id)?;
+                }
+            }
+        }
+
+        Commands::Report { action } => {
+            match action {
+                commands::report::ReportAction::Daily { date, output } => {
+                    commands::report::generate_daily_report(date, output)?;
+                }
+                commands::report::ReportAction::Weekly { date, output } => {
+                    commands::report::generate_weekly_report(date, output)?;
+                }
+                commands::report::ReportAction::Incident { investigation_id, output } => {
+                    commands::report::generate_incident_report(&investigation_id, output)?;
+                }
+                commands::report::ReportAction::Compliance { framework, output } => {
+                    commands::report::generate_compliance_report(&framework, output)?;
+                }
+                commands::report::ReportAction::List { r#type, limit } => {
+                    commands::report::list_reports(r#type, limit)?;
+                }
+                commands::report::ReportAction::Show { report_id } => {
+                    commands::report::show_report(&report_id)?;
+                }
+            }
+        }
+
+        Commands::Server { action } => {
+            commands::server::run(&action, &config)?;
+        }
+
+        Commands::Autonomy { action } => {
+            commands::autonomy::run(&action, &config)?;
+        }
+
+        Commands::Playbook { action } => {
+            commands::playbook::run(&action, &config)?;
+        }
+
+        Commands::Knowledge { action } => {
+            commands::knowledge::run(&action)?;
+        }
+
+        Commands::Fim { action } => {
+            commands::fim::run(&action)?;
+        }
+
+        Commands::Data { action } => {
+            commands::data::run(&action)?;
+        }
+
+        Commands::Cloud { action } => {
+            commands::cloud::run(&action)?;
+        }
+
+        Commands::Ai { action } => {
+            commands::ai::run(&action)?;
+        }
+
+        Commands::Posture { action } => {
+            commands::posture::run(&action)?;
+        }
+
+        Commands::Compliance { action } => {
+            match action {
+                commands::compliance::ComplianceAction::Check { framework } => {
+                    commands::compliance::check(framework)?;
+                }
+                commands::compliance::ComplianceAction::Report { output } => {
+                    commands::compliance::report(output)?;
+                }
+                commands::compliance::ComplianceAction::Score => {
+                    commands::compliance::score()?;
+                }
+            }
+        }
+
+        Commands::Yara { action } => {
+            match action {
+                commands::yara::YaraAction::Scan { path, recursive } => {
+                    commands::yara::scan(path, recursive)?;
+                }
+                commands::yara::YaraAction::Rules { count, list } => {
+                    commands::yara::show_rules(count, list)?;
+                }
+            }
         }
 
         Commands::Config { action } => {

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::{DaemonConnection, GuardStats, GuardStatus, PermissionSet};
 
-/// Default socket path for the ClawDefender daemon.
-pub const DEFAULT_SOCKET_PATH: &str = "~/.local/share/clawdefender/clawdefender.sock";
+/// Default socket path for the RookBot daemon.
+pub const DEFAULT_SOCKET_PATH: &str = "~/.local/share/rookbot/rookbot.sock";
 
 /// Expand tilde in socket path to the actual home directory.
 pub fn expand_socket_path(path: &str) -> String {

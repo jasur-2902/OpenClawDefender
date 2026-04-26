@@ -1,4 +1,4 @@
-//! ClawDefender daemon binary entry point.
+//! RookBot daemon binary entry point.
 
 use std::path::{Path, PathBuf};
 
@@ -9,12 +9,12 @@ use tracing_subscriber::EnvFilter;
 use clawdefender_core::config::settings::ClawConfig;
 use clawdefender_daemon::Daemon;
 
-/// ClawDefender - firewall for AI agents.
+/// RookBot - firewall for AI agents.
 #[derive(Parser, Debug)]
-#[command(name = "clawdefender", version, about)]
+#[command(name = "rookbot", version, about)]
 struct Args {
     /// Path to configuration file.
-    #[arg(short, long, default_value = "~/.config/clawdefender/config.toml")]
+    #[arg(short, long, default_value = "~/.config/rookbot/config.toml")]
     config: String,
 
     /// Enable the terminal UI dashboard.
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
 
     if args.tui {
         // When TUI is active, log to a file to avoid corrupting the terminal.
-        let log_dir = dirs_fallback(".local/share/clawdefender");
+        let log_dir = dirs_fallback(".local/share/rookbot");
         std::fs::create_dir_all(&log_dir).ok();
         let log_file = std::fs::OpenOptions::new()
             .create(true)
@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
 
     // Resolve config path.
     let config_path = expand_tilde(&args.config);
-    tracing::info!(config = %config_path.display(), tui = args.tui, "clawdefender-daemon starting");
+    tracing::info!(config = %config_path.display(), tui = args.tui, "rookbot-daemon starting");
 
     // Load configuration.
     let mut config = ClawConfig::load(&config_path).context("loading configuration")?;
@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
         }
         Some(DaemonCommand::Proxy { server_command }) => {
             if server_command.is_empty() {
-                anyhow::bail!("proxy command requires a server command: clawdefender proxy -- <cmd> [args...]");
+                anyhow::bail!("proxy command requires a server command: rookbot proxy -- <cmd> [args...]");
             }
             let command = server_command[0].clone();
             let cmd_args = server_command[1..].to_vec();

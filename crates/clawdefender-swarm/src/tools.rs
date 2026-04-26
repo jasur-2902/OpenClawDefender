@@ -51,7 +51,7 @@ pub struct ToolExecution {
 // Tool catalogue
 // ---------------------------------------------------------------------------
 
-/// Returns every tool definition that ClawDefender exposes to Claude.
+/// Returns every tool definition that RookBot exposes to Claude.
 pub fn get_all_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         // ── Investigation tools (read-only, safe) ─────────────────────
@@ -134,7 +134,7 @@ pub fn get_all_tool_definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "get_policy".into(),
-            description: "Return the current ClawDefender security policy rules.".into(),
+            description: "Return the current RookBot security policy rules.".into(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},

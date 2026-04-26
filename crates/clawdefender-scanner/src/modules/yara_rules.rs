@@ -1,4 +1,4 @@
-/// Embedded YARA rules for ClawDefender signature detection.
+/// Embedded YARA rules for RookBot signature detection.
 ///
 /// Rules are organized by threat category. Each rule includes metadata
 /// with description and severity to map detections to Finding severity levels.

@@ -1,30 +1,118 @@
 use crate::daemon;
 use crate::event_stream;
 use crate::state::*;
+use crate::tools::capabilities::infer_capabilities;
+use crate::tools::detection::{
+    load_known_servers, get_unacknowledged_servers, dismiss_server,
+    set_server_trust_level, get_server_trust_info,
+    set_server_permission_override, reset_server_permission_override,
+};
+
+use std::path::PathBuf;
+
+/// Canonical MCP client config paths. Single source of truth used by
+/// detect_mcp_clients(), list_mcp_servers(), get_tool_cards(), and scanner modules.
+pub const MCP_CLIENT_CONFIGS: &[(&str, &str, &[&str])] = &[
+    (
+        "claude",
+        "Claude Desktop",
+        &[
+            "Library/Application Support/Claude/claude_desktop_config.json",
+            "Library/Application Support/Claude/config.json",
+        ],
+    ),
+    (
+        "cursor",
+        "Cursor",
+        &[
+            ".cursor/mcp.json",
+            ".cursor/mcp_config.json",
+        ],
+    ),
+    (
+        "vscode",
+        "VS Code",
+        &[
+            ".vscode/mcp.json",
+            "Library/Application Support/Code/User/settings.json",
+        ],
+    ),
+    (
+        "windsurf",
+        "Windsurf",
+        &[
+            ".codeium/windsurf/mcp_config.json",
+        ],
+    ),
+    (
+        "claude_code",
+        "Claude Code",
+        &[
+            ".claude.json",
+            ".claude/settings.json",
+        ],
+    ),
+];
+
+/// Expand `MCP_CLIENT_CONFIGS` relative to the user's home directory and return
+/// only the paths that exist on disk together with their `(client_id, display_name)`.
+pub fn mcp_config_paths() -> Vec<(PathBuf, &'static str, &'static str)> {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for &(client_id, display_name, rel_paths) in MCP_CLIENT_CONFIGS {
+        for rel in rel_paths {
+            let full = home.join(rel);
+            if full.exists() {
+                out.push((full, client_id, display_name));
+                break; // first existing path wins per client
+            }
+        }
+    }
+    out
+}
+
+/// For a given client id, return all candidate config paths (whether they exist or not).
+pub fn mcp_config_candidates_for(client_id: &str) -> Vec<PathBuf> {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+    for &(id, _, rel_paths) in MCP_CLIENT_CONFIGS {
+        if id == client_id {
+            return rel_paths.iter().map(|r| home.join(r)).collect();
+        }
+    }
+    Vec::new()
+}
+
+/// Extract MCP server entries from a config JSON, handling VS Code's nested
+/// settings structure and the standard mcpServers/servers top-level keys.
+/// Returns an owned map so it works for both top-level and nested layouts.
+pub fn extract_servers(config: &serde_json::Value) -> Option<serde_json::Map<String, serde_json::Value>> {
+    // VS Code stores MCP config under a nested "mcp.mcpServers" or "mcp.servers" key
+    if let Some(mcp_obj) = config.get("mcp").and_then(|v| v.as_object()) {
+        if let Some(obj) = mcp_obj.get("mcpServers").and_then(|v| v.as_object()) {
+            return Some(obj.clone());
+        }
+        if let Some(obj) = mcp_obj.get("servers").and_then(|v| v.as_object()) {
+            return Some(obj.clone());
+        }
+    }
+    // Standard top-level keys
+    let key = detect_servers_key(config);
+    config.get(key).and_then(|v| v.as_object()).cloned()
+}
 
 // --- Daemon management ---
 
-/// Count how many MCP servers are currently wrapped with ClawDefender across
+/// Count how many MCP servers are currently wrapped with RookBot across
 /// all detected MCP client config files.
 pub fn count_wrapped_servers() -> u32 {
-    let home = match dirs::home_dir() {
-        Some(h) => h,
-        None => return 0,
-    };
-
-    let config_paths: Vec<std::path::PathBuf> = vec![
-        home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        home.join("Library/Application Support/Claude/config.json"),
-        home.join(".cursor/mcp.json"),
-        home.join(".vscode/mcp.json"),
-        home.join(".codeium/windsurf/mcp_config.json"),
-    ];
-
     let mut wrapped = 0u32;
-    for path in config_paths {
-        if !path.exists() {
-            continue;
-        }
+    for (path, _client_id, _display_name) in mcp_config_paths() {
         let contents = match std::fs::read_to_string(&path) {
             Ok(c) => c,
             Err(_) => continue,
@@ -33,9 +121,8 @@ pub fn count_wrapped_servers() -> u32 {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let key = detect_servers_key(&config);
-        if let Some(servers) = config.get(key).and_then(|v| v.as_object()) {
-            for (_name, entry) in servers {
+        if let Some(servers) = extract_servers(&config) {
+            for (_name, entry) in &servers {
                 if entry.get("_clawdefender_original").is_some()
                     || entry.get("_clawai_original").is_some()
                 {
@@ -162,46 +249,17 @@ pub async fn stop_daemon(
 pub async fn detect_mcp_clients() -> Result<Vec<McpClient>, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
 
-    let clients_info: Vec<(&str, &str, Vec<std::path::PathBuf>)> = vec![
-        (
-            "claude",
-            "Claude Desktop",
-            vec![
-                home.join("Library/Application Support/Claude/config.json"),
-                home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-            ],
-        ),
-        (
-            "cursor",
-            "Cursor",
-            vec![home.join(".cursor/mcp.json")],
-        ),
-        (
-            "vscode",
-            "VS Code",
-            vec![home.join(".vscode/mcp.json")],
-        ),
-        (
-            "windsurf",
-            "Windsurf",
-            vec![home.join(".codeium/windsurf/mcp_config.json")],
-        ),
-    ];
-
     let mut results = Vec::new();
 
-    for (name, display_name, paths) in clients_info {
-        // Find the first path that exists
+    for &(client_id, display_name, rel_paths) in MCP_CLIENT_CONFIGS {
+        let paths: Vec<PathBuf> = rel_paths.iter().map(|r| home.join(r)).collect();
         let found_path = paths.iter().find(|p| p.exists());
 
         if let Some(config_path) = found_path {
             let servers_count = match std::fs::read_to_string(config_path) {
                 Ok(contents) => match serde_json::from_str::<serde_json::Value>(&contents) {
                     Ok(config) => {
-                        let key = detect_servers_key(&config);
-                        config
-                            .get(key)
-                            .and_then(|v| v.as_object())
+                        extract_servers(&config)
                             .map(|obj| obj.len() as u32)
                             .unwrap_or(0)
                     }
@@ -225,7 +283,7 @@ pub async fn detect_mcp_clients() -> Result<Vec<McpClient>, String> {
             };
 
             results.push(McpClient {
-                name: name.to_string(),
+                name: client_id.to_string(),
                 display_name: display_name.to_string(),
                 config_path: config_path.to_string_lossy().to_string(),
                 detected: true,
@@ -233,7 +291,7 @@ pub async fn detect_mcp_clients() -> Result<Vec<McpClient>, String> {
             });
         } else {
             results.push(McpClient {
-                name: name.to_string(),
+                name: client_id.to_string(),
                 display_name: display_name.to_string(),
                 config_path: paths[0].to_string_lossy().to_string(),
                 detected: false,
@@ -247,20 +305,12 @@ pub async fn detect_mcp_clients() -> Result<Vec<McpClient>, String> {
 
 #[tauri::command]
 pub async fn list_mcp_servers(client: String) -> Result<Vec<McpServer>, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+    let candidates = mcp_config_candidates_for(&client);
+    if candidates.is_empty() {
+        return Err(format!("Unknown client: {}", client));
+    }
 
-    let config_paths: Vec<std::path::PathBuf> = match client.as_str() {
-        "claude" => vec![
-            home.join("Library/Application Support/Claude/config.json"),
-            home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        ],
-        "cursor" => vec![home.join(".cursor/mcp.json")],
-        "vscode" => vec![home.join(".vscode/mcp.json")],
-        "windsurf" => vec![home.join(".codeium/windsurf/mcp_config.json")],
-        other => return Err(format!("Unknown client: {}", other)),
-    };
-
-    let config_path = match config_paths.iter().find(|p| p.exists()) {
+    let config_path = match candidates.iter().find(|p| p.exists()) {
         Some(p) => p,
         None => return Ok(vec![]),
     };
@@ -276,14 +326,13 @@ pub async fn list_mcp_servers(client: String) -> Result<Vec<McpServer>, String> 
         }
     };
 
-    let key = detect_servers_key(&config);
-    let servers_obj = match config.get(key).and_then(|v| v.as_object()) {
+    let servers_obj = match extract_servers(&config) {
         Some(obj) => obj,
         None => return Ok(vec![]),
     };
 
     let mut servers = Vec::new();
-    for (name, entry) in servers_obj {
+    for (name, entry) in &servers_obj {
         let mut command = Vec::new();
         if let Some(cmd) = entry.get("command").and_then(|v| v.as_str()) {
             command.push(cmd.to_string());
@@ -484,7 +533,7 @@ pub async fn unwrap_server(client: String, server: String) -> Result<(), String>
 /// Path to the policy TOML file.
 fn policy_file_path() -> std::path::PathBuf {
     let home = dirs::home_dir().unwrap_or_default();
-    home.join(".config").join("clawdefender").join("policy.toml")
+    home.join(".config").join("rookbot").join("policy.toml")
 }
 
 /// Sanitize a rule name into a valid TOML key (lowercase, spaces to hyphens).
@@ -1320,7 +1369,7 @@ pub(crate) fn read_historical_events(needed: usize, existing: &[AuditEvent]) -> 
 fn read_profiles_from_db() -> Result<Vec<ServerProfileSummary>, String> {
     let db_path = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        .join(".local/share/clawdefender/profiles.db");
+        .join(".local/share/rookbot/profiles.db");
 
     if !db_path.exists() {
         return Ok(vec![]);
@@ -1503,6 +1552,7 @@ pub async fn start_scan(
     _server_command: String,
     modules: Vec<String>,
     _timeout: u32,
+    cloud_enrich: Option<bool>,
 ) -> Result<String, String> {
     use tauri::Manager;
 
@@ -1573,6 +1623,7 @@ pub async fn start_scan(
     let id = scan_id.clone();
     let handle = app_handle.clone();
     let started_at = chrono::Utc::now().to_rfc3339();
+    let enrich = cloud_enrich.unwrap_or(false);
 
     tokio::spawn(async move {
         let state = handle.state::<AppState>();
@@ -1653,23 +1704,31 @@ pub async fn start_scan(
             );
         }
 
-        // Enrich critical/high findings with AI analysis via backend manager
-        for module_result in &mut module_results {
-            for finding in &mut module_result.findings {
-                if finding.severity == "critical" || finding.severity == "high" {
-                    let prompt = format!(
-                        "Analyze this security finding and assess if it's a real risk or likely a false positive.\n\
-                         Severity: {}\nCategory: {}\nDescription: {}\nAffected: {}\n\
-                         Is this a genuine security risk? Explain briefly.",
-                        finding.severity, finding.category, finding.description, finding.affected_resource
-                    );
-                    let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
-                        task_type: clawdefender_slm::TaskType::ScanAnalysis,
-                        prompt,
-                        context: None,
-                    }).await;
-                    if let Some(result) = ai_resp.response {
-                        finding.ai_analysis = Some(result.explanation);
+        // Enrich critical/high findings with AI analysis — only when user opts in
+        if enrich {
+            for module_result in &mut module_results {
+                for finding in &mut module_result.findings {
+                    if finding.severity == "critical" || finding.severity == "high" {
+                        let prompt = format!(
+                            "Analyze this security finding and assess if it's a real risk or likely a false positive.\n\
+                             Severity: {}\nCategory: {}\nDescription: {}\nAffected: {}\n\
+                             Is this a genuine security risk? Explain briefly.",
+                            finding.severity, finding.category, finding.description, finding.affected_resource
+                        );
+                        let ai_resp = state.ai_backends.analyze(clawdefender_slm::AiRequest {
+                            task_type: clawdefender_slm::TaskType::ScanAnalysis,
+                            prompt,
+                            context: None,
+                        }).await;
+                        if let Some(result) = ai_resp.response {
+                            if !result.explanation.is_empty() {
+                                finding.ai_analysis = Some(result.explanation);
+                            } else {
+                                tracing::warn!("AI returned empty analysis for finding: {}", finding.description);
+                            }
+                        } else if let Some(msg) = &ai_resp.message {
+                            tracing::warn!("AI analysis unavailable for finding '{}': {}", finding.description, msg);
+                        }
                     }
                 }
             }
@@ -1707,6 +1766,7 @@ pub async fn start_scan(
             high_count,
             medium_count,
             low_count,
+            scan_type: Some(if enrich { "enriched" } else { "local" }.to_string()),
         };
 
         // Save scan result to disk
@@ -1749,6 +1809,97 @@ pub async fn start_scan(
     Ok(scan_id)
 }
 
+#[tauri::command]
+pub async fn enrich_scan_finding(
+    app_handle: tauri::AppHandle,
+    scan_id: String,
+    module_id: String,
+    finding_index: usize,
+) -> Result<String, String> {
+    use tauri::Manager;
+
+    let state = app_handle.state::<AppState>();
+
+    // Locate the finding in the scan tracker
+    let (severity, category, description, affected_resource) = {
+        let scans = state
+            .active_scans
+            .lock()
+            .map_err(|e| format!("Failed to lock scan state: {}", e))?;
+        let tracker = scans
+            .get(&scan_id)
+            .ok_or_else(|| format!("Scan {} not found", scan_id))?;
+        let result = tracker
+            .result
+            .as_ref()
+            .ok_or("Scan has no results yet")?;
+        let module = result
+            .modules
+            .iter()
+            .find(|m| m.module_id == module_id)
+            .ok_or_else(|| format!("Module {} not found in scan", module_id))?;
+        let finding = module
+            .findings
+            .get(finding_index)
+            .ok_or_else(|| format!("Finding index {} out of bounds", finding_index))?;
+
+        if finding.ai_analysis.is_some() {
+            return Ok(finding.ai_analysis.clone().unwrap());
+        }
+
+        (
+            finding.severity.clone(),
+            finding.category.clone(),
+            finding.description.clone(),
+            finding.affected_resource.clone(),
+        )
+    };
+
+    let prompt = format!(
+        "Analyze this security finding and assess if it's a real risk or likely a false positive.\n\
+         Severity: {}\nCategory: {}\nDescription: {}\nAffected: {}\n\
+         Is this a genuine security risk? Explain briefly.",
+        severity, category, description, affected_resource
+    );
+
+    let ai_resp = state
+        .ai_backends
+        .analyze(clawdefender_slm::AiRequest {
+            task_type: clawdefender_slm::TaskType::ScanAnalysis,
+            prompt,
+            context: None,
+        })
+        .await;
+
+    let analysis_text = if let Some(result) = ai_resp.response {
+        if result.explanation.is_empty() {
+            return Err("AI returned empty analysis".to_string());
+        }
+        result.explanation
+    } else {
+        return Err(ai_resp.message.unwrap_or_else(|| "AI analysis unavailable".to_string()));
+    };
+
+    // Write the analysis back into the stored finding
+    {
+        let mut scans = state
+            .active_scans
+            .lock()
+            .map_err(|e| format!("Failed to lock scan state: {}", e))?;
+        if let Some(tracker) = scans.get_mut(&scan_id) {
+            if let Some(ref mut result) = tracker.result {
+                if let Some(module) = result.modules.iter_mut().find(|m| m.module_id == module_id) {
+                    if let Some(finding) = module.findings.get_mut(finding_index) {
+                        finding.ai_analysis = Some(analysis_text.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(analysis_text)
+}
+
 fn module_name_for_id(id: &str) -> String {
     match id {
         "mcp-config-audit" => "MCP Configuration Audit".to_string(),
@@ -1768,7 +1919,7 @@ fn module_name_for_id(id: &str) -> String {
 
 fn save_scan_result(result: &crate::state::ScanResult) -> Result<(), String> {
     let home = dirs::home_dir().ok_or("No home dir")?;
-    let scans_dir = home.join(".local/share/clawdefender/scans");
+    let scans_dir = home.join(".local/share/rookbot/scans");
     std::fs::create_dir_all(&scans_dir)
         .map_err(|e| format!("Failed to create scans directory: {}", e))?;
 
@@ -1865,7 +2016,7 @@ pub async fn get_scan_results(
     }
     let home = dirs::home_dir().ok_or("No home dir")?;
     let file_path = home.join(format!(
-        ".local/share/clawdefender/scans/{}.json",
+        ".local/share/rookbot/scans/{}.json",
         safe_id
     ));
     if file_path.exists() {
@@ -1944,7 +2095,7 @@ pub async fn run_doctor(
     }
 
     // 3. Config Directory
-    let config_dir = home.join(".config").join("clawdefender");
+    let config_dir = home.join(".config").join("rookbot");
     if config_dir.exists() {
         let test_file = config_dir.join(".write_test");
         let writable = std::fs::write(&test_file, b"").is_ok();
@@ -1961,7 +2112,7 @@ pub async fn run_doctor(
                 name: "Config Directory".to_string(),
                 status: "warn".to_string(),
                 message: format!("Config directory exists but is not writable at {}", config_dir.display()),
-                fix_suggestion: Some("Check permissions on ~/.config/clawdefender".to_string()),
+                fix_suggestion: Some("Check permissions on ~/.config/rookbot".to_string()),
             });
         }
     } else {
@@ -1969,7 +2120,7 @@ pub async fn run_doctor(
             name: "Config Directory".to_string(),
             status: "warn".to_string(),
             message: "Config directory not found".to_string(),
-            fix_suggestion: Some("Create the directory: mkdir -p ~/.config/clawdefender".to_string()),
+            fix_suggestion: Some("Create the directory: mkdir -p ~/.config/rookbot".to_string()),
         });
     }
 
@@ -2023,7 +2174,7 @@ pub async fn run_doctor(
     }
 
     // 5. Audit Log Directory
-    let log_dir = home.join(".local").join("share").join("clawdefender");
+    let log_dir = home.join(".local").join("share").join("rookbot");
     if log_dir.exists() {
         let test_file = log_dir.join(".write_test");
         let writable = std::fs::write(&test_file, b"").is_ok();
@@ -2040,7 +2191,7 @@ pub async fn run_doctor(
                 name: "Audit Log Directory".to_string(),
                 status: "fail".to_string(),
                 message: format!("Audit log directory is not writable at {}", log_dir.display()),
-                fix_suggestion: Some("Check permissions: chmod u+w ~/.local/share/clawdefender".to_string()),
+                fix_suggestion: Some("Check permissions: chmod u+w ~/.local/share/rookbot".to_string()),
             });
         }
     } else {
@@ -2048,7 +2199,7 @@ pub async fn run_doctor(
             name: "Audit Log Directory".to_string(),
             status: "fail".to_string(),
             message: "Audit log directory not found".to_string(),
-            fix_suggestion: Some("Create the directory: mkdir -p ~/.local/share/clawdefender".to_string()),
+            fix_suggestion: Some("Create the directory: mkdir -p ~/.local/share/rookbot".to_string()),
         });
     }
 
@@ -2175,7 +2326,7 @@ pub async fn get_system_info(
         // Use the monitor's known version or query
         Some(env!("CARGO_PKG_VERSION").to_string())
     } else {
-        // Try running clawdefender --version
+        // Try running rookbot --version
         let bin = resolve_clawdefender_path();
         std::process::Command::new(&bin)
             .arg("--version")
@@ -2191,8 +2342,8 @@ pub async fn get_system_info(
         arch: std::env::consts::ARCH.to_string(),
         daemon_version,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
-        config_dir: home.join(".config/clawdefender").to_string_lossy().to_string(),
-        log_dir: home.join(".local/share/clawdefender").to_string_lossy().to_string(),
+        config_dir: home.join(".config/rookbot").to_string_lossy().to_string(),
+        log_dir: home.join(".local/share/rookbot").to_string_lossy().to_string(),
     })
 }
 
@@ -2397,7 +2548,7 @@ fn config_toml_path() -> std::path::PathBuf {
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
-    home.join(".config/clawdefender/config.toml")
+    home.join(".config/rookbot/config.toml")
 }
 
 fn default_settings() -> AppSettings {
@@ -2629,7 +2780,7 @@ fn policy_toml_path() -> std::path::PathBuf {
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
-    home.join(".config/clawdefender/policy.toml")
+    home.join(".config/rookbot/policy.toml")
 }
 
 /// Strip sensitive keys (API keys, tokens, secrets) from a TOML string before export.
@@ -2677,7 +2828,7 @@ pub async fn export_settings() -> Result<String, String> {
 
     let home = std::env::var("HOME").unwrap_or_default();
     let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-    let export_path = format!("{}/Desktop/clawdefender-settings-{}.json", home, timestamp);
+    let export_path = format!("{}/Desktop/rookbot-settings-{}.json", home, timestamp);
     std::fs::write(
         &export_path,
         serde_json::to_string_pretty(&export).map_err(|e| e.to_string())?,
@@ -2780,30 +2931,16 @@ pub async fn import_settings_from_content(content: String) -> Result<String, Str
 
 fn threat_intel_dir() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
-    std::path::PathBuf::from(home).join(".local/share/clawdefender/threat-intel")
+    std::path::PathBuf::from(home).join(".local/share/rookbot/threat-intel")
 }
 
 /// Collect all MCP server names from detected client configs.
 fn collect_mcp_server_names() -> Vec<String> {
-    let home = match std::env::var("HOME") {
-        Ok(h) => std::path::PathBuf::from(h),
-        Err(_) => return vec![],
-    };
-
-    let config_paths = vec![
-        home.join("Library/Application Support/Claude/config.json"),
-        home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        home.join(".cursor/mcp.json"),
-        home.join(".vscode/mcp.json"),
-        home.join(".codeium/windsurf/mcp_config.json"),
-    ];
-
     let mut names = Vec::new();
-    for path in config_paths {
+    for (path, _client_id, _display_name) in mcp_config_paths() {
         if let Ok(contents) = std::fs::read_to_string(&path) {
             if let Ok(config) = serde_json::from_str::<serde_json::Value>(&contents) {
-                let key = detect_servers_key(&config);
-                if let Some(obj) = config.get(key).and_then(|v| v.as_object()) {
+                if let Some(obj) = extract_servers(&config) {
                     for server_name in obj.keys() {
                         names.push(server_name.clone());
                     }
@@ -2838,7 +2975,7 @@ pub async fn get_feed_status() -> Result<FeedStatus, String> {
         return Ok(FeedStatus {
             version: "not configured".to_string(),
             last_updated: "never".to_string(),
-            next_check: "run clawdefender feed update to initialize".to_string(),
+            next_check: "run rookbot feed update to initialize".to_string(),
             entries_count: 0,
         });
     }
@@ -2901,7 +3038,7 @@ pub async fn force_feed_update() -> Result<String, String> {
     let output = std::process::Command::new(&bin)
         .args(["feed", "update"])
         .output()
-        .map_err(|e| format!("Failed to run clawdefender: {}. Is the CLI installed?", e))?;
+        .map_err(|e| format!("Failed to run rookbot: {}. Is the CLI installed?", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -3022,7 +3159,7 @@ pub async fn install_rule_pack(id: String) -> Result<(), String> {
     let output = std::process::Command::new(&bin)
         .args(["rules", "install", &id])
         .output()
-        .map_err(|e| format!("Failed to run clawdefender: {}. Is the CLI installed?", e))?;
+        .map_err(|e| format!("Failed to run rookbot: {}. Is the CLI installed?", e))?;
 
     if output.status.success() {
         tracing::info!("Rule pack {} installed successfully", id);
@@ -3230,7 +3367,7 @@ pub async fn toggle_telemetry(enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_telemetry_preview() -> Result<TelemetryPreview, String> {
     let home = std::env::var("HOME").unwrap_or_default();
-    let audit_path = std::path::PathBuf::from(home).join(".local/share/clawdefender/audit.jsonl");
+    let audit_path = std::path::PathBuf::from(home).join(".local/share/rookbot/audit.jsonl");
 
     let mut categories = Vec::new();
 
@@ -3707,13 +3844,13 @@ pub async fn export_network_log(format: String, range: String) -> Result<String,
     let records = read_network_audit_records();
 
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-    let export_dir = home.join(".clawdefender/exports");
+    let export_dir = home.join(".rookbot/exports");
     std::fs::create_dir_all(&export_dir).map_err(|e| {
         format!("Failed to create exports directory: {}", e)
     })?;
 
     let ext = if format == "csv" { "csv" } else { "json" };
-    let filename = format!("clawdefender-network-log-{}.{}", safe_range, ext);
+    let filename = format!("rookbot-network-log-{}.{}", safe_range, ext);
     let path = export_dir.join(&filename);
 
     // Verify the resolved path is still within exports dir
@@ -3826,18 +3963,10 @@ pub async fn kill_agent_process(pid: u32) -> Result<String, String> {
 }
 
 fn resolve_config_path(client: &str) -> Result<std::path::PathBuf, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-
-    let candidates: Vec<std::path::PathBuf> = match client {
-        "claude" => vec![
-            home.join("Library/Application Support/Claude/config.json"),
-            home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        ],
-        "cursor" => vec![home.join(".cursor/mcp.json")],
-        "vscode" => vec![home.join(".vscode/mcp.json")],
-        "windsurf" => vec![home.join(".codeium/windsurf/mcp_config.json")],
-        other => return Err(format!("Unknown client: {}", other)),
-    };
+    let candidates = mcp_config_candidates_for(client);
+    if candidates.is_empty() {
+        return Err(format!("Unknown client: {}", client));
+    }
 
     candidates
         .iter()
@@ -3863,12 +3992,12 @@ fn resolve_clawdefender_path() -> String {
     if let Ok(current_exe) = std::env::current_exe() {
         if let Some(exe_dir) = current_exe.parent() {
             // Check same directory
-            let sibling = exe_dir.join("clawdefender");
+            let sibling = exe_dir.join("rookbot");
             if sibling.exists() {
                 return sibling.to_string_lossy().to_string();
             }
             // Check Tauri sidecar binaries directory
-            let sidecar = exe_dir.join("binaries").join("clawdefender");
+            let sidecar = exe_dir.join("binaries").join("rookbot");
             if sidecar.exists() {
                 return sidecar.to_string_lossy().to_string();
             }
@@ -3876,7 +4005,7 @@ fn resolve_clawdefender_path() -> String {
     }
     // Fallback: search PATH
     if let Ok(output) = std::process::Command::new("which")
-        .arg("clawdefender")
+        .arg("rookbot")
         .output()
     {
         if output.status.success() {
@@ -3888,11 +4017,11 @@ fn resolve_clawdefender_path() -> String {
     }
     // Also check common locations
     let home = std::env::var("HOME").unwrap_or_default();
-    let cargo_path = format!("{}/.cargo/bin/clawdefender", home);
+    let cargo_path = format!("{}/.cargo/bin/rookbot", home);
     if std::path::Path::new(&cargo_path).exists() {
         return cargo_path;
     }
-    "clawdefender".to_string()
+    "rookbot".to_string()
 }
 
 fn detect_servers_key(config: &serde_json::Value) -> &str {
@@ -4047,7 +4176,7 @@ fn models_dir() -> Result<std::path::PathBuf, String> {
     Ok(home
         .join(".local")
         .join("share")
-        .join("clawdefender")
+        .join("rookbot")
         .join("models"))
 }
 
@@ -4441,6 +4570,340 @@ pub async fn get_rate_limit_status(
 ) -> Result<serde_json::Value, String> {
     let status = state.ai_backends.get_rate_limit_status();
     serde_json::to_value(status).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Feature Routing commands
+// ---------------------------------------------------------------------------
+
+/// Load feature routing overrides from the `[ai_routing.features]` section of config.toml.
+/// Public so `lib.rs` can call it at startup.
+pub fn load_feature_routing_config() -> clawdefender_slm::FeatureRoutingConfig {
+    let path = config_toml_path();
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return clawdefender_slm::FeatureRoutingConfig::default(),
+    };
+    let table: toml::Value = match content.parse() {
+        Ok(t) => t,
+        Err(_) => return clawdefender_slm::FeatureRoutingConfig::default(),
+    };
+
+    let features = match table.get("ai_routing").and_then(|s| s.get("features")) {
+        Some(f) => f,
+        None => return clawdefender_slm::FeatureRoutingConfig::default(),
+    };
+
+    let features_table = match features.as_table() {
+        Some(t) => t,
+        None => return clawdefender_slm::FeatureRoutingConfig::default(),
+    };
+
+    let mut overrides = std::collections::HashMap::new();
+    for (key, value) in features_table {
+        let feature = match key.as_str() {
+            "event_triage" => clawdefender_slm::AiFeature::EventTriage,
+            "event_explanation" => clawdefender_slm::AiFeature::EventExplanation,
+            "quick_risk_check" => clawdefender_slm::AiFeature::QuickRiskCheck,
+            "deep_analysis" => clawdefender_slm::AiFeature::DeepAnalysis,
+            "scan_analysis" => clawdefender_slm::AiFeature::ScanAnalysis,
+            "ask_claw" => clawdefender_slm::AiFeature::AskClaw,
+            "reports" => clawdefender_slm::AiFeature::Reports,
+            "threat_hunting" => clawdefender_slm::AiFeature::ThreatHunting,
+            "agent_scan" => clawdefender_slm::AiFeature::AgentScan,
+            _ => continue,
+        };
+        let pref = match value.as_str() {
+            Some("local") => clawdefender_slm::FeatureBackendPreference::Local,
+            Some("cloud") => clawdefender_slm::FeatureBackendPreference::Cloud,
+            Some("auto") => clawdefender_slm::FeatureBackendPreference::Auto,
+            _ => continue,
+        };
+        if pref != clawdefender_slm::FeatureBackendPreference::Auto {
+            overrides.insert(feature, pref);
+        }
+    }
+
+    clawdefender_slm::FeatureRoutingConfig { overrides }
+}
+
+/// Persist the feature routing config to `[ai_routing.features]` in config.toml.
+fn persist_feature_routing_to_toml(config: &clawdefender_slm::FeatureRoutingConfig) -> Result<(), String> {
+    let path = config_toml_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut table: toml::Value = content.parse().unwrap_or(toml::Value::Table(toml::map::Map::new()));
+
+    let root = table.as_table_mut().ok_or("Config is not a TOML table")?;
+
+    // Build the features sub-table with only non-auto entries
+    let mut features_map = toml::map::Map::new();
+    let feature_to_key = |f: &clawdefender_slm::AiFeature| -> &'static str {
+        match f {
+            clawdefender_slm::AiFeature::EventTriage => "event_triage",
+            clawdefender_slm::AiFeature::EventExplanation => "event_explanation",
+            clawdefender_slm::AiFeature::QuickRiskCheck => "quick_risk_check",
+            clawdefender_slm::AiFeature::DeepAnalysis => "deep_analysis",
+            clawdefender_slm::AiFeature::ScanAnalysis => "scan_analysis",
+            clawdefender_slm::AiFeature::AskClaw => "ask_claw",
+            clawdefender_slm::AiFeature::Reports => "reports",
+            clawdefender_slm::AiFeature::ThreatHunting => "threat_hunting",
+            clawdefender_slm::AiFeature::AgentScan => "agent_scan",
+        }
+    };
+
+    for (feature, pref) in &config.overrides {
+        if *pref != clawdefender_slm::FeatureBackendPreference::Auto {
+            let val = match pref {
+                clawdefender_slm::FeatureBackendPreference::Local => "local",
+                clawdefender_slm::FeatureBackendPreference::Cloud => "cloud",
+                clawdefender_slm::FeatureBackendPreference::Auto => unreachable!(),
+            };
+            features_map.insert(feature_to_key(feature).to_string(), toml::Value::String(val.to_string()));
+        }
+    }
+
+    // Ensure [ai_routing] section exists
+    let ai_routing = root
+        .entry("ai_routing")
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+    if let Some(ai_table) = ai_routing.as_table_mut() {
+        if features_map.is_empty() {
+            ai_table.remove("features");
+        } else {
+            ai_table.insert("features".to_string(), toml::Value::Table(features_map));
+        }
+        // Clean up empty ai_routing section
+        if ai_table.is_empty() {
+            root.remove("ai_routing");
+        }
+    }
+
+    let output = toml::to_string_pretty(&table).map_err(|e| format!("Failed to serialize TOML: {}", e))?;
+    std::fs::write(&path, output).map_err(|e| format!("Failed to write config.toml: {}", e))?;
+    Ok(())
+}
+
+/// Sync the AskClawAI mode based on the feature routing config for AskClaw.
+async fn sync_ask_claw_mode(
+    state: &AppState,
+    ask_claw_pref: clawdefender_slm::FeatureBackendPreference,
+) {
+    let mut guard = state.ask_claw_ai.lock().await;
+    if let Some(ref mut ai) = *guard {
+        // Extract cloud client from agent_session_manager if available
+        let cloud_client = state.agent_session_manager.lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|mgr| mgr.cloud_client().clone()));
+
+        let has_cloud = cloud_client.is_some();
+
+        let new_mode = match ask_claw_pref {
+            clawdefender_slm::FeatureBackendPreference::Cloud => {
+                if has_cloud {
+                    clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+                } else {
+                    clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                }
+            }
+            clawdefender_slm::FeatureBackendPreference::Local => {
+                if state.ai_backends.local_available() {
+                    clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+                } else {
+                    clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                }
+            }
+            clawdefender_slm::FeatureBackendPreference::Auto => {
+                if has_cloud {
+                    clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+                } else if state.ai_backends.local_available() {
+                    clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+                } else {
+                    clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                }
+            }
+        };
+        ai.set_mode(new_mode.clone());
+
+        // Ensure cloud client is set when switching to Cloud mode
+        if new_mode == clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud {
+            ai.set_cloud_client(cloud_client);
+        }
+    }
+}
+
+/// Returns all 9 features with display name, description, default backend, and current preference.
+#[tauri::command]
+pub async fn get_feature_routing(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let config = state.ai_backends.get_feature_routing();
+    let has_overrides = config.has_overrides();
+
+    let entries: Vec<serde_json::Value> = clawdefender_slm::AiFeature::all()
+        .iter()
+        .map(|feature| {
+            let pref = config.get(feature);
+            let pref_str = match pref {
+                clawdefender_slm::FeatureBackendPreference::Auto => "auto",
+                clawdefender_slm::FeatureBackendPreference::Local => "local",
+                clawdefender_slm::FeatureBackendPreference::Cloud => "cloud",
+            };
+            let feature_str = serde_json::to_value(feature).unwrap_or(serde_json::Value::Null);
+            serde_json::json!({
+                "feature": feature_str,
+                "display_name": feature.display_name(),
+                "description": feature.description(),
+                "default_backend": feature.default_backend(),
+                "current_preference": pref_str,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "features": entries,
+        "has_overrides": has_overrides,
+    }))
+}
+
+/// Update per-feature routing overrides. Accepts a map of feature key -> preference string.
+#[tauri::command]
+pub async fn update_feature_routing(
+    state: tauri::State<'_, AppState>,
+    overrides: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    let mut config = clawdefender_slm::FeatureRoutingConfig::default();
+
+    for (key, value) in &overrides {
+        let feature = match key.as_str() {
+            "event_triage" => clawdefender_slm::AiFeature::EventTriage,
+            "event_explanation" => clawdefender_slm::AiFeature::EventExplanation,
+            "quick_risk_check" => clawdefender_slm::AiFeature::QuickRiskCheck,
+            "deep_analysis" => clawdefender_slm::AiFeature::DeepAnalysis,
+            "scan_analysis" => clawdefender_slm::AiFeature::ScanAnalysis,
+            "ask_claw" => clawdefender_slm::AiFeature::AskClaw,
+            "reports" => clawdefender_slm::AiFeature::Reports,
+            "threat_hunting" => clawdefender_slm::AiFeature::ThreatHunting,
+            "agent_scan" => clawdefender_slm::AiFeature::AgentScan,
+            _ => continue,
+        };
+        let pref = match value.as_str() {
+            "local" => clawdefender_slm::FeatureBackendPreference::Local,
+            "cloud" => clawdefender_slm::FeatureBackendPreference::Cloud,
+            _ => clawdefender_slm::FeatureBackendPreference::Auto,
+        };
+        if pref != clawdefender_slm::FeatureBackendPreference::Auto {
+            config.overrides.insert(feature, pref);
+        }
+    }
+
+    // Update in-memory router
+    state.ai_backends.update_feature_routing(config.clone());
+
+    // Persist to TOML
+    persist_feature_routing_to_toml(&config)?;
+
+    // Sync AskClawAI mode if AskClaw preference changed
+    let ask_claw_pref = config.get(&clawdefender_slm::AiFeature::AskClaw);
+    sync_ask_claw_mode(&state, ask_claw_pref).await;
+
+    Ok(())
+}
+
+/// Reset all feature routing overrides to defaults (Auto).
+#[tauri::command]
+pub async fn reset_feature_routing(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let config = clawdefender_slm::FeatureRoutingConfig::default();
+
+    // Update in-memory router
+    state.ai_backends.update_feature_routing(config.clone());
+
+    // Persist empty config to TOML
+    persist_feature_routing_to_toml(&config)?;
+
+    // Reset AskClawAI to auto-detect
+    sync_ask_claw_mode(&state, clawdefender_slm::FeatureBackendPreference::Auto).await;
+
+    Ok(())
+}
+
+/// Get the current Ask Rook backend preference ("auto", "cloud", or "local").
+#[tauri::command]
+pub async fn get_ask_claw_backend(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let config = state.ai_backends.get_feature_routing();
+    let pref = config.get(&clawdefender_slm::AiFeature::AskClaw);
+    Ok(match pref {
+        clawdefender_slm::FeatureBackendPreference::Auto => "auto".to_string(),
+        clawdefender_slm::FeatureBackendPreference::Local => "local".to_string(),
+        clawdefender_slm::FeatureBackendPreference::Cloud => "cloud".to_string(),
+    })
+}
+
+/// Switch the Ask Rook backend preference (called from the AskClaw page toggle).
+/// Preserves other feature routing overrides and only changes `ask_claw`.
+/// Returns the resulting Ask Rook mode string (e.g. "Cloud", "LocalSlm", "Pattern").
+#[tauri::command]
+pub async fn set_ask_claw_backend(
+    state: tauri::State<'_, AppState>,
+    backend: String,
+) -> Result<String, String> {
+    let pref = match backend.as_str() {
+        "cloud" => clawdefender_slm::FeatureBackendPreference::Cloud,
+        "local" => clawdefender_slm::FeatureBackendPreference::Local,
+        _ => clawdefender_slm::FeatureBackendPreference::Auto,
+    };
+
+    // Get current config, update only the AskClaw entry
+    let mut config = state.ai_backends.get_feature_routing();
+    if pref == clawdefender_slm::FeatureBackendPreference::Auto {
+        config.overrides.remove(&clawdefender_slm::AiFeature::AskClaw);
+    } else {
+        config.overrides.insert(clawdefender_slm::AiFeature::AskClaw, pref);
+    }
+
+    // Update in-memory router
+    state.ai_backends.update_feature_routing(config.clone());
+
+    // Persist to TOML
+    persist_feature_routing_to_toml(&config)?;
+
+    // Sync AskClawAI mode
+    sync_ask_claw_mode(&state, pref).await;
+
+    // Return the resulting mode for the frontend
+    let guard = state.ask_claw_ai.lock().await;
+    let mode = match &*guard {
+        Some(ai) => ai.mode().clone(),
+        None => {
+            let has_cloud = state.agent_session_manager.lock()
+                .map(|g| g.is_some())
+                .unwrap_or(false);
+            match pref {
+                clawdefender_slm::FeatureBackendPreference::Cloud => {
+                    if has_cloud { clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud }
+                    else { clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern }
+                }
+                clawdefender_slm::FeatureBackendPreference::Local => {
+                    if state.ai_backends.local_available() { clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm }
+                    else { clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern }
+                }
+                clawdefender_slm::FeatureBackendPreference::Auto => {
+                    if has_cloud { clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud }
+                    else if state.ai_backends.local_available() { clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm }
+                    else { clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern }
+                }
+            }
+        }
+    };
+
+    serde_json::to_string(&mode).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -4868,7 +5331,7 @@ pub async fn get_score_history(_days: u32) -> Result<Vec<serde_json::Value>, Str
     Ok(vec![])
 }
 
-/// Ask Claw natural language query.
+/// Ask Rook natural language query.
 ///
 /// When a cloud agent session manager is available (API key configured),
 /// routes through the cloud-powered agent with tool-use capabilities.
@@ -4895,7 +5358,7 @@ pub async fn ask_claw(
     };
 
     if let Some(mgr) = cloud_mgr {
-        // Use a Chat session for Ask Claw queries via the cloud agent
+        // Use a Chat session for Ask Rook queries via the cloud agent
         let briefing = clawdefender_swarm::context_bridge::CloudBriefingBuilder::new(
             clawdefender_swarm::context_bridge::SessionType::Chat,
         )
@@ -4956,7 +5419,7 @@ pub async fn ask_claw(
 
     // Route through AiBackendManager as an AskClaw task
     let prompt = format!(
-        "You are Claw, a friendly security assistant for ClawDefender. \
+        "You are Claw, a friendly security assistant for RookBot. \
          Answer the user's security question concisely.\n\nUser: {}\n\nClaw:",
         input
     );
@@ -5021,7 +5484,7 @@ pub async fn ask_claw(
     serde_json::to_string(&response).map_err(|e| e.to_string())
 }
 
-/// Confirm an action suggested by Ask Claw.
+/// Confirm an action suggested by Ask Rook.
 #[tauri::command]
 pub async fn confirm_action(
     action_json: String,
@@ -5111,13 +5574,13 @@ pub async fn get_pending_prompts(
 }
 
 // ---------------------------------------------------------------------------
-// Conversation management commands (Ask Claw persistence)
+// Conversation management commands (Ask Rook persistence)
 // ---------------------------------------------------------------------------
 
 /// Return the path to the conversations storage directory, creating it if needed.
 fn conversations_dir() -> Result<std::path::PathBuf, String> {
     let home = dirs::home_dir().ok_or("No home directory found")?;
-    let dir = home.join(".local/share/clawdefender/conversations");
+    let dir = home.join(".local/share/rookbot/conversations");
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create conversations directory: {}", e))?;
     Ok(dir)
@@ -5457,7 +5920,7 @@ pub async fn search_conversations(
 }
 
 // ---------------------------------------------------------------------------
-// File/config analysis commands (Ask Claw drag-and-drop)
+// File/config analysis commands (Ask Rook drag-and-drop)
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -5783,18 +6246,11 @@ pub async fn analyze_file(
 
 #[tauri::command]
 pub async fn get_tool_cards() -> Result<Vec<serde_json::Value>, String> {
-    // Build tool cards from detected MCP servers
-    let home = dirs::home_dir().ok_or("No home dir")?;
-    let config_paths: Vec<(std::path::PathBuf, &str)> = vec![
-        (home.join("Library/Application Support/Claude/claude_desktop_config.json"), "Claude Desktop"),
-        (home.join(".cursor/mcp.json"), "Cursor"),
-        (home.join(".vscode/mcp.json"), "VS Code"),
-        (home.join(".codeium/windsurf/mcp_config.json"), "Windsurf"),
-    ];
+    let known = load_known_servers();
+    let audit_counts = load_audit_event_counts();
 
     let mut cards = Vec::new();
-    for (path, client_name) in config_paths {
-        if !path.exists() { continue; }
+    for (path, _client_id, client_name) in mcp_config_paths() {
         let contents = match std::fs::read_to_string(&path) {
             Ok(c) => c,
             Err(_) => continue,
@@ -5803,27 +6259,53 @@ pub async fn get_tool_cards() -> Result<Vec<serde_json::Value>, String> {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let key = detect_servers_key(&config);
-        if let Some(servers) = config.get(key).and_then(|v| v.as_object()) {
-            for (name, entry) in servers {
+        if let Some(servers) = extract_servers(&config) {
+            for (name, entry) in &servers {
                 let wrapped = entry.get("_clawdefender_original").is_some()
                     || entry.get("_clawai_original").is_some();
+
+                // Build command vec for capability inference
+                let mut command = Vec::new();
+                if let Some(cmd) = entry.get("command").and_then(|v| v.as_str()) {
+                    command.push(cmd.to_string());
+                }
+                if let Some(args) = entry.get("args").and_then(|v| v.as_array()) {
+                    for arg in args {
+                        if let Some(s) = arg.as_str() {
+                            command.push(s.to_string());
+                        }
+                    }
+                }
+
+                let caps = infer_capabilities(name, &command);
+
+                // Look up persisted trust level from known_servers.json
+                let trust_level = known
+                    .servers
+                    .get(name.as_str())
+                    .map(|e| e.trust_level.as_str())
+                    .unwrap_or("default");
+
+                // Audit event count for this server
+                let event_count = audit_counts.get(name.as_str()).copied().unwrap_or(0);
+
                 cards.push(serde_json::json!({
                     "server_name": name,
                     "client_name": client_name,
                     "display_name": name,
                     "wrapped": wrapped,
                     "status": if wrapped { "protected" } else { "unprotected" },
-                    "trust_level": "default",
-                    "event_count": 0,
+                    "trust_level": trust_level,
+                    "event_count": event_count,
                     "anomaly_score": 0.0,
                     "capabilities": {
-                        "read_files": false,
-                        "write_files": false,
-                        "execute_commands": false,
-                        "network_access": false,
-                        "browser_access": false
+                        "read_files": caps.can_read_files,
+                        "write_files": caps.can_write_files,
+                        "execute_commands": caps.can_execute_commands,
+                        "network_access": caps.can_access_network,
+                        "browser_access": caps.can_sample_llm
                     },
+                    "capability_source": caps.source,
                     "last_activity": null
                 }));
             }
@@ -5832,9 +6314,54 @@ pub async fn get_tool_cards() -> Result<Vec<serde_json::Value>, String> {
     Ok(cards)
 }
 
+/// Load audit event counts per server from the audit log file.
+/// Returns a map of server_name -> event count. Returns empty map if the file
+/// does not exist or cannot be read.
+fn load_audit_event_counts() -> std::collections::HashMap<String, u64> {
+    let mut counts = std::collections::HashMap::new();
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return counts,
+    };
+    let audit_path = home.join(".local/share/rookbot/audit.jsonl");
+    let file = match std::fs::File::open(&audit_path) {
+        Ok(f) => f,
+        Err(_) => return counts,
+    };
+    use std::io::BufRead;
+    let reader = std::io::BufReader::new(file);
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) {
+            if let Some(server) = entry.get("server_name").and_then(|v| v.as_str()) {
+                *counts.entry(server.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+}
+
 #[tauri::command]
 pub async fn get_new_tools() -> Result<Vec<serde_json::Value>, String> {
-    Ok(vec![])
+    let new_servers = get_unacknowledged_servers();
+    let results: Vec<serde_json::Value> = new_servers
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "server_name": s.server_name,
+                "client_name": s.client_name,
+                "client_display_name": s.client_display_name,
+                "command": s.command,
+                "first_detected": s.first_detected,
+                "capabilities": s.capabilities,
+                "suggested_trust_level": s.suggested_trust_level,
+            })
+        })
+        .collect();
+    Ok(results)
 }
 
 #[tauri::command]
@@ -5842,8 +6369,7 @@ pub async fn set_trust_level(
     server_name: String,
     trust_level: String,
 ) -> Result<(), String> {
-    let _ = (server_name, trust_level);
-    Ok(())
+    set_server_trust_level(&server_name, &trust_level)
 }
 
 #[tauri::command]
@@ -5852,8 +6378,7 @@ pub async fn set_permission_override(
     permission: String,
     action: String,
 ) -> Result<(), String> {
-    let _ = (server_name, permission, action);
-    Ok(())
+    set_server_permission_override(&server_name, &permission, &action)
 }
 
 #[tauri::command]
@@ -5861,26 +6386,34 @@ pub async fn reset_permission_override(
     server_name: String,
     permission: String,
 ) -> Result<(), String> {
-    let _ = (server_name, permission);
-    Ok(())
+    reset_server_permission_override(&server_name, &permission)
 }
 
 #[tauri::command]
 pub async fn dismiss_new_tool(
     server_name: String,
 ) -> Result<(), String> {
-    let _ = server_name;
-    Ok(())
+    dismiss_server(&server_name)
 }
 
 #[tauri::command]
 pub async fn get_trust_level(
     server_name: String,
 ) -> Result<serde_json::Value, String> {
+    let (trust_level, overrides) = get_server_trust_info(&server_name);
+    let permissions: Vec<serde_json::Value> = overrides
+        .iter()
+        .map(|(perm, action)| {
+            serde_json::json!({
+                "permission": perm,
+                "action": action,
+            })
+        })
+        .collect();
     Ok(serde_json::json!({
         "server_name": server_name,
-        "trust_level": "default",
-        "permissions": []
+        "trust_level": trust_level,
+        "permissions": permissions,
     }))
 }
 
@@ -7249,10 +7782,10 @@ pub async fn cancel_investigation(
 }
 
 // ---------------------------------------------------------------------------
-// Ask Claw AI commands
+// Ask Rook AI commands
 // ---------------------------------------------------------------------------
 
-/// Send a message to the AI-powered Ask Claw assistant.
+/// Send a message to the AI-powered Ask Rook assistant.
 #[tauri::command]
 pub async fn ask_claw_ai(
     state: tauri::State<'_, AppState>,
@@ -7265,21 +7798,46 @@ pub async fn ask_claw_ai(
     {
         let mut guard = ai_mutex.lock().await;
         if guard.is_none() {
-            let has_cloud = state.agent_session_manager.lock()
-                .map(|g| g.is_some())
-                .unwrap_or(false);
+            // Consult feature routing config for AskClaw preference
+            let ask_claw_pref = state.ai_backends.get_feature_routing()
+                .get(&clawdefender_slm::AiFeature::AskClaw);
 
-            let mode = if has_cloud {
-                clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
-            } else if state.ai_backends.local_available() {
-                clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
-            } else {
-                clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+            // Extract cloud client from agent_session_manager if available
+            let cloud_client = state.agent_session_manager.lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|mgr| mgr.cloud_client().clone()));
+
+            let has_cloud = cloud_client.is_some();
+
+            let mode = match ask_claw_pref {
+                clawdefender_slm::FeatureBackendPreference::Cloud => {
+                    if has_cloud {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+                    } else {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                    }
+                }
+                clawdefender_slm::FeatureBackendPreference::Local => {
+                    if state.ai_backends.local_available() {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+                    } else {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                    }
+                }
+                clawdefender_slm::FeatureBackendPreference::Auto => {
+                    if has_cloud {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+                    } else if state.ai_backends.local_available() {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+                    } else {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                    }
+                }
             };
 
             *guard = Some(clawdefender_swarm::ask_claw_ai::AskClawAI::new(
                 mode,
-                None,
+                cloud_client,
                 "claude-sonnet-4-20250514".to_string(),
             ));
         }
@@ -7297,13 +7855,13 @@ pub async fn ask_claw_ai(
 
     // Send the message (holds tokio mutex across await — this is fine)
     let mut guard = ai_mutex.lock().await;
-    let ai = guard.as_mut().ok_or("Ask Claw AI not initialized")?;
+    let ai = guard.as_mut().ok_or("Ask Rook AI not initialized")?;
     let response = ai.ask(&input).await.map_err(|e| e.to_string())?;
 
     serde_json::to_string(&response).map_err(|e| e.to_string())
 }
 
-/// Get the current Ask Claw AI routing mode.
+/// Get the current Ask Rook AI routing mode.
 #[tauri::command]
 pub async fn get_ask_claw_mode(
     state: tauri::State<'_, AppState>,
@@ -7312,16 +7870,38 @@ pub async fn get_ask_claw_mode(
     let mode = match &*guard {
         Some(ai) => ai.mode().clone(),
         None => {
-            // Determine mode without initializing
+            // Consult feature routing config for AskClaw preference
+            let ask_claw_pref = state.ai_backends.get_feature_routing()
+                .get(&clawdefender_slm::AiFeature::AskClaw);
+
             let has_cloud = state.agent_session_manager.lock()
                 .map(|g| g.is_some())
                 .unwrap_or(false);
-            if has_cloud {
-                clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
-            } else if state.ai_backends.local_available() {
-                clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
-            } else {
-                clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+
+            match ask_claw_pref {
+                clawdefender_slm::FeatureBackendPreference::Cloud => {
+                    if has_cloud {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+                    } else {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                    }
+                }
+                clawdefender_slm::FeatureBackendPreference::Local => {
+                    if state.ai_backends.local_available() {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+                    } else {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                    }
+                }
+                clawdefender_slm::FeatureBackendPreference::Auto => {
+                    if has_cloud {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Cloud
+                    } else if state.ai_backends.local_available() {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::LocalSlm
+                    } else {
+                        clawdefender_swarm::ask_claw_ai::AskClawMode::Pattern
+                    }
+                }
             }
         }
     };
@@ -7329,31 +7909,31 @@ pub async fn get_ask_claw_mode(
     serde_json::to_string(&mode).map_err(|e| e.to_string())
 }
 
-/// Approve a pending action suggested by Ask Claw AI.
+/// Approve a pending action suggested by Ask Rook AI.
 #[tauri::command]
 pub async fn approve_claw_action(
     state: tauri::State<'_, AppState>,
     action_id: String,
 ) -> Result<String, String> {
     let mut guard = state.ask_claw_ai.lock().await;
-    let ai = guard.as_mut().ok_or("Ask Claw AI not initialized")?;
+    let ai = guard.as_mut().ok_or("Ask Rook AI not initialized")?;
     let action = ai.approve_action(&action_id).map_err(|e| e.to_string())?;
     serde_json::to_string(&action).map_err(|e| e.to_string())
 }
 
-/// Reject a pending action suggested by Ask Claw AI.
+/// Reject a pending action suggested by Ask Rook AI.
 #[tauri::command]
 pub async fn reject_claw_action(
     state: tauri::State<'_, AppState>,
     action_id: String,
 ) -> Result<String, String> {
     let mut guard = state.ask_claw_ai.lock().await;
-    let ai = guard.as_mut().ok_or("Ask Claw AI not initialized")?;
+    let ai = guard.as_mut().ok_or("Ask Rook AI not initialized")?;
     ai.reject_action(&action_id).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "rejected": true, "action_id": action_id }).to_string())
 }
 
-/// Update the context for Ask Claw AI conversations.
+/// Update the context for Ask Rook AI conversations.
 #[tauri::command]
 pub async fn set_claw_context(
     state: tauri::State<'_, AppState>,
@@ -7369,7 +7949,7 @@ pub async fn set_claw_context(
     Ok(())
 }
 
-/// List all Ask Claw AI conversations.
+/// List all Ask Rook AI conversations.
 #[tauri::command]
 pub async fn list_claw_conversations(
     state: tauri::State<'_, AppState>,
@@ -8191,7 +8771,7 @@ pub async fn get_learned_patterns_view(
 
 fn ui_state_path() -> std::path::PathBuf {
     let home = dirs::home_dir().unwrap_or_default();
-    home.join(".local/share/clawdefender/ui_state.json")
+    home.join(".local/share/rookbot/ui_state.json")
 }
 
 fn load_ui_state(path: &std::path::Path) -> std::collections::HashMap<String, String> {
@@ -8291,7 +8871,7 @@ pub async fn get_sensor_health() -> Result<SensorHealth, String> {
 
     // Daemon running: check IPC socket or pid file
     let socket_path =
-        std::path::PathBuf::from(&home).join(".local/share/clawdefender/daemon.sock");
+        std::path::PathBuf::from(&home).join(".local/share/rookbot/daemon.sock");
     let daemon_running = socket_path.exists() || crate::daemon::is_daemon_running();
 
     // Events flowing: audit.jsonl was modified recently (within 120 seconds)
@@ -8681,7 +9261,7 @@ pub fn start_clipboard_monitor(app: tauri::AppHandle) {
             // Emit frontend event so the UI can react immediately
             use tauri::Emitter;
             let _ = app.emit(
-                "clawdefender://clipboard-threat",
+                "rookbot://clipboard-threat",
                 serde_json::json!({
                     "threat_level": threat_level_str,
                     "patterns_matched": analysis.patterns_matched,
@@ -8894,7 +9474,7 @@ mod tests {
         let original_home = std::env::var("HOME").ok();
         std::env::set_var("HOME", tmp.path());
 
-        let audit_dir = tmp.path().join(".local/share/clawdefender");
+        let audit_dir = tmp.path().join(".local/share/rookbot");
         std::fs::create_dir_all(&audit_dir).unwrap();
 
         let mut file = std::fs::File::create(audit_dir.join("audit.jsonl")).unwrap();
@@ -8927,7 +9507,7 @@ mod tests {
         let original_home = std::env::var("HOME").ok();
         std::env::set_var("HOME", tmp.path());
 
-        let audit_dir = tmp.path().join(".local/share/clawdefender");
+        let audit_dir = tmp.path().join(".local/share/rookbot");
         std::fs::create_dir_all(&audit_dir).unwrap();
         std::fs::File::create(audit_dir.join("audit.jsonl")).unwrap();
 
@@ -8961,7 +9541,7 @@ mod tests {
         let original_home = std::env::var("HOME").ok();
         std::env::set_var("HOME", tmp.path());
 
-        let audit_dir = tmp.path().join(".local/share/clawdefender");
+        let audit_dir = tmp.path().join(".local/share/rookbot");
         std::fs::create_dir_all(&audit_dir).unwrap();
 
         let mut file = std::fs::File::create(audit_dir.join("audit.jsonl")).unwrap();
@@ -9125,7 +9705,7 @@ mod tests {
         // Create the rules dir but leave it empty
         let rules_dir = tmp
             .path()
-            .join(".local/share/clawdefender/threat-intel/rules");
+            .join(".local/share/rookbot/threat-intel/rules");
         std::fs::create_dir_all(&rules_dir).unwrap();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -9185,7 +9765,7 @@ mod tests {
         std::env::set_var("HOME", tmp.path());
 
         // Create audit.jsonl with a network event
-        let audit_dir = tmp.path().join(".local/share/clawdefender");
+        let audit_dir = tmp.path().join(".local/share/rookbot");
         std::fs::create_dir_all(&audit_dir).unwrap();
         let record = serde_json::json!({
             "timestamp": "2025-01-15T10:30:00Z",
@@ -9199,7 +9779,7 @@ mod tests {
         file.flush().unwrap();
 
         // Create the exports directory parent so canonical check works
-        let export_dir = tmp.path().join(".clawdefender/exports");
+        let export_dir = tmp.path().join(".rookbot/exports");
         std::fs::create_dir_all(&export_dir).unwrap();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -9233,7 +9813,7 @@ mod tests {
         std::env::set_var("HOME", tmp.path());
 
         // Create config dir
-        let config_dir = tmp.path().join(".config/clawdefender");
+        let config_dir = tmp.path().join(".config/rookbot");
         std::fs::create_dir_all(&config_dir).unwrap();
 
         let rt = tokio::runtime::Runtime::new().unwrap();

@@ -1,4 +1,4 @@
-//! Security tests for the ClawDefender MCP server.
+//! Security tests for the RookBot MCP server.
 //!
 //! Verifies rate limiting, scope validation, payload limits, input validation,
 //! and HTTP authentication.

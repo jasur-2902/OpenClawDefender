@@ -8,7 +8,7 @@ use super::calculator;
 use super::history;
 
 /// Tauri event name emitted when the score changes.
-pub const SCORE_CHANGED_EVENT: &str = "clawdefender://score-changed";
+pub const SCORE_CHANGED_EVENT: &str = "rookbot://score-changed";
 
 /// Debounce interval for score recalculation.
 const DEBOUNCE_MS: u64 = 2000;
@@ -21,7 +21,7 @@ static DEBOUNCE_HANDLE: Mutex<Option<tokio::task::JoinHandle<()>>> = Mutex::new(
 ///
 /// If a recalculation is already pending, it is cancelled and a new 2-second
 /// timer starts. When the timer fires, the score is recomputed and, if changed,
-/// a `clawdefender://score-changed` event is emitted.
+/// a `rookbot://score-changed` event is emitted.
 pub fn request_recalculation(app: &AppHandle) {
     let app = app.clone();
 
@@ -70,21 +70,21 @@ pub fn do_recalculate(app: &AppHandle) {
 /// and requests a debounced recalculation when any fires.
 pub fn start_score_listeners(app: &AppHandle) {
     let events_to_watch = [
-        "clawdefender://event",
-        "clawdefender://alert",
-        "clawdefender://status-change",
-        "clawdefender://new-tool-detected",
-        "clawdefender://server-wrapped",
-        "clawdefender://server-unwrapped",
-        "clawdefender://trust-changed",
-        "clawdefender://policy-changed",
-        "clawdefender://model-activated",
-        "clawdefender://model-deactivated",
-        "clawdefender://feed-updated",
-        "clawdefender://alert-dismissed",
-        "clawdefender://alert-resolved",
-        "clawdefender://settings-changed",
-        "clawdefender://autostart-changed",
+        "rookbot://event",
+        "rookbot://alert",
+        "rookbot://status-change",
+        "rookbot://new-tool-detected",
+        "rookbot://server-wrapped",
+        "rookbot://server-unwrapped",
+        "rookbot://trust-changed",
+        "rookbot://policy-changed",
+        "rookbot://model-activated",
+        "rookbot://model-deactivated",
+        "rookbot://feed-updated",
+        "rookbot://alert-dismissed",
+        "rookbot://alert-resolved",
+        "rookbot://settings-changed",
+        "rookbot://autostart-changed",
     ];
 
     for event_name in events_to_watch {

@@ -44,7 +44,7 @@ impl FeedClient {
         verifier: FeedVerifier,
     ) -> Result<Self> {
         let http = Client::builder()
-            .user_agent("ClawDefender-ThreatIntel/1.0")
+            .user_agent("RookBot-ThreatIntel/1.0")
             .build()?;
         Ok(Self {
             config,

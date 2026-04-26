@@ -113,7 +113,7 @@ async fn test_reqwest_https_connectivity() {
 
     // Build a client the same way DownloadManager does (no special TLS config)
     let client = reqwest::Client::builder()
-        .user_agent("ClawDefender-Test/0.1")
+        .user_agent("RookBot-Test/0.1")
         .connect_timeout(std::time::Duration::from_secs(10))
         .build();
 

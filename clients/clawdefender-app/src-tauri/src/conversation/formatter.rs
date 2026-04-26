@@ -1,4 +1,4 @@
-//! Formatting utilities for Ask Claw response synthesis.
+//! Formatting utilities for Ask Rook response synthesis.
 //!
 //! Pure functions that turn raw data into human-readable strings
 //! following Claw's voice guide: digits for numbers, plain language,

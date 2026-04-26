@@ -1,0 +1,54 @@
+# RookBot Default Configuration
+# This file is automatically created during installation.
+
+# Daemon IPC socket path
+# daemon_socket_path = "~/.local/share/rookbot/rookbot.sock"
+
+# Audit log path
+# audit_log_path = "~/.local/share/rookbot/audit.jsonl"
+
+# Policy rules path
+# policy_path = "~/.config/rookbot/policy.toml"
+
+# Sensor configuration path
+# sensor_config_path = "~/.config/rookbot/sensor.toml"
+
+# Telemetry opt-in (anonymous usage data)
+telemetry_opt_in = false
+
+[log_rotation]
+enabled = true
+max_size_mb = 100
+max_files = 5
+
+[eslogger]
+enabled = true
+buffer_size = 1024
+
+[slm]
+enabled = true
+backend = "auto"
+
+[swarm]
+enabled = false
+
+[ui]
+theme = "auto"
+
+[behavioral]
+enabled = true
+
+[injection_detector]
+enabled = true
+
+[guard_api]
+enabled = false
+
+[threat_intel]
+enabled = true
+
+[network_policy]
+enabled = true
+default_agent_action = "prompt"
+prompt_timeout_seconds = 30
+timeout_action = "block"

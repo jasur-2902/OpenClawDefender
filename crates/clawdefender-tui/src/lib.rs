@@ -1,4 +1,4 @@
-//! Terminal UI for ClawDefender interactive prompts and event monitoring.
+//! Terminal UI for RookBot interactive prompts and event monitoring.
 
 pub mod prompt;
 
@@ -447,7 +447,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
 
     let text = Line::from(vec![
         Span::styled(
-            " ClawDefender ",
+            " RookBot ",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),

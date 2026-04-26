@@ -41,6 +41,7 @@ interface ScanResult {
   high_count: number;
   medium_count: number;
   low_count: number;
+  scan_type?: string;
 }
 
 interface ScanModuleResult {
@@ -66,6 +67,7 @@ interface ScanFinding {
     rule_resource: string | null;
     rule_action: string | null;
   } | null;
+  ai_analysis?: string;
 }
 
 type AiScanPhase = "select" | "scanning" | "results";

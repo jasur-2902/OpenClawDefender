@@ -362,7 +362,7 @@ export const EventRow = memo(function EventRow({ event, defaultExpanded = false 
                 }}
                 className="text-xs text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
               >
-                Ask Claw about this
+                Ask Rook about this
               </button>
             </div>
           </div>

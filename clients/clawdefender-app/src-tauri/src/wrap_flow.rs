@@ -56,14 +56,14 @@ fn trust_rule_key(server_name: &str, category: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Known servers file  (~/.local/share/clawdefender/known_servers.json)
+// Known servers file  (~/.local/share/rookbot/known_servers.json)
 // ---------------------------------------------------------------------------
 
 fn known_servers_path() -> std::path::PathBuf {
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
-    home.join(".local/share/clawdefender").join("known_servers.json")
+    home.join(".local/share/rookbot").join("known_servers.json")
 }
 
 fn read_known_servers() -> serde_json::Value {
@@ -130,7 +130,7 @@ fn policy_file_path() -> std::path::PathBuf {
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     home.join(".config")
-        .join("clawdefender")
+        .join("rookbot")
         .join("policy.toml")
 }
 

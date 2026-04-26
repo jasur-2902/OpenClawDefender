@@ -3,7 +3,7 @@ name = "clawdefender-mcp-proxy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "MCP protocol proxy with JSON-RPC interception for ClawDefender"
+description = "MCP protocol proxy with JSON-RPC interception for RookBot"
 
 [lib]
 name = "clawdefender_mcp_proxy"

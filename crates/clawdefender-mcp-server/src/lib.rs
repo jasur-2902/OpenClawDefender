@@ -1,4 +1,4 @@
-//! ClawDefender MCP Server.
+//! RookBot MCP Server.
 //!
 //! An MCP server that other MCP servers or agents can call to declare intent,
 //! request permission, and report actions. This inverts the security model from
@@ -58,7 +58,7 @@ impl ToolRateLimiter {
     }
 }
 
-/// The ClawDefender MCP server.
+/// The RookBot MCP server.
 pub struct McpServer {
     /// Policy engine for evaluating intents and queries.
     pub policy_engine: Arc<Mutex<Box<dyn PolicyEngine>>>,
@@ -126,13 +126,13 @@ impl McpServer {
 
     /// Run the server on stdio transport (reads JSON-RPC from stdin, writes to stdout).
     pub async fn run_stdio(self: Arc<Self>) -> Result<()> {
-        info!("starting ClawDefender MCP server on stdio");
+        info!("starting RookBot MCP server on stdio");
         transport::stdio::run(self).await
     }
 
     /// Run the server on HTTP transport at the given port.
     pub async fn run_http(self: Arc<Self>, port: u16) -> Result<()> {
-        info!("starting ClawDefender MCP server on HTTP port {}", port);
+        info!("starting RookBot MCP server on HTTP port {}", port);
         transport::http::run(self, port).await
     }
 }

@@ -1,180 +1,153 @@
-import {
-  useEffect,
-  useState,
-  useCallback,
-  useRef,
-  useMemo,
-} from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
-import { PageHeader } from "../components/PageHeader";
-import { ActivityFilters } from "../components/activity/ActivityFilters";
-import { EventRow } from "../components/activity/EventRow";
-import { GroupedEventRow } from "../components/activity/GroupedEventRow";
-import { groupEvents, PERIOD_LABELS } from "../utils/eventGrouper";
-import { EMPTY_STATES } from "../constants/messages";
+import { Icon, Dot, VerdictPill, Badge } from "../components/design";
 import { useToastStore } from "../components/notifications/ToastContainer";
 import type { HumanizedEvent } from "../types";
-import type { EventGroup, TimePeriod } from "../utils/eventGrouper";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Helpers
 // ---------------------------------------------------------------------------
 
-const ROW_HEIGHT_ESTIMATE = 52;
-const BUFFER_PX = 400;
+/** Map source/event type to an icon name. */
+function kindIcon(e: HumanizedEvent): string {
+  const et = e.raw_event.event_type;
+  if (et === "eslogger" || e.source_type === "os") return "process";
+  if (et === "network" || et === "dns") return et;
+  return "tools";
+}
 
-// ---------------------------------------------------------------------------
-// Time range helpers
-// ---------------------------------------------------------------------------
+function fmtTime(ts: string): string {
+  try {
+    return new Date(ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return ts;
+  }
+}
 
-function getTimeRangeCutoff(range: string): number {
-  const now = Date.now();
-  switch (range) {
-    case "1h":
-      return now - 3600_000;
-    case "today": {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      return d.getTime();
-    }
-    case "yesterday": {
-      const d = new Date();
-      d.setDate(d.getDate() - 1);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime();
-    }
-    case "week": {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime();
-    }
+function describeAction(e: HumanizedEvent): string {
+  return e.one_liner;
+}
+
+function pathTail(e: HumanizedEvent): string {
+  const r = e.raw_event.resource;
+  if (!r) return "\u2014";
+  const parts = r.split("/");
+  return parts.slice(-2).join("/") || r;
+}
+
+/** Return classification color. */
+function classColor(level: string): string {
+  switch (level.toLowerCase()) {
+    case "critical":
+      return "var(--red)";
+    case "high":
+      return "var(--red)";
+    case "suspicious":
+      return "var(--amber)";
+    case "medium":
+      return "var(--amber)";
+    case "notable":
+      return "var(--amber)";
+    case "low":
+      return "var(--green)";
     default:
-      return 0;
+      return "var(--ink-2)";
   }
 }
 
 // ---------------------------------------------------------------------------
-// Stats Bar
+// Pill filter select
 // ---------------------------------------------------------------------------
 
-function ActivityStatsBar({ events }: { events: HumanizedEvent[] }) {
-  const stats = useMemo(() => {
-    let os = 0;
-    let mcp = 0;
-    let routine = 0;
-    let notable = 0;
-    let suspicious = 0;
-
-    for (const e of events) {
-      // Source type
-      const isOs =
-        e.source_type === "os" ||
-        e.raw_event.event_type === "eslogger" ||
-        e.raw_event.event_type === "fsevents" ||
-        e.raw_event.event_type === "correlation";
-      if (isOs) os++;
-      else mcp++;
-
-      // SLM classification
-      try {
-        const parsed = JSON.parse(e.raw_event.details);
-        const level = parsed?.slm_analysis?.risk_level?.toLowerCase();
-        if (level === "suspicious" || level === "high" || level === "critical") {
-          suspicious++;
-        } else if (level === "notable" || level === "medium") {
-          notable++;
-        } else if (level) {
-          routine++;
-        }
-      } catch {
-        // No SLM data
-      }
-    }
-
-    return { os, mcp, routine, notable, suspicious };
-  }, [events]);
-
-  const hasSlm = stats.routine + stats.notable + stats.suspicious > 0;
-
+function Pill({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
   return (
-    <div className="flex items-center gap-4 px-4 py-1.5 text-xs text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)]">
-      <span className="flex items-center gap-1.5">
-        <span
-          className="inline-block w-2 h-2 rounded-full"
-          style={{ backgroundColor: "var(--color-accent)" }}
-        />
-        MCP: {stats.mcp}
-      </span>
-      <span className="flex items-center gap-1.5">
-        <span
-          className="inline-block w-2 h-2 rounded-full"
-          style={{ backgroundColor: "var(--color-info-border)" }}
-        />
-        OS: {stats.os}
-      </span>
-      {hasSlm && (
-        <>
-          <span className="text-[var(--color-border)]">|</span>
-          <span style={{ color: "var(--color-text-secondary)" }}>
-            Routine: {stats.routine}
-          </span>
-          <span style={{ color: "var(--color-warning)" }}>
-            Notable: {stats.notable}
-          </span>
-          <span style={{ color: "var(--color-danger)" }}>
-            Suspicious: {stats.suspicious}
-          </span>
-        </>
-      )}
-    </div>
+    <label
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "4px 8px",
+        borderRadius: 6,
+        fontSize: 12,
+        color: "var(--ink-2)",
+        background: "var(--bg-2)",
+      }}
+    >
+      <span style={{ color: "var(--ink-3)" }}>{label}:</span>
+      <select
+        value={value}
+        onChange={(ev) => onChange(ev.target.value)}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "var(--ink-0)",
+          fontSize: 12,
+          outline: "none",
+        }}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Activity Page
+// Activity Screen
 // ---------------------------------------------------------------------------
 
 export function Activity() {
+  const navigate = useNavigate();
   const events = useEventStore((s) => s.events);
   const setEvents = useEventStore((s) => s.setEvents);
   const onlyNotable = useEventStore((s) => s.onlyNotable);
   const setOnlyNotable = useEventStore((s) => s.setOnlyNotable);
-
-  // Filters (persisted in store across navigation)
   const searchText = useEventStore((s) => s.searchText);
   const setSearchText = useEventStore((s) => s.setSearchText);
   const serverFilter = useEventStore((s) => s.serverFilter);
   const setServerFilter = useEventStore((s) => s.setServerFilter);
-  const statusFilter = useEventStore((s) => s.statusFilter);
-  const setStatusFilter = useEventStore((s) => s.setStatusFilter);
   const riskFilter = useEventStore((s) => s.riskFilter);
   const setRiskFilter = useEventStore((s) => s.setRiskFilter);
-  const timeRange = useEventStore((s) => s.timeRange);
-  const setTimeRange = useEventStore((s) => s.setTimeRange);
-  const correlationFilter = useEventStore((s) => s.correlationFilter);
-  const setCorrelationFilter = useEventStore((s) => s.setCorrelationFilter);
 
-  // Scroll state
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [newEventsPending, setNewEventsPending] = useState(0);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
-
-  // Live indicator
-  const [isLive, setIsLive] = useState(false);
-  const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Loading
+  const [liveMode, setLiveMode] = useState(true);
   const [loading, setLoading] = useState(true);
   const addToast = useToastStore((s) => s.addToast);
 
-  // ---------------------------------------------------------------------------
-  // Data loading -- use humanized events
-  // ---------------------------------------------------------------------------
+  // Track live indicator
+  const eventCount = events.length;
+  const prevCountRef = useRef(eventCount);
+  const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isLive, setIsLive] = useState(false);
 
+  useEffect(() => {
+    if (eventCount > prevCountRef.current) {
+      setIsLive(true);
+      if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
+      liveTimerRef.current = setTimeout(() => setIsLive(false), 5000);
+    }
+    prevCountRef.current = eventCount;
+  }, [eventCount]);
+
+  // Load data
   useEffect(() => {
     invoke<HumanizedEvent[]>("get_humanized_events", { count: 500, offset: 0 })
       .then((evts) => {
@@ -186,313 +159,181 @@ export function Activity() {
         addToast({
           title: "Could not load activity. Showing cached data.",
           severity: "warning",
-          action: {
-            label: "Retry",
-            onClick: () => window.location.reload(),
-          },
+          action: { label: "Retry", onClick: () => window.location.reload() },
         });
       });
-  }, [setEvents]);
+  }, [setEvents, addToast]);
 
-  // Track when new events arrive (for live indicator and new-events chip).
-  // The actual event listener lives in GlobalEventListener at the App root.
-  const eventCount = useEventStore((s) => s.events.length);
-  const prevCountRef = useRef(eventCount);
-
-  useEffect(() => {
-    if (eventCount > prevCountRef.current) {
-      setIsLive(true);
-      if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
-      liveTimerRef.current = setTimeout(() => setIsLive(false), 5000);
-
-      if (!autoScroll) {
-        setNewEventsPending((prev) => prev + (eventCount - prevCountRef.current));
-      }
-    }
-    prevCountRef.current = eventCount;
-  }, [eventCount, autoScroll]);
-
-  // ---------------------------------------------------------------------------
-  // Derived data
-  // ---------------------------------------------------------------------------
-
+  // Derived server list
   const serverNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const e of events) names.add(e.server_display_name);
-    return Array.from(names).sort();
+    const s = new Set<string>();
+    for (const e of events) s.add(e.server_display_name);
+    return ["all", ...Array.from(s).sort()];
   }, [events]);
 
-  const filteredEvents = useMemo(() => {
+  // Derived kind list
+  const kindOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of events) s.add(e.raw_event.event_type);
+    return ["all", ...Array.from(s).sort()];
+  }, [events]);
+
+  // Active filter values (using store's serverFilter[0] or "all")
+  const activeServer =
+    serverFilter.length > 0 ? serverFilter[0] : "all";
+  const activeKind = riskFilter || "all";
+
+  // Filtered events
+  const visible = useMemo(() => {
     let result = events;
-
-    // "Only show things that matter" toggle
-    if (onlyNotable) {
-      result = result.filter((e) => e.is_notable);
-    }
-
-    // Text search -- searches humanized fields
+    if (onlyNotable) result = result.filter((e) => e.is_notable);
+    if (activeKind !== "all")
+      result = result.filter((e) => e.raw_event.event_type === activeKind);
+    if (activeServer !== "all")
+      result = result.filter((e) => e.server_display_name === activeServer);
     if (searchText) {
       const lower = searchText.toLowerCase();
       result = result.filter(
         (e) =>
           e.one_liner.toLowerCase().includes(lower) ||
-          e.expanded_explanation.toLowerCase().includes(lower) ||
           e.server_display_name.toLowerCase().includes(lower) ||
-          (e.raw_event.tool_name?.toLowerCase().includes(lower) ?? false) ||
           (e.raw_event.resource?.toLowerCase().includes(lower) ?? false)
       );
     }
-
-    // Server filter (multi-select) -- uses display names
-    if (serverFilter.length > 0) {
-      result = result.filter((e) =>
-        serverFilter.includes(e.server_display_name)
-      );
-    }
-
-    // Action filter (uses humanized action_taken)
-    if (statusFilter) {
-      result = result.filter((e) => e.action_taken === statusFilter);
-    }
-
-    // Risk filter (uses humanized risk_level)
-    if (riskFilter) {
-      result = result.filter((e) => e.risk_level === riskFilter);
-    }
-
-    // Time range
-    if (timeRange) {
-      const cutoff = getTimeRangeCutoff(timeRange);
-      result = result.filter(
-        (e) => new Date(e.timestamp).getTime() >= cutoff
-      );
-    }
-
-    // Correlation filter
-    if (correlationFilter === "correlated") {
-      result = result.filter((e) => e.correlation_id != null);
-    } else if (correlationFilter === "uncorrelated") {
-      result = result.filter((e) => e.correlation_id == null);
-    }
-
     return result;
-  }, [
-    events,
-    onlyNotable,
-    searchText,
-    serverFilter,
-    statusFilter,
-    riskFilter,
-    timeRange,
-    correlationFilter,
-  ]);
-
-  // Count hidden routine events for the filter indicator
-  const hiddenCount = onlyNotable
-    ? events.length - events.filter((e) => e.is_notable).length
-    : 0;
-
-  const groups = useMemo(() => groupEvents(filteredEvents), [filteredEvents]);
-
-  // Flatten groups with period headers for virtualization
-  type FeedItem =
-    | { type: "period-header"; period: TimePeriod; id: string }
-    | { type: "group"; group: EventGroup; id: string };
-
-  const feedItems = useMemo(() => {
-    const items: FeedItem[] = [];
-    let currentPeriod: TimePeriod | null = null;
-
-    for (const group of groups) {
-      if (group.period !== currentPeriod) {
-        currentPeriod = group.period;
-        items.push({
-          type: "period-header",
-          period: group.period,
-          id: `ph-${group.period}`,
-        });
-      }
-      items.push({ type: "group", group, id: group.id });
-    }
-
-    return items;
-  }, [groups]);
-
-  // ---------------------------------------------------------------------------
-  // Virtual scrolling
-  // ---------------------------------------------------------------------------
-
-  const totalHeight = feedItems.length * ROW_HEIGHT_ESTIMATE;
-  const startIdx = Math.max(
-    0,
-    Math.floor((scrollTop - BUFFER_PX) / ROW_HEIGHT_ESTIMATE)
-  );
-  const endIdx = Math.min(
-    feedItems.length,
-    Math.ceil((scrollTop + containerHeight + BUFFER_PX) / ROW_HEIGHT_ESTIMATE)
-  );
-  const visibleItems = feedItems.slice(startIdx, endIdx);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const obs = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerHeight(entry.contentRect.height);
-      }
-    });
-    obs.observe(container);
-    return () => obs.disconnect();
-  }, []);
-
-  const rafRef = useRef<number | null>(null);
-  const handleScroll = useCallback(() => {
-    if (rafRef.current) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      const container = scrollContainerRef.current;
-      if (!container) return;
-      setScrollTop(container.scrollTop);
-      const isAtTop = container.scrollTop < ROW_HEIGHT_ESTIMATE;
-      if (isAtTop && !autoScroll) {
-        setAutoScroll(true);
-        setNewEventsPending(0);
-      } else if (!isAtTop && autoScroll) {
-        setAutoScroll(false);
-      }
-    });
-  }, [autoScroll]);
-
-  useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  // Auto-scroll to top when new events arrive and user is at top
-  useEffect(() => {
-    if (autoScroll && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-    }
-  }, [events.length, autoScroll]);
-
-  const scrollToTop = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
-    }
-    setAutoScroll(true);
-    setNewEventsPending(0);
-  };
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
-  const hasFilters =
-    searchText ||
-    serverFilter.length > 0 ||
-    statusFilter ||
-    riskFilter ||
-    timeRange ||
-    onlyNotable ||
-    correlationFilter;
+  }, [events, onlyNotable, activeKind, activeServer, searchText]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 pt-4">
-        <PageHeader
-          title="Activity"
-          subtitle="Live event feed from your AI tools"
-          actions={
-            <div className="flex items-center gap-3">
-              {isLive && (
-                <span
-                  className="flex items-center gap-1.5 text-xs text-[var(--color-safe)]"
-                  role="status"
-                  aria-label="Receiving live events"
-                >
-                  <span className="relative flex h-2 w-2" aria-hidden="true">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-safe)] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-safe)]" />
-                  </span>
-                  Live
-                </span>
-              )}
-              <span
-                className="text-xs text-[var(--color-text-secondary)] tabular-nums"
-                aria-live="polite"
-              >
-                {filteredEvents.length} events
-                {filteredEvents.length !== events.length &&
-                  ` of ${events.length}`}
-              </span>
-            </div>
-          }
+    <div style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100%" }}>
+      {/* Toolbar */}
+      <div
+        style={{
+          padding: "12px 20px",
+          borderBottom: "1px solid var(--line)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          background: "var(--bg-1)",
+        }}
+      >
+        <Dot
+          color={liveMode && isLive ? "var(--green)" : "var(--ink-3)"}
+          size={7}
+          pulse={liveMode && isLive}
         />
+        <span style={{ fontSize: 13, fontWeight: 600 }}>
+          {visible.length} events
+        </span>
+        <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
+          {isLive ? "· live" : ""}
+        </span>
+        <button
+          onClick={() => setLiveMode(!liveMode)}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            color: "var(--ink-1)",
+            background: "var(--bg-2)",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          {liveMode ? "Pause" : "Resume"}
+        </button>
+
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          <div style={{ position: "relative" }}>
+            <Icon
+              name="search"
+              size={12}
+              color="var(--ink-3)"
+            />
+            <input
+              placeholder="Search\u2026"
+              value={searchText}
+              onChange={(ev) => setSearchText(ev.target.value)}
+              style={{
+                background: "var(--bg-2)",
+                border: "none",
+                borderRadius: 6,
+                padding: "5px 10px 5px 26px",
+                fontSize: 12.5,
+                color: "var(--ink-0)",
+                width: 200,
+                outline: "none",
+              }}
+            />
+          </div>
+          <Pill
+            label="kind"
+            value={activeKind}
+            options={kindOptions}
+            onChange={(v) => setRiskFilter(v === "all" ? "" : v)}
+          />
+          <Pill
+            label="app"
+            value={activeServer}
+            options={serverNames}
+            onChange={(v) =>
+              setServerFilter(v === "all" ? [] : [v])
+            }
+          />
+          <button
+            onClick={() => setOnlyNotable(!onlyNotable)}
+            style={{
+              padding: "5px 10px",
+              fontSize: 12,
+              borderRadius: 6,
+              background: onlyNotable ? "var(--accent-soft)" : "transparent",
+              color: onlyNotable ? "var(--accent)" : "var(--ink-2)",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            Only what matters
+          </button>
+        </div>
       </div>
 
-      {/* Filter bar */}
-      <ActivityFilters
-        searchText={searchText}
-        onSearchChange={setSearchText}
-        serverFilter={serverFilter}
-        onServerFilterChange={setServerFilter}
-        serverNames={serverNames}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        riskFilter={riskFilter}
-        onRiskFilterChange={setRiskFilter}
-        timeRange={timeRange}
-        onTimeRangeChange={setTimeRange}
-        onlyNotable={onlyNotable}
-        onOnlyNotableChange={setOnlyNotable}
-        hiddenCount={hiddenCount}
-        correlationFilter={correlationFilter}
-        onCorrelationFilterChange={setCorrelationFilter}
-      />
-
-      {/* Stats bar */}
-      <ActivityStatsBar events={filteredEvents} />
-
-      {/* Feed */}
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto relative"
-        role="log"
-        aria-label="Activity feed"
-      >
-        {/* Skeleton loading */}
+      {/* Table */}
+      <div className="cd-scroll" style={{ overflowY: "auto" }}>
         {loading && (
-          <div className="space-y-1 p-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-[48px] rounded-lg bg-[var(--color-bg-secondary)] animate-pulse"
-              />
-            ))}
+          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
+            Loading events...
           </div>
         )}
 
-        {/* Empty state */}
-        {!loading && filteredEvents.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <p className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
-              {hasFilters
-                ? EMPTY_STATES.searchResults.headline
-                : EMPTY_STATES.activity.headline}
-            </p>
-            <p className="text-sm text-[var(--color-text-secondary)] max-w-md">
-              {hasFilters
-                ? EMPTY_STATES.searchResults.body
-                : EMPTY_STATES.activity.body}
-            </p>
-            {hasFilters && (
+        {!loading && visible.length === 0 && (
+          <div
+            style={{
+              padding: 60,
+              textAlign: "center",
+              color: "var(--ink-3)",
+              fontSize: 14,
+            }}
+          >
+            No events match your filters.
+            {(searchText || onlyNotable || activeKind !== "all" || activeServer !== "all") && (
               <button
-                onClick={() => {
-                  useEventStore.getState().resetFilters();
+                onClick={() => useEventStore.getState().resetFilters()}
+                style={{
+                  display: "block",
+                  margin: "12px auto 0",
+                  fontSize: 13,
+                  color: "var(--accent)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
                 }}
-                className="mt-4 text-sm text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
               >
                 Clear all filters
               </button>
@@ -500,57 +341,100 @@ export function Activity() {
           </div>
         )}
 
-        {/* Virtualized event list */}
-        {!loading && feedItems.length > 0 && (
-          <div style={{ height: totalHeight, position: "relative" }}>
-            <div
-              style={{
-                position: "absolute",
-                top: startIdx * ROW_HEIGHT_ESTIMATE,
-                left: 0,
-                right: 0,
-              }}
-            >
-              {visibleItems.map((item) => {
-                if (item.type === "period-header") {
-                  return (
-                    <div
-                      key={item.id}
-                      className="sticky top-0 z-[var(--z-sticky)] px-4 py-2 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)]"
-                      style={{ height: ROW_HEIGHT_ESTIMATE }}
+        {!loading && visible.length > 0 && (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ position: "sticky", top: 0, background: "var(--bg-1)", zIndex: 1 }}>
+                {["", "Time", "App", "What it did", "Where", "Result"].map(
+                  (h, i) => (
+                    <th
+                      key={i}
+                      style={{
+                        padding: "8px 12px",
+                        textAlign: i === 5 ? "right" : "left",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "var(--ink-2)",
+                        borderBottom: "1px solid var(--line)",
+                      }}
                     >
-                      <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
-                        {PERIOD_LABELS[item.period]}
-                      </span>
-                    </div>
-                  );
-                }
-
-                const group = item.group;
-                if (group.type === "single") {
-                  return (
-                    <EventRow key={group.id} event={group.representative} />
-                  );
-                }
-                return <GroupedEventRow key={group.id} group={group} />;
-              })}
-            </div>
-          </div>
+                      {h}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((e) => (
+                <tr
+                  key={e.event_id}
+                  onClick={() => navigate(`/activity/${e.event_id}`)}
+                  style={{
+                    cursor: "pointer",
+                    borderBottom: "1px solid var(--line-soft)",
+                  }}
+                  onMouseEnter={(ev) =>
+                    (ev.currentTarget.style.background = "var(--accent-soft)")
+                  }
+                  onMouseLeave={(ev) =>
+                    (ev.currentTarget.style.background = "transparent")
+                  }
+                >
+                  <td style={{ padding: "11px 16px", width: 28 }}>
+                    <Icon name={kindIcon(e)} size={14} color="var(--ink-2)" />
+                  </td>
+                  <td
+                    style={{
+                      padding: "11px 12px",
+                      color: "var(--ink-3)",
+                      whiteSpace: "nowrap",
+                      width: 70,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {fmtTime(e.timestamp)}
+                  </td>
+                  <td style={{ padding: "11px 12px", color: "var(--ink-0)" }}>
+                    {e.server_display_name}
+                  </td>
+                  <td
+                    style={{
+                      padding: "11px 12px",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12,
+                      color: "var(--ink-1)",
+                      maxWidth: 380,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {describeAction(e)}
+                  </td>
+                  <td
+                    style={{
+                      padding: "11px 12px",
+                      color: "var(--ink-2)",
+                      fontSize: 12,
+                    }}
+                  >
+                    {pathTail(e)}
+                  </td>
+                  <td style={{ padding: "11px 16px", textAlign: "right" }}>
+                    {e.is_notable ? (
+                      <Badge color={classColor(e.risk_level)}>
+                        {e.risk_level}
+                      </Badge>
+                    ) : (
+                      <VerdictPill verdict={e.action_taken === "Blocked" ? "BLOCK" : "ALLOW"} />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
-
-      {/* "New events" floating chip */}
-      {newEventsPending > 0 && !autoScroll && (
-        <button
-          onClick={scrollToTop}
-          aria-live="polite"
-          aria-label={`${newEventsPending} new event${newEventsPending > 1 ? "s" : ""}, scroll to top`}
-          className="absolute top-[140px] left-1/2 -translate-x-1/2 bg-[var(--color-accent)] text-white text-xs px-4 py-1.5 rounded-full shadow-[var(--shadow-toast)] hover:bg-[var(--color-accent-hover)] transition-colors z-[var(--z-toast)]"
-        >
-          {newEventsPending} new event{newEventsPending > 1 ? "s" : ""}{" "}
-          {"\u2191"}
-        </button>
-      )}
     </div>
   );
 }

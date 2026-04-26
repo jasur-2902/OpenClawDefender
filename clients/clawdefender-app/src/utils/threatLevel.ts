@@ -1,5 +1,5 @@
 /**
- * ClawDefender Threat Level Utilities
+ * RookBot Threat Level Utilities
  *
  * Maps internal anomaly scores to user-facing threat levels,
  * colors, icons, and notification priorities.

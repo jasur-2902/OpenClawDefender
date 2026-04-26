@@ -1,5 +1,5 @@
 /**
- * Frontend types for the Ask Claw conversation UI.
+ * Frontend types for the Ask Rook conversation UI.
  * These mirror the Rust types from the architecture doc.
  */
 

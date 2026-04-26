@@ -23,7 +23,7 @@ impl GuidanceStore {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_default();
-        home.join(".local/share/clawdefender").join("guidance_state.json")
+        home.join(".local/share/rookbot").join("guidance_state.json")
     }
 
     /// Load persisted guidance state from disk.

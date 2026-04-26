@@ -1,8 +1,8 @@
 //! Level 2 (Cooperative) certification tests.
 //!
-//! Verifies that the MCP server integrates with the ClawDefender SDK:
+//! Verifies that the MCP server integrates with the RookBot SDK:
 //! calls checkIntent before operations, respects denials, reports actions,
-//! and operates without ClawDefender.
+//! and operates without RookBot.
 
 use anyhow::Result;
 use serde_json::json;
@@ -24,9 +24,9 @@ pub async fn run(config: &CertifyConfig) -> Result<LevelReport> {
 
 /// Test: server calls checkIntent before tool execution.
 ///
-/// We look for evidence that the server attempts to call ClawDefender's
+/// We look for evidence that the server attempts to call RookBot's
 /// checkIntent endpoint. Since we cannot directly instrument the server,
-/// we check if the server exposes any ClawDefender integration metadata
+/// we check if the server exposes any RookBot integration metadata
 /// or if tool call responses indicate SDK usage.
 async fn test_calls_check_intent(config: &CertifyConfig) -> TestResult {
     let name = "Calls checkIntent before sensitive operations";
@@ -48,7 +48,7 @@ async fn run_check_intent(config: &CertifyConfig) -> Result<()> {
     let mut harness = McpHarness::start(&config.server_command).await?;
     let init_result = harness.initialize().await?;
 
-    // Check if the server advertises ClawDefender support in its capabilities
+    // Check if the server advertises RookBot support in its capabilities
     let has_clawdefender_support = init_result
         .get("capabilities")
         .and_then(|c| c.get("experimental"))
@@ -75,7 +75,7 @@ async fn run_check_intent(config: &CertifyConfig) -> Result<()> {
 
     if !has_clawdefender_support && !has_sdk_marker && !has_security_tool {
         anyhow::bail!(
-            "No evidence of ClawDefender SDK integration (no experimental/clawdefender capability, \
+            "No evidence of RookBot SDK integration (no experimental/clawdefender capability, \
              no SDK metadata, no security-related tools)"
         );
     }
@@ -110,7 +110,7 @@ async fn run_respects_denials(config: &CertifyConfig) -> Result<()> {
     }
 
     // Call a tool — for Level 2 compliance, the server should handle errors
-    // from ClawDefender gracefully and return user-friendly messages
+    // from RookBot gracefully and return user-friendly messages
     let tool_name = tools[0]
         .get("name")
         .and_then(|n| n.as_str())
@@ -150,7 +150,7 @@ async fn test_calls_report_action(config: &CertifyConfig) -> TestResult {
 
 async fn run_report_action(config: &CertifyConfig) -> Result<()> {
     // Similar to checkIntent — we look for evidence of reportAction usage.
-    // In a real deployment, we'd intercept the ClawDefender MCP server calls.
+    // In a real deployment, we'd intercept the RookBot MCP server calls.
     let mut harness = McpHarness::start(&config.server_command).await?;
     let init_result = harness.initialize().await?;
 
@@ -164,7 +164,7 @@ async fn run_report_action(config: &CertifyConfig) -> Result<()> {
 
     if !has_clawdefender {
         anyhow::bail!(
-            "No evidence of ClawDefender SDK integration for reportAction \
+            "No evidence of RookBot SDK integration for reportAction \
              (no experimental/clawdefender capability)"
         );
     }
@@ -172,9 +172,9 @@ async fn run_report_action(config: &CertifyConfig) -> Result<()> {
     Ok(())
 }
 
-/// Test: server starts and operates when ClawDefender is not available.
+/// Test: server starts and operates when RookBot is not available.
 async fn test_operates_without_clawdefender(config: &CertifyConfig) -> TestResult {
-    let name = "Operates without ClawDefender available";
+    let name = "Operates without RookBot available";
     match run_without_clawdefender(config).await {
         Ok(()) => TestResult {
             name: name.to_string(),
@@ -190,14 +190,14 @@ async fn test_operates_without_clawdefender(config: &CertifyConfig) -> TestResul
 }
 
 async fn run_without_clawdefender(config: &CertifyConfig) -> Result<()> {
-    // Start the server without any ClawDefender daemon/proxy running.
+    // Start the server without any RookBot daemon/proxy running.
     // The server must start successfully and respond to basic requests.
     let mut harness = McpHarness::start(&config.server_command).await?;
     let _init = harness.initialize().await?;
     let tools = harness.list_tools().await?;
 
     if tools.is_empty() {
-        anyhow::bail!("Server reported no tools when ClawDefender unavailable");
+        anyhow::bail!("Server reported no tools when RookBot unavailable");
     }
 
     // Verify we can call a tool
@@ -208,11 +208,11 @@ async fn run_without_clawdefender(config: &CertifyConfig) -> Result<()> {
 
     let resp = harness.call_tool(tool_name, json!({})).await?;
     if resp.get("result").is_none() && resp.get("error").is_none() {
-        anyhow::bail!("Server returned invalid response without ClawDefender");
+        anyhow::bail!("Server returned invalid response without RookBot");
     }
 
     if !harness.is_running() {
-        anyhow::bail!("Server crashed without ClawDefender");
+        anyhow::bail!("Server crashed without RookBot");
     }
 
     harness.shutdown().await?;

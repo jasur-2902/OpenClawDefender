@@ -1,39 +1,26 @@
-//! `clawdefender status` — check if the ClawDefender daemon is running and show wrapped servers.
+//! `rookbot status` — check if the Rookbot daemon is running and show wrapped servers.
 
 use std::net::TcpStream;
-use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 use anyhow::Result;
 use clawdefender_core::config::ClawConfig;
 
+use crate::ipc_client::DaemonClient;
+use crate::output::Output;
+
 use super::{detect_servers_key, is_wrapped, known_clients, read_config};
 
-pub fn run(config: &ClawConfig) -> Result<()> {
-    let socket_path = &config.daemon_socket_path;
-
-    println!("ClawDefender Status");
-    println!("  Socket: {}", socket_path.display());
+pub fn run(config: &ClawConfig, out: &Output, ipc: &DaemonClient) -> Result<()> {
+    out.header("Rookbot Status");
+    out.kv("Socket", &config.daemon_socket_path.display().to_string());
 
     // Check daemon status.
-    match UnixStream::connect(socket_path) {
-        Ok(_stream) => {
-            println!("  Daemon: running");
-        }
-        Err(e) => {
-            match e.kind() {
-                std::io::ErrorKind::NotFound => {
-                    println!("  Daemon: not running (socket not found)");
-                }
-                std::io::ErrorKind::ConnectionRefused => {
-                    println!("  Daemon: not running (connection refused)");
-                }
-                _ => {
-                    println!("  Daemon: unknown ({e})");
-                }
-            }
-            println!("  -> Start it with: clawdefender daemon start");
-        }
+    if ipc.is_daemon_running() {
+        out.kv("Daemon", "running");
+    } else {
+        out.kv("Daemon", "not running");
+        out.hint("Start it with: rookbot daemon start");
     }
 
     // Policy rule count.
@@ -46,12 +33,11 @@ pub fn run(config: &ClawConfig) -> Result<()> {
     } else {
         0
     };
-    println!(
-        "  Policy: {} ({} rule(s))",
-        config.policy_path.display(),
-        rule_count
+    out.kv(
+        "Policy",
+        &format!("{} ({} rule(s))", config.policy_path.display(), rule_count),
     );
-    println!("  Audit:  {}", config.audit_log_path.display());
+    out.kv("Audit", &config.audit_log_path.display().to_string());
 
     // MCP server status.
     if config.mcp_server.enabled {
@@ -59,12 +45,12 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         let reachable =
             TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(1)).is_ok();
         if reachable {
-            println!("  MCP Server: running (http://{})", addr);
+            out.kv("MCP Server", &format!("running (http://{})", addr));
         } else {
-            println!("  MCP Server: not reachable (http://{})", addr);
+            out.kv("MCP Server", &format!("not reachable (http://{})", addr));
         }
     } else {
-        println!("  MCP Server: disabled");
+        out.kv("MCP Server", "disabled");
     }
 
     // Guard API status.
@@ -74,17 +60,17 @@ pub fn run(config: &ClawConfig) -> Result<()> {
             TcpStream::connect_timeout(&guard_addr.parse().unwrap(), Duration::from_secs(1))
                 .is_ok();
         if guard_reachable {
-            println!("  Guard API: running (http://{})", guard_addr);
+            out.kv("Guard API", &format!("running (http://{})", guard_addr));
         } else {
-            println!("  Guard API: not reachable (http://{})", guard_addr);
+            out.kv("Guard API", &format!("not reachable (http://{})", guard_addr));
         }
     } else {
-        println!("  Guard API: disabled");
+        out.kv("Guard API", "disabled");
     }
 
     // Scan for wrapped servers.
-    println!();
-    println!("Wrapped Servers:");
+    out.blank();
+    out.header("Wrapped Servers");
     let clients = known_clients();
     let mut found = false;
     for client in &clients {
@@ -96,7 +82,7 @@ pub fn run(config: &ClawConfig) -> Result<()> {
             if let Some(servers) = config_json.get(key).and_then(|s| s.as_object()) {
                 for (name, server) in servers {
                     if is_wrapped(server) {
-                        println!("  - {} ({})", name, client.display_name);
+                        out.println(&format!("  - {} ({})", name, client.display_name));
                         found = true;
                     }
                 }
@@ -104,9 +90,9 @@ pub fn run(config: &ClawConfig) -> Result<()> {
         }
     }
     if !found {
-        println!("  (none)");
-        println!();
-        println!("Wrap an MCP server: clawdefender wrap <server-name>");
+        out.println("  (none)");
+        out.blank();
+        out.hint("Wrap an MCP server: rookbot wrap <server-name>");
     }
 
     Ok(())

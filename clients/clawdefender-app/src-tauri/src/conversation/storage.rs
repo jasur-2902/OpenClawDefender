@@ -31,7 +31,7 @@ pub struct ConversationStore {
 
 impl ConversationStore {
     /// Opens or creates the database at the default path:
-    /// `~/.local/share/clawdefender/conversations.db`
+    /// `~/.local/share/rookbot/conversations.db`
     pub fn open() -> Result<Self, String> {
         let path = Self::default_db_path()?;
         Self::open_at(&path)
@@ -59,7 +59,7 @@ impl ConversationStore {
         let home = std::env::var("HOME")
             .map_err(|_| "HOME environment variable not set".to_string())?;
         Ok(std::path::PathBuf::from(home)
-            .join(".local/share/clawdefender/conversations.db"))
+            .join(".local/share/rookbot/conversations.db"))
     }
 
     fn initialize_schema(&self) -> Result<(), String> {

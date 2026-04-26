@@ -47,29 +47,29 @@ jobs:
           lipo -create \
             target/aarch64-apple-darwin/release/clawdefender \
             target/x86_64-apple-darwin/release/clawdefender \
-            -output target/universal-apple-darwin/release/clawdefender
+            -output target/universal-apple-darwin/release/rookbot
           lipo -create \
             target/aarch64-apple-darwin/release/clawdefender-daemon \
             target/x86_64-apple-darwin/release/clawdefender-daemon \
-            -output target/universal-apple-darwin/release/clawdefender-daemon
+            -output target/universal-apple-darwin/release/rookbot-daemon
 
       - name: Ad-hoc code sign
         run: |
-          codesign --sign - --force target/universal-apple-darwin/release/clawdefender
-          codesign --sign - --force target/universal-apple-darwin/release/clawdefender-daemon
+          codesign --sign - --force target/universal-apple-darwin/release/rookbot
+          codesign --sign - --force target/universal-apple-darwin/release/rookbot-daemon
 
       - name: Create tarball and checksum
         run: |
           cd target/universal-apple-darwin/release
-          tar czf clawdefender-macos-universal.tar.gz clawdefender clawdefender-daemon
-          shasum -a 256 clawdefender-macos-universal.tar.gz > clawdefender-macos-universal.tar.gz.sha256
+          tar czf rookbot-macos-universal.tar.gz rookbot rookbot-daemon
+          shasum -a 256 rookbot-macos-universal.tar.gz > rookbot-macos-universal.tar.gz.sha256
 
-      - name: Create GitHub Release
+      - name: Upload macOS artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/universal-apple-darwin/release/clawdefender-macos-universal.tar.gz
-            target/universal-apple-darwin/release/clawdefender-macos-universal.tar.gz.sha256
+            target/universal-apple-darwin/release/rookbot-macos-universal.tar.gz
+            target/universal-apple-darwin/release/rookbot-macos-universal.tar.gz.sha256
           generate_release_notes: true
 
       # ------------------------------------------------------------------
@@ -91,20 +91,174 @@ jobs:
       #     codesign --sign "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }}" \
       #       --options runtime \
       #       --timestamp \
-      #       target/universal-apple-darwin/release/clawdefender
+      #       target/universal-apple-darwin/release/rookbot
       #     codesign --sign "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }}" \
       #       --options runtime \
       #       --timestamp \
-      #       target/universal-apple-darwin/release/clawdefender-daemon
+      #       target/universal-apple-darwin/release/rookbot-daemon
 
       # - name: Notarize binaries
       #   run: |
       #     cd target/universal-apple-darwin/release
-      #     zip clawdefender.zip clawdefender clawdefender-daemon
-      #     xcrun notarytool submit clawdefender.zip \
+      #     zip rookbot.zip rookbot rookbot-daemon
+      #     xcrun notarytool submit rookbot.zip \
       #       --apple-id "${{ secrets.APPLE_ID }}" \
       #       --password "${{ secrets.APPLE_APP_PASSWORD }}" \
       #       --team-id "${{ secrets.APPLE_TEAM_ID }}" \
       #       --wait
-      #     xcrun stapler staple clawdefender
-      #     xcrun stapler staple clawdefender-daemon
+      #     xcrun stapler staple rookbot
+      #     xcrun stapler staple rookbot-daemon
+
+  build-linux:
+    name: Build Linux Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-${{ matrix.target }}-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-release-
+
+      - name: Install cross-compilation tools (aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p clawdefender-cli
+          cargo build --release --target ${{ matrix.target }} -p clawdefender-daemon
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Package
+        run: |
+          ARCH=${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64' || 'x86_64' }}
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/clawdefender dist/rookbot
+          cp target/${{ matrix.target }}/release/clawdefender-daemon dist/rookbot-daemon
+          cd dist
+          tar czf rookbot-linux-${ARCH}.tar.gz rookbot rookbot-daemon
+          shasum -a 256 rookbot-linux-${ARCH}.tar.gz > rookbot-linux-${ARCH}.tar.gz.sha256
+
+      - name: Upload Linux artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/rookbot-linux-*.tar.gz*
+
+  publish-npm:
+    name: Publish npm Package
+    needs: [build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        run: |
+          cd npm
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  update-homebrew:
+    name: Update Homebrew Formula
+    needs: [build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets and compute SHAs
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          BASE_URL="https://github.com/rookbot-io/rookbot/releases/download/${VERSION}"
+          for ASSET in rookbot-macos-universal rookbot-linux-x86_64 rookbot-linux-aarch64; do
+            curl -fSL "${BASE_URL}/${ASSET}.tar.gz" -o "${ASSET}.tar.gz"
+          done
+
+          SHA_MACOS=$(sha256sum rookbot-macos-universal.tar.gz | awk '{print $1}')
+          SHA_LINUX_X86=$(sha256sum rookbot-linux-x86_64.tar.gz | awk '{print $1}')
+          SHA_LINUX_ARM=$(sha256sum rookbot-linux-aarch64.tar.gz | awk '{print $1}')
+
+          echo "SHA_MACOS=${SHA_MACOS}" >> "$GITHUB_ENV"
+          echo "SHA_LINUX_X86=${SHA_LINUX_X86}" >> "$GITHUB_ENV"
+          echo "SHA_LINUX_ARM=${SHA_LINUX_ARM}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Update formula and push to tap
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/rookbot-io/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+
+          cat > tap/Formula/rookbot.rb << 'FORMULA'
+          class Rookbot < Formula
+            desc "A firewall for AI agents"
+            homepage "https://github.com/rookbot-io/rookbot"
+            version "VERSION_PLACEHOLDER"
+            license all_of: ["Apache-2.0", "MIT"]
+
+            on_macos do
+              url "https://github.com/rookbot-io/rookbot/releases/download/v#{version}/rookbot-macos-universal.tar.gz"
+              sha256 "SHA_MACOS_PLACEHOLDER"
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/rookbot-io/rookbot/releases/download/v#{version}/rookbot-linux-aarch64.tar.gz"
+                sha256 "SHA_LINUX_ARM_PLACEHOLDER"
+              else
+                url "https://github.com/rookbot-io/rookbot/releases/download/v#{version}/rookbot-linux-x86_64.tar.gz"
+                sha256 "SHA_LINUX_X86_PLACEHOLDER"
+              end
+            end
+
+            def install
+              bin.install "rookbot"
+              bin.install "rookbot-daemon"
+            end
+
+            def post_install
+              system bin/"rookbot", "init"
+            end
+
+            test do
+              assert_match "rookbot", shell_output("#{bin}/rookbot version")
+            end
+          end
+          FORMULA
+
+          cd tap
+          sed -i "s/VERSION_PLACEHOLDER/${RELEASE_VERSION}/" Formula/rookbot.rb
+          sed -i "s/SHA_MACOS_PLACEHOLDER/${SHA_MACOS}/" Formula/rookbot.rb
+          sed -i "s/SHA_LINUX_X86_PLACEHOLDER/${SHA_LINUX_X86}/" Formula/rookbot.rb
+          sed -i "s/SHA_LINUX_ARM_PLACEHOLDER/${SHA_LINUX_ARM}/" Formula/rookbot.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/rookbot.rb
+          git commit -m "Update rookbot to ${RELEASE_VERSION}"
+          git push origin main

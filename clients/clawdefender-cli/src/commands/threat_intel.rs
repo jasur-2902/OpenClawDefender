@@ -1,4 +1,7 @@
 //! CLI commands for threat intelligence management.
+//!
+//! Provides feed management, rule packs, IoC database, telemetry, and reputation checks.
+//! Includes signatures update capability to refresh all detection signatures.
 
 use anyhow::Result;
 use clawdefender_core::config::ClawConfig;
@@ -42,7 +45,7 @@ pub fn feed_status(config: &ClawConfig) -> Result<()> {
         }
         Ok(None) => {
             println!("  No feed data cached yet.");
-            println!("  Run `clawdefender feed update` to fetch the latest feed.");
+            println!("  Run `rookbot feed update` to fetch the latest feed.");
         }
         Err(e) => {
             println!("  Error reading cache: {}", e);
@@ -295,7 +298,7 @@ pub fn ioc_status(_config: &ClawConfig) -> Result<()> {
     let ioc_dir = data_dir().join("ioc");
     if !ioc_dir.exists() {
         println!("  No IoC data directory found.");
-        println!("  Run `clawdefender feed update` to fetch indicators.");
+        println!("  Run `rookbot feed update` to fetch indicators.");
         return Ok(());
     }
 
@@ -384,7 +387,7 @@ pub fn telemetry_preview(_config: &ClawConfig) -> Result<()> {
     println!("Telemetry Preview");
     println!("=================");
     println!("  If telemetry were enabled, this would show what data would be sent.");
-    println!("  ClawDefender telemetry collects only aggregate, anonymous data:");
+    println!("  Rookbot telemetry collects only aggregate, anonymous data:");
     println!("    - Blocklist match counts (entry IDs only, no server names)");
     println!("    - Anomaly score distributions (no file paths or usernames)");
     println!("    - IoC match rates by category");
@@ -404,8 +407,8 @@ pub fn telemetry_enable(_config: &ClawConfig) -> Result<()> {
     };
     let mut consent = ConsentManager::new(config);
     let _id = consent.opt_in();
-    println!("Telemetry enabled. Thank you for helping improve ClawDefender.");
-    println!("You can disable telemetry at any time with `clawdefender telemetry disable`.");
+    println!("Telemetry enabled. Thank you for helping improve Rookbot.");
+    println!("You can disable telemetry at any time with `rookbot telemetry disable`.");
 
     Ok(())
 }
@@ -454,6 +457,46 @@ pub fn check_reputation(_config: &ClawConfig, server_name: &str) -> Result<()> {
             println!();
         }
     }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Signatures command
+// ---------------------------------------------------------------------------
+
+pub async fn signatures_update(config: &ClawConfig) -> Result<()> {
+    println!("Signatures Update");
+    println!("=================");
+    println!();
+
+    if !config.threat_intel.enabled {
+        println!("Threat intelligence is disabled in config.");
+        return Ok(());
+    }
+
+    println!("Updating all detection signatures...");
+    println!();
+
+    // Update feed first (includes YARA rules, patterns, blocklists)
+    println!("[1/4] Updating threat intelligence feed...");
+    feed_update(config).await?;
+
+    println!();
+    println!("[2/4] Updating YARA rules...");
+    println!("  (YARA rule updates included in feed)");
+
+    println!();
+    println!("[3/4] Updating detection patterns...");
+    println!("  (Pattern updates included in feed)");
+
+    println!();
+    println!("[4/4] Updating blocklists...");
+    println!("  (Blocklist updates included in feed)");
+
+    println!();
+    println!("All detection signatures updated successfully.");
+    println!("Run `rookbot scan run` to use the latest signatures.");
 
     Ok(())
 }

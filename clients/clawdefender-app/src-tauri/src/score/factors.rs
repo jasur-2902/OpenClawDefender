@@ -17,12 +17,12 @@ fn factor_status(current: u32, max: u32) -> &'static str {
 
 fn threat_intel_dir() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
-    std::path::PathBuf::from(home).join(".local/share/clawdefender/threat-intel")
+    std::path::PathBuf::from(home).join(".local/share/rookbot/threat-intel")
 }
 
 fn config_toml_path() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
-    std::path::PathBuf::from(home).join(".config/clawdefender/config.toml")
+    std::path::PathBuf::from(home).join(".config/rookbot/config.toml")
 }
 
 fn detect_servers_key(config: &serde_json::Value) -> &'static str {
@@ -534,7 +534,7 @@ fn check_autostart_enabled() -> bool {
     };
     let plist = std::path::PathBuf::from(&home)
         .join("Library/LaunchAgents")
-        .join("com.clawdefender.app.plist");
+        .join("com.rookbot.app.plist");
     if plist.exists() {
         return true;
     }
@@ -560,7 +560,7 @@ fn check_protection_level_set() -> bool {
         Err(_) => return false,
     };
     let policy_path = std::path::PathBuf::from(&home)
-        .join(".config/clawdefender/policy.toml");
+        .join(".config/rookbot/policy.toml");
     // If policy.toml exists and has been modified, consider protection level set
     if policy_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&policy_path) {
@@ -577,7 +577,7 @@ fn check_trust_customized() -> bool {
         Err(_) => return false,
     };
     let trust_path = std::path::PathBuf::from(&home)
-        .join(".config/clawdefender/trust.toml");
+        .join(".config/rookbot/trust.toml");
     trust_path.exists()
 }
 
@@ -587,7 +587,7 @@ fn check_behavioral_profiles_active() -> bool {
         Err(_) => return false,
     };
     let profiles_dir = std::path::PathBuf::from(&home)
-        .join(".local/share/clawdefender/behavioral");
+        .join(".local/share/rookbot/behavioral");
     if !profiles_dir.is_dir() {
         return false;
     }

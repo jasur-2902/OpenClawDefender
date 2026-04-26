@@ -119,7 +119,7 @@ pub fn default_watch_paths() -> Vec<PathBuf> {
         ".kube",
         "Library/Keychains",
         "Library/LaunchAgents",
-        ".config/clawdefender",
+        ".config/rookbot",
         // Common user directories (broader monitoring)
         "Downloads",
         "Documents",

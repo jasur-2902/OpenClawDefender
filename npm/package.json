@@ -1,0 +1,41 @@
+{
+  "name": "rookbot",
+  "version": "0.5.0-beta",
+  "description": "A firewall for AI agents — intercept, inspect, and control MCP tool calls",
+  "bin": {
+    "rookbot": "bin/rookbot"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rookbot-io/rookbot.git"
+  },
+  "homepage": "https://github.com/rookbot-io/rookbot",
+  "bugs": {
+    "url": "https://github.com/rookbot-io/rookbot/issues"
+  },
+  "license": "(Apache-2.0 OR MIT)",
+  "keywords": [
+    "mcp",
+    "ai",
+    "security",
+    "firewall",
+    "agent",
+    "rookbot"
+  ]
+}

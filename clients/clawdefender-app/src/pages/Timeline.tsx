@@ -339,7 +339,7 @@ export function Timeline() {
     [addEvent]
   );
 
-  useTauriEvent<AuditEvent>("clawdefender://event", handleNewEvent);
+  useTauriEvent<AuditEvent>("rookbot://event", handleNewEvent);
 
   const serverNames = useMemo(() => {
     const names = new Set<string>();

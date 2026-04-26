@@ -274,7 +274,7 @@ impl DriftDetector {
     pub fn new() -> Self {
         let baselines_path = dirs::home_dir()
             .expect("Failed to get home directory")
-            .join(".local/share/clawdefender/drift_baselines.json");
+            .join(".local/share/rookbot/drift_baselines.json");
 
         Self {
             baselines: HashMap::new(),

@@ -1,23 +1,41 @@
+pub mod ai;
+pub mod alerts;
+pub mod ask;
+pub mod autonomy;
 pub mod behavioral;
 pub mod chat;
+pub mod cloud;
+pub mod compliance;
 pub mod config;
 pub mod daemon;
+pub mod data;
 pub mod doctor;
+pub mod events;
+pub mod fim;
 pub mod guard;
+pub mod hunt;
 pub mod init;
+pub mod investigate;
+pub mod knowledge;
 pub mod log;
 pub mod model;
 pub mod network;
+pub mod playbook;
 pub mod policy;
+pub mod posture;
 pub mod profile_cmd;
 pub mod proxy;
+pub mod report;
 pub mod scan;
 pub mod serve;
+pub mod server;
 pub mod status;
 pub mod threat_intel;
 pub mod unwrap;
 pub mod usage;
+pub mod watch;
 pub mod wrap;
+pub mod yara;
 
 use std::path::{Path, PathBuf};
 
@@ -452,7 +470,7 @@ mod tests {
     #[test]
     fn test_is_wrapped_with_clawdefender_original() {
         let server = json!({
-            "command": "clawdefender",
+            "command": "rookbot",
             "args": ["proxy", "--", "npx"],
             "_clawdefender_original": {"command": "npx", "args": []}
         });
@@ -462,7 +480,7 @@ mod tests {
     #[test]
     fn test_is_wrapped_with_legacy_clawai_original() {
         let server = json!({
-            "command": "clawdefender",
+            "command": "rookbot",
             "args": ["proxy", "--", "npx"],
             "_clawai_original": {"command": "npx", "args": []}
         });
@@ -523,7 +541,7 @@ mod tests {
                 "name": "test-ext",
                 "server": {
                     "mcp_config": {
-                        "command": "clawdefender",
+                        "command": "rookbot",
                         "args": ["proxy", "--", "node", "server.js"],
                         "_clawdefender_original": {
                             "command": "node",

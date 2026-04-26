@@ -223,7 +223,7 @@ fn mcp_security_audit() -> ScanPlaybook {
             },
         ],
         system_prompt: format!(
-            r#"You are ClawDefender's security agent performing an MCP Security Audit.
+            r#"You are RookBot's security agent performing an MCP Security Audit.
 
 Your mission: systematically audit every MCP server on this machine for security risks.
 
@@ -322,7 +322,7 @@ fn system_hardening() -> ScanPlaybook {
             },
         ],
         system_prompt: format!(
-            r#"You are ClawDefender's security agent performing a System Hardening Check.
+            r#"You are RookBot's security agent performing a System Hardening Check.
 
 Your mission: audit the macOS security posture and identify hardening gaps.
 
@@ -354,7 +354,7 @@ Identify any:
 ### Stage 4 — File Permissions
 Check file permissions on security-sensitive paths:
 - ~/.ssh/ (keys should be 600, directory 700)
-- ~/.config/clawdefender/
+- ~/.config/rookbot/
 - Any config files found to contain credentials
 
 ### Stage 5 — Network Configuration
@@ -422,7 +422,7 @@ fn credential_exposure() -> ScanPlaybook {
             },
         ],
         system_prompt: format!(
-            r#"You are ClawDefender's security agent performing a Credential Exposure Scan.
+            r#"You are RookBot's security agent performing a Credential Exposure Scan.
 
 Your mission: find exposed credentials without ever reading or displaying their values.
 
@@ -525,7 +525,7 @@ fn network_security() -> ScanPlaybook {
             },
         ],
         system_prompt: format!(
-            r#"You are ClawDefender's security agent performing a Network Security Scan.
+            r#"You are RookBot's security agent performing a Network Security Scan.
 
 Your mission: analyze all network activity by MCP servers and identify threats.
 
@@ -630,7 +630,7 @@ fn behavioral_deep_dive() -> ScanPlaybook {
             },
         ],
         system_prompt: format!(
-            r#"You are ClawDefender's security agent performing a Behavioral Deep Dive.
+            r#"You are RookBot's security agent performing a Behavioral Deep Dive.
 
 Your mission: deeply analyze MCP server behavior to detect advanced threats that
 surface-level scans may miss.
@@ -729,7 +729,7 @@ fn full_audit() -> ScanPlaybook {
             .into(),
         stages: all_stages,
         system_prompt: format!(
-            r#"You are ClawDefender's security agent performing a Full Security Audit.
+            r#"You are RookBot's security agent performing a Full Security Audit.
 
 This is a comprehensive investigation that covers all five scan domains. Work through
 each sub-audit methodically, completing all stages before moving to the next.

@@ -31,7 +31,7 @@ pub struct TelemetryConfig {
 }
 
 fn default_endpoint_url() -> String {
-    "https://feed.clawdefender.io/v1/telemetry".to_string()
+    "https://feed.rookbot.io/v1/telemetry".to_string()
 }
 
 fn default_report_interval_hours() -> u64 {

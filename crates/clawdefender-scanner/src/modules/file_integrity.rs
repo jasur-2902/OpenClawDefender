@@ -161,9 +161,9 @@ fn default_watch_paths() -> Vec<PathBuf> {
         home.join(".bashrc"),
         home.join(".bash_profile"),
         home.join(".profile"),
-        // ClawDefender configs
-        home.join(".config/clawdefender/policy.toml"),
-        home.join(".config/clawdefender/config.toml"),
+        // RookBot configs
+        home.join(".config/rookbot/policy.toml"),
+        home.join(".config/rookbot/config.toml"),
     ];
 
     // Directories to watch (enumerate all files within)
@@ -221,7 +221,7 @@ fn compute_file_baseline(path: &Path) -> Result<FileBaseline> {
 // Baseline lifecycle
 // ---------------------------------------------------------------------------
 
-const BASELINE_PATH: &str = ".local/share/clawdefender/fim_baseline.json";
+const BASELINE_PATH: &str = ".local/share/rookbot/fim_baseline.json";
 
 fn load_baseline() -> Result<Option<FimBaseline>> {
     let home = dirs_home();

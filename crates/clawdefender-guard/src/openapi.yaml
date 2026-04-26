@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  title: ClawDefender Guard API
+  title: RookBot Guard API
   description: REST API for managing agent self-protection guards
   version: "0.5.0-beta"
   license:
@@ -18,7 +18,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Token read from ~/.local/share/clawdefender/server-token
+      description: Token read from ~/.local/share/rookbot/server-token
 
   schemas:
     PermissionSet:

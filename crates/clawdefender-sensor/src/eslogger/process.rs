@@ -89,8 +89,8 @@ mod platform {
              1. Open System Settings (System Preferences on older macOS)\n\
              2. Go to Privacy & Security > Full Disk Access\n\
              3. Click the lock icon and authenticate\n\
-             4. Add the ClawDefender daemon (or Terminal.app for development)\n\
-             5. Restart ClawDefender"
+             4. Add the RookBot daemon (or Terminal.app for development)\n\
+             5. Restart RookBot"
                 .to_string()
         }
 

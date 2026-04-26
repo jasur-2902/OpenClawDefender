@@ -246,7 +246,7 @@ async fn handle_jsonrpc(
                     let _ = state.audit_tx.try_send(record);
 
                     if let Some(id) = request_id(&msg) {
-                        make_http_block_response(&id, "Blocked by ClawDefender policy")
+                        make_http_block_response(&id, "Blocked by RookBot policy")
                     } else {
                         StatusCode::FORBIDDEN.into_response()
                     }
@@ -281,7 +281,7 @@ async fn handle_jsonrpc(
                                         if let Some(id) = request_id(&msg) {
                                             make_http_block_response(
                                                 &id,
-                                                &format!("ClawDefender: {prompt_msg}"),
+                                                &format!("RookBot: {prompt_msg}"),
                                             )
                                         } else {
                                             StatusCode::FORBIDDEN.into_response()

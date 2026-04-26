@@ -1,4 +1,4 @@
-//! HTTP REST API server for the ClawDefender guard.
+//! HTTP REST API server for the RookBot guard.
 //!
 //! Provides endpoints for creating, managing, and querying agent guards.
 //! All endpoints (except OpenAPI spec) require Bearer token authentication.

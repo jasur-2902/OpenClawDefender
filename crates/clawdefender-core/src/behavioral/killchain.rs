@@ -129,7 +129,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileRead,
-                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*".into()),
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/rookbot/honeypot/ssh/*,~/.config/rookbot/honeypot/aws/*".into()),
                     destination_pattern: None,
                     min_count: None,
                 },
@@ -159,7 +159,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
                 },
                 PatternStep {
                     event_type: StepEventType::FileRead,
-                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*".into()),
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/rookbot/honeypot/ssh/*,~/.config/rookbot/honeypot/aws/*".into()),
                     destination_pattern: None,
                     min_count: None,
                 },
@@ -204,7 +204,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileRead,
-                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*".into()),
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/rookbot/honeypot/ssh/*,~/.config/rookbot/honeypot/aws/*".into()),
                     destination_pattern: None,
                     min_count: Some(3),
                 },
@@ -453,7 +453,7 @@ fn builtin_patterns() -> Vec<AttackPattern> {
             steps: vec![
                 PatternStep {
                     event_type: StepEventType::FileRead,
-                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/clawdefender/honeypot/ssh/*,~/.config/clawdefender/honeypot/aws/*,~/.env,*/.env,*/secrets*,*credentials*,*token*".into()),
+                    path_pattern: Some("~/.ssh/*,~/.aws/*,~/.gnupg/*,~/.config/gcloud/*,~/.kube/*,~/.config/rookbot/honeypot/ssh/*,~/.config/rookbot/honeypot/aws/*,~/.env,*/.env,*/secrets*,*credentials*,*token*".into()),
                     destination_pattern: None,
                     min_count: None,
                 },
@@ -1634,7 +1634,7 @@ event_type = "shell_exec"
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
         // Step 1: read honeypot SSH key
-        let path = format!("{}/.config/clawdefender/honeypot/ssh/id_rsa", home);
+        let path = format!("{}/.config/rookbot/honeypot/ssh/id_rsa", home);
         det.ingest(
             make_event(StepEventType::FileRead, Some(&path), None, "srv"),
             now,
@@ -1655,7 +1655,7 @@ event_type = "shell_exec"
         let now = Utc::now();
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".into());
 
-        let path = format!("{}/.config/clawdefender/honeypot/aws/credentials", home);
+        let path = format!("{}/.config/rookbot/honeypot/aws/credentials", home);
         det.ingest(
             make_event(StepEventType::FileRead, Some(&path), None, "srv"),
             now,
@@ -1686,7 +1686,7 @@ event_type = "shell_exec"
         );
 
         // Step 2: read honeypot SSH key
-        let path = format!("{}/.config/clawdefender/honeypot/ssh/id_rsa", home);
+        let path = format!("{}/.config/rookbot/honeypot/ssh/id_rsa", home);
         let r = det.ingest(
             make_event(StepEventType::FileRead, Some(&path), None, "srv"),
             ts(now, 30),

@@ -783,30 +783,35 @@ export interface InvestigationTimeline {
 export interface SuggestedAction {
   id: string;
   action_type: string;
+  label: string;
   description: string;
-  preview: string | null;
-  requires_approval: boolean;
+  requires_confirmation: boolean;
+  params: unknown;
 }
 
 export interface ContextReference {
   ref_type: string;
-  ref_id: string;
+  id: string;
   label: string;
 }
 
 export interface ToolCallInfo {
   tool_name: string;
-  description: string;
-  success: boolean;
+  summary: string;
 }
 
 export interface AskClawAIResponse {
+  message: string;
+  turn_id: string;
+  question_type: string;
   mode: string;
-  response_text: string;
-  conversation_id: string;
+  timestamp: string;
   suggested_actions: SuggestedAction[];
-  context_references: ContextReference[];
-  tool_calls_made: ToolCallInfo[];
+  context_refs: ContextReference[];
+  tool_calls: ToolCallInfo[];
+  tokens_used: { input_tokens: number; output_tokens: number } | null;
+  session_id: string | null;
+  follow_up_suggestions: string[];
 }
 
 // --- Phase 5: Proactive Security Agent types ---
@@ -1240,6 +1245,34 @@ export interface RateLimitStatus {
   calls_this_hour: number;
   max_per_hour: number;
   remaining: number;
+}
+
+// --- Feature Routing ---
+
+export type AiFeature =
+  | "event_triage"
+  | "event_explanation"
+  | "quick_risk_check"
+  | "deep_analysis"
+  | "scan_analysis"
+  | "ask_claw"
+  | "reports"
+  | "threat_hunting"
+  | "agent_scan";
+
+export type FeatureBackendPreference = "auto" | "local" | "cloud";
+
+export interface FeatureRoutingEntry {
+  feature: AiFeature;
+  display_name: string;
+  description: string;
+  default_backend: string;
+  current_preference: FeatureBackendPreference;
+}
+
+export interface FeatureRoutingResponse {
+  features: FeatureRoutingEntry[];
+  has_overrides: boolean;
 }
 
 // --- Tauri Event Union ---

@@ -1,7 +1,7 @@
 //! Crash report collection and management.
 //!
 //! Collects privacy-safe crash reports and stores them as JSON files
-//! in ~/.local/share/clawdefender/crashes/. Reports include only
+//! in ~/.local/share/rookbot/crashes/. Reports include only
 //! non-sensitive system information and never contain audit log contents,
 //! file paths from events, policy rules, API keys, or behavioral data.
 
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 /// Directory where crash reports are stored.
 fn crashes_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".local/share/clawdefender/crashes")
+    PathBuf::from(home).join(".local/share/rookbot/crashes")
 }
 
 /// A crash report with privacy-safe system information.

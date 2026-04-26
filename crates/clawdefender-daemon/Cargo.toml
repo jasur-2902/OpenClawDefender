@@ -3,14 +3,14 @@ name = "clawdefender-daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "ClawDefender daemon orchestrating sensors, proxy, and policy engine"
+description = "RookBot daemon orchestrating sensors, proxy, and policy engine"
 
 [lib]
 name = "clawdefender_daemon"
 path = "src/lib.rs"
 
 [[bin]]
-name = "clawdefender-daemon"
+name = "rookbot-daemon"
 path = "src/main.rs"
 
 [dependencies]

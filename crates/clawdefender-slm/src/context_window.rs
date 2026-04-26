@@ -195,7 +195,7 @@ pub struct ContextWindow {
     shutdown: AtomicBool,
 }
 
-/// Return the default persistence path: `~/.local/share/clawdefender/context_window.json`.
+/// Return the default persistence path: `~/.local/share/rookbot/context_window.json`.
 pub fn default_persist_path() -> PathBuf {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)

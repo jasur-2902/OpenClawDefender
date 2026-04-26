@@ -172,7 +172,7 @@ impl CloudBriefing {
         let mut out = String::with_capacity(2048);
 
         out.push_str(
-            "You are ClawDefender's security agent running on the user's machine.\n\n",
+            "You are RookBot's security agent running on the user's machine.\n\n",
         );
 
         // System profile
@@ -609,7 +609,7 @@ mod tests {
         let briefing = sample_briefing();
         let prompt = briefing.to_system_prompt();
 
-        assert!(prompt.contains("ClawDefender's security agent"));
+        assert!(prompt.contains("RookBot's security agent"));
         assert!(prompt.contains("macOS 15.2"));
         assert!(prompt.contains("Apple M3 Pro"));
         assert!(prompt.contains("18GB RAM"));
@@ -705,7 +705,7 @@ mod tests {
         let prompt = briefing.to_system_prompt();
 
         // Should not panic and should produce valid output.
-        assert!(prompt.contains("ClawDefender's security agent"));
+        assert!(prompt.contains("RookBot's security agent"));
         assert!(prompt.contains("SYSTEM:"));
         assert!(prompt.contains("MCP SERVERS (0 installed, 0 wrapped)"));
         assert!(prompt.contains("SESSION: Chat"));

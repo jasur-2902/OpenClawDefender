@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-/// ClawDefender MCP Proxy -- intercepts JSON-RPC between MCP clients and servers.
+/// RookBot MCP Proxy -- intercepts JSON-RPC between MCP clients and servers.
 #[derive(Parser, Debug)]
 #[command(name = "clawdefender-mcp-proxy", version, about)]
 struct Cli {
@@ -14,8 +14,8 @@ struct Cli {
     #[arg(trailing_var_arg = true)]
     server_cmd: Vec<String>,
 
-    /// Path to the ClawDefender policy TOML file.
-    #[arg(long = "policy", default_value = "~/.config/clawdefender/policy.toml")]
+    /// Path to the RookBot policy TOML file.
+    #[arg(long = "policy", default_value = "~/.config/rookbot/policy.toml")]
     policy_path: String,
 
     /// Run in HTTP proxy mode instead of stdio.

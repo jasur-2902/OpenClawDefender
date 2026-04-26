@@ -280,7 +280,7 @@ impl ChatManager {
             .unwrap_or_default();
 
         Ok(format!(
-            "You are a security analyst assistant for ClawDefender, an AI agent firewall. \
+            "You are a security analyst assistant for RookBot, an AI agent firewall. \
              You help users understand flagged security events from MCP (Model Context Protocol) \
              agent activity.\n\n\
              Below is the context for this conversation:\n\n{}\n\n\

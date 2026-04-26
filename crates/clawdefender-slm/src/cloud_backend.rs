@@ -24,7 +24,7 @@ const CLOUD_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 // Keychain constants
 // ---------------------------------------------------------------------------
 
-const KEYCHAIN_SERVICE: &str = "com.clawdefender.api-keys";
+const KEYCHAIN_SERVICE: &str = "com.rookbot.api-keys";
 
 // ---------------------------------------------------------------------------
 // Keychain operations (macOS `security` CLI)
@@ -328,10 +328,15 @@ impl CloudBackend {
             .and_then(|c| c["content"]["parts"].as_array())
             .and_then(|parts| parts.first())
             .and_then(|part| part["text"].as_str())
-            .unwrap_or("")
-            .to_string();
+            .map(|s| s.to_string());
 
-        Ok(text)
+        match text {
+            Some(t) if !t.trim().is_empty() => Ok(t),
+            _ => bail!(
+                "Google API returned empty or unparseable response: {}",
+                serde_json::to_string(&json).unwrap_or_default()
+            ),
+        }
     }
 
     /// Return current usage statistics.

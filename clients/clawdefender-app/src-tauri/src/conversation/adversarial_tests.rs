@@ -1,4 +1,4 @@
-//! Adversarial security tests for the Ask Claw conversation pipeline.
+//! Adversarial security tests for the Ask Rook conversation pipeline.
 //!
 //! These tests verify that the system handles malicious inputs safely:
 //! - Prompt injection through conversation input

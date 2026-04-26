@@ -1,4 +1,4 @@
-//! Integration tests for the ClawDefender Guard REST API.
+//! Integration tests for the RookBot Guard REST API.
 
 use std::net::SocketAddr;
 

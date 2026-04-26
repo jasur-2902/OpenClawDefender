@@ -710,13 +710,13 @@ impl TccAuditModule {
                 cvss: 0.0,
                 category: ModuleCategory::Configuration,
                 description: "Could not read the TCC database. This usually means \
-                    ClawDefender does not have Full Disk Access. Grant FDA in \
+                    RookBot does not have Full Disk Access. Grant FDA in \
                     System Settings > Privacy & Security > Full Disk Access \
                     to enable TCC permission monitoring."
                     .to_string(),
                 reproduction: None,
                 evidence: Evidence::empty(),
-                remediation: "Grant Full Disk Access to ClawDefender in \
+                remediation: "Grant Full Disk Access to RookBot in \
                     System Settings > Privacy & Security > Full Disk Access."
                     .to_string(),
             });

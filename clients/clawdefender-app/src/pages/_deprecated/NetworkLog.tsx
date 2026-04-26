@@ -453,7 +453,7 @@ export function NetworkLog() {
                 <p className="text-xs text-[var(--color-text-secondary)] max-w-md">
                   {netStatus && !netStatus.loaded
                     ? "The Network Extension is not installed. Network filtering requires a macOS system extension."
-                    : "Network events appear here when MCP servers make outbound connections through the ClawDefender proxy."}
+                    : "Network events appear here when MCP servers make outbound connections through the RookBot proxy."}
                 </p>
               </>
             ) : (

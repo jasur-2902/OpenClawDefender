@@ -1,8 +1,8 @@
 //! Claw Compliant certification harness for MCP servers.
 //!
-//! Tests MCP servers for compliance with ClawDefender across three levels:
-//! - Level 1 (Transparent): Survives ClawDefender proxy behavior
-//! - Level 2 (Cooperative): Integrates with ClawDefender SDK
+//! Tests MCP servers for compliance with RookBot across three levels:
+//! - Level 1 (Transparent): Survives RookBot proxy behavior
+//! - Level 2 (Cooperative): Integrates with RookBot SDK
 //! - Level 3 (Proactive): Declares security posture via manifest
 
 pub mod harness;

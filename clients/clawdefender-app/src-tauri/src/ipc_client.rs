@@ -1,4 +1,4 @@
-//! Daemon IPC client — connects to the ClawDefender daemon over a Unix domain
+//! Daemon IPC client — connects to the RookBot daemon over a Unix domain
 //! socket and exchanges JSON-line messages.
 //!
 //! The daemon protocol is simple:
@@ -136,7 +136,7 @@ impl DaemonConnection {
     }
 }
 
-/// Thread-safe IPC client for communicating with the ClawDefender daemon.
+/// Thread-safe IPC client for communicating with the RookBot daemon.
 ///
 /// Each method creates a fresh connection to avoid stale socket issues.
 /// The socket path is derived from `daemon::socket_path()` — the single

@@ -1,4 +1,4 @@
-//! Inter-process communication between the ClawDefender daemon and the menu-bar UI.
+//! Inter-process communication between the RookBot daemon and the menu-bar UI.
 //!
 //! Messages are exchanged over a Unix domain socket using length-prefixed
 //! JSON frames.

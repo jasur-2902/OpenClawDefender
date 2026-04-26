@@ -1,4 +1,4 @@
-//! Anomaly detection engine for ClawDefender.
+//! Anomaly detection engine for RookBot.
 //!
 //! Scores behavioral events against established server profiles to detect
 //! anomalous activity. Each event is scored across multiple dimensions
@@ -1178,18 +1178,18 @@ mod tests {
     #[test]
     fn test_honeypot_path_is_sensitive() {
         let scorer = AnomalyScorer::new();
-        assert!(scorer.is_sensitive_path("/Users/test/.config/clawdefender/honeypot/ssh/id_rsa"));
+        assert!(scorer.is_sensitive_path("/Users/test/.config/rookbot/honeypot/ssh/id_rsa"));
         assert!(
-            scorer.is_sensitive_path("/home/user/.config/clawdefender/honeypot/aws/credentials")
+            scorer.is_sensitive_path("/home/user/.config/rookbot/honeypot/aws/credentials")
         );
-        assert!(scorer.is_sensitive_path("/Users/test/.config/clawdefender/honeypot/env"));
+        assert!(scorer.is_sensitive_path("/Users/test/.config/rookbot/honeypot/env"));
     }
 
     #[test]
     fn test_honeypot_file_access_scores_high() {
         let scorer = AnomalyScorer::new();
         let profile = established_profile();
-        let event = make_file_event("/home/user/.config/clawdefender/honeypot/ssh/id_rsa", false);
+        let event = make_file_event("/home/user/.config/rookbot/honeypot/ssh/id_rsa", false);
         let result = scorer.score(&event, &profile).unwrap();
         assert!(
             result.total >= 0.7,

@@ -95,7 +95,7 @@ impl DownloadManager {
         });
 
         let client = Client::builder()
-            .user_agent("ClawDefender/0.5.0-beta")
+            .user_agent("RookBot/0.5.0-beta")
             .redirect(redirect_policy)
             .connect_timeout(std::time::Duration::from_secs(30))
             .timeout(std::time::Duration::from_secs(3600)) // 1 hour max for large models

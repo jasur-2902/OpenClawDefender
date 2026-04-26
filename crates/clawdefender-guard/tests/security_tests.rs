@@ -1,4 +1,4 @@
-//! Security tests for the ClawDefender guard system.
+//! Security tests for the RookBot guard system.
 //!
 //! These tests verify that the guard system is secure against abuse,
 //! privilege escalation, and compromised agents.

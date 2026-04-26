@@ -407,6 +407,9 @@ pub struct ScanResult {
     pub high_count: u32,
     pub medium_count: u32,
     pub low_count: u32,
+    /// "local" | "enriched" — set based on cloud_enrich flag
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub scan_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -466,7 +469,7 @@ pub struct AppState {
     pub investigation_store: Mutex<Option<InvestigationStore>>,
     /// Investigation engine for running agentic investigation sessions (Phase 4).
     pub investigation_engine: Mutex<Option<Arc<InvestigationEngine>>>,
-    /// AI-powered Ask Claw assistant with dual-mode routing.
+    /// AI-powered Ask Rook assistant with dual-mode routing.
     pub ask_claw_ai: Arc<tokio::sync::Mutex<Option<AskClawAI>>>,
     /// Phase 5: Scheduled analysis manager for proactive monitoring.
     pub scheduled_analysis: Mutex<Option<ScheduledAnalysisManager>>,
@@ -507,7 +510,7 @@ impl AppState {
         let home = std::env::var_os("HOME")
             .map(std::path::PathBuf::from)
             .unwrap_or_default();
-        home.join(".clawdefender").join("onboarding_complete")
+        home.join(".rookbot").join("onboarding_complete")
     }
 
     /// Check if onboarding was previously completed (persisted to disk).

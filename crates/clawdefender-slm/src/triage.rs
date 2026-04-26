@@ -134,7 +134,7 @@ Respond with only one word: ROUTINE, NOTABLE, or SUSPICIOUS";
 
 /// System prompt for Tier-2 deep analysis. Hardcoded.
 pub const DEEP_ANALYSIS_SYSTEM_PROMPT: &str = "\
-You are a security analyst for ClawDefender. Analyze the event and respond in this exact format:
+You are a security analyst for RookBot. Analyze the event and respond in this exact format:
 RISK: <LOW|MEDIUM|HIGH|CRITICAL>
 CONFIDENCE: <0.0-1.0>
 REASONING: <2-3 sentences explaining why>

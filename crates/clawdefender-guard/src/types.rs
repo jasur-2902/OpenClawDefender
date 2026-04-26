@@ -93,7 +93,7 @@ pub enum GuardMode {
     Monitor,
 }
 
-/// Connection to the ClawDefender daemon.
+/// Connection to the RookBot daemon.
 pub struct DaemonConnection {
     pub(crate) socket_path: String,
     pub(crate) connected: bool,

@@ -47,7 +47,7 @@ impl SecurityKnowledgeBase {
     fn default_storage_path() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".local/share/clawdefender/knowledge_base.json")
+            .join(".local/share/rookbot/knowledge_base.json")
     }
 
     // ========================================================================

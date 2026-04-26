@@ -813,7 +813,7 @@ get_network_destinations).";
     let context_section = context.to_prompt_section();
 
     format!(
-        "You are ClawDefender's AI Security Investigator.\n\n\
+        "You are RookBot's AI Security Investigator.\n\n\
          {target_section}\n\
          {context_section}\n\n\
          {tool_descriptions}\n\n\

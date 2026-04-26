@@ -282,9 +282,9 @@ fn resolve_clawdefender_path() -> String {
         return current_exe.to_string_lossy().to_string();
     }
 
-    // Fallback: search PATH for "clawdefender".
+    // Fallback: search PATH for "rookbot".
     if let Ok(output) = std::process::Command::new("which")
-        .arg("clawdefender")
+        .arg("rookbot")
         .output()
     {
         if output.status.success() {
@@ -296,7 +296,7 @@ fn resolve_clawdefender_path() -> String {
     }
 
     // Last resort: return just the name (will only work if client happens to have it in PATH).
-    "clawdefender".to_string()
+    "rookbot".to_string()
 }
 
 #[cfg(test)]
@@ -339,7 +339,7 @@ mod tests {
         original.insert("command".to_string(), orig_cmd);
         original.insert("args".to_string(), orig_args);
 
-        server.insert("command".to_string(), json!("clawdefender"));
+        server.insert("command".to_string(), json!("rookbot"));
         server.insert("args".to_string(), json!(proxy_args));
         server.insert(
             "_clawdefender_original".to_string(),
@@ -347,7 +347,7 @@ mod tests {
         );
 
         // Verify.
-        assert_eq!(config["mcpServers"]["my-server"]["command"], "clawdefender");
+        assert_eq!(config["mcpServers"]["my-server"]["command"], "rookbot");
         let args = config["mcpServers"]["my-server"]["args"]
             .as_array()
             .unwrap();
@@ -370,7 +370,7 @@ mod tests {
         let config_json = json!({
             "mcpServers": {
                 "test-server": {
-                    "command": "clawdefender",
+                    "command": "rookbot",
                     "args": ["proxy", "--", "npx", "server"],
                     "_clawdefender_original": {
                         "command": "npx",
@@ -398,7 +398,7 @@ mod tests {
         let server_a = config["mcpServers"]["server-a"].as_object_mut().unwrap();
         let orig_cmd = server_a["command"].clone();
         let orig_args = server_a["args"].clone();
-        server_a.insert("command".to_string(), json!("clawdefender"));
+        server_a.insert("command".to_string(), json!("rookbot"));
         server_a.insert("args".to_string(), json!(["proxy", "--", "node", "a.js"]));
         server_a.insert(
             "_clawdefender_original".to_string(),
@@ -476,7 +476,7 @@ mod tests {
         proxy_args.extend(orig_args.as_array().unwrap().iter().cloned());
 
         let mcp_obj = mcp_config.as_object_mut().unwrap();
-        mcp_obj.insert("command".to_string(), json!("clawdefender"));
+        mcp_obj.insert("command".to_string(), json!("rookbot"));
         mcp_obj.insert("args".to_string(), json!(proxy_args));
         mcp_obj.insert(
             "_clawdefender_original".to_string(),
@@ -493,7 +493,7 @@ mod tests {
         let mcp = result
             .pointer("/extensions/com.example.test-ext/manifest/server/mcp_config")
             .unwrap();
-        assert_eq!(mcp["command"], "clawdefender");
+        assert_eq!(mcp["command"], "rookbot");
         let args = mcp["args"].as_array().unwrap();
         assert_eq!(args[0], "proxy");
         assert_eq!(args[1], "--");
@@ -543,7 +543,7 @@ mod tests {
         proxy_args.extend(orig_args.as_array().unwrap().iter().cloned());
 
         let mcp_obj = mcp_config.as_object_mut().unwrap();
-        mcp_obj.insert("command".to_string(), json!("clawdefender"));
+        mcp_obj.insert("command".to_string(), json!("rookbot"));
         mcp_obj.insert("args".to_string(), json!(proxy_args));
         mcp_obj.insert(
             "_clawdefender_original".to_string(),
@@ -574,7 +574,7 @@ mod tests {
                 "name": "test-ext",
                 "server": {
                     "mcp_config": {
-                        "command": "clawdefender",
+                        "command": "rookbot",
                         "args": ["proxy", "--", "node", "server.js"],
                         "_clawdefender_original": {
                             "command": "node",
@@ -626,7 +626,7 @@ mod tests {
         proxy_args.extend(orig_args.as_array().unwrap().iter().cloned());
 
         let mcp_obj = mcp_config.as_object_mut().unwrap();
-        mcp_obj.insert("command".to_string(), json!("clawdefender"));
+        mcp_obj.insert("command".to_string(), json!("rookbot"));
         mcp_obj.insert("args".to_string(), json!(proxy_args));
         mcp_obj.insert(
             "_clawdefender_original".to_string(),

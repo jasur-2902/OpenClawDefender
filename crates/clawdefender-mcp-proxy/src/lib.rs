@@ -1,4 +1,4 @@
-//! MCP protocol proxy with JSON-RPC interception for ClawDefender.
+//! MCP protocol proxy with JSON-RPC interception for RookBot.
 
 pub mod classifier;
 pub mod jsonrpc;

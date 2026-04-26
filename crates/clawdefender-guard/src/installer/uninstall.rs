@@ -5,18 +5,18 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 /// The marker comment added to shell config files.
-pub const PATH_MARKER: &str = "# Added by ClawDefender";
+pub const PATH_MARKER: &str = "# Added by RookBot";
 
 /// Options for uninstallation.
 #[derive(Debug, Clone)]
 pub struct UninstallOptions {
     /// Remove configuration directories as well.
     pub remove_config: bool,
-    /// Path to the ClawDefender binary.
+    /// Path to the RookBot binary.
     pub binary_path: PathBuf,
     /// Path to the shell config file to clean up.
     pub shell_config_path: PathBuf,
-    /// ClawDefender base directory (e.g., `~/.clawdefender`).
+    /// RookBot base directory (e.g., `~/.rookbot`).
     pub base_dir: PathBuf,
 }
 
@@ -25,9 +25,9 @@ impl UninstallOptions {
     pub fn default_for_home(home: &Path, shell_config: &Path) -> Self {
         Self {
             remove_config: false,
-            binary_path: home.join(".clawdefender/bin/clawdefender"),
+            binary_path: home.join(".rookbot/bin/clawdefender"),
             shell_config_path: shell_config.to_path_buf(),
-            base_dir: home.join(".clawdefender"),
+            base_dir: home.join(".rookbot"),
         }
     }
 }
@@ -72,7 +72,7 @@ pub fn uninstall(options: &UninstallOptions) -> Result<UninstallResult> {
     Ok(result)
 }
 
-/// Attempt to stop the ClawDefender daemon.
+/// Attempt to stop the RookBot daemon.
 fn stop_daemon() -> bool {
     match std::process::Command::new("clawdefender")
         .args(["daemon", "stop"])
@@ -80,7 +80,7 @@ fn stop_daemon() -> bool {
     {
         Ok(output) => {
             if output.status.success() {
-                info!("Stopped ClawDefender daemon");
+                info!("Stopped RookBot daemon");
                 true
             } else {
                 warn!("Daemon stop returned non-zero (may not be running)");
@@ -88,7 +88,7 @@ fn stop_daemon() -> bool {
             }
         }
         Err(_) => {
-            warn!("Could not run clawdefender daemon stop");
+            warn!("Could not run rookbot daemon stop");
             false
         }
     }
@@ -124,11 +124,11 @@ pub fn remove_path_from_shell_config(config_path: &Path) -> Result<bool> {
     }
 }
 
-/// Remove ClawDefender configuration directories.
+/// Remove RookBot configuration directories.
 fn remove_config_dirs(base_dir: &Path) -> Result<bool> {
     let mut removed = false;
 
-    // Remove ~/.clawdefender/
+    // Remove ~/.rookbot/
     if base_dir.exists() {
         std::fs::remove_dir_all(base_dir)?;
         info!("Removed {:?}", base_dir);

@@ -65,7 +65,7 @@ pub struct ServerReputation {
 
 /// The system prompt is hardcoded and must never be constructed from user data.
 pub const SYSTEM_PROMPT: &str = "\
-You are a security analyzer for ClawDefender, a firewall for AI agents.
+You are a security analyzer for RookBot, a firewall for AI agents.
 You evaluate actions that AI agents (via MCP servers) want to perform on a user's computer.
 
 Your job:

@@ -36,7 +36,7 @@ impl ModelManager {
 
     /// Create a model manager using the default platform directory.
     ///
-    /// On macOS/Linux: `~/.local/share/clawdefender/models/`
+    /// On macOS/Linux: `~/.local/share/rookbot/models/`
     pub fn default_dir() -> Result<Self> {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
@@ -44,7 +44,7 @@ impl ModelManager {
         let dir = PathBuf::from(home)
             .join(".local")
             .join("share")
-            .join("clawdefender")
+            .join("rookbot")
             .join("models");
         Ok(Self { models_dir: dir })
     }
@@ -216,7 +216,7 @@ mod tests {
         if std::env::var("HOME").is_ok() {
             let mgr = ModelManager::default_dir().unwrap();
             let dir = mgr.models_dir().to_string_lossy();
-            assert!(dir.contains("clawdefender"));
+            assert!(dir.contains("rookbot"));
             assert!(dir.ends_with("models"));
         }
     }

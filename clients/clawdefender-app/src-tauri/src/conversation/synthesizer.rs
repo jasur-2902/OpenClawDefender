@@ -1,4 +1,4 @@
-//! Response Synthesizer for Ask Claw.
+//! Response Synthesizer for Ask Rook.
 //!
 //! Takes a QueryResult + IntentClassification + ConversationContext and
 //! produces a ConversationResponse following Claw's voice guide.

@@ -1,6 +1,6 @@
 //! Migration from single-backend `ActiveModelConfig` to dual-backend `DualAiConfig`.
 //!
-//! When upgrading from ClawDefender v1 (single AI backend) to v2 (dual local+cloud),
+//! When upgrading from RookBot v1 (single AI backend) to v2 (dual local+cloud),
 //! this module detects the old config format and transparently migrates it to the new
 //! `DualAiConfig` structure. API keys remain in the macOS Keychain and are never
 //! written to the config file.
@@ -96,7 +96,7 @@ impl Default for RoutingConfig {
 
 /// Return the path to the model configuration file.
 ///
-/// Same location as the v1 config: `~/.local/share/clawdefender/model_config.toml`.
+/// Same location as the v1 config: `~/.local/share/rookbot/model_config.toml`.
 fn model_config_path() -> Result<PathBuf> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))

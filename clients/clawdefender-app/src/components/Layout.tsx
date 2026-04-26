@@ -1,16 +1,17 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { Sidebar } from "./Sidebar";
-import { ConnectionStatus } from "./ConnectionStatus";
-import { UpdateBanner } from "./UpdateBanner";
+import { StatusHeader } from "./StatusHeader";
+import { TrayMenu } from "./TrayMenu";
 import { useEventStore } from "../stores/eventStore";
 import { useAppStore } from "../stores/appStore";
 import { useAlertStore } from "../stores/alertStore";
 import { GuidanceToastContainer } from "./guidance/GuidanceToast";
 import { PromptOverlay } from "./guidance/PromptOverlay";
 import type { PendingPrompt } from "../types";
+import type { Posture } from "./design";
 
 interface GuidanceMilestone {
   id: string;
@@ -24,51 +25,19 @@ interface GuidanceEvent {
   milestone: GuidanceMilestone;
 }
 
-function RestartReminderBanner() {
-  const visible = useAppStore((s) => s.restartReminderVisible);
-  const message = useAppStore((s) => s.restartReminderMessage);
-  const setRestartReminder = useAppStore((s) => s.setRestartReminder);
-
-  if (!visible) return null;
-
-  return (
-    <div
-      role="alert"
-      aria-label="Restart reminder"
-      className="flex items-center gap-3 px-4 py-3 border-b"
-      style={{
-        backgroundColor: "var(--color-info-subtle)",
-        borderColor: "var(--color-info-border)",
-      }}
-    >
-      <span
-        className="shrink-0 text-sm font-semibold"
-        style={{ color: "var(--color-accent)" }}
-        aria-hidden="true"
-      >
-        C
-      </span>
-      <p className="flex-1 text-sm" style={{ color: "var(--color-text-primary)" }}>
-        {message ||
-          "Your AI apps need to restart to pick up protection. They have not reconnected yet."}
-      </p>
-      <button
-        onClick={() => setRestartReminder(false)}
-        className="shrink-0 text-xs font-medium px-3 py-1 rounded-md"
-        style={{
-          backgroundColor: "var(--color-bg-tertiary)",
-          color: "var(--color-text-secondary)",
-        }}
-      >
-        Dismiss
-      </button>
-    </div>
-  );
+/** Derive a page key from a pathname for the StatusHeader title. */
+function pageKeyFromPath(pathname: string): string {
+  if (pathname === "/") return "home";
+  const seg = pathname.replace(/^\//, "").split("/")[0];
+  // Handle sub-routes like /alerts/:id => "alertDetail", /activity/:id => "event"
+  const parts = pathname.replace(/^\//, "").split("/");
+  if (parts[0] === "alerts" && parts.length > 1) return "alertDetail";
+  if (parts[0] === "activity" && parts.length > 1) return "event";
+  return seg;
 }
 
 export function Layout() {
   const location = useLocation();
-  // addRawEvent is handled globally by GlobalEventListener in App.tsx
   const addPrompt = useEventStore((s) => s.addPrompt);
   const setDaemonStatus = useAppStore((s) => s.setDaemonStatus);
   const fetchAlerts = useAlertStore((s) => s.fetchAlerts);
@@ -76,16 +45,22 @@ export function Layout() {
   const setGuidanceOverlay = useAppStore((s) => s.setGuidanceOverlay);
   const setRestartReminder = useAppStore((s) => s.setRestartReminder);
 
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
+
+  const [trayOpen, setTrayOpen] = useState(false);
+  const [posture, setPosture] = useState<Posture>("normal");
+
   const [visible, setVisible] = useState(true);
   const prevPathRef = useRef(location.pathname);
+
+  const currentPage = pageKeyFromPath(location.pathname);
 
   // Page crossfade transition
   useEffect(() => {
     if (prevPathRef.current !== location.pathname) {
       setVisible(false);
-      const timer = setTimeout(() => {
-        setVisible(true);
-      }, 20);
+      const timer = setTimeout(() => setVisible(true), 20);
       prevPathRef.current = location.pathname;
       return () => clearTimeout(timer);
     }
@@ -98,33 +73,49 @@ export function Layout() {
 
   // Record page visits for guidance nudge tracking
   useEffect(() => {
-    const pageName = location.pathname === "/"
-      ? "home"
-      : location.pathname.replace(/^\//, "").split("/")[0];
+    const pageName =
+      location.pathname === "/"
+        ? "home"
+        : location.pathname.replace(/^\//, "").split("/")[0];
     invoke("record_page_visit", { page: pageName }).catch(() => {});
   }, [location.pathname]);
+
+  // Fetch posture periodically
+  useEffect(() => {
+    async function loadPosture() {
+      try {
+        const info = await invoke<{ level_name: string }>("get_threat_posture");
+        const level = info.level_name?.toLowerCase() as Posture;
+        if (["low", "normal", "elevated", "high", "critical"].includes(level)) {
+          setPosture(level);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    loadPosture();
+    const interval = setInterval(loadPosture, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Subscribe to Tauri events
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
-    // Note: clawdefender://event is handled by GlobalEventListener in App.tsx
-
-    listen<{ daemon_running: boolean }>("clawdefender://status-change", (e) => {
+    listen<{ daemon_running: boolean }>("rookbot://status-change", (e) => {
       setDaemonStatus({ running: e.payload.daemon_running });
       useEventStore.getState().setDaemonRunning(e.payload.daemon_running);
     }).then((fn) => unlisteners.push(fn));
 
-    listen<PendingPrompt>("clawdefender://prompt", (e) => {
+    listen<PendingPrompt>("rookbot://prompt", (e) => {
       addPrompt(e.payload);
     }).then((fn) => unlisteners.push(fn));
 
-    listen("clawdefender://alert", () => {
+    listen("rookbot://alert", () => {
       fetchAlerts();
     }).then((fn) => unlisteners.push(fn));
 
-    // Guidance event listeners
-    listen<GuidanceEvent>("clawdefender://guidance-hint", (e) => {
+    listen<GuidanceEvent>("rookbot://guidance-hint", (e) => {
       const { milestone } = e.payload;
       const meta = milestone.delivery_meta;
       const anchorId = meta?.anchor || milestone.id;
@@ -137,7 +128,7 @@ export function Layout() {
       });
     }).then((fn) => unlisteners.push(fn));
 
-    listen<GuidanceEvent>("clawdefender://guidance-overlay", (e) => {
+    listen<GuidanceEvent>("rookbot://guidance-overlay", (e) => {
       const { milestone } = e.payload;
       setGuidanceOverlay({
         milestoneId: milestone.id,
@@ -146,9 +137,7 @@ export function Layout() {
       });
     }).then((fn) => unlisteners.push(fn));
 
-    // Restart reminder: triggered by the restart_reminder milestone via toast
-    // but we also listen for a dedicated event if the backend emits one
-    listen<GuidanceEvent>("clawdefender://guidance-toast", (e) => {
+    listen<GuidanceEvent>("rookbot://guidance-toast", (e) => {
       const { milestone } = e.payload;
       if (milestone.id === "restart_reminder") {
         setRestartReminder(true, milestone.message);
@@ -160,29 +149,66 @@ export function Layout() {
     };
   }, [addPrompt, setDaemonStatus, fetchAlerts, addGuidanceHint, setGuidanceOverlay, setRestartReminder]);
 
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarCollapsed(!sidebarCollapsed);
+  }, [sidebarCollapsed, setSidebarCollapsed]);
+
   return (
-    <div className="flex h-screen bg-[var(--color-bg-primary)]">
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: sidebarCollapsed ? "60px 1fr" : "220px 1fr",
+        height: "100vh",
+        background: "var(--bg-0)",
+        transition: "grid-template-columns 0.2s ease",
+        position: "relative",
+      }}
+    >
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:px-4 focus:py-2 focus:bg-[var(--color-accent)] focus:text-white focus:rounded-md focus:m-2"
       >
         Skip to main content
       </a>
-      <Sidebar />
-      <main className="flex-1 flex flex-col overflow-hidden" id="main-content" aria-label="Main content">
-        <ConnectionStatus />
-        <UpdateBanner />
-        <RestartReminderBanner />
-        <div
-          className="flex-1 overflow-y-auto p-6"
+
+      <Sidebar collapsed={sidebarCollapsed} onToggle={handleToggleSidebar} />
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: "auto 1fr",
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        <StatusHeader
+          currentPage={currentPage}
+          posture={posture}
+          onTrayOpen={() => setTrayOpen((v) => !v)}
+        />
+
+        <main
+          id="main-content"
+          aria-label="Main content"
+          className="cd-scroll"
           style={{
+            overflowY: "auto",
+            padding: 24,
             opacity: visible ? 1 : 0,
             transition: "opacity 150ms ease-out",
           }}
         >
           <Outlet />
-        </div>
-      </main>
+        </main>
+
+        <TrayMenu
+          open={trayOpen}
+          onClose={() => setTrayOpen(false)}
+          posture={posture}
+          setPosture={setPosture}
+        />
+      </div>
+
       {/* Global guidance components */}
       <GuidanceToastContainer />
       <PromptOverlay />

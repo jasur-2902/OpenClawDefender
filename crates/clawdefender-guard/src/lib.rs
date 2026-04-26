@@ -1,9 +1,9 @@
-//! ClawDefender Agent Guard — self-protection for AI agents.
+//! RookBot Agent Guard — self-protection for AI agents.
 //!
 //! This crate provides `AgentGuard`, a Rust implementation of agent-level
 //! permission enforcement. It can operate in two modes:
 //!
-//! - **Connected mode**: Registers with the ClawDefender daemon for full
+//! - **Connected mode**: Registers with the RookBot daemon for full
 //!   OS-level monitoring and policy enforcement.
 //! - **Embedded fallback mode**: Lightweight in-process permission checking
 //!   when the daemon is unavailable.

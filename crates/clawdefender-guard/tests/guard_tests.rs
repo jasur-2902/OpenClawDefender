@@ -647,16 +647,16 @@ fn fallback_catchall_blocks() {
 #[test]
 fn expand_socket_path_with_tilde() {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    let expanded = expand_socket_path("~/.local/share/clawdefender/clawdefender.sock");
+    let expanded = expand_socket_path("~/.local/share/rookbot/rookbot.sock");
     assert_eq!(
         expanded,
-        format!("{home}/.local/share/clawdefender/clawdefender.sock")
+        format!("{home}/.local/share/rookbot/rookbot.sock")
     );
 }
 
 #[test]
 fn expand_socket_path_without_tilde() {
-    let path = "/var/run/clawdefender.sock";
+    let path = "/var/run/rookbot.sock";
     assert_eq!(expand_socket_path(path), path);
 }
 

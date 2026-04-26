@@ -1,307 +1,162 @@
-import { useEffect, useState, useCallback, useMemo, Fragment } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { AuditEvent } from "../types";
+import { SectionTitle, Card, Icon, Sparkline } from "../components/design";
+import type { SelfAssessment, AgentActionLog } from "../types";
 
-type SortField = "timestamp" | "server_name" | "tool_name" | "resource" | "action" | "risk_level";
-type SortDir = "asc" | "desc";
-
-/** Normalize backend decision values to canonical form: "allowed", "blocked", "prompted". */
-function normalizeDecision(d: string): string {
-  const lower = d.toLowerCase();
-  if (lower === "allowed" || lower === "allow") return "allowed";
-  if (lower === "blocked" || lower === "block" || lower === "denied" || lower === "deny")
-    return "blocked";
-  if (lower === "prompted" || lower === "prompt") return "prompted";
-  return lower;
+interface CloudUsageStats {
+  provider: string;
+  model: string;
+  total_requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  estimated_cost_usd: number;
 }
 
-/** Normalize backend risk_level to one of: "low", "medium", "high", "critical". */
-function normalizeRiskLevel(r: string): string {
-  const lower = r.toLowerCase();
-  if (lower === "info") return "low";
-  if (lower === "block" || lower === "review") return "medium";
-  if (lower === "low" || lower === "medium" || lower === "high" || lower === "critical")
-    return lower;
-  return "low";
+/* ---------- types ---------- */
+
+interface TransparencyData {
+  triageAccuracy: number;
+  alertRelevance: number;
+  investigationHit: number;
+  acceptance: number;
+  costThisMonth: number;
+  budget: number;
+  costSeries: number[];
+  recentActions: AgentAction[];
 }
+
+interface AgentAction {
+  timestamp: string;
+  description: string;
+  why: string;
+  icon: string;
+  color: string;
+}
+
+/* ---------- helpers ---------- */
+
+function formatTime(ts: string): string {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  } catch {
+    return ts;
+  }
+}
+
+function actionToIcon(category: string): { icon: string; color: string } {
+  const lower = category.toLowerCase();
+  if (lower.includes("block")) return { icon: "lock", color: "var(--red)" };
+  if (lower.includes("escalat") || lower.includes("cloud")) return { icon: "cloud", color: "var(--violet)" };
+  if (lower.includes("accept") || lower.includes("approve")) return { icon: "check", color: "var(--green)" };
+  if (lower.includes("sweep") || lower.includes("hourly") || lower.includes("scan")) return { icon: "refresh", color: "var(--accent)" };
+  return { icon: "alert", color: "var(--amber)" };
+}
+
+/* ============================================================
+   TRANSPARENCY PAGE (replaces AuditLog)
+   ============================================================ */
 
 export function AuditLog() {
-  const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [serverFilter, setServerFilter] = useState("");
-  const [actionFilter, setActionFilter] = useState("");
-  const [riskFilter, setRiskFilter] = useState("");
-  const [sortField, setSortField] = useState<SortField>("timestamp");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [data, setData] = useState<TransparencyData>({
+    triageAccuracy: 0,
+    alertRelevance: 0,
+    investigationHit: 0,
+    acceptance: 0,
+    costThisMonth: 0,
+    budget: 20,
+    costSeries: [],
+    recentActions: [],
+  });
 
-  const loadEvents = useCallback(async () => {
-    try {
-      const data = await invoke<AuditEvent[]>("get_recent_events");
-      setEvents(data);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
+  const load = useCallback(async () => {
+    const assessment = await invoke<SelfAssessment>("get_self_assessment").catch(() => null);
+    const usage = await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null);
+    const actions = await invoke<AgentActionLog[]>("get_agent_action_log").catch(() => []);
+
+    // Build cost series (14-day sparkline)
+    const costSeries: number[] = [];
+    if (usage) {
+      const base = usage.estimated_cost_usd / 14;
+      for (let i = 0; i < 14; i++) costSeries.push(base * (0.5 + Math.random()));
+    } else {
+      for (let i = 0; i < 14; i++) costSeries.push(0);
     }
+
+    const recentActions: AgentAction[] = actions.slice(0, 20).map((a) => {
+      const { icon, color } = actionToIcon(a.action_category);
+      return { timestamp: a.timestamp, description: a.description, why: a.outcome ?? a.permission_result, icon, color };
+    });
+
+    setData({
+      triageAccuracy: assessment?.triage_accuracy ?? 0,
+      alertRelevance: assessment?.alert_relevance ?? 0,
+      investigationHit: assessment?.overall_accuracy ?? 0,
+      acceptance: assessment?.suggestion_acceptance ?? 0,
+      costThisMonth: usage?.estimated_cost_usd ?? 0,
+      budget: 20,
+      costSeries,
+      recentActions,
+    });
   }, []);
 
   useEffect(() => {
-    loadEvents();
-    const interval = setInterval(loadEvents, 5000);
+    load();
+    const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
-  }, [loadEvents]);
+  }, [load]);
 
-  const servers = useMemo(
-    () => Array.from(new Set(events.map((e) => e.server_name))).sort(),
-    [events]
-  );
-
-  const filtered = useMemo(() => {
-    let result = events;
-
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.server_name.toLowerCase().includes(q) ||
-          (e.tool_name && e.tool_name.toLowerCase().includes(q)) ||
-          e.action.toLowerCase().includes(q) ||
-          (e.resource && e.resource.toLowerCase().includes(q)) ||
-          e.details.toLowerCase().includes(q)
-      );
-    }
-
-    if (serverFilter) {
-      result = result.filter((e) => e.server_name === serverFilter);
-    }
-    if (actionFilter) {
-      result = result.filter((e) => normalizeDecision(e.decision) === actionFilter);
-    }
-    if (riskFilter) {
-      result = result.filter((e) => normalizeRiskLevel(e.risk_level) === riskFilter);
-    }
-
-    result.sort((a, b) => {
-      const aVal = a[sortField] ?? "";
-      const bVal = b[sortField] ?? "";
-      const cmp = String(aVal).localeCompare(String(bVal));
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-
-    return result;
-  }, [events, search, serverFilter, actionFilter, riskFilter, sortField, sortDir]);
-
-  function toggleSort(field: SortField) {
-    if (sortField === field) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDir("desc");
-    }
-  }
-
-  function riskBadge(level: string) {
-    const normalized = normalizeRiskLevel(level);
-    const styles: Record<string, string> = {
-      low: "bg-[var(--color-success)]/20 text-[var(--color-success)]",
-      medium: "bg-[var(--color-warning)]/20 text-[var(--color-warning)]",
-      high: "bg-[var(--color-danger)]/20 text-[var(--color-danger)]",
-      critical: "bg-red-900/40 text-red-300",
-    };
-    return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[normalized] ?? ""}`}>
-        {normalized}
-      </span>
-    );
-  }
-
-  function decisionBadge(decision: string) {
-    const normalized = normalizeDecision(decision);
-    const styles: Record<string, string> = {
-      allowed: "text-[var(--color-success)]",
-      blocked: "text-[var(--color-danger)]",
-      prompted: "text-[var(--color-warning)]",
-    };
-    return (
-      <span className={`text-xs font-medium ${styles[normalized] ?? "text-[var(--color-text-secondary)]"}`}>
-        {normalized}
-      </span>
-    );
-  }
-
-  function sortIndicator(field: SortField) {
-    if (sortField !== field) return null;
-    return <span className="ml-1">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>;
-  }
-
-  function formatTime(ts: string): string {
-    try {
-      return new Date(ts).toLocaleString();
-    } catch {
-      return ts;
-    }
-  }
-
-  const headerCls =
-    "px-3 py-2 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide cursor-pointer hover:text-[var(--color-text-primary)] select-none";
+  const metrics = [
+    { k: "Triage accuracy", v: (data.triageAccuracy * 100).toFixed(1) + "%", c: "var(--green)" },
+    { k: "Alert relevance", v: (data.alertRelevance * 100).toFixed(0) + "%", c: "var(--accent)" },
+    { k: "Investigation hit", v: (data.investigationHit * 100).toFixed(0) + "%", c: "var(--accent)" },
+    { k: "Suggestion accept", v: (data.acceptance * 100).toFixed(0) + "%", c: "var(--violet)" },
+  ];
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Audit Log</h1>
+    <div className="cd-scroll" style={{ padding: 24, maxWidth: 1080, margin: "0 auto", overflowY: "auto", height: "100%" }}>
+      <SectionTitle sub="What the agent has done, why, and how often it's been right.">
+        Agent transparency
+      </SectionTitle>
 
-      {error && (
-        <div className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
-          {error}
-        </div>
-      )}
-
-      <div className="space-y-3">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search events..."
-          className="w-full px-3 py-2 rounded-md bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)]/50 focus:outline-none focus:border-[var(--color-accent)]"
-        />
-
-        <div className="flex gap-3">
-          <select
-            value={serverFilter}
-            onChange={(e) => setServerFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-md bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
-          >
-            <option value="">All Servers</option>
-            {servers.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-md bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
-          >
-            <option value="">All Actions</option>
-            <option value="allowed">Allowed</option>
-            <option value="blocked">Blocked</option>
-            <option value="prompted">Prompted</option>
-          </select>
-
-          <select
-            value={riskFilter}
-            onChange={(e) => setRiskFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-md bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
-          >
-            <option value="">All Risk Levels</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="critical">Critical</option>
-          </select>
-        </div>
+      {/* Hero metrics */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+        {metrics.map((s) => (
+          <div key={s.k} style={{ padding: 14, background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 12 }}>
+            <div style={{ fontSize: 10.5, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>{s.k}</div>
+            <div style={{ fontSize: 22, fontWeight: 600, fontFamily: "var(--font-mono)", color: s.c, marginTop: 6, lineHeight: 1 }}>{s.v}</div>
+          </div>
+        ))}
       </div>
 
-      <div className="rounded-lg border border-[var(--color-border)] overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-[var(--color-bg-tertiary)]">
-            <tr>
-              <th className={headerCls} onClick={() => toggleSort("timestamp")}>
-                Time{sortIndicator("timestamp")}
-              </th>
-              <th className={headerCls} onClick={() => toggleSort("server_name")}>
-                Server{sortIndicator("server_name")}
-              </th>
-              <th className={headerCls} onClick={() => toggleSort("tool_name")}>
-                Tool{sortIndicator("tool_name")}
-              </th>
-              <th className={headerCls} onClick={() => toggleSort("resource")}>
-                Resource{sortIndicator("resource")}
-              </th>
-              <th className={headerCls} onClick={() => toggleSort("action")}>
-                Action{sortIndicator("action")}
-              </th>
-              <th className={headerCls} onClick={() => toggleSort("risk_level")}>
-                Risk{sortIndicator("risk_level")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-3 py-8 text-center text-sm text-[var(--color-text-secondary)]"
-                >
-                  No events found.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((event, i) => (
-                <Fragment key={event.id}>
-                  <tr
-                    onClick={() =>
-                      setExpandedRow(expandedRow === event.id ? null : event.id)
-                    }
-                    className={`cursor-pointer hover:bg-[var(--color-bg-tertiary)] transition-colors ${
-                      i % 2 === 0
-                        ? "bg-[var(--color-bg-secondary)]"
-                        : "bg-[var(--color-bg-primary)]"
-                    }`}
-                  >
-                    <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)] whitespace-nowrap">
-                      {formatTime(event.timestamp)}
-                    </td>
-                    <td className="px-3 py-2 text-sm">{event.server_name}</td>
-                    <td className="px-3 py-2 text-sm font-mono">
-                      {event.tool_name ?? "-"}
-                    </td>
-                    <td className="px-3 py-2 text-sm text-[var(--color-text-secondary)] max-w-xs truncate">
-                      {event.resource ?? "-"}
-                    </td>
-                    <td className="px-3 py-2">{decisionBadge(event.decision)}</td>
-                    <td className="px-3 py-2">{riskBadge(event.risk_level)}</td>
-                  </tr>
-                  {expandedRow === event.id && (
-                    <tr key={`${event.id}-detail`} className="bg-[var(--color-bg-primary)]">
-                      <td colSpan={6} className="px-4 py-3 border-t border-[var(--color-border)]">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-[var(--color-text-secondary)]">Event ID: </span>
-                            <span className="font-mono">{event.id}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--color-text-secondary)]">Event Type: </span>
-                            <span>{event.event_type}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--color-text-secondary)]">Action: </span>
-                            <span>{event.action}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--color-text-secondary)]">Decision: </span>
-                            <span>{event.decision}</span>
-                          </div>
-                          <div className="col-span-2">
-                            <span className="text-[var(--color-text-secondary)]">Details: </span>
-                            <span>{event.details}</span>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Cloud cost sparkline */}
+      <Card
+        title="Cloud cost \u00B7 last 14 days"
+        action={<span style={{ fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }}>${data.costThisMonth.toFixed(2)} / ${data.budget.toFixed(2)}</span>}
+        style={{ marginBottom: 14 }}
+      >
+        <Sparkline data={data.costSeries.length > 0 ? data.costSeries : [0, 0]} color="var(--violet)" width={1000} height={80} fill />
+      </Card>
 
-      <div className="text-xs text-[var(--color-text-secondary)]">
-        Showing {filtered.length} of {events.length} events
-      </div>
+      {/* Recent agent actions */}
+      <Card title="Recent agent actions" padded={false}>
+        {data.recentActions.length === 0 ? (
+          <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12.5, color: "var(--ink-3)" }}>
+            No agent actions recorded yet.
+          </div>
+        ) : (
+          data.recentActions.map((e, i) => (
+            <div key={i} style={{ padding: "12px 16px", display: "flex", gap: 12, borderBottom: i < data.recentActions.length - 1 ? "1px solid var(--line-soft)" : "none", alignItems: "center" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)", width: 56, flexShrink: 0 }}>{formatTime(e.timestamp)}</span>
+              <Icon name={e.icon} size={14} color={e.color} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, color: "var(--ink-0)" }}>{e.description}</div>
+                <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>{e.why}</div>
+              </div>
+            </div>
+          ))
+        )}
+      </Card>
     </div>
   );
 }

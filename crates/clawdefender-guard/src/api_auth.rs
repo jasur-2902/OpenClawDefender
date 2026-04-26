@@ -1,6 +1,6 @@
 //! HTTP authentication for the REST API.
 //!
-//! Reads the server token from `~/.local/share/clawdefender/server-token`
+//! Reads the server token from `~/.local/share/rookbot/server-token`
 //! and validates `Authorization: Bearer <token>` headers.
 
 use std::fs;

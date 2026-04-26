@@ -11,7 +11,7 @@ use tracing::{info, warn};
 /// Path to the audit.jsonl file.
 fn audit_log_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".local/share/clawdefender/audit.jsonl")
+    PathBuf::from(home).join(".local/share/rookbot/audit.jsonl")
 }
 
 /// Check the last line of audit.jsonl and remove it if truncated/invalid.

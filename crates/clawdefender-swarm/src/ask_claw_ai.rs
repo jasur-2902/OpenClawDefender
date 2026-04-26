@@ -1,6 +1,6 @@
-//! AI-powered Ask Claw assistant with dual-mode routing.
+//! AI-powered Ask Rook assistant with dual-mode routing.
 //!
-//! Upgrades Ask Claw from pattern-based NLU to a real Claude-powered conversation
+//! Upgrades Ask Rook from pattern-based NLU to a real Claude-powered conversation
 //! while preserving the existing pattern-based system as a fallback. Supports
 //! three modes: Cloud (Claude API), LocalSlm, and Pattern (heuristic fallback).
 
@@ -20,7 +20,7 @@ use crate::cloud_api::{
 // Configuration & mode
 // ---------------------------------------------------------------------------
 
-/// Routing mode for Ask Claw queries.
+/// Routing mode for Ask Rook queries.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AskClawMode {
     /// Route through Claude API with full tool-use capabilities.
@@ -133,7 +133,7 @@ pub struct ToolCallSummary {
     pub summary: String,
 }
 
-/// The full response from Ask Claw AI.
+/// The full response from Ask Rook AI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AskClawResponse {
     pub message: String,
@@ -272,7 +272,7 @@ impl ClawContext {
 /// Build the system prompt for cloud mode.
 fn build_system_prompt(context: &ClawContext) -> String {
     let mut prompt = String::from(
-        r#"You are Claw, the AI security assistant built into ClawDefender — a desktop app that protects users from rogue MCP (Model Context Protocol) servers.
+        r#"You are Claw, the AI security assistant built into RookBot — a desktop app that protects users from rogue MCP (Model Context Protocol) servers.
 
 ## Your Role
 - You help users understand their security posture, investigate suspicious events, and take protective actions.
@@ -456,7 +456,7 @@ fn parse_action_body(body: &str) -> (String, serde_json::Value) {
 // AskClawAI manager
 // ---------------------------------------------------------------------------
 
-/// The main Ask Claw AI manager that routes queries through the appropriate mode.
+/// The main Ask Rook AI manager that routes queries through the appropriate mode.
 pub struct AskClawAI {
     mode: AskClawMode,
     context: ClawContext,
@@ -487,6 +487,11 @@ impl AskClawAI {
     /// Set the routing mode.
     pub fn set_mode(&mut self, mode: AskClawMode) {
         self.mode = mode;
+    }
+
+    /// Set the cloud API client.
+    pub fn set_cloud_client(&mut self, client: Option<Arc<CloudApiClient>>) {
+        self.cloud_client = client;
     }
 
     /// Update the current context.
@@ -614,7 +619,7 @@ impl AskClawAI {
             model: self.model.clone(),
             system: system_prompt,
             messages,
-            tools: Vec::new(), // Ask Claw doesn't use tools directly; actions are tag-based
+            tools: Vec::new(), // Ask Rook doesn't use tools directly; actions are tag-based
             max_tokens: 2048,
             stream: false,
         };
@@ -1200,7 +1205,7 @@ More text.
         let ctx = ClawContext::default();
         let prompt = build_system_prompt(&ctx);
         assert!(prompt.contains("You are Claw"));
-        assert!(prompt.contains("ClawDefender"));
+        assert!(prompt.contains("RookBot"));
         assert!(prompt.contains("[ACTION"));
         assert!(prompt.contains("[FOLLOWUP]"));
     }

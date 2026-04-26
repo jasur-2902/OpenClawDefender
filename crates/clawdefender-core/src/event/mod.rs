@@ -1,6 +1,6 @@
-//! Event types for ClawDefender.
+//! Event types for RookBot.
 //!
-//! Events are the fundamental data unit flowing through ClawDefender. They originate
+//! Events are the fundamental data unit flowing through RookBot. They originate
 //! from two sources: MCP JSON-RPC messages intercepted by the proxy, and OS-level
 //! operations observed by eslogger. The correlation module links these together.
 
@@ -33,7 +33,7 @@ pub enum Severity {
     Critical,
 }
 
-/// Common trait implemented by every event flowing through ClawDefender.
+/// Common trait implemented by every event flowing through RookBot.
 pub trait Event: Send + Sync {
     /// When the event occurred.
     fn timestamp(&self) -> DateTime<Utc>;

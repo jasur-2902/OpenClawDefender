@@ -1,6 +1,6 @@
 //! Data portability: export/import security profiles, knowledge bases, and configurations.
 //!
-//! Enables users to move ClawDefender intelligence between machines, share
+//! Enables users to move RookBot intelligence between machines, share
 //! tuned security profiles, and back up learned behaviors.
 
 use chrono::{DateTime, Utc};
@@ -21,9 +21,9 @@ pub struct DataPortabilityManager {
     data_dir: PathBuf,
 }
 
-/// A complete ClawDefender export bundle.
+/// A complete RookBot export bundle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClawDefenderExport {
+pub struct RookBotExport {
     pub version: String,
     pub exported_at: DateTime<Utc>,
     pub machine_id_hash: String,
@@ -213,7 +213,7 @@ pub fn get_machine_id_hash() -> String {
 
 /// Strip sensitive fields and machine-specific paths from an export bundle.
 /// Returns the count of fields that were sanitized.
-pub fn sanitize_export(export: &mut ClawDefenderExport) -> u32 {
+pub fn sanitize_export(export: &mut RookBotExport) -> u32 {
     let mut count = 0u32;
 
     // Sanitize configuration
@@ -330,7 +330,7 @@ fn xor_obfuscate(data: &[u8], passphrase: &str) -> Vec<u8> {
 // ============================================================================
 
 /// Validate an export bundle, returning a list of warnings.
-pub fn validate_export(data: &ClawDefenderExport) -> Vec<String> {
+pub fn validate_export(data: &RookBotExport) -> Vec<String> {
     let mut warnings = Vec::new();
 
     // Version compatibility
@@ -440,7 +440,7 @@ impl DataPortabilityManager {
     pub fn new() -> Self {
         let data_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".local/share/clawdefender");
+            .join(".local/share/rookbot");
         Self::with_data_dir(data_dir)
     }
 
@@ -507,7 +507,7 @@ impl DataPortabilityManager {
             ExportType::Selective
         };
 
-        let mut export = ClawDefenderExport {
+        let mut export = RookBotExport {
             version: CURRENT_VERSION.to_string(),
             exported_at: Utc::now(),
             machine_id_hash: get_machine_id_hash(),
@@ -846,7 +846,7 @@ impl DataPortabilityManager {
         &self,
         file_path: &str,
         passphrase: Option<&str>,
-    ) -> Result<ClawDefenderExport, String> {
+    ) -> Result<RookBotExport, String> {
         let raw =
             fs::read(file_path).map_err(|e| format!("Cannot read file {}: {}", file_path, e))?;
 
@@ -859,12 +859,12 @@ impl DataPortabilityManager {
         let text = String::from_utf8(json_bytes)
             .map_err(|_| "File is not valid UTF-8 (it may be encrypted)".to_string())?;
 
-        serde_json::from_str::<ClawDefenderExport>(&text)
+        serde_json::from_str::<RookBotExport>(&text)
             .map_err(|e| format!("Invalid export format: {}", e))
     }
 
     /// Detect conflicts between imported data and the current state.
-    fn detect_conflicts(&self, data: &ClawDefenderExport) -> Vec<ImportConflict> {
+    fn detect_conflicts(&self, data: &RookBotExport) -> Vec<ImportConflict> {
         let mut conflicts = Vec::new();
 
         // Configuration conflict
@@ -1020,8 +1020,8 @@ mod tests {
     }
 
     /// Build a sample export for testing.
-    fn sample_export() -> ClawDefenderExport {
-        ClawDefenderExport {
+    fn sample_export() -> RookBotExport {
+        RookBotExport {
             version: CURRENT_VERSION.to_string(),
             exported_at: Utc::now(),
             machine_id_hash: get_machine_id_hash(),
@@ -1142,7 +1142,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_handles_empty_components() {
-        let mut export = ClawDefenderExport {
+        let mut export = RookBotExport {
             version: CURRENT_VERSION.to_string(),
             exported_at: Utc::now(),
             machine_id_hash: "test".to_string(),
@@ -1205,7 +1205,7 @@ mod tests {
 
     #[test]
     fn test_xor_roundtrip() {
-        let data = b"Hello, ClawDefender!";
+        let data = b"Hello, RookBot!";
         let pass = "mypassphrase";
         let encrypted = xor_obfuscate(data, pass);
         let decrypted = xor_obfuscate(&encrypted, pass);
@@ -1702,7 +1702,7 @@ mod tests {
 
         // Read back and verify
         let content = fs::read_to_string(&result.file_path).unwrap();
-        let export: ClawDefenderExport = serde_json::from_str(&content).unwrap();
+        let export: RookBotExport = serde_json::from_str(&content).unwrap();
         assert!(export.components.knowledge_base.is_some());
         assert!(export.components.investigation_summaries.is_some());
         let inv = export.components.investigation_summaries.as_ref().unwrap();

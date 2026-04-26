@@ -45,7 +45,7 @@ pub struct NetworkConnectionLog {
 ///
 /// SECURITY: Metadata only — protocol, addresses, ports, TLS flag. No content
 /// inspection is performed. The `tls` field indicates whether TLS was negotiated,
-/// but ClawDefender never decrypts or intercepts TLS traffic.
+/// but RookBot never decrypts or intercepts TLS traffic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionInfo {
     /// Transport protocol: "tcp", "udp".

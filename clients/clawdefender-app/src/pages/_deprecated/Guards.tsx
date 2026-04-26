@@ -67,11 +67,11 @@ export function Guards() {
           <p className="text-[var(--color-text-secondary)] text-sm max-w-md mx-auto mb-4">
             Guards provide runtime self-protection for MCP tool calls. They are
             registered dynamically via the Guard SDK when servers connect to the
-            ClawDefender daemon.
+            RookBot daemon.
           </p>
           <div className="text-left max-w-sm mx-auto space-y-3 text-sm text-[var(--color-text-secondary)]">
             <p className="font-medium text-[var(--color-text-primary)]">How guards work:</p>
-            <p>1. The ClawDefender daemon exposes a Guard API over IPC</p>
+            <p>1. The RookBot daemon exposes a Guard API over IPC</p>
             <p>2. MCP servers register guards (input, output, network, filesystem) using the SDK</p>
             <p>3. Guards intercept tool calls in real-time and enforce protection rules</p>
             <p>4. Active guards and their trigger counts appear here automatically</p>

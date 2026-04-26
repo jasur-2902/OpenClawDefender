@@ -61,7 +61,7 @@ pub struct RulePackMetadata {
     /// Tags for search/filtering.
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Compatible ClawDefender version range (semver).
+    /// Compatible RookBot version range (semver).
     #[serde(default)]
     pub compatibility: Option<String>,
     /// Number of times this pack has been downloaded.

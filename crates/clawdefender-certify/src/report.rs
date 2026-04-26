@@ -77,7 +77,7 @@ impl CertificationReport {
     pub fn to_text(&self) -> String {
         let mut out = String::new();
 
-        out.push_str("ClawDefender Compliance Report\n");
+        out.push_str("RookBot Compliance Report\n");
         out.push_str(&"=".repeat(50));
         out.push('\n');
         out.push('\n');

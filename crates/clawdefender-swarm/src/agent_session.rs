@@ -184,6 +184,11 @@ impl AgentSessionManager {
         }
     }
 
+    /// Get a reference to the cloud API client.
+    pub fn cloud_client(&self) -> &Arc<CloudApiClient> {
+        &self.cloud_client
+    }
+
     /// Start a new agent session. Returns the session ID.
     pub async fn start_session(
         &self,

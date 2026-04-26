@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Sidebar } from "./components/Sidebar";
+import { Layout } from "./components/Layout";
 import { Home } from "./pages/Home";
 import { Activity } from "./pages/Activity";
 import { EventDetail } from "./pages/EventDetail";
@@ -10,10 +10,7 @@ import { Alerts } from "./pages/Alerts";
 import { AlertDetail } from "./pages/AlertDetail";
 import { Onboarding } from "./pages/Onboarding";
 import { NotificationLayer } from "./components/NotificationLayer";
-import { PolicyEditor } from "./pages/PolicyEditor";
 import { Settings } from "./pages/Settings";
-import { SystemHealth } from "./pages/SystemHealth";
-import { ThreatIntel } from "./pages/ThreatIntel";
 import { useTheme } from "./hooks/useTheme";
 import { useAlertStore } from "./stores/alertStore";
 import { useEventStore } from "./stores/eventStore";
@@ -23,8 +20,7 @@ import { AskClaw } from "./pages/AskClaw";
 import { MyTools } from "./pages/MyTools";
 import { ToolDetail } from "./pages/ToolDetail";
 import { Scanner } from "./pages/Scanner";
-import { Investigations } from "./pages/Investigations";
-import { Agent } from "./pages/Agent";
+import { AuditLog } from "./pages/AuditLog";
 
 function TrayNavigationListener() {
   const navigate = useNavigate();
@@ -32,7 +28,7 @@ function TrayNavigationListener() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
-    listen<string>("clawdefender://navigate", (event) => {
+    listen<string>("rookbot://navigate", (event) => {
       navigate(event.payload);
     }).then((fn) => {
       unlisten = fn;
@@ -56,7 +52,7 @@ function IntelligentAlertListener() {
     fetchStats();
   };
 
-  useTauriEvent("clawdefender://intelligent-alert", handleIntelligentAlert);
+  useTauriEvent("rookbot://intelligent-alert", handleIntelligentAlert);
 
   return null;
 }
@@ -69,7 +65,7 @@ function GlobalEventListener() {
     addRawEvent(payload);
   }, [addRawEvent]);
 
-  useTauriEvent<AuditEvent>("clawdefender://event", handleEvent);
+  useTauriEvent<AuditEvent>("rookbot://event", handleEvent);
 
   return null;
 }
@@ -111,37 +107,20 @@ function App() {
       <GlobalEventListener />
       <OnboardingRedirect>
         <Routes>
-          <Route
-            path="/onboarding"
-            element={<Onboarding />}
-          />
-          <Route
-            path="*"
-            element={
-              <div className="flex h-screen bg-[var(--color-bg-primary)]">
-                <Sidebar />
-                <main className="flex-1 overflow-y-auto">
-                  <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/activity" element={<Activity />} />
-                    <Route path="/activity/:id" element={<EventDetail />} />
-                    <Route path="/alerts" element={<Alerts />} />
-                    <Route path="/alerts/:id" element={<AlertDetail />} />
-                    <Route path="/ask" element={<AskClaw />} />
-                    <Route path="/tools" element={<MyTools />} />
-                    <Route path="/tools/:name" element={<ToolDetail />} />
-                    <Route path="/policy" element={<PolicyEditor />} />
-                    <Route path="/threat-intel" element={<ThreatIntel />} />
-                    <Route path="/health" element={<SystemHealth />} />
-                    <Route path="/investigations" element={<Investigations />} />
-                    <Route path="/scanner" element={<Scanner />} />
-                    <Route path="/agent" element={<Agent />} />
-                    <Route path="/settings" element={<Settings />} />
-                  </Routes>
-                </main>
-              </div>
-            }
-          />
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route element={<Layout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/activity" element={<Activity />} />
+            <Route path="/activity/:id" element={<EventDetail />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/alerts/:id" element={<AlertDetail />} />
+            <Route path="/ask" element={<AskClaw />} />
+            <Route path="/tools" element={<MyTools />} />
+            <Route path="/tools/:name" element={<ToolDetail />} />
+            <Route path="/scan" element={<Scanner />} />
+            <Route path="/transparency" element={<AuditLog />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
         </Routes>
       </OnboardingRedirect>
       <NotificationLayer />

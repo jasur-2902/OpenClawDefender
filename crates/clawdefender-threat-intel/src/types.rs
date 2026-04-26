@@ -229,7 +229,7 @@ fn default_true() -> bool {
 }
 
 fn default_feed_url() -> String {
-    "https://feed.clawdefender.io/v1/".to_string()
+    "https://feed.rookbot.io/v1/".to_string()
 }
 
 fn default_update_interval_hours() -> u64 {

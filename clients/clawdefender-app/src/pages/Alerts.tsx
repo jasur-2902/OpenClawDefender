@@ -1,291 +1,278 @@
-import { useEffect, useMemo, useCallback, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { PageHeader } from "../components/PageHeader";
+import { useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAlertStore } from "../stores/alertStore";
-import { AlertCard, sortAlerts } from "../components/alerts/AlertCard";
+import { Icon, Dot, SectionTitle } from "../components/design";
 import { useTauriEvent } from "../hooks/useTauriEvent";
-import { useToastStore } from "../components/notifications/ToastContainer";
-import { EMPTY_STATES } from "../constants/messages";
-import type { IntelligentAlert, Recommendation } from "../types";
+import type { IntelligentAlert } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function relativeDay(ts: string): string {
-  try {
-    const d = new Date(ts);
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+const severityLabels: Record<string, string> = {
+  dangerous: "Critical",
+  critical: "Critical",
+  suspicious: "High",
+  high: "High",
+  unusual: "Medium",
+  medium: "Medium",
+  info: "Low",
+  low: "Low",
+};
 
-    if (d.toDateString() === today.toDateString()) return "Today";
-    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-    return d.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+function relativeTime(ts: string): string {
+  try {
+    const diff = Date.now() - new Date(ts).getTime();
+    const min = Math.floor(diff / 60_000);
+    if (min < 1) return "just now";
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    return `${Math.floor(hr / 24)}d ago`;
   } catch {
     return ts;
   }
 }
 
-function groupByDay(alerts: IntelligentAlert[]): [string, IntelligentAlert[]][] {
-  const groups = new Map<string, IntelligentAlert[]>();
-  for (const alert of alerts) {
-    const key = relativeDay(alert.resolved_at || alert.updated_at || alert.created_at);
-    const list = groups.get(key) || [];
-    list.push(alert);
-    groups.set(key, list);
+type SeverityGroup = {
+  severity: string;
+  label: string;
+  color: string;
+  alerts: IntelligentAlert[];
+};
+
+function groupBySeverity(alerts: IntelligentAlert[]): SeverityGroup[] {
+  const map = new Map<string, IntelligentAlert[]>();
+  for (const a of alerts) {
+    const key = severityLabels[a.severity] || "Low";
+    const list = map.get(key) || [];
+    list.push(a);
+    map.set(key, list);
   }
-  return Array.from(groups.entries());
+
+  const order = ["Critical", "High", "Medium", "Low"];
+  const colorMap: Record<string, string> = {
+    Critical: "var(--red)",
+    High: "var(--amber)",
+    Medium: "var(--violet)",
+    Low: "var(--ink-2)",
+  };
+
+  return order
+    .filter((label) => map.has(label))
+    .map((label) => ({
+      severity: label.toLowerCase(),
+      label,
+      color: colorMap[label] || "var(--ink-2)",
+      alerts: map.get(label)!,
+    }));
 }
 
 // ---------------------------------------------------------------------------
-// Recommendation Card
-// ---------------------------------------------------------------------------
-
-function RecommendationCard({
-  rec,
-  onExecute,
-  onDismiss,
-}: {
-  rec: Recommendation;
-  onExecute: (id: string) => void;
-  onDismiss: (id: string) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-      <p className="text-sm text-[var(--color-text-secondary)] flex-1">
-        {rec.description}
-      </p>
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={() => onExecute(rec.id)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity"
-        >
-          {rec.action_label || "Do it"}
-        </button>
-        <button
-          onClick={() => onDismiss(rec.id)}
-          className="text-xs px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Empty State
-// ---------------------------------------------------------------------------
-
-function EmptyAlerts({
-  stats,
-}: {
-  stats: { resolved_this_week: number; blocked_this_week: number } | null;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-12 h-12 rounded-full bg-[var(--color-safe-subtle)] flex items-center justify-center mb-4">
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--color-safe)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      </div>
-      <p className="text-sm font-medium text-[var(--color-text-primary)] mb-1">
-        All clear right now
-      </p>
-      <p className="text-sm text-[var(--color-text-secondary)] max-w-sm">
-        {EMPTY_STATES.alerts.body}
-      </p>
-      {stats && (stats.resolved_this_week > 0 || stats.blocked_this_week > 0) && (
-        <p className="text-xs text-[var(--color-text-muted)] mt-3">
-          This week: {stats.resolved_this_week} alerts resolved, {stats.blocked_this_week} threats blocked
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main Component
+// Alerts Screen
 // ---------------------------------------------------------------------------
 
 export function Alerts() {
+  const navigate = useNavigate();
   const alerts = useAlertStore((s) => s.alerts);
-  const stats = useAlertStore((s) => s.stats);
   const loading = useAlertStore((s) => s.loading);
   const fetchAlerts = useAlertStore((s) => s.fetchAlerts);
   const fetchStats = useAlertStore((s) => s.fetchStats);
-  const dismissAll = useAlertStore((s) => s.dismissAll);
-  const fetchHistory = useAlertStore((s) => s.fetchHistory);
-  const addToast = useToastStore((s) => s.addToast);
 
-  const [history, setHistory] = useState<IntelligentAlert[]>([]);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-
-  // Fetch alerts, stats, history, and recommendations on mount
   useEffect(() => {
     fetchAlerts();
     fetchStats();
-    fetchHistory(7).then(setHistory);
+  }, [fetchAlerts, fetchStats]);
 
-    invoke<Recommendation[]>("get_recommendations_cmd")
-      .then((recs) => setRecommendations(recs.filter((r) => !r.dismissed)))
-      .catch(() => {});
-  }, [fetchAlerts, fetchStats, fetchHistory]);
-
-  // Listen for real-time alert events (both legacy and intelligent-alert)
   const handleNewAlert = useCallback(() => {
     fetchAlerts();
     fetchStats();
   }, [fetchAlerts, fetchStats]);
-  useTauriEvent("clawdefender://alert", handleNewAlert);
-  useTauriEvent("clawdefender://intelligent-alert", handleNewAlert);
+  useTauriEvent("rookbot://alert", handleNewAlert);
+  useTauriEvent("rookbot://intelligent-alert", handleNewAlert);
 
-  // Sort active alerts
-  const sortedAlerts = useMemo(() => sortAlerts(alerts), [alerts]);
-
-  // Group history by day
-  const historyGroups = useMemo(() => groupByDay(history), [history]);
-
-  // Derived flags
-  const hasActiveAlerts = sortedAlerts.length > 0;
-  const hasUnusualOrLower = sortedAlerts.some(
-    (a) => a.severity === "unusual" || a.severity === "info"
-  );
-  const hasHistory = history.length > 0;
-  const hasRecommendations = recommendations.length > 0;
-  const isEmpty = !hasActiveAlerts && !hasHistory && !hasRecommendations;
-
-  async function handleDismissAllLow() {
-    const count = await dismissAll("unusual");
-    addToast({
-      title: `Dismissed ${count} alert${count !== 1 ? "s" : ""}.`,
-      severity: "info",
-    });
-  }
-
-  async function handleExecuteRec(id: string) {
-    try {
-      const result = await invoke<string>("execute_recommendation_cmd", { id });
-      addToast({ title: result || "Done.", severity: "success" });
-      setRecommendations((prev) => prev.filter((r) => r.id !== id));
-    } catch {
-      addToast({ title: "Could not apply that recommendation.", severity: "danger" });
-    }
-  }
-
-  async function handleDismissRec(id: string) {
-    try {
-      await invoke("dismiss_recommendation_cmd", { id });
-    } catch {
-      // non-critical
-    }
-    setRecommendations((prev) => prev.filter((r) => r.id !== id));
-  }
+  const groups = useMemo(() => groupBySeverity(alerts), [alerts]);
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
-      <PageHeader
-        title="Alerts"
-        subtitle="Threats and items needing your attention"
-        actions={
-          hasActiveAlerts && hasUnusualOrLower ? (
-            <button
-              onClick={handleDismissAllLow}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
-            >
-              Dismiss all Unusual and below
-            </button>
-          ) : undefined
-        }
-      />
+    <div className="cd-scroll" style={{ overflowY: "auto", height: "100%" }}>
+      <div
+        style={{ maxWidth: 720, margin: "0 auto", padding: "40px 28px 48px" }}
+      >
+        <SectionTitle sub="Things RookBot thinks you should look at.">
+          Alerts
+        </SectionTitle>
 
-      {/* Loading spinner */}
-      {loading && sortedAlerts.length === 0 && (
-        <div className="flex justify-center py-8">
-          <span className="text-sm text-[var(--color-text-muted)]">Loading alerts...</span>
-        </div>
-      )}
-
-      {/* Section 1: Active alerts */}
-      {hasActiveAlerts && (
-        <section aria-label="Active alerts" aria-live="polite">
-          <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-            Needs Attention ({sortedAlerts.length})
-          </h2>
-          <div className="space-y-3" role="list" aria-label="Alert list">
-            {sortedAlerts.map((alert) => (
-              <div key={alert.id} role="listitem">
-                <AlertCard alert={alert} />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Empty state */}
-      {isEmpty && !loading && <EmptyAlerts stats={stats} />}
-
-      {/* Section 2: Recommendations */}
-      {hasRecommendations && (
-        <section aria-label="Recommendations">
-          <h2
-            className={`text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3 ${
-              !hasActiveAlerts ? "opacity-80" : ""
-            }`}
+        {loading && alerts.length === 0 && (
+          <div
+            style={{
+              textAlign: "center",
+              padding: 40,
+              color: "var(--ink-3)",
+              fontSize: 13,
+            }}
           >
-            Recommendations
-          </h2>
-          <div className="space-y-2">
-            {recommendations.map((rec) => (
-              <RecommendationCard
-                key={rec.id}
-                rec={rec}
-                onExecute={handleExecuteRec}
-                onDismiss={handleDismissRec}
-              />
-            ))}
+            Loading alerts...
           </div>
-        </section>
-      )}
+        )}
 
-      {/* Section 3: Recently Handled */}
-      {hasHistory && (
-        <section aria-label="Recently handled alerts">
-          <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1">
-            Recently Handled
-          </h2>
-          {stats && (
-            <p className="text-xs text-[var(--color-text-muted)] mb-3">
-              This week: {stats.resolved_this_week} alerts resolved, {stats.blocked_this_week} threats blocked
-            </p>
-          )}
-          <div className="space-y-4">
-            {historyGroups.map(([day, dayAlerts]) => (
-              <div key={day}>
-                <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2">
-                  {day}
-                </p>
-                <div className="space-y-2">
-                  {dayAlerts.map((alert) => (
-                    <AlertCard key={alert.id} alert={alert} compact />
-                  ))}
-                </div>
-              </div>
-            ))}
+        {!loading && alerts.length === 0 && (
+          <div
+            style={{
+              textAlign: "center",
+              padding: 60,
+              color: "var(--ink-2)",
+            }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 6 }}>
+              All clear right now
+            </div>
+            <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
+              When RookBot detects something that needs your attention, it will
+              appear here.
+            </div>
           </div>
-        </section>
-      )}
+        )}
+
+        {groups.map((group) => (
+          <div key={group.severity} style={{ marginBottom: 24 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "0 4px 8px",
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--ink-2)",
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              <Dot color={group.color} size={6} />
+              {group.label} {"\u00B7"} {group.alerts.length}
+            </div>
+            <div
+              style={{
+                background: "var(--bg-1)",
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                overflow: "hidden",
+                boxShadow: "0 1px 2px oklch(0 0 0 / 0.04)",
+              }}
+            >
+              {group.alerts.map((a, i) => (
+                <button
+                  key={a.id}
+                  onClick={() => navigate(`/alerts/${a.id}`)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 14,
+                    padding: "14px 16px",
+                    textAlign: "left",
+                    borderBottom:
+                      i < group.alerts.length - 1
+                        ? "1px solid var(--line-soft)"
+                        : "none",
+                    background: "transparent",
+                    border: "none",
+                    borderBottomStyle: "solid",
+                    borderBottomWidth:
+                      i < group.alerts.length - 1 ? 1 : 0,
+                    borderBottomColor: "var(--line-soft)",
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "var(--accent-soft)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                >
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      background: group.color,
+                      marginTop: 6,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        gap: 8,
+                        marginBottom: 3,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "var(--ink-0)",
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {a.title}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          color: "var(--ink-3)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {relativeTime(a.created_at)}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "var(--ink-2)",
+                        lineHeight: 1.45,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {a.description}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 14,
+                        fontSize: 12,
+                        color: "var(--ink-3)",
+                      }}
+                    >
+                      <span>{a.server_name || "System"}</span>
+                      <span>{"\u00B7"}</span>
+                      <span>{a.status}</span>
+                      {a.source_events.length > 1 && (
+                        <>
+                          <span>{"\u00B7"}</span>
+                          <span>{a.source_events.length} events</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <Icon
+                    name="chevron"
+                    size={13}
+                    color="var(--ink-3)"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

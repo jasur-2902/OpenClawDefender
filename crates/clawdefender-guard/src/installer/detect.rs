@@ -1,17 +1,17 @@
-//! Installation detection — checks if ClawDefender is already installed.
+//! Installation detection — checks if RookBot is already installed.
 
 use anyhow::Result;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Status of an existing ClawDefender installation.
+/// Status of an existing RookBot installation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallationStatus {
-    /// ClawDefender is not installed.
+    /// RookBot is not installed.
     NotInstalled,
-    /// ClawDefender is installed at the given path with the given version.
+    /// RookBot is installed at the given path with the given version.
     Installed { path: PathBuf, version: String },
-    /// ClawDefender is installed but outdated.
+    /// RookBot is installed but outdated.
     Outdated {
         path: PathBuf,
         current: String,
@@ -19,14 +19,14 @@ pub enum InstallationStatus {
     },
 }
 
-/// Standard locations to check for the ClawDefender binary.
+/// Standard locations to check for the RookBot binary.
 const STANDARD_LOCATIONS: &[&str] = &[
     "/usr/local/bin/clawdefender",
     ".local/bin/clawdefender",
-    ".clawdefender/bin/clawdefender",
+    ".rookbot/bin/clawdefender",
 ];
 
-/// Detect whether ClawDefender is already installed.
+/// Detect whether RookBot is already installed.
 pub fn detect_installation(latest_version: Option<&str>) -> InstallationStatus {
     // First check standard locations relative to home
     if let Some(home) = dirs::home_dir() {

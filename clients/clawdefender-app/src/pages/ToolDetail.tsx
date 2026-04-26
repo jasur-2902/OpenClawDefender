@@ -82,7 +82,7 @@ export function ToolDetail() {
     },
     [serverName]
   );
-  useTauriEvent<AuditEvent>("clawdefender://event", handleNewEvent);
+  useTauriEvent<AuditEvent>("rookbot://event", handleNewEvent);
 
   const handleScan = useCallback(async () => {
     setScanning(true);

@@ -121,7 +121,7 @@ export function ThreatIntel() {
                 Threat feed not initialized.
               </p>
               <p className="text-[var(--color-text-secondary)]">
-                Run <code className="px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] font-mono text-xs">clawdefender feed update</code> from the terminal to set up the threat intelligence database.
+                Run <code className="px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] font-mono text-xs">rookbot feed update</code> from the terminal to set up the threat intelligence database.
               </p>
             </div>
           ) : (
@@ -266,7 +266,7 @@ export function ThreatIntel() {
                   IoC database is empty.
                 </p>
                 <p className="text-xs text-[var(--color-text-secondary)]">
-                  Indicators of Compromise will be populated when the threat feed is initialized. Run <code className="px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] font-mono text-xs">clawdefender feed update</code> to get started.
+                  Indicators of Compromise will be populated when the threat feed is initialized. Run <code className="px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] font-mono text-xs">rookbot feed update</code> to get started.
                 </p>
               </div>
             ) : (

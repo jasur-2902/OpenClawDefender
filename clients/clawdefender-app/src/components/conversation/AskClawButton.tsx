@@ -5,7 +5,7 @@ interface AskClawButtonProps {
   question: string;
   /** Optional context hint passed via location state. */
   context?: string;
-  /** Button text. Defaults to "Ask Claw". */
+  /** Button text. Defaults to "Ask Rook". */
   label?: string;
   /** Visual variant. "inline" renders as a text button, "subtle" as a muted icon+text link. */
   variant?: "inline" | "subtle";
@@ -14,7 +14,7 @@ interface AskClawButtonProps {
 export function AskClawButton({
   question,
   context,
-  label = "Ask Claw",
+  label = "Ask Rook",
   variant = "subtle",
 }: AskClawButtonProps) {
   const navigate = useNavigate();
@@ -30,7 +30,7 @@ export function AskClawButton({
       <button
         onClick={handleClick}
         className="text-[var(--color-accent)] hover:underline text-sm font-medium"
-        aria-label={`Ask Claw: ${question}`}
+        aria-label={`Ask Rook: ${question}`}
       >
         {label}
       </button>
@@ -41,7 +41,7 @@ export function AskClawButton({
     <button
       onClick={handleClick}
       className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors"
-      aria-label={`Ask Claw: ${question}`}
+      aria-label={`Ask Rook: ${question}`}
     >
       <span aria-hidden="true" className="text-sm">{"\u2709"}</span>
       <span>{label}</span>

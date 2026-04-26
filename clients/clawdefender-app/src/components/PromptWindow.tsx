@@ -128,7 +128,7 @@ export function PromptWindow({ prompt, queueCount }: PromptWindowProps) {
       {/* High risk warning banner */}
       {isHighRisk && (
         <div className="px-4 py-2 bg-[var(--color-danger)] text-white text-sm font-semibold text-center">
-          ClawDefender recommends DENYING this request
+          RookBot recommends DENYING this request
         </div>
       )}
 

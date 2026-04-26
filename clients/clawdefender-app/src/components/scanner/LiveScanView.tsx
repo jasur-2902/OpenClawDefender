@@ -73,7 +73,7 @@ export function LiveScanView({ scanId, onComplete, onCancel }: Props) {
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
 
-    listen<ScanFindingEvent>("clawdefender://scan-finding", (event) => {
+    listen<ScanFindingEvent>("rookbot://scan-finding", (event) => {
       const payload = event.payload;
       if (payload.scan_id !== scanId) return;
       addActivity({
@@ -100,7 +100,7 @@ export function LiveScanView({ scanId, onComplete, onCancel }: Props) {
       });
     }).then((fn) => unlisteners.push(fn));
 
-    listen<ScanStageCompleteEvent>("clawdefender://scan-stage-complete", (event) => {
+    listen<ScanStageCompleteEvent>("rookbot://scan-stage-complete", (event) => {
       const payload = event.payload;
       if (payload.scan_id !== scanId) return;
       setCompletedStages((prev) => [...prev, payload.stage_name]);
@@ -110,7 +110,7 @@ export function LiveScanView({ scanId, onComplete, onCancel }: Props) {
       });
     }).then((fn) => unlisteners.push(fn));
 
-    listen<ScanCompleteEvent>("clawdefender://scan-complete", (event) => {
+    listen<ScanCompleteEvent>("rookbot://scan-complete", (event) => {
       const payload = event.payload;
       if (payload.scan_id !== scanId) return;
       setScanComplete(true);
@@ -121,7 +121,7 @@ export function LiveScanView({ scanId, onComplete, onCancel }: Props) {
       onComplete();
     }).then((fn) => unlisteners.push(fn));
 
-    listen<ScanUserRequest>("clawdefender://scan-user-request", (event) => {
+    listen<ScanUserRequest>("rookbot://scan-user-request", (event) => {
       const payload = event.payload;
       if (payload.scan_id !== scanId) return;
       setUserRequest(payload);

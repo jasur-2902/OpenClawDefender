@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A guidance milestone that fires exactly once to teach the user during their
-/// first week with ClawDefender.
+/// first week with RookBot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuidanceMilestone {
     pub id: String,

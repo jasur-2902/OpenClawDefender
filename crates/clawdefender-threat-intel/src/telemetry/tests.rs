@@ -337,7 +337,7 @@ mod tests {
         assert!(!restored.enabled);
         assert_eq!(
             restored.endpoint_url,
-            "https://feed.clawdefender.io/v1/telemetry"
+            "https://feed.rookbot.io/v1/telemetry"
         );
         assert_eq!(restored.report_interval_hours, 24);
         assert!(restored.installation_id.is_none());
@@ -350,7 +350,7 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(
             config.endpoint_url,
-            "https://feed.clawdefender.io/v1/telemetry"
+            "https://feed.rookbot.io/v1/telemetry"
         );
     }
 

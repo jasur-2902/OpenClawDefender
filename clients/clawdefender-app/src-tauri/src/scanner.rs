@@ -1,4 +1,4 @@
-//! Comprehensive multi-module security scanner for ClawDefender.
+//! Comprehensive multi-module security scanner for RookBot.
 //!
 //! Runs 11 scanner modules in-process:
 //! 1. MCP Configuration Audit
@@ -13,6 +13,7 @@
 //! 10. CIS Benchmark Compliance
 //! 11. Browser Extension Audit
 
+use crate::commands::{mcp_config_paths, extract_servers};
 use crate::state::{ScanFinding, ScanFixAction, ScanModuleResult};
 use std::path::{Path, PathBuf};
 
@@ -28,31 +29,8 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
     let home = home_dir().unwrap_or_default();
     let mut findings = Vec::new();
 
-    let clients: Vec<(&str, &str, Vec<PathBuf>)> = vec![
-        (
-            "claude",
-            "Claude Desktop",
-            vec![
-                home.join("Library/Application Support/Claude/config.json"),
-                home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-            ],
-        ),
-        ("cursor", "Cursor", vec![home.join(".cursor/mcp.json")]),
-        ("vscode", "VS Code", vec![home.join(".vscode/mcp.json")]),
-        (
-            "windsurf",
-            "Windsurf",
-            vec![home.join(".codeium/windsurf/mcp_config.json")],
-        ),
-    ];
-
-    for (client_id, client_name, paths) in &clients {
-        let config_path = match paths.iter().find(|p| p.exists()) {
-            Some(p) => p,
-            None => continue,
-        };
-
-        let contents = match std::fs::read_to_string(config_path) {
+    for (config_path, client_id, client_name) in mcp_config_paths() {
+        let contents = match std::fs::read_to_string(&config_path) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -78,8 +56,7 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
             }
         };
 
-        let key = detect_servers_key(&config);
-        let servers = match config.get(key).and_then(|v| v.as_object()) {
+        let servers = match extract_servers(&config) {
             Some(obj) => obj,
             None => continue,
         };
@@ -109,14 +86,14 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
                     category: "mcp-config".to_string(),
                     module: "mcp-config-audit".to_string(),
                     description: format!(
-                        "Server '{}' in {} is NOT wrapped by ClawDefender AND exposes sensitive paths: {}",
+                        "Server '{}' in {} is NOT wrapped by RookBot AND exposes sensitive paths: {}",
                         server_name,
                         client_name,
                         sensitive_paths.join(", ")
                     ),
                     affected_resource: format!("{}:{}", client_name, server_name),
                     fix_suggestion: format!(
-                        "Wrap server '{}' with ClawDefender and restrict path access",
+                        "Wrap server '{}' with RookBot and restrict path access",
                         server_name
                     ),
                     fix_action: Some(ScanFixAction {
@@ -136,7 +113,7 @@ pub fn scan_mcp_configs() -> ScanModuleResult {
                     category: "mcp-config".to_string(),
                     module: "mcp-config-audit".to_string(),
                     description: format!(
-                        "Server '{}' in {} is NOT wrapped by ClawDefender",
+                        "Server '{}' in {} is NOT wrapped by RookBot",
                         server_name, client_name
                     ),
                     affected_resource: format!("{}:{}", client_name, server_name),
@@ -272,23 +249,7 @@ fn check_broad_paths(args: &[String], home: &Path) -> Vec<String> {
     found
 }
 
-fn detect_servers_key(config: &serde_json::Value) -> &str {
-    if config
-        .get("mcpServers")
-        .and_then(|v| v.as_object())
-        .is_some()
-    {
-        "mcpServers"
-    } else if config
-        .get("servers")
-        .and_then(|v| v.as_object())
-        .is_some()
-    {
-        "servers"
-    } else {
-        "mcpServers"
-    }
-}
+
 
 // ---------------------------------------------------------------------------
 // Module 2: Policy Strength Analysis
@@ -296,7 +257,7 @@ fn detect_servers_key(config: &serde_json::Value) -> &str {
 
 pub fn scan_policy_strength() -> ScanModuleResult {
     let home = home_dir().unwrap_or_default();
-    let policy_path = home.join(".config/clawdefender/policy.toml");
+    let policy_path = home.join(".config/rookbot/policy.toml");
     let mut findings = Vec::new();
 
     if !policy_path.exists() {
@@ -515,40 +476,64 @@ pub fn scan_server_reputation() -> ScanModuleResult {
     let home = home_dir().unwrap_or_default();
     let mut findings = Vec::new();
 
-    // Known suspicious/flagged packages (example blocklist)
-    let known_suspicious = [
+    // Known suspicious/flagged MCP server packages
+    const SUSPICIOUS_PACKAGES: &[&str] = &[
         "mcp-server-everything",
         "mcp-server-shell-exec",
         "mcp-shell-unlimited",
+        "mcp-server-cmd",
+        "mcp-server-terminal",
+        "mcp-unrestricted",
+        "mcp-server-admin",
+        "mcp-root-access",
+        "mcp-server-sudo",
+        "mcp-backdoor",
     ];
 
-    let clients: Vec<(&str, &str, Vec<PathBuf>)> = vec![
-        (
-            "claude",
-            "Claude Desktop",
-            vec![
-                home.join("Library/Application Support/Claude/config.json"),
-                home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-            ],
-        ),
-        ("cursor", "Cursor", vec![home.join(".cursor/mcp.json")]),
-        ("vscode", "VS Code", vec![home.join(".vscode/mcp.json")]),
-        (
-            "windsurf",
-            "Windsurf",
-            vec![home.join(".codeium/windsurf/mcp_config.json")],
-        ),
+    // Well-known legitimate packages used for typosquat similarity checks
+    const KNOWN_POPULAR: &[&str] = &[
+        "mcp-server-filesystem",
+        "mcp-server-github",
+        "mcp-server-postgres",
+        "mcp-server-sqlite",
+        "mcp-server-puppeteer",
+        "mcp-server-brave-search",
+        "mcp-server-memory",
+        "mcp-server-fetch",
+        "mcp-server-slack",
+        "mcp-server-google-maps",
+        "mcp-server-sequential-thinking",
     ];
+
+    // Dangerous argument patterns
+    const DANGEROUS_ARGS: &[&str] = &[
+        "--allow-all",
+        "--no-sandbox",
+        "--disable-security",
+        "--unrestricted",
+        "--privileged",
+        "--allow-write-all",
+    ];
+
+    // Dangerous command fragments indicating code execution
+    const DANGEROUS_CMD_FRAGMENTS: &[&str] = &[
+        "eval",
+        "exec",
+        "spawn",
+        "child_process",
+        "shell_exec",
+        "os.system",
+        "subprocess",
+    ];
+
+    // Load blocklist entries from threat intel feed
+    let blocklist_path = home.join(".local/share/rookbot/threat_intel/blocklist.json");
+    let blocklist_entries = load_blocklist_entries(&blocklist_path);
 
     let mut servers_checked = 0u32;
 
-    for (_client_id, client_name, paths) in &clients {
-        let config_path = match paths.iter().find(|p| p.exists()) {
-            Some(p) => p,
-            None => continue,
-        };
-
-        let contents = match std::fs::read_to_string(config_path) {
+    for (config_path, _client_id, client_name) in mcp_config_paths() {
+        let contents = match std::fs::read_to_string(&config_path) {
             Ok(c) => c,
             Err(_) => continue,
         };
@@ -558,8 +543,7 @@ pub fn scan_server_reputation() -> ScanModuleResult {
             Err(_) => continue,
         };
 
-        let key = detect_servers_key(&config);
-        let servers = match config.get(key).and_then(|v| v.as_object()) {
+        let servers = match extract_servers(&config) {
             Some(obj) => obj,
             None => continue,
         };
@@ -579,8 +563,8 @@ pub fn scan_server_reputation() -> ScanModuleResult {
 
             let full_command = format!("{} {}", command, args.join(" "));
 
-            // Check against known suspicious packages
-            for suspicious in &known_suspicious {
+            // --- Check against known suspicious packages ---
+            for suspicious in SUSPICIOUS_PACKAGES {
                 if full_command.contains(suspicious) || server_name.contains(suspicious) {
                     findings.push(ScanFinding {
                         severity: "high".to_string(),
@@ -601,7 +585,116 @@ pub fn scan_server_reputation() -> ScanModuleResult {
                 }
             }
 
-            // Check for npx with unscoped packages (potentially typosquatting risk)
+            // --- Check against threat intel blocklist ---
+            for blocked in &blocklist_entries {
+                if full_command.contains(blocked.as_str())
+                    || server_name.contains(blocked.as_str())
+                {
+                    findings.push(ScanFinding {
+                        severity: "critical".to_string(),
+                        category: "reputation".to_string(),
+                        module: "server-reputation".to_string(),
+                        description: format!(
+                            "Server '{}' in {} matches threat intel blocklist entry: {}",
+                            server_name, client_name, blocked
+                        ),
+                        affected_resource: format!("{}:{}", client_name, server_name),
+                        fix_suggestion: format!(
+                            "Remove '{}' immediately - it is flagged in the threat intelligence feed",
+                            blocked
+                        ),
+                        fix_action: None,
+                        ai_analysis: None,
+                    });
+                }
+            }
+
+            // --- Dangerous argument detection ---
+            for arg in &args {
+                for dangerous in DANGEROUS_ARGS {
+                    if *arg == *dangerous {
+                        findings.push(ScanFinding {
+                            severity: "high".to_string(),
+                            category: "reputation".to_string(),
+                            module: "server-reputation".to_string(),
+                            description: format!(
+                                "Server '{}' in {} uses dangerous flag '{}'",
+                                server_name, client_name, dangerous
+                            ),
+                            affected_resource: format!("{}:{}", client_name, server_name),
+                            fix_suggestion: format!(
+                                "Remove the '{}' flag and configure explicit permissions instead",
+                                dangerous
+                            ),
+                            fix_action: None,
+                            ai_analysis: None,
+                        });
+                    }
+                }
+            }
+
+            // --- Servers running from temp directories ---
+            let temp_prefixes = ["/tmp/", "/var/tmp/", "/private/tmp/"];
+            if temp_prefixes.iter().any(|p| command.starts_with(p))
+                || args.iter().any(|a| temp_prefixes.iter().any(|p| a.starts_with(p)))
+            {
+                findings.push(ScanFinding {
+                    severity: "high".to_string(),
+                    category: "reputation".to_string(),
+                    module: "server-reputation".to_string(),
+                    description: format!(
+                        "Server '{}' in {} runs from a temporary directory - possible malicious staging",
+                        server_name, client_name
+                    ),
+                    affected_resource: format!("{}:{}", client_name, server_name),
+                    fix_suggestion: "Install MCP servers to a permanent, trusted directory".to_string(),
+                    fix_action: None,
+                    ai_analysis: None,
+                });
+            }
+
+            // --- Suspiciously long base64-encoded arguments ---
+            for arg in &args {
+                if arg.len() > 200 && looks_like_base64(arg) {
+                    findings.push(ScanFinding {
+                        severity: "high".to_string(),
+                        category: "reputation".to_string(),
+                        module: "server-reputation".to_string(),
+                        description: format!(
+                            "Server '{}' in {} has a suspiciously long base64-encoded argument ({} chars)",
+                            server_name, client_name, arg.len()
+                        ),
+                        affected_resource: format!("{}:{}", client_name, server_name),
+                        fix_suggestion: "Inspect the encoded argument - it may contain obfuscated malicious code".to_string(),
+                        fix_action: None,
+                        ai_analysis: None,
+                    });
+                    break; // One finding per server is enough
+                }
+            }
+
+            // --- Command contains eval/exec/spawn ---
+            let cmd_lower = full_command.to_lowercase();
+            for fragment in DANGEROUS_CMD_FRAGMENTS {
+                if cmd_lower.contains(fragment) {
+                    findings.push(ScanFinding {
+                        severity: "medium".to_string(),
+                        category: "reputation".to_string(),
+                        module: "server-reputation".to_string(),
+                        description: format!(
+                            "Server '{}' in {} command contains code-execution pattern: '{}'",
+                            server_name, client_name, fragment
+                        ),
+                        affected_resource: format!("{}:{}", client_name, server_name),
+                        fix_suggestion: "Review the server command for unauthorized code execution".to_string(),
+                        fix_action: None,
+                        ai_analysis: None,
+                    });
+                    break; // One finding per server for this category
+                }
+            }
+
+            // --- Typosquatting: npx with unscoped packages ---
             if command == "npx" && !args.is_empty() {
                 let pkg = args[0];
                 if !pkg.starts_with('@') && !pkg.starts_with("./") && !pkg.starts_with('/') {
@@ -619,13 +712,57 @@ pub fn scan_server_reputation() -> ScanModuleResult {
                         fix_action: None,
                         ai_analysis: None,
                     });
+
+                    // Check similarity to known popular packages
+                    if let Some(similar_to) = find_similar_package(pkg, KNOWN_POPULAR) {
+                        findings.push(ScanFinding {
+                            severity: "high".to_string(),
+                            category: "reputation".to_string(),
+                            module: "server-reputation".to_string(),
+                            description: format!(
+                                "Server '{}' in {} uses package '{}' which is suspiciously similar to popular package '{}' - possible typosquatting",
+                                server_name, client_name, pkg, similar_to
+                            ),
+                            affected_resource: format!("{}:{}", client_name, server_name),
+                            fix_suggestion: format!(
+                                "Verify you intended to install '{}' and not '{}'",
+                                pkg, similar_to
+                            ),
+                            fix_action: None,
+                            ai_analysis: None,
+                        });
+                    }
                 }
             }
 
-            // Check for local scripts without absolute paths
+            // --- Git URL supply chain risk ---
+            let has_git_url = args.iter().any(|a| {
+                a.starts_with("git+")
+                    || a.starts_with("git://")
+                    || a.starts_with("https://github.com/")
+                    || a.starts_with("https://gitlab.com/")
+                    || a.ends_with(".git")
+            });
+            if has_git_url {
+                findings.push(ScanFinding {
+                    severity: "medium".to_string(),
+                    category: "reputation".to_string(),
+                    module: "server-reputation".to_string(),
+                    description: format!(
+                        "Server '{}' in {} is installed from a git URL - bypasses npm registry checks",
+                        server_name, client_name
+                    ),
+                    affected_resource: format!("{}:{}", client_name, server_name),
+                    fix_suggestion: "Install from a registry with version pinning instead of a git URL".to_string(),
+                    fix_action: None,
+                    ai_analysis: None,
+                });
+            }
+
+            // --- Local scripts without absolute paths ---
             if command == "node" || command == "python" || command == "python3" {
                 if let Some(script) = args.first() {
-                    if !script.starts_with('/') && !script.starts_with("./") && !script.starts_with("-") {
+                    if !script.starts_with('/') && !script.starts_with("./") && !script.starts_with('-') {
                         findings.push(ScanFinding {
                             severity: "low".to_string(),
                             category: "reputation".to_string(),
@@ -645,23 +782,27 @@ pub fn scan_server_reputation() -> ScanModuleResult {
         }
     }
 
-    // Check local threat feed blocklist
-    let blocklist_path = home.join(".local/share/clawdefender/threat_intel/blocklist.json");
+    // Report blocklist status
     if blocklist_path.exists() {
-        if let Ok(bl_contents) = std::fs::read_to_string(&blocklist_path) {
-            if let Ok(blocklist) = serde_json::from_str::<serde_json::Value>(&bl_contents) {
-                if let Some(entries) = blocklist.get("entries").and_then(|v| v.as_array()) {
-                    if entries.is_empty() {
-                        findings.push(ScanFinding {
-                            severity: "low".to_string(),
-                            category: "reputation".to_string(),
-                            module: "server-reputation".to_string(),
-                            description: "Threat blocklist is empty - no known threats to check against".to_string(),
-                            affected_resource: blocklist_path.to_string_lossy().to_string(),
-                            fix_suggestion: "Update threat intelligence feed from Settings > Threat Intel".to_string(),
-                            fix_action: None,
-                            ai_analysis: None,
-                        });
+        if blocklist_entries.is_empty() {
+            // We loaded successfully but had zero entries (or file had entries
+            // but none with a "name" field). Only warn if the file parses but
+            // the entries array is explicitly empty.
+            if let Ok(bl_contents) = std::fs::read_to_string(&blocklist_path) {
+                if let Ok(blocklist) = serde_json::from_str::<serde_json::Value>(&bl_contents) {
+                    if let Some(entries) = blocklist.get("entries").and_then(|v| v.as_array()) {
+                        if entries.is_empty() {
+                            findings.push(ScanFinding {
+                                severity: "low".to_string(),
+                                category: "reputation".to_string(),
+                                module: "server-reputation".to_string(),
+                                description: "Threat blocklist is empty - no known threats to check against".to_string(),
+                                affected_resource: blocklist_path.to_string_lossy().to_string(),
+                                fix_suggestion: "Update threat intelligence feed from Settings > Threat Intel".to_string(),
+                                fix_action: None,
+                                ai_analysis: None,
+                            });
+                        }
                     }
                 }
             }
@@ -696,6 +837,97 @@ pub fn scan_server_reputation() -> ScanModuleResult {
     }
 }
 
+/// Load blocklist package names from the threat intel feed JSON file.
+/// Returns an empty vec if the file doesn't exist or can't be parsed.
+fn load_blocklist_entries(path: &Path) -> Vec<String> {
+    let contents = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let value: serde_json::Value = match serde_json::from_str(&contents) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    value
+        .get("entries")
+        .and_then(|v| v.as_array())
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|e| {
+                    e.get("name")
+                        .and_then(|n| n.as_str())
+                        .map(String::from)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Check if a string looks like base64 encoding (alphanumeric, +, /, =).
+fn looks_like_base64(s: &str) -> bool {
+    if s.len() < 50 {
+        return false;
+    }
+    let valid_b64_chars = s
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=')
+        .count();
+    // At least 90% of characters should be valid base64
+    valid_b64_chars * 100 / s.len() > 90
+}
+
+/// Find if a package name is suspiciously similar to a known popular package.
+/// Uses a simple edit-distance heuristic: if the name differs by only 1-2 characters
+/// from a popular package but is not identical, flag it.
+fn find_similar_package<'a>(name: &str, popular: &[&'a str]) -> Option<&'a str> {
+    for &known in popular {
+        if name == known {
+            continue;
+        }
+        let dist = simple_edit_distance(name, known);
+        // Flag if distance is 1 or 2 (likely typosquat)
+        if dist > 0 && dist <= 2 {
+            return Some(known);
+        }
+    }
+    None
+}
+
+/// Simple Levenshtein edit distance (bounded to keep runtime reasonable).
+fn simple_edit_distance(a: &str, b: &str) -> usize {
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    let a_len = a_bytes.len();
+    let b_len = b_bytes.len();
+
+    // Quick reject: if length difference > 2, distance > 2
+    if a_len.abs_diff(b_len) > 2 {
+        return 3;
+    }
+
+    // Use a simple two-row DP for Levenshtein distance
+    let mut prev: Vec<usize> = (0..=b_len).collect();
+    let mut curr = vec![0usize; b_len + 1];
+
+    for i in 1..=a_len {
+        curr[0] = i;
+        for j in 1..=b_len {
+            let cost = if a_bytes[i - 1] == b_bytes[j - 1] {
+                0
+            } else {
+                1
+            };
+            curr[j] = (prev[j] + 1)
+                .min(curr[j - 1] + 1)
+                .min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[b_len]
+}
+
 // ---------------------------------------------------------------------------
 // Module 4: System Security Posture
 // ---------------------------------------------------------------------------
@@ -710,7 +942,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
             severity: "critical".to_string(),
             category: "system".to_string(),
             module: "system-posture".to_string(),
-            description: "ClawDefender daemon is not running - no real-time protection active".to_string(),
+            description: "RookBot daemon is not running - no real-time protection active".to_string(),
             affected_resource: "daemon".to_string(),
             fix_suggestion: "Start the daemon from the Dashboard".to_string(),
             fix_action: None,
@@ -719,7 +951,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
     }
 
     // Check config directory exists
-    let config_dir = home.join(".config/clawdefender");
+    let config_dir = home.join(".config/rookbot");
     if !config_dir.exists() {
         findings.push(ScanFinding {
             severity: "medium".to_string(),
@@ -749,7 +981,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
     }
 
     // Check data directory
-    let data_dir = home.join(".local/share/clawdefender");
+    let data_dir = home.join(".local/share/rookbot");
     if !data_dir.exists() {
         findings.push(ScanFinding {
             severity: "low".to_string(),
@@ -791,7 +1023,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
     }
 
     // Check socket file
-    let socket_path = data_dir.join("clawdefender.sock");
+    let socket_path = data_dir.join("rookbot.sock");
     if !socket_path.exists() && daemon_connected {
         findings.push(ScanFinding {
             severity: "low".to_string(),
@@ -868,7 +1100,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
     // Check SLM model availability
     let model_paths = [
         data_dir.join("models"),
-        home.join(".cache/clawdefender/models"),
+        home.join(".cache/rookbot/models"),
     ];
     let slm_available = model_paths.iter().any(|p: &PathBuf| {
         p.exists()
@@ -936,7 +1168,7 @@ pub fn scan_system_posture(daemon_connected: bool) -> ScanModuleResult {
 
 pub fn scan_behavioral_anomalies() -> ScanModuleResult {
     let home = home_dir().unwrap_or_default();
-    let data_dir = home.join(".local/share/clawdefender");
+    let data_dir = home.join(".local/share/rookbot");
     let profiles_dir = data_dir.join("profiles");
     let mut findings = Vec::new();
 

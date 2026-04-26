@@ -13,6 +13,7 @@ import { AiScanResults } from "../components/scanner/AiScanResults";
 import { useAiStatus } from "../hooks/useAiStatus";
 import { useScanStore } from "../stores/scanStore";
 import type { ScanHistoryEntry } from "../stores/scanStore";
+import { Icon, Badge, Btn, Card } from "../components/design";
 
 // ---------------------------------------------------------------------------
 // Quick Scan types (existing rule-based scanner)
@@ -33,6 +34,7 @@ interface ScanFinding {
     rule_resource: string | null;
     rule_action: string | null;
   } | null;
+  ai_analysis?: string;
 }
 
 interface ScanModuleResult {
@@ -54,6 +56,7 @@ interface ScanResult {
   high_count: number;
   medium_count: number;
   low_count: number;
+  scan_type?: string;
 }
 
 const MODULES = [
@@ -72,18 +75,11 @@ const MODULES = [
   { id: "memory-scan", label: "Memory Scan", icon: "cpu", group: "system" },
 ] as const;
 
-const SEVERITY_CONFIG: Record<string, { color: string; bg: string; label: string; order: number }> = {
-  critical: { color: "text-red-400", bg: "bg-red-500/20", label: "CRITICAL", order: 0 },
-  high: { color: "text-orange-400", bg: "bg-orange-500/20", label: "HIGH", order: 1 },
-  medium: { color: "text-yellow-400", bg: "bg-yellow-500/20", label: "MEDIUM", order: 2 },
-  low: { color: "text-blue-400", bg: "bg-blue-500/20", label: "LOW", order: 3 },
-};
-
-const SEVERITY_ICON: Record<string, string> = {
-  critical: "\u{1F534}",
-  high: "\u{1F7E0}",
-  medium: "\u{1F7E1}",
-  low: "\u{1F535}",
+const SEVERITY_CONFIG: Record<string, { color: string; bg: string; label: string; order: number; cssVar: string }> = {
+  critical: { color: "text-red-400", bg: "bg-red-500/20", label: "CRITICAL", order: 0, cssVar: "var(--red)" },
+  high: { color: "text-orange-400", bg: "bg-orange-500/20", label: "HIGH", order: 1, cssVar: "var(--amber)" },
+  medium: { color: "text-yellow-400", bg: "bg-yellow-500/20", label: "MEDIUM", order: 2, cssVar: "var(--amber)" },
+  low: { color: "text-blue-400", bg: "bg-blue-500/20", label: "LOW", order: 3, cssVar: "var(--accent)" },
 };
 
 interface AskClawEntry {
@@ -111,7 +107,7 @@ export function Scanner() {
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
 
-    listen<ScanFindingEvent>("clawdefender://scan-finding", (event) => {
+    listen<ScanFindingEvent>("rookbot://scan-finding", (event) => {
       const p = event.payload;
       if (currentIdRef.current && p.scan_id !== currentIdRef.current) return;
       addQuickScanLiveFinding({
@@ -122,12 +118,12 @@ export function Scanner() {
       });
       addQuickScanActivity({
         type: "finding",
-        message: `${SEVERITY_ICON[p.severity] || ""} ${p.severity.toUpperCase()}: ${p.title}`,
+        message: `${p.severity.toUpperCase()}: ${p.title}`,
         severity: p.severity,
       });
     }).then((fn) => unlisteners.push(fn));
 
-    listen<ScanStageCompleteEvent>("clawdefender://scan-stage-complete", (event) => {
+    listen<ScanStageCompleteEvent>("rookbot://scan-stage-complete", (event) => {
       const p = event.payload;
       if (currentIdRef.current && p.scan_id !== currentIdRef.current) return;
       addQuickScanActivity({
@@ -136,7 +132,7 @@ export function Scanner() {
       });
     }).then((fn) => unlisteners.push(fn));
 
-    listen<ScanCompleteEvent>("clawdefender://scan-complete", (event) => {
+    listen<ScanCompleteEvent>("rookbot://scan-complete", (event) => {
       const p = event.payload;
       if (currentIdRef.current && p.scan_id !== currentIdRef.current) return;
       addQuickScanActivity({
@@ -151,47 +147,64 @@ export function Scanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tabs: { key: typeof activeTab; label: string }[] = [
-    { key: "ai", label: "AI Scan" },
-    { key: "quick", label: "Quick Scan" },
-    { key: "history", label: "Scan History" },
+  const tabs: { key: typeof activeTab; label: string; icon: string }[] = [
+    { key: "ai", label: "AI Scan", icon: "sparkles" },
+    { key: "quick", label: "Security Scan", icon: "shield" },
+    { key: "history", label: "History", icon: "history" },
   ];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Security Scanner</h1>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Header */}
+      <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 10,
+          background: "var(--violet-soft)",
+          border: "1px solid color-mix(in oklch, var(--violet) 30%, transparent)",
+          display: "grid", placeItems: "center",
+        }}>
+          <Icon name="scan" size={18} color="var(--violet)" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--ink-0)" }}>Security Scanner</h1>
+          <div style={{ fontSize: 11.5, color: "var(--ink-2)", marginTop: 2 }}>
+            {cloudActive
+              ? "Findings enriched with AI analysis"
+              : localActive
+                ? "Basic AI analysis available"
+                : "AI analysis unavailable"}
+          </div>
+        </div>
+
+        {/* Tab buttons */}
+        <div style={{ display: "flex", gap: 2, background: "var(--bg-2)", borderRadius: 8, padding: 2 }}>
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 500,
+                background: activeTab === t.key ? "var(--bg-0)" : "transparent",
+                color: activeTab === t.key ? "var(--ink-0)" : "var(--ink-2)",
+                border: activeTab === t.key ? "1px solid var(--line)" : "1px solid transparent",
+                boxShadow: activeTab === t.key ? "0 1px 2px oklch(0 0 0 / 0.04)" : "none",
+                cursor: "pointer",
+              }}
+            >
+              <Icon name={t.icon} size={13} />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* AI enrichment status */}
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
-        {cloudActive
-          ? 'Scan findings will be enriched with AI analysis'
-          : localActive
-            ? 'Basic AI analysis available. Connect Cloud API for deeper scan insights.'
-            : 'AI analysis unavailable. Connect an AI backend in Settings.'}
+      {/* Tab content */}
+      <div style={{ flex: 1, overflow: "auto" }} className="cd-scroll">
+        {activeTab === "ai" && <AiScanTab />}
+        {activeTab === "quick" && <QuickScanTab />}
+        {activeTab === "history" && <ScanHistoryTab />}
       </div>
-
-      {/* Tab bar */}
-      <div className="flex gap-1 border-b border-[var(--color-border)]">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === t.key
-                ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-                : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === "ai" && <AiScanTab />}
-      {activeTab === "quick" && <QuickScanTab />}
-      {activeTab === "history" && <ScanHistoryTab />}
     </div>
   );
 }
@@ -227,13 +240,12 @@ function AiScanTab() {
   }
 
   function handleComplete() {
-    // Add to unified scan history
     if (scanId) {
       addScanHistory({
         scan_id: scanId,
         scan_type: "ai",
         status: "completed",
-        findings_count: 0, // Will be updated when results load
+        findings_count: 0,
         started_at: new Date().toISOString(),
       });
     }
@@ -249,32 +261,26 @@ function AiScanTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ padding: 24 }}>
       {error && (
-        <div className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
+        <div style={{
+          padding: 14, marginBottom: 16, borderRadius: 10,
+          background: "var(--red-soft)", border: "1px solid color-mix(in oklch, var(--red) 30%, transparent)",
+          fontSize: 12.5, color: "var(--red)",
+        }}>
           {error}
         </div>
       )}
 
       {phase === "select" && (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm font-medium text-[var(--color-text-primary)]">
-                AI-Powered Security Scan
-              </span>
-              <span className="px-1.5 py-0.5 rounded text-xs bg-[var(--color-accent)]/20 text-[var(--color-accent)]">
-                AI
-              </span>
-            </div>
-            <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-              Choose a playbook to run an AI-driven security assessment. The AI agent will analyze
-              your MCP configuration, system posture, and security policies using real tools and
-              evidence collection.
-            </p>
-            <PlaybookSelector onStart={handleStartScan} disabled={starting} />
-          </div>
-        </div>
+        <Card title="AI-Powered Security Scan" action={<Badge color="var(--accent)" mono>AI</Badge>}>
+          <p style={{ fontSize: 12.5, color: "var(--ink-2)", marginBottom: 16 }}>
+            Choose a playbook to run an AI-driven security assessment. The AI agent will analyze
+            your MCP configuration, system posture, and security policies using real tools and
+            evidence collection.
+          </p>
+          <PlaybookSelector onStart={handleStartScan} disabled={starting} />
+        </Card>
       )}
 
       {phase === "scanning" && scanId && (
@@ -300,6 +306,8 @@ function QuickScanTab() {
   const [selectedModules, setSelectedModules] = useState<Set<string>>(
     new Set(MODULES.map((m) => m.id))
   );
+  const [cloudEnrich, setCloudEnrich] = useState(false);
+  const { cloudActive } = useAiStatus();
   const activeScan = useScanStore((s) => s.quickScanActiveScan);
   const setActiveScan = useScanStore((s) => s.setQuickScanActiveScan);
   const scanResult = useScanStore((s) => s.quickScanResult);
@@ -309,7 +317,6 @@ function QuickScanTab() {
   const clearQuickScanLiveFeed = useScanStore((s) => s.clearQuickScanLiveFeed);
   const addQuickScanActivity = useScanStore((s) => s.addQuickScanActivity);
 
-  // Live feed from store
   const activity = useScanStore((s) => s.quickScanActivity);
   const liveFindings = useScanStore((s) => s.quickScanLiveFindings);
 
@@ -320,17 +327,45 @@ function QuickScanTab() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activityFeedRef = useRef<HTMLDivElement>(null);
 
-  // Ask Claw state
   const [askClawState, setAskClawState] = useState<Map<string, AskClawEntry>>(new Map());
+  const [enrichingKeys, setEnrichingKeys] = useState<Set<string>>(new Set());
 
-  // Auto-scroll activity feed
+  async function enrichFinding(moduleId: string, findingIndex: number) {
+    const key = `${moduleId}-${findingIndex}`;
+    setEnrichingKeys((prev) => new Set(prev).add(key));
+    try {
+      const analysis = await invoke<string>("enrich_scan_finding", {
+        scanId: scanResult?.scan_id ?? "",
+        moduleId,
+        findingIndex,
+      });
+      // Update scanResult in-place so the AI analysis shows up
+      if (scanResult) {
+        const updated = { ...scanResult, modules: scanResult.modules.map((m) => {
+          if (m.module_id !== moduleId) return m;
+          return { ...m, findings: m.findings.map((f, i) =>
+            i === findingIndex ? { ...f, ai_analysis: analysis } : f
+          )};
+        })};
+        setScanResult(updated);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setEnrichingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
   useEffect(() => {
     if (activityFeedRef.current) {
       activityFeedRef.current.scrollTop = activityFeedRef.current.scrollHeight;
     }
   }, [activity]);
 
-  // Resume polling if there's an active scan (e.g. navigated back)
   useEffect(() => {
     if (activeScan?.status === "running" && !timerRef.current) {
       const startTime = Date.now() - elapsed * 1000;
@@ -363,7 +398,6 @@ function QuickScanTab() {
           findings_count: progress.findings_count,
           started_at: new Date().toISOString(),
         });
-        // Fetch full results
         try {
           const result = await invoke<ScanResult>("get_scan_results", {
             scanId,
@@ -400,6 +434,7 @@ function QuickScanTab() {
         serverCommand: "system-scan",
         modules: Array.from(selectedModules),
         timeout: 300,
+        cloudEnrich: cloudEnrich,
       });
       setQuickScanCurrentId(scanId);
       setActiveScan({
@@ -511,40 +546,7 @@ function QuickScanTab() {
     });
   }
 
-  function statusBadge(status: string) {
-    const styles: Record<string, string> = {
-      running: "bg-[var(--color-accent)]/20 text-[var(--color-accent)]",
-      completed: "bg-[var(--color-success)]/20 text-[var(--color-success)]",
-      failed: "bg-[var(--color-danger)]/20 text-[var(--color-danger)]",
-    };
-    return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || ""}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    );
-  }
-
-  function severityBadge(severity: string) {
-    const config = SEVERITY_CONFIG[severity] || SEVERITY_CONFIG.low;
-    return (
-      <span className={`px-2 py-0.5 rounded text-xs font-bold ${config.color} ${config.bg}`}>
-        {config.label}
-      </span>
-    );
-  }
-
-  function moduleStatusIcon(status: string, findingsCount: number) {
-    if (status === "completed" && findingsCount === 0)
-      return <span className="text-[var(--color-success)] text-lg">&#10003;</span>;
-    if (status === "completed" && findingsCount > 0)
-      return <span className="text-[var(--color-warning)] text-lg">&#9888;</span>;
-    if (status === "skipped")
-      return <span className="text-[var(--color-text-secondary)] text-lg">&#8722;</span>;
-    return <span className="text-[var(--color-text-secondary)] text-lg">&#8226;</span>;
-  }
-
   const isScanning = activeScan?.status === "running";
-
   const sortedFindings = (findings: ScanFinding[]) =>
     [...findings].sort(
       (a, b) =>
@@ -552,251 +554,298 @@ function QuickScanTab() {
         (SEVERITY_CONFIG[b.severity]?.order ?? 99)
     );
 
+  const formatElapsed = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  };
+
   return (
-    <div className="space-y-6">
+    <div style={{ padding: 24 }}>
       {error && (
-        <div className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
+        <div style={{
+          padding: 14, marginBottom: 16, borderRadius: 10,
+          background: "var(--red-soft)", border: "1px solid color-mix(in oklch, var(--red) 30%, transparent)",
+          fontSize: 12.5, color: "var(--red)",
+        }}>
           {error}
         </div>
       )}
 
-      {/* Scan Configuration */}
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Scan Modules</h2>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSelectedModules(new Set(MODULES.map((m) => m.id)))}
-              disabled={isScanning || selectedModules.size === MODULES.length}
-              className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
-            >
-              Full Scan
-            </button>
-            <button
-              onClick={() => {
-                if (selectedModules.size === MODULES.length) setSelectedModules(new Set());
-                else setSelectedModules(new Set(MODULES.map((m) => m.id)));
-              }}
-              disabled={isScanning}
-              className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
-            >
-              {selectedModules.size === MODULES.length ? "Deselect All" : "Select All"}
-            </button>
-          </div>
-        </div>
-
-        {/* MCP Security group */}
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
-            MCP Security
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {MODULES.filter((m) => m.group === "mcp").map((mod) => (
-              <button
-                key={mod.id}
-                onClick={() => toggleModule(mod.id)}
-                disabled={isScanning}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-colors text-left ${
-                  selectedModules.has(mod.id)
-                    ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
-                    : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-secondary)]"
-                }`}
-              >
-                <span
-                  className={`w-4 h-4 rounded border flex items-center justify-center text-xs ${
-                    selectedModules.has(mod.id)
-                      ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
-                      : "border-[var(--color-border)]"
-                  }`}
-                >
-                  {selectedModules.has(mod.id) ? "\u2713" : ""}
-                </span>
-                {mod.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* System Security group */}
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
-            System Security
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {MODULES.filter((m) => m.group === "system").map((mod) => (
-              <button
-                key={mod.id}
-                onClick={() => toggleModule(mod.id)}
-                disabled={isScanning}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-colors text-left ${
-                  selectedModules.has(mod.id)
-                    ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
-                    : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-secondary)]"
-                }`}
-              >
-                <span
-                  className={`w-4 h-4 rounded border flex items-center justify-center text-xs ${
-                    selectedModules.has(mod.id)
-                      ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
-                      : "border-[var(--color-border)]"
-                  }`}
-                >
-                  {selectedModules.has(mod.id) ? "\u2713" : ""}
-                </span>
-                {mod.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button
-          onClick={startScan}
-          disabled={isScanning || selectedModules.size === 0}
-          className="w-full px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-white text-sm font-medium hover:bg-[var(--color-accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {isScanning ? "Scanning..." : `Run Security Scan (${selectedModules.size} modules)`}
-        </button>
-      </div>
-
-      {/* Active Scan Progress with Live Feed */}
-      {activeScan && (
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">
-              {isScanning ? "Scanning..." : "Scan Complete"}
-            </h2>
-            <div className="flex items-center gap-3">
-              {statusBadge(activeScan.status)}
-              <span className="text-sm text-[var(--color-text-secondary)]">{elapsed}s</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-[var(--color-text-secondary)]">
-                {activeScan.current_module
-                  ? `Running: ${activeScan.current_module}`
-                  : isScanning ? "Initializing..." : "Done"}
-              </span>
-              <span>
-                Modules: {activeScan.modules_completed}/{activeScan.modules_total}
-                {" \u00B7 "}
-                {Math.round(activeScan.progress_percent)}%
-              </span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-[var(--color-bg-primary)]">
-              <div
-                className="h-2 rounded-full bg-[var(--color-accent)] transition-all"
-                style={{ width: `${activeScan.progress_percent}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-6 text-sm">
-            <div>
-              <span className="text-[var(--color-text-secondary)]">Elapsed: </span>
-              <span className="font-medium">{elapsed}s</span>
-            </div>
-            <div>
-              <span className="text-[var(--color-text-secondary)]">Findings: </span>
-              <span className={`font-medium ${activeScan.findings_count > 0 ? "text-[var(--color-warning)]" : "text-[var(--color-success)]"}`}>
-                {activeScan.findings_count}
-              </span>
-            </div>
-          </div>
-
-          {/* Live Activity Feed + Live Findings split */}
-          {(activity.length > 0 || liveFindings.length > 0) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Activity Feed */}
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] overflow-hidden">
-                <div className="px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
-                    Activity Feed
-                  </span>
-                </div>
-                <div ref={activityFeedRef} className="max-h-48 overflow-y-auto p-2 space-y-1">
-                  {activity.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`text-xs px-2 py-1 rounded ${
-                        item.type === "finding"
-                          ? "bg-[var(--color-bg-secondary)]"
-                          : item.type === "stage"
-                            ? "text-[var(--color-success)]"
-                            : "text-[var(--color-text-secondary)]"
-                      }`}
-                    >
-                      <span className="opacity-50 mr-1">
-                        {new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      {/* Active scan: 2-column layout */}
+      {activeScan && isScanning ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 0, height: "calc(100vh - 140px)" }}>
+          {/* Left column: stages + feed + findings */}
+          <div style={{ overflowY: "auto", paddingRight: 20 }} className="cd-scroll">
+            {/* Stage cards */}
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(activeScan.modules_total, 5)}, 1fr)`, gap: 6, marginBottom: 18 }}>
+              {MODULES.filter((m) => selectedModules.has(m.id)).slice(0, activeScan.modules_total).map((m, i) => {
+                const isDone = i < activeScan.modules_completed;
+                const isRunning = i === activeScan.modules_completed && activeScan.status === "running";
+                return (
+                  <div key={m.id} style={{
+                    padding: "10px 12px",
+                    background: "var(--bg-1)",
+                    border: `1px solid ${isRunning ? "var(--accent-line)" : "var(--line)"}`,
+                    borderRadius: 8,
+                    position: "relative", overflow: "hidden",
+                  }}>
+                    {isRunning && <div className="cd-shimmer" style={{ position: "absolute", inset: 0 }} />}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      <div style={{
+                        width: 16, height: 16, borderRadius: 999,
+                        background: isDone ? "var(--green-soft)" : isRunning ? "var(--accent-soft)" : "var(--bg-3)",
+                        border: `1px solid ${isDone ? "color-mix(in oklch, var(--green) 40%, transparent)" : isRunning ? "var(--accent-line)" : "var(--line)"}`,
+                        display: "grid", placeItems: "center", fontSize: 9, fontFamily: "var(--font-mono)",
+                        color: isDone ? "var(--green)" : "var(--ink-3)",
+                      }}>
+                        {isDone ? "\u2713" : i + 1}
+                      </div>
+                      <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                        Stage {i + 1}
                       </span>
-                      {item.message}
                     </div>
-                  ))}
-                  {isScanning && (
-                    <div className="text-xs px-2 py-1 text-[var(--color-text-secondary)] animate-pulse">
-                      Scanning...
-                    </div>
-                  )}
+                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-1)" }}>{m.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Investigation feed */}
+            <Card
+              title="Investigation feed"
+              action={<Badge color="var(--violet)" mono><span className="cd-pulse">&#9679;</span> live</Badge>}
+              padded={false}
+            >
+              <div ref={activityFeedRef} className="cd-scroll" style={{ maxHeight: 280, overflowY: "auto", fontFamily: "var(--font-mono)", fontSize: 11.5, padding: "10px 14px" }}>
+                {activity.map((item) => (
+                  <div key={item.id} style={{ display: "flex", gap: 10, padding: "3px 0", color: "var(--ink-2)" }}>
+                    <span style={{ color: "var(--ink-4)", width: 60, fontSize: 10, flexShrink: 0 }}>
+                      {new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    </span>
+                    <span style={{
+                      width: 50, flexShrink: 0,
+                      color: item.type === "finding" ? "var(--amber)" : item.type === "stage" ? "var(--green)" : "var(--accent)",
+                    }}>
+                      [{item.type === "finding" ? "FIND" : item.type === "stage" ? "DONE" : "INFO"}]
+                    </span>
+                    <span style={{ color: item.type === "finding" ? "var(--ink-0)" : "var(--ink-1)" }}>{item.message}</span>
+                  </div>
+                ))}
+                {isScanning && (
+                  <div style={{ display: "flex", gap: 10, padding: "3px 0", alignItems: "center" }}>
+                    <span style={{ color: "var(--ink-4)", width: 60 }}>&mdash;</span>
+                    <span style={{ width: 50, color: "var(--accent)" }}>[TOOL]</span>
+                    <span style={{ color: "var(--ink-2)" }}>
+                      {activeScan.current_module ? `analyzing ${activeScan.current_module}` : "initializing"}
+                    </span>
+                    <span className="cd-caret" />
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Live findings */}
+            {liveFindings.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>Findings</h2>
+                  <Badge color="var(--ink-2)" mono>{liveFindings.length}</Badge>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {liveFindings.map((f) => {
+                    const cfg = SEVERITY_CONFIG[f.severity] || SEVERITY_CONFIG.low;
+                    return (
+                      <div key={f.id} className="cd-slide-in" style={{
+                        display: "flex", alignItems: "stretch", gap: 12, padding: 14,
+                        background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
+                      }}>
+                        <div style={{ width: 3, borderRadius: 2, background: cfg.cssVar }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <Badge color={cfg.cssVar}>{f.severity}</Badge>
+                            <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink-0)" }}>{f.title}</span>
+                          </div>
+                          <div style={{ fontSize: 11.5, color: "var(--ink-2)" }}>{f.stage}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
+            )}
+          </div>
 
-              {/* Live Findings */}
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] overflow-hidden">
-                <div className="px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
-                    Live Findings ({liveFindings.length})
-                  </span>
-                </div>
-                <div className="max-h-48 overflow-y-auto p-2 space-y-1">
-                  {liveFindings.length === 0 ? (
-                    <div className="text-xs text-[var(--color-text-secondary)] px-2 py-1">
-                      {isScanning ? "No findings yet..." : "No findings detected"}
-                    </div>
-                  ) : (
-                    liveFindings.map((f) => {
-                      const cfg = SEVERITY_CONFIG[f.severity] || SEVERITY_CONFIG.low;
-                      return (
-                        <div key={f.id} className="text-xs px-2 py-1.5 rounded bg-[var(--color-bg-secondary)] flex items-start gap-2">
-                          <span className={`px-1.5 py-0.5 rounded font-bold shrink-0 ${cfg.color} ${cfg.bg}`}>
-                            {cfg.label}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{f.title}</div>
-                            <div className="text-[var(--color-text-secondary)] truncate">{f.stage}</div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
+          {/* Side rail */}
+          <aside style={{ borderLeft: "1px solid var(--line)", padding: 18, background: "var(--bg-1)", display: "grid", alignContent: "start", gap: 14 }}>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Elapsed</div>
+              <div style={{ fontSize: 22, fontFamily: "var(--font-mono)", marginTop: 2 }}>{formatElapsed(elapsed)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Modules</div>
+              <div style={{ fontSize: 13, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                {activeScan.modules_completed} / {activeScan.modules_total}
+              </div>
+              <div style={{ height: 4, background: "var(--bg-3)", borderRadius: 2, marginTop: 6, overflow: "hidden" }}>
+                <div style={{ width: `${activeScan.progress_percent}%`, height: "100%", background: "var(--accent)", transition: "width 0.3s" }} />
               </div>
             </div>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Findings</div>
+              <div style={{ fontSize: 13, fontFamily: "var(--font-mono)", marginTop: 2, color: activeScan.findings_count > 0 ? "var(--amber)" : "var(--green)" }}>
+                {activeScan.findings_count}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Current</div>
+              <div style={{ fontSize: 12, marginTop: 2, color: "var(--ink-1)" }}>
+                {activeScan.current_module || "Initializing..."}
+              </div>
+            </div>
+            <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 14 }}>
+              <Btn kind="ghost" icon="x" onClick={() => {
+                if (timerRef.current) clearInterval(timerRef.current);
+                timerRef.current = null;
+                setActiveScan({ ...activeScan, status: "completed" as const });
+              }}>
+                Stop scan
+              </Btn>
+            </div>
+          </aside>
+        </div>
+      ) : (
+        /* Non-scanning state */
+        <div style={{ display: "grid", gap: 16 }}>
+          {/* Module selection */}
+          <Card title="Scan Modules" action={
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn kind="ghost" size="sm" onClick={() => setSelectedModules(new Set(MODULES.map((m) => m.id)))} disabled={isScanning || selectedModules.size === MODULES.length}>
+                Select all
+              </Btn>
+              <Btn kind="ghost" size="sm" onClick={() => setSelectedModules(new Set())} disabled={isScanning || selectedModules.size === 0}>
+                Clear
+              </Btn>
+            </div>
+          }>
+            {/* MCP Security */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>MCP Security</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {MODULES.filter((m) => m.group === "mcp").map((mod) => (
+                  <button key={mod.id} onClick={() => toggleModule(mod.id)} disabled={isScanning} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500,
+                    background: selectedModules.has(mod.id) ? "var(--accent-soft)" : "var(--bg-2)",
+                    border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent-line)" : "var(--line)"}`,
+                    color: selectedModules.has(mod.id) ? "var(--accent)" : "var(--ink-2)",
+                    cursor: "pointer", textAlign: "left",
+                  }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: 4, border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent)" : "var(--line)"}`,
+                      background: selectedModules.has(mod.id) ? "var(--accent)" : "transparent",
+                      display: "grid", placeItems: "center", fontSize: 10, color: "white",
+                    }}>
+                      {selectedModules.has(mod.id) && "\u2713"}
+                    </div>
+                    {mod.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* System Security */}
+            <div>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>System Security</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {MODULES.filter((m) => m.group === "system").map((mod) => (
+                  <button key={mod.id} onClick={() => toggleModule(mod.id)} disabled={isScanning} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500,
+                    background: selectedModules.has(mod.id) ? "var(--accent-soft)" : "var(--bg-2)",
+                    border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent-line)" : "var(--line)"}`,
+                    color: selectedModules.has(mod.id) ? "var(--accent)" : "var(--ink-2)",
+                    cursor: "pointer", textAlign: "left",
+                  }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: 4, border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent)" : "var(--line)"}`,
+                      background: selectedModules.has(mod.id) ? "var(--accent)" : "transparent",
+                      display: "grid", placeItems: "center", fontSize: 10, color: "white",
+                    }}>
+                      {selectedModules.has(mod.id) && "\u2713"}
+                    </div>
+                    {mod.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cloud enrichment toggle */}
+            {cloudActive && (
+              <div style={{
+                marginTop: 16, padding: "10px 14px", borderRadius: 8,
+                background: cloudEnrich ? "color-mix(in oklch, var(--violet) 8%, transparent)" : "var(--bg-2)",
+                border: `1px solid ${cloudEnrich ? "color-mix(in oklch, var(--violet) 30%, transparent)" : "var(--line)"}`,
+                display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+              }} onClick={() => setCloudEnrich(!cloudEnrich)}>
+                <div style={{
+                  width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                  border: `1px solid ${cloudEnrich ? "var(--violet)" : "var(--line)"}`,
+                  background: cloudEnrich ? "var(--violet)" : "transparent",
+                  display: "grid", placeItems: "center", fontSize: 11, color: "white",
+                }}>
+                  {cloudEnrich && "\u2713"}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: cloudEnrich ? "var(--violet)" : "var(--ink-1)" }}>
+                    <Icon name="sparkles" size={12} color={cloudEnrich ? "var(--violet)" : "var(--ink-2)"} />{" "}
+                    Enrich with Cloud AI
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 }}>
+                    Cloud AI will analyze critical &amp; high severity findings for false-positive assessment
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 16 }}>
+              <Btn
+                kind="primary"
+                icon="play"
+                onClick={startScan}
+                disabled={isScanning || selectedModules.size === 0}
+                style={{ width: "100%", justifyContent: "center" }}
+              >
+                {isScanning ? "Scanning..." : `Run Security Scan (${selectedModules.size} modules)`}
+              </Btn>
+            </div>
+          </Card>
+
+          {/* Completed scan results */}
+          {scanResult && (
+            <QuickScanResults
+              scanResult={scanResult}
+              expandedModules={expandedModules}
+              toggleExpanded={toggleExpanded}
+              sortedFindings={sortedFindings}
+              applyFix={applyFix}
+              fixingAction={fixingAction}
+              askClawState={askClawState}
+              toggleAskClaw={toggleAskClaw}
+              askClawAboutFinding={askClawAboutFinding}
+              setAskClawState={setAskClawState}
+              onEnrichFinding={enrichFinding}
+              enrichingKeys={enrichingKeys}
+            />
           )}
         </div>
       )}
-
-      {/* Scan Results */}
-      {scanResult && <QuickScanResults
-        scanResult={scanResult}
-        expandedModules={expandedModules}
-        toggleExpanded={toggleExpanded}
-        sortedFindings={sortedFindings}
-        severityBadge={severityBadge}
-        moduleStatusIcon={moduleStatusIcon}
-        applyFix={applyFix}
-        fixingAction={fixingAction}
-        askClawState={askClawState}
-        toggleAskClaw={toggleAskClaw}
-        askClawAboutFinding={askClawAboutFinding}
-        setAskClawState={setAskClawState}
-      />}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Quick Scan Results (shared between QuickScanTab and ScanHistoryTab)
+// Quick Scan Results
 // ---------------------------------------------------------------------------
 
 function QuickScanResults({
@@ -804,172 +853,183 @@ function QuickScanResults({
   expandedModules,
   toggleExpanded,
   sortedFindings,
-  severityBadge,
-  moduleStatusIcon,
   applyFix,
   fixingAction,
   askClawState,
   toggleAskClaw,
   askClawAboutFinding,
   setAskClawState,
+  onEnrichFinding,
+  enrichingKeys,
 }: {
   scanResult: ScanResult;
   expandedModules: Set<string>;
   toggleExpanded: (id: string) => void;
   sortedFindings: (findings: ScanFinding[]) => ScanFinding[];
-  severityBadge: (severity: string) => React.ReactNode;
-  moduleStatusIcon: (status: string, count: number) => React.ReactNode;
   applyFix: (finding: ScanFinding) => void;
   fixingAction: string | null;
   askClawState: Map<string, AskClawEntry>;
   toggleAskClaw: (key: string) => void;
   askClawAboutFinding: (key: string, finding: ScanFinding, followUp?: string) => void;
   setAskClawState: React.Dispatch<React.SetStateAction<Map<string, AskClawEntry>>>;
+  onEnrichFinding?: (moduleId: string, findingIndex: number) => void;
+  enrichingKeys?: Set<string>;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Results</h2>
-        <div className="flex items-center gap-3 text-sm">
-          {scanResult.critical_count > 0 && (
-            <span className="text-red-400 font-medium">{scanResult.critical_count} Critical</span>
-          )}
-          {scanResult.high_count > 0 && (
-            <span className="text-orange-400 font-medium">{scanResult.high_count} High</span>
-          )}
-          {scanResult.medium_count > 0 && (
-            <span className="text-yellow-400 font-medium">{scanResult.medium_count} Medium</span>
-          )}
-          {scanResult.low_count > 0 && (
-            <span className="text-blue-400 font-medium">{scanResult.low_count} Low</span>
-          )}
-          <span className="text-xs text-[var(--color-text-secondary)]">
-            {scanResult.completed_at ? new Date(scanResult.completed_at).toLocaleString() : ""}
-          </span>
-        </div>
+    <div style={{ display: "grid", gap: 14 }}>
+      {/* Summary header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>Results</h2>
+        <Badge color="var(--ink-2)" mono>{scanResult.total_findings} findings</Badge>
+        {scanResult.total_findings > 0 && (
+          <Btn size="sm" kind="accent" style={{ marginLeft: "auto" }} icon="check">
+            Apply all safe fixes
+          </Btn>
+        )}
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-3">
-        <SeverityCard label="Critical" count={scanResult.critical_count} color="red" />
-        <SeverityCard label="High" count={scanResult.high_count} color="orange" />
-        <SeverityCard label="Medium" count={scanResult.medium_count} color="yellow" />
-        <SeverityCard label="Low" count={scanResult.low_count} color="blue" />
+      {/* Severity summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        <SeverityCard label="Critical" count={scanResult.critical_count} color="var(--red)" />
+        <SeverityCard label="High" count={scanResult.high_count} color="var(--amber)" />
+        <SeverityCard label="Medium" count={scanResult.medium_count} color="var(--amber)" />
+        <SeverityCard label="Low" count={scanResult.low_count} color="var(--accent)" />
       </div>
 
-      {/* Module Results */}
-      <div className="space-y-2">
-        {scanResult.modules.map((mod) => (
-          <div
-            key={mod.module_id}
-            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] overflow-hidden"
-          >
-            <button
-              onClick={() => toggleExpanded(mod.module_id)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-tertiary)] transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                {moduleStatusIcon(mod.status, mod.findings.length)}
-                <span className="font-medium text-sm">{mod.module_name}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-[var(--color-text-secondary)]">{mod.summary}</span>
-                {mod.findings.length > 0 && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      mod.findings.some((f) => f.severity === "critical")
-                        ? "bg-red-500/20 text-red-400"
-                        : mod.findings.some((f) => f.severity === "high")
-                          ? "bg-orange-500/20 text-orange-400"
-                          : "bg-yellow-500/20 text-yellow-400"
-                    }`}
-                  >
-                    {mod.findings.length}
-                  </span>
-                )}
-                <span className={`text-[var(--color-text-secondary)] transition-transform ${expandedModules.has(mod.module_id) ? "rotate-180" : ""}`}>
-                  &#9660;
-                </span>
-              </div>
-            </button>
+      {/* Module results */}
+      {scanResult.modules.map((mod) => (
+        <div key={mod.module_id} style={{
+          background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden",
+        }}>
+          <button onClick={() => toggleExpanded(mod.module_id)} style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "12px 16px", cursor: "pointer", background: "transparent", border: "none",
+            color: "var(--ink-0)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{
+                color: mod.status === "completed" && mod.findings.length === 0 ? "var(--green)" : mod.findings.length > 0 ? "var(--amber)" : "var(--ink-3)",
+                fontSize: 16,
+              }}>
+                {mod.status === "completed" && mod.findings.length === 0 ? "\u2713" : mod.findings.length > 0 ? "\u26A0" : "\u2022"}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{mod.module_name}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{mod.summary}</span>
+              {mod.findings.length > 0 && <Badge color="var(--amber)" mono>{mod.findings.length}</Badge>}
+              <span style={{
+                color: "var(--ink-3)", transition: "transform 0.15s",
+                transform: expandedModules.has(mod.module_id) ? "rotate(180deg)" : "none",
+                display: "inline-block",
+              }}>
+                &#9660;
+              </span>
+            </div>
+          </button>
 
-            {expandedModules.has(mod.module_id) && (
-              <div className="border-t border-[var(--color-border)]">
-                {mod.findings.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-[var(--color-success)]">No issues found</div>
-                ) : (
-                  <div className="divide-y divide-[var(--color-border)]">
-                    {sortedFindings(mod.findings).map((finding, idx) => {
-                      const findingKey = `${mod.module_id}-${idx}`;
-                      const clawEntry = askClawState.get(findingKey);
-                      return (
-                        <div key={idx} className="px-4 py-3 space-y-2">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                              {severityBadge(finding.severity)}
-                              <span className="px-1.5 py-0.5 rounded text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]">
-                                {finding.category}
-                              </span>
-                              <span className="text-sm font-medium truncate">{finding.description}</span>
-                            </div>
-                            <button
-                              onClick={() => toggleAskClaw(findingKey)}
-                              className={`shrink-0 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                                clawEntry
-                                  ? "bg-purple-500/20 text-purple-400"
-                                  : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-purple-400 hover:bg-purple-500/10"
-                              }`}
-                            >
-                              Ask Claw
-                            </button>
+          {expandedModules.has(mod.module_id) && (
+            <div style={{ borderTop: "1px solid var(--line)" }}>
+              {mod.findings.length === 0 ? (
+                <div style={{ padding: "14px 16px", fontSize: 12.5, color: "var(--green)" }}>No issues found</div>
+              ) : (
+                sortedFindings(mod.findings).map((finding, idx) => {
+                  const findingKey = `${mod.module_id}-${idx}`;
+                  const clawEntry = askClawState.get(findingKey);
+                  const cfg = SEVERITY_CONFIG[finding.severity] || SEVERITY_CONFIG.low;
+                  return (
+                    <div key={idx} style={{ padding: "14px 16px", borderTop: idx > 0 ? "1px solid var(--line-soft)" : "none" }}>
+                      <div style={{ display: "flex", alignItems: "stretch", gap: 12 }}>
+                        <div style={{ width: 3, borderRadius: 2, background: cfg.cssVar, flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            <Badge color={cfg.cssVar}>{finding.severity}</Badge>
+                            <span style={{ fontSize: 10.5, padding: "2px 6px", background: "var(--bg-2)", borderRadius: 3, color: "var(--ink-2)" }}>{finding.category}</span>
+                            <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink-0)" }}>{finding.description}</span>
                           </div>
-                          <div className="pl-0 space-y-1">
-                            <div className="text-xs text-[var(--color-text-secondary)]">
-                              <span className="font-medium">Resource:</span>{" "}
-                              <span className="font-mono">{finding.affected_resource}</span>
-                            </div>
-                            <div className="text-xs text-[var(--color-text-secondary)]">
-                              <span className="font-medium">Fix:</span> {finding.fix_suggestion}
-                            </div>
-                            {finding.fix_action && (
-                              <button
+                          <div style={{ fontSize: 11, color: "var(--ink-2)", marginBottom: 4 }}>
+                            <span style={{ fontWeight: 500 }}>Resource:</span>{" "}
+                            <span style={{ fontFamily: "var(--font-mono)" }}>{finding.affected_resource}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
+                            <span style={{ fontWeight: 500 }}>Fix:</span> {finding.fix_suggestion}
+                          </div>
+                          {finding.fix_action && (
+                            <div style={{ marginTop: 8 }}>
+                              <Btn
+                                size="sm"
+                                kind="accent"
+                                icon="check"
                                 onClick={() => applyFix(finding)}
                                 disabled={fixingAction === `${finding.fix_action.action_type}:${finding.affected_resource}`}
-                                className="mt-1 px-3 py-1 rounded text-xs font-medium bg-[var(--color-accent)]/20 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/30 disabled:opacity-50 transition-colors"
                               >
                                 {fixingAction === `${finding.fix_action.action_type}:${finding.affected_resource}`
                                   ? "Applying..."
                                   : finding.fix_action.action_type === "wrap_server" ? "Wrap Server" : "Apply Fix"}
-                              </button>
-                            )}
-                          </div>
+                              </Btn>
+                            </div>
+                          )}
 
-                          {/* Ask Claw inline panel */}
-                          {clawEntry && (
-                            <AskClawPanel
-                              findingKey={findingKey}
-                              finding={finding}
-                              entry={clawEntry}
-                              onAnalyze={askClawAboutFinding}
-                              setAskClawState={setAskClawState}
-                            />
+                          {/* AI Analysis display */}
+                          {finding.ai_analysis && (
+                            <div style={{
+                              marginTop: 10, padding: "10px 12px", borderRadius: 8,
+                              background: "color-mix(in oklch, var(--violet) 6%, transparent)",
+                              border: "1px solid color-mix(in oklch, var(--violet) 20%, transparent)",
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                                <Icon name="sparkles" size={11} color="var(--violet)" />
+                                <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--violet)" }}>AI Analysis</span>
+                              </div>
+                              <div style={{ fontSize: 11.5, color: "var(--ink-1)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                                {finding.ai_analysis}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* On-demand AI enrichment button for critical/high findings */}
+                          {!finding.ai_analysis && (finding.severity === "critical" || finding.severity === "high") && onEnrichFinding && (
+                            <div style={{ marginTop: 8 }}>
+                              <Btn
+                                size="sm"
+                                kind="soft"
+                                icon="sparkles"
+                                onClick={() => onEnrichFinding(mod.module_id, idx)}
+                                disabled={enrichingKeys?.has(`${mod.module_id}-${idx}`)}
+                              >
+                                {enrichingKeys?.has(`${mod.module_id}-${idx}`) ? "Analyzing..." : "Get AI Analysis"}
+                              </Btn>
+                            </div>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+                        <Btn size="sm" kind={clawEntry ? "accent" : "soft"} onClick={() => toggleAskClaw(findingKey)}>
+                          Ask Rook
+                        </Btn>
+                      </div>
+
+                      {clawEntry && (
+                        <AskClawPanel
+                          findingKey={findingKey}
+                          finding={finding}
+                          entry={clawEntry}
+                          onAnalyze={askClawAboutFinding}
+                          setAskClawState={setAskClawState}
+                        />
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Ask Claw inline panel (reusable)
+// Ask Rook inline panel (reusable)
 // ---------------------------------------------------------------------------
 
 function AskClawPanel({
@@ -986,31 +1046,31 @@ function AskClawPanel({
   setAskClawState: React.Dispatch<React.SetStateAction<Map<string, AskClawEntry>>>;
 }) {
   return (
-    <div className="mt-2 rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold text-purple-400">Ask Claw AI</span>
-        {entry.loading && (
-          <span className="text-xs text-purple-400/60 animate-pulse">Analyzing...</span>
-        )}
+    <div style={{
+      marginTop: 10, marginLeft: 15, padding: 12, borderRadius: 10,
+      background: "var(--accent-soft)", border: "1px solid var(--accent-line)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <Icon name="sparkles" size={13} color="var(--accent)" />
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)" }}>Ask Rook AI</span>
+        {entry.loading && <span style={{ fontSize: 11, color: "var(--ink-3)" }} className="cd-pulse">Analyzing...</span>}
       </div>
 
       {!entry.response && !entry.loading && (
-        <button
-          onClick={() => onAnalyze(findingKey, finding)}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
-        >
-          Analyze this finding
-        </button>
+        <Btn size="sm" kind="primary" onClick={() => onAnalyze(findingKey, finding)}>Analyze this finding</Btn>
       )}
 
       {entry.response && (
-        <div className="text-xs text-[var(--color-text-primary)] whitespace-pre-wrap leading-relaxed bg-[var(--color-bg-secondary)] rounded p-2">
+        <div style={{
+          fontSize: 12, color: "var(--ink-0)", whiteSpace: "pre-wrap", lineHeight: 1.6,
+          background: "var(--bg-1)", borderRadius: 8, padding: 10, marginBottom: 8,
+        }}>
           {entry.response}
         </div>
       )}
 
       {entry.response && (
-        <div className="flex gap-2">
+        <div style={{ display: "flex", gap: 6 }}>
           <input
             type="text"
             placeholder="Ask a follow-up question..."
@@ -1030,17 +1090,23 @@ function AskClawPanel({
               }
             }}
             disabled={entry.loading}
-            className="flex-1 px-2 py-1 rounded text-xs bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] disabled:opacity-50"
+            style={{
+              flex: 1, padding: "6px 10px", borderRadius: 6, fontSize: 12,
+              background: "var(--bg-0)", border: "1px solid var(--line)",
+              color: "var(--ink-0)", outline: "none",
+            }}
           />
-          <button
+          <Btn
+            size="sm"
+            kind="primary"
+            icon="send"
             onClick={() => {
               if (entry.followUp.trim()) onAnalyze(findingKey, finding, entry.followUp.trim());
             }}
             disabled={entry.loading || !entry.followUp.trim()}
-            className="px-3 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 transition-colors"
           >
             Send
-          </button>
+          </Btn>
         </div>
       )}
     </div>
@@ -1081,7 +1147,6 @@ function ScanHistoryTab() {
         );
         setExpandedModules(withFindings);
       } else {
-        // AI scan results use a different structure; just link back
         setError("View AI scan results from the AI Scan tab.");
       }
     } catch (e) {
@@ -1168,25 +1233,6 @@ function ScanHistoryTab() {
     });
   }
 
-  function severityBadge(severity: string) {
-    const config = SEVERITY_CONFIG[severity] || SEVERITY_CONFIG.low;
-    return (
-      <span className={`px-2 py-0.5 rounded text-xs font-bold ${config.color} ${config.bg}`}>
-        {config.label}
-      </span>
-    );
-  }
-
-  function moduleStatusIcon(status: string, findingsCount: number) {
-    if (status === "completed" && findingsCount === 0)
-      return <span className="text-[var(--color-success)] text-lg">&#10003;</span>;
-    if (status === "completed" && findingsCount > 0)
-      return <span className="text-[var(--color-warning)] text-lg">&#9888;</span>;
-    if (status === "skipped")
-      return <span className="text-[var(--color-text-secondary)] text-lg">&#8722;</span>;
-    return <span className="text-[var(--color-text-secondary)] text-lg">&#8226;</span>;
-  }
-
   const sortedFindings = (findings: ScanFinding[]) =>
     [...findings].sort(
       (a, b) =>
@@ -1194,86 +1240,70 @@ function ScanHistoryTab() {
         (SEVERITY_CONFIG[b.severity]?.order ?? 99)
     );
 
-  function statusBadge(status: string) {
-    const styles: Record<string, string> = {
-      running: "bg-[var(--color-accent)]/20 text-[var(--color-accent)]",
-      completed: "bg-[var(--color-success)]/20 text-[var(--color-success)]",
-      failed: "bg-[var(--color-danger)]/20 text-[var(--color-danger)]",
-    };
-    return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || ""}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Scan History</h2>
+    <div style={{ padding: 24 }}>
+      <h2 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 600, color: "var(--ink-0)" }}>Scan History</h2>
 
       {scanHistory.length === 0 ? (
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-6 text-center">
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            No scans recorded yet. Run a Quick Scan or AI Scan to see history here.
-          </p>
-        </div>
+        <Card>
+          <div style={{ textAlign: "center", padding: "24px 0" }}>
+            <Icon name="history" size={28} color="var(--ink-3)" />
+            <p style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 10 }}>
+              No scans recorded yet. Run a Security Scan or AI Scan to see history here.
+            </p>
+          </div>
+        </Card>
       ) : (
-        <div className="space-y-2">
+        <div style={{ display: "grid", gap: 8 }}>
           {scanHistory.map((entry) => (
             <div key={entry.scan_id}>
-              <button
-                onClick={() => selectEntry(entry)}
-                className={`w-full rounded-lg border bg-[var(--color-bg-secondary)] px-4 py-3 text-left transition-colors hover:bg-[var(--color-bg-tertiary)] ${
-                  selectedEntry?.scan_id === entry.scan_id
-                    ? "border-[var(--color-accent)]"
-                    : "border-[var(--color-border)]"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {statusBadge(entry.status)}
-                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                      entry.scan_type === "ai"
-                        ? "bg-[var(--color-accent)]/20 text-[var(--color-accent)]"
-                        : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
-                    }`}>
-                      {entry.scan_type === "ai" ? "AI" : "Quick"}
-                    </span>
-                    <span className="text-sm font-mono text-[var(--color-text-primary)]">
+              <button onClick={() => selectEntry(entry)} style={{
+                width: "100%", textAlign: "left", cursor: "pointer",
+                padding: "12px 16px", borderRadius: 10,
+                background: "var(--bg-1)",
+                border: `1px solid ${selectedEntry?.scan_id === entry.scan_id ? "var(--accent-line)" : "var(--line)"}`,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Badge color={entry.status === "completed" ? "var(--green)" : entry.status === "failed" ? "var(--red)" : "var(--accent)"}>
+                      {entry.status}
+                    </Badge>
+                    <Badge color={entry.scan_type === "ai" ? "var(--accent)" : "var(--ink-2)"} mono>
+                      {entry.scan_type === "ai" ? "AI" : "Security"}
+                    </Badge>
+                    <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--ink-1)" }}>
                       {entry.scan_id.slice(0, 16)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-[var(--color-text-secondary)]">
-                    <span className={entry.findings_count > 0 ? "text-[var(--color-warning)] font-medium" : ""}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
+                    <span style={{ color: entry.findings_count > 0 ? "var(--amber)" : "var(--ink-2)", fontWeight: entry.findings_count > 0 ? 500 : 400 }}>
                       {entry.findings_count} findings
                     </span>
-                    <span>{new Date(entry.started_at).toLocaleString()}</span>
-                    <span className={`transition-transform ${selectedEntry?.scan_id === entry.scan_id ? "rotate-180" : ""}`}>
+                    <span style={{ color: "var(--ink-3)", fontSize: 11 }}>{new Date(entry.started_at).toLocaleString()}</span>
+                    <span style={{
+                      color: "var(--ink-3)", transition: "transform 0.15s", display: "inline-block",
+                      transform: selectedEntry?.scan_id === entry.scan_id ? "rotate(180deg)" : "none",
+                    }}>
                       &#9660;
                     </span>
                   </div>
                 </div>
               </button>
 
-              {/* Expanded results */}
               {selectedEntry?.scan_id === entry.scan_id && (
-                <div className="mt-1 ml-4 border-l-2 border-[var(--color-accent)]/30 pl-4 pb-2">
+                <div style={{ marginTop: 4, marginLeft: 16, paddingLeft: 16, borderLeft: "2px solid var(--accent-line)" }}>
                   {loading && (
-                    <div className="py-4 text-sm text-[var(--color-text-secondary)] animate-pulse">
+                    <div style={{ padding: "16px 0", fontSize: 12.5, color: "var(--ink-2)" }} className="cd-pulse">
                       Loading scan results...
                     </div>
                   )}
-                  {error && (
-                    <div className="py-3 text-sm text-[var(--color-text-secondary)]">{error}</div>
-                  )}
+                  {error && <div style={{ padding: "12px 0", fontSize: 12.5, color: "var(--ink-2)" }}>{error}</div>}
                   {loadedResult && (
                     <QuickScanResults
                       scanResult={loadedResult}
                       expandedModules={expandedModules}
                       toggleExpanded={toggleExpanded}
                       sortedFindings={sortedFindings}
-                      severityBadge={severityBadge}
-                      moduleStatusIcon={moduleStatusIcon}
                       applyFix={applyFix}
                       fixingAction={fixingAction}
                       askClawState={askClawState}
@@ -1297,16 +1327,14 @@ function ScanHistoryTab() {
 // ---------------------------------------------------------------------------
 
 function SeverityCard({ label, count, color }: { label: string; count: number; color: string }) {
-  const colorMap: Record<string, string> = {
-    red: "text-red-400 border-red-500/30 bg-red-500/5",
-    orange: "text-orange-400 border-orange-500/30 bg-orange-500/5",
-    yellow: "text-yellow-400 border-yellow-500/30 bg-yellow-500/5",
-    blue: "text-blue-400 border-blue-500/30 bg-blue-500/5",
-  };
   return (
-    <div className={`rounded-lg border p-3 text-center ${colorMap[color] || ""}`}>
-      <div className="text-2xl font-bold">{count}</div>
-      <div className="text-xs opacity-80">{label}</div>
+    <div style={{
+      borderRadius: 10, padding: 14, textAlign: "center",
+      background: `color-mix(in oklch, ${color} 8%, transparent)`,
+      border: `1px solid color-mix(in oklch, ${color} 20%, transparent)`,
+    }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: "var(--font-mono)" }}>{count}</div>
+      <div style={{ fontSize: 10.5, color: "var(--ink-2)", marginTop: 2 }}>{label}</div>
     </div>
   );
 }

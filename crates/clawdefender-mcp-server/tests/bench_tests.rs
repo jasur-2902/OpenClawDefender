@@ -1,4 +1,4 @@
-//! Performance benchmark tests for the ClawDefender MCP server.
+//! Performance benchmark tests for the RookBot MCP server.
 //!
 //! Uses std::time::Instant for simple, dependency-free benchmarking.
 //! Targets:

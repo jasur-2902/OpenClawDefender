@@ -2,8 +2,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-shell";
-import type { AppSettings, NetworkExtensionStatus, NetworkSettings, AiStatus } from "../types";
+import { SectionTitle, Card, Badge, Btn, Icon, Dot } from "../components/design";
+import type {
+  AppSettings,
+  NetworkExtensionStatus,
+  NetworkSettings,
+  AiStatus,
+  FeatureRoutingEntry,
+  FeatureRoutingResponse,
+  FeatureBackendPreference,
+} from "../types";
+
+/* ---------- local types ---------- */
 
 interface SlmStatus {
   loaded: boolean;
@@ -99,11 +109,8 @@ interface CloudUsageStats {
   estimated_cost_usd: number;
 }
 
-// --- Helper functions ---
+/* ---------- helpers ---------- */
 
-/** Extract the status type string from DownloadStatus.
- *  Rust's serde serializes unit variants as strings ("downloading")
- *  but Failed(String) as an object: {"failed":"msg"}.  */
 function getStatusType(status: string | { failed: string } | unknown): string {
   if (typeof status === "string") return status;
   if (typeof status === "object" && status !== null) {
@@ -121,14 +128,6 @@ function formatBytes(bytes: number): string {
 
 function formatSpeed(bytesPerSec: number): string {
   return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
-}
-
-function QualityStars({ rating }: { rating: number }) {
-  return (
-    <span className="text-[var(--color-warning)]">
-      {Array.from({ length: 5 }, (_, i) => (i < rating ? "\u2605" : "\u2606")).join("")}
-    </span>
-  );
 }
 
 const defaultSettings: AppSettings = {
@@ -156,6 +155,58 @@ const defaultNetworkSettings: NetworkSettings = {
   log_dns: true,
 };
 
+/* ---------- small inline components ---------- */
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        width: 44,
+        height: 24,
+        borderRadius: 12,
+        background: checked ? "var(--accent)" : "var(--bg-3)",
+        border: "1px solid " + (checked ? "var(--accent)" : "var(--line)"),
+        cursor: "pointer",
+        transition: "background 0.2s, border-color 0.2s",
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          display: "inline-block",
+          width: 16,
+          height: 16,
+          borderRadius: 8,
+          background: "white",
+          transition: "transform 0.2s",
+          transform: checked ? "translateX(22px)" : "translateX(4px)",
+        }}
+      />
+    </button>
+  );
+}
+
+/* ============================================================
+   SETTINGS PAGE
+   ============================================================ */
+
 export function Settings() {
   const location = useLocation();
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
@@ -164,14 +215,14 @@ export function Settings() {
   const [netSettings, setNetSettings] = useState<NetworkSettings>(defaultNetworkSettings);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const [slmStatus, setSlmStatus] = useState<SlmStatus | null>(null);
+  const [, setSlmStatus] = useState<SlmStatus | null>(null);
 
-  // --- Model management state ---
+  // Model management state
   const [catalog, setCatalog] = useState<CatalogModel[]>([]);
   const [installedModels, setInstalledModels] = useState<InstalledModelInfo[]>([]);
   const [activeModel, setActiveModel] = useState<ActiveModelInfo | null>(null);
   const [systemCaps, setSystemCaps] = useState<SystemCapabilities | null>(null);
-  const [downloads, setDownloads] = useState<Record<string, string>>({}); // modelId -> taskId
+  const [downloads, setDownloads] = useState<Record<string, string>>({});
   const [downloadProgress, setDownloadProgress] = useState<Record<string, DownloadProgress>>({});
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
@@ -184,8 +235,6 @@ export function Settings() {
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
 
   // Cloud API state
-  const [cloudSetupExpanded, setCloudSetupExpanded] = useState(false);
-  const [modelCatalogExpanded, setModelCatalogExpanded] = useState(false);
   const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedCloudModel, setSelectedCloudModel] = useState("");
@@ -195,9 +244,17 @@ export function Settings() {
   const [cloudTesting, setCloudTesting] = useState(false);
   const [cloudTestResult, setCloudTestResult] = useState<ConnectionTestResult | null>(null);
   const [cloudUsage, setCloudUsage] = useState<CloudUsageStats | null>(null);
+  const [cloudBudget, setCloudBudget] = useState(20);
+
+  // Feature routing state
+  const [featureRouting, setFeatureRouting] = useState<FeatureRoutingEntry[]>([]);
+  const [featureRoutingHasOverrides, setFeatureRoutingHasOverrides] = useState(false);
+  const [featureRoutingExpanded, setFeatureRoutingExpanded] = useState(false);
 
   const downloadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollFailCountRef = useRef<Record<string, number>>({});
+
+  /* ---- loaders ---- */
 
   const loadSlmStatus = useCallback(async () => {
     try {
@@ -249,11 +306,21 @@ export function Settings() {
     }
   }, []);
 
+  const loadFeatureRouting = useCallback(async () => {
+    try {
+      const r = await invoke<FeatureRoutingResponse>("get_feature_routing");
+      setFeatureRouting(r.features);
+      setFeatureRoutingHasOverrides(r.has_overrides);
+    } catch {
+      // Feature routing not available
+    }
+  }, []);
+
   const loadSettings = useCallback(async () => {
     try {
       const s = await invoke<AppSettings>("get_settings");
       setSettings(s);
-    } catch (_err) {
+    } catch {
       // Use defaults
     } finally {
       setLoading(false);
@@ -268,7 +335,7 @@ export function Settings() {
       ]);
       setNetStatus(status);
       setNetSettings(ns);
-    } catch (_err) {
+    } catch {
       // Network extension may not be available
     }
   }, []);
@@ -280,36 +347,28 @@ export function Settings() {
     loadModelData();
     loadAiStatus();
     loadCloudProviders();
-    // Sync autostart state from the OS
+    loadFeatureRouting();
     invoke<boolean>("is_autostart_enabled")
-      .then((enabled) => {
-        setSettings((s) => ({ ...s, auto_start_daemon: enabled }));
-      })
+      .then((enabled) => setSettings((s) => ({ ...s, auto_start_daemon: enabled })))
       .catch(() => {});
-  }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData, loadAiStatus, loadCloudProviders]);
+  }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData, loadAiStatus, loadCloudProviders, loadFeatureRouting]);
 
-  // Scroll to a section if navigated with scrollTo state (e.g. from Dashboard)
   useEffect(() => {
     if (!loading && location.state && (location.state as { scrollTo?: string }).scrollTo) {
       const id = (location.state as { scrollTo: string }).scrollTo;
       const el = document.getElementById(id);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [loading, location.state]);
 
-  // Poll download progress when downloads are active
+  /* ---- download polling ---- */
+
   useEffect(() => {
     const activeDownloadIds = Object.values(downloads);
     if (activeDownloadIds.length === 0) {
-      if (downloadPollRef.current) {
-        clearInterval(downloadPollRef.current);
-        downloadPollRef.current = null;
-      }
+      if (downloadPollRef.current) { clearInterval(downloadPollRef.current); downloadPollRef.current = null; }
       return;
     }
-
     downloadPollRef.current = setInterval(async () => {
       const newProgress: Record<string, DownloadProgress> = {};
       const newErrors: Record<string, string> = {};
@@ -318,111 +377,69 @@ export function Settings() {
         try {
           const prog = await invoke<DownloadProgress>("get_download_progress", { taskId });
           newProgress[modelId] = prog;
-          pollFailCountRef.current[modelId] = 0; // reset on success
+          pollFailCountRef.current[modelId] = 0;
           const st = getStatusType(prog.status);
-          if (st === "completed" || st === "failed" || st === "cancelled") {
-            anyCompleted = true;
-          }
+          if (st === "completed" || st === "failed" || st === "cancelled") anyCompleted = true;
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          console.error("Progress fetch failed for task", taskId, errMsg);
           const count = (pollFailCountRef.current[modelId] || 0) + 1;
           pollFailCountRef.current[modelId] = count;
-          // After 10 consecutive failures (5 seconds), surface error and stop
-          if (count >= 10) {
-            newErrors[modelId] = `Connection lost: ${errMsg}`;
-            anyCompleted = true; // trigger cleanup
-          }
+          if (count >= 10) { newErrors[modelId] = `Connection lost: ${errMsg}`; anyCompleted = true; }
         }
       }
       setDownloadProgress(newProgress);
-      if (Object.keys(newErrors).length > 0) {
-        setDownloadErrors((prev) => ({ ...prev, ...newErrors }));
-      }
-
+      if (Object.keys(newErrors).length > 0) setDownloadErrors((prev) => ({ ...prev, ...newErrors }));
       if (anyCompleted) {
-        // Capture error messages from failed downloads before cleanup
         for (const modelId of Object.keys(newProgress)) {
           const prog = newProgress[modelId];
           const st = prog ? getStatusType(prog.status) : null;
           if (st === "failed") {
             const failedMsg = typeof prog.status === "object" && prog.status !== null
-              ? (prog.status as { failed: string }).failed
-              : "Download failed";
+              ? (prog.status as { failed: string }).failed : "Download failed";
             setDownloadErrors((prev) => ({ ...prev, [modelId]: failedMsg }));
           } else if (st === "cancelled") {
             setDownloadErrors((prev) => ({ ...prev, [modelId]: "Download cancelled" }));
           }
         }
-        // Clean up completed/failed/cancelled downloads from active tracking
         setDownloads((prev) => {
           const next = { ...prev };
           for (const modelId of Object.keys(next)) {
             const prog = newProgress[modelId];
             const st = prog ? getStatusType(prog.status) : null;
-            if (prog && (st === "completed" || st === "failed" || st === "cancelled")) {
-              delete next[modelId];
-            }
+            if (prog && (st === "completed" || st === "failed" || st === "cancelled")) delete next[modelId];
           }
           return next;
         });
-        // Refresh installed models
         loadModelData();
       }
     }, 500);
-
-    return () => {
-      if (downloadPollRef.current) {
-        clearInterval(downloadPollRef.current);
-        downloadPollRef.current = null;
-      }
-    };
+    return () => { if (downloadPollRef.current) { clearInterval(downloadPollRef.current); downloadPollRef.current = null; } };
   }, [downloads, loadModelData]);
 
-  // Check API key when provider changes
   useEffect(() => {
     if (selectedProvider) {
-      invoke<boolean>("has_cloud_api_key", { provider: selectedProvider })
-        .then(setHasApiKey)
-        .catch(() => setHasApiKey(false));
+      invoke<boolean>("has_cloud_api_key", { provider: selectedProvider }).then(setHasApiKey).catch(() => setHasApiKey(false));
     }
   }, [selectedProvider]);
 
+  /* ---- actions ---- */
+
   async function handleDownloadModel(modelId: string) {
-    // Clear any previous error
-    setDownloadErrors((prev) => {
-      const next = { ...prev };
-      delete next[modelId];
-      return next;
-    });
+    setDownloadErrors((prev) => { const next = { ...prev }; delete next[modelId]; return next; });
     try {
       const taskId = await invoke<string>("download_model", { modelId });
       setDownloads((prev) => ({ ...prev, [modelId]: taskId }));
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error("Download failed:", errMsg);
-      setDownloadErrors((prev) => ({ ...prev, [modelId]: errMsg }));
+      setDownloadErrors((prev) => ({ ...prev, [modelId]: err instanceof Error ? err.message : String(err) }));
     }
   }
 
   async function handleCancelDownload(modelId: string) {
     const taskId = downloads[modelId];
     if (taskId) {
-      try {
-        await invoke("cancel_download", { taskId });
-      } catch (err) {
-        console.error("Cancel download failed:", err);
-      }
-      setDownloads((prev) => {
-        const next = { ...prev };
-        delete next[modelId];
-        return next;
-      });
-      setDownloadProgress((prev) => {
-        const next = { ...prev };
-        delete next[modelId];
-        return next;
-      });
+      try { await invoke("cancel_download", { taskId }); } catch { /* noop */ }
+      setDownloads((prev) => { const next = { ...prev }; delete next[modelId]; return next; });
+      setDownloadProgress((prev) => { const next = { ...prev }; delete next[modelId]; return next; });
     }
   }
 
@@ -432,44 +449,25 @@ export function Settings() {
       const info = await invoke<ActiveModelInfo>("activate_model", { modelId });
       setActiveModel(info);
       await Promise.all([loadSlmStatus(), loadAiStatus()]);
-    } catch (err) {
-      console.error("Activate failed:", err);
-    } finally {
-      setActivatingModel(null);
-    }
+    } catch (err) { console.error("Activate failed:", err); }
+    finally { setActivatingModel(null); }
   }
 
   async function handleDeactivateModel() {
-    try {
-      await invoke("deactivate_model");
-      setActiveModel(null);
-      await Promise.all([loadSlmStatus(), loadAiStatus()]);
-    } catch (err) {
-      console.error("Deactivate failed:", err);
-    }
+    try { await invoke("deactivate_model"); setActiveModel(null); await Promise.all([loadSlmStatus(), loadAiStatus()]); }
+    catch (err) { console.error("Deactivate failed:", err); }
   }
 
   async function handleDeleteModel(modelId: string) {
     setDeletingModel(modelId);
-    try {
-      await invoke("delete_model", { modelId });
-      await loadModelData();
-    } catch (err) {
-      console.error("Delete failed:", err);
-    } finally {
-      setDeletingModel(null);
-    }
+    try { await invoke("delete_model", { modelId }); await loadModelData(); }
+    catch (err) { console.error("Delete failed:", err); }
+    finally { setDeletingModel(null); }
   }
 
   async function handleActivateCustomModel() {
-    if (!customModelPath.trim()) {
-      setCustomModelError("Please enter a path to a .gguf model file");
-      return;
-    }
-    if (!customModelPath.endsWith(".gguf")) {
-      setCustomModelError("File must be a .gguf model file");
-      return;
-    }
+    if (!customModelPath.trim()) { setCustomModelError("Please enter a path to a .gguf model file"); return; }
+    if (!customModelPath.endsWith(".gguf")) { setCustomModelError("File must be a .gguf model file"); return; }
     setCustomModelError(null);
     setCustomModelActivating(true);
     try {
@@ -477,74 +475,58 @@ export function Settings() {
       setActiveModel(info);
       setCustomModelPath("");
       await Promise.all([loadSlmStatus(), loadAiStatus()]);
-    } catch (err) {
-      setCustomModelError(`Failed to activate: ${err}`);
-    } finally {
-      setCustomModelActivating(false);
-    }
+    } catch (err) { setCustomModelError(`Failed to activate: ${err}`); }
+    finally { setCustomModelActivating(false); }
   }
 
   async function handleSaveAndTestCloud() {
     if (!selectedProvider || !apiKeyInput.trim()) return;
-    setCloudTesting(true);
-    setCloudTestResult(null);
+    setCloudTesting(true); setCloudTestResult(null);
     try {
       await invoke("save_api_key", { provider: selectedProvider, key: apiKeyInput.trim() });
       setHasApiKey(true);
-      const result = await invoke<ConnectionTestResult>("test_api_connection", {
-        provider: selectedProvider,
-        model: selectedCloudModel,
-      });
+      const result = await invoke<ConnectionTestResult>("test_api_connection", { provider: selectedProvider, model: selectedCloudModel });
       setCloudTestResult(result);
-      if (result.success) {
-        setApiKeyInput("");
-      }
+      if (result.success) setApiKeyInput("");
     } catch (err) {
       setCloudTestResult({ success: false, latency_ms: 0, error: String(err), model_name: "" });
-    } finally {
-      setCloudTesting(false);
-    }
+    } finally { setCloudTesting(false); }
   }
 
   async function handleActivateCloud() {
     if (!selectedProvider || !selectedCloudModel) return;
     try {
-      const info = await invoke<ActiveModelInfo>("activate_cloud_provider", {
-        provider: selectedProvider,
-        model: selectedCloudModel,
-      });
+      const info = await invoke<ActiveModelInfo>("activate_cloud_provider", { provider: selectedProvider, model: selectedCloudModel });
       setActiveModel(info);
       await loadAiStatus();
-      // Load usage stats
-      const usage = await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null);
-      setCloudUsage(usage);
-    } catch (err) {
-      console.error("Cloud activation failed:", err);
-    }
+      setCloudUsage(await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null));
+    } catch (err) { console.error("Cloud activation failed:", err); }
   }
 
   async function handleClearApiKey() {
     if (!selectedProvider) return;
-    try {
-      await invoke("clear_api_key", { provider: selectedProvider });
-      setHasApiKey(false);
-      setApiKeyInput("");
-      setCloudTestResult(null);
-    } catch {
-      // Clear may fail
-    }
+    try { await invoke("clear_api_key", { provider: selectedProvider }); setHasApiKey(false); setApiKeyInput(""); setCloudTestResult(null); } catch { /* noop */ }
   }
 
   async function handleDeactivateCloud() {
-    try {
-      await invoke("deactivate_cloud_provider");
-      await loadAiStatus();
-      // Load usage stats
-      const usage = await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null);
-      setCloudUsage(usage);
-    } catch (err) {
-      console.error("Cloud deactivation failed:", err);
+    try { await invoke("deactivate_cloud_provider"); await loadAiStatus(); setCloudUsage(await invoke<CloudUsageStats>("get_cloud_usage").catch(() => null)); }
+    catch (err) { console.error("Cloud deactivation failed:", err); }
+  }
+
+  async function handleFeatureRoutingChange(feature: string, pref: FeatureBackendPreference) {
+    const overrides: Record<string, string> = {};
+    for (const entry of featureRouting) {
+      if (entry.feature === feature) overrides[entry.feature] = pref;
+      else if (entry.current_preference !== "auto") overrides[entry.feature] = entry.current_preference;
     }
+    if (pref === "auto") delete overrides[feature];
+    try { await invoke("update_feature_routing", { overrides }); await loadFeatureRouting(); }
+    catch (err) { console.error("Failed to update feature routing:", err); }
+  }
+
+  async function handleResetFeatureRouting() {
+    try { await invoke("reset_feature_routing"); await loadFeatureRouting(); }
+    catch (err) { console.error("Failed to reset feature routing:", err); }
   }
 
   function getModelStatus(modelId: string): "active" | "downloaded" | "not_downloaded" | "downloading" {
@@ -559,1015 +541,416 @@ export function Settings() {
   async function updateNetField<K extends keyof NetworkSettings>(key: K, value: NetworkSettings[K]) {
     const next = { ...netSettings, [key]: value };
     setNetSettings(next);
-    try {
-      await invoke("update_network_settings", { settings: next });
-    } catch (_err) {
-      // Tauri command may not be available yet
-    }
+    try { await invoke("update_network_settings", { settings: next }); } catch { /* noop */ }
   }
 
   async function updateField<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     const next = { ...settings, [key]: value };
     setSettings(next);
     setSaveStatus("saving");
-    try {
-      await invoke("update_settings", { settings: next });
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
-    } catch (_err) {
-      setSaveStatus("error");
-      setTimeout(() => setSaveStatus("idle"), 3000);
-    }
+    try { await invoke("update_settings", { settings: next }); setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 2000); }
+    catch { setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 3000); }
   }
 
   if (loading) {
-    return (
-      <div className="p-6">
-        <p className="text-[var(--color-text-secondary)]">Loading settings...</p>
-      </div>
-    );
+    return <div style={{ padding: 24 }}><p style={{ color: "var(--ink-2)", fontSize: 13 }}>Loading settings...</p></div>;
   }
 
+  const localModelName = activeModel?.model_name ?? aiStatus?.local?.model_name ?? "None";
+  const localTokS =
+    activeModel?.avg_latency_ms && activeModel.avg_latency_ms > 0
+      ? Math.round(1000 / activeModel.avg_latency_ms)
+      : aiStatus?.local?.avg_latency_ms && aiStatus.local.avg_latency_ms > 0
+        ? Math.round(1000 / aiStatus.local.avg_latency_ms)
+        : null;
+
+  /* ================================================================
+     RENDER
+     ================================================================ */
+
   return (
-    <div className="p-6 max-w-2xl">
-      <div className="flex items-center gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
-        {saveStatus === "saving" && (
-          <span className="text-xs text-[var(--color-text-secondary)]">Saving...</span>
-        )}
-        {saveStatus === "saved" && (
-          <span className="text-xs text-[var(--color-success)]">Saved</span>
-        )}
-        {saveStatus === "error" && (
-          <span className="text-xs text-[var(--color-danger)]">Save failed</span>
+    <div className="cd-scroll" style={{ padding: 24, maxWidth: 1080, margin: "0 auto", overflowY: "auto", height: "100%" }}>
+      <SectionTitle sub="Local SLM handles 95% of triage on-device. Cloud is opt-in for deep investigations.">
+        AI Analysis
+      </SectionTitle>
+
+      {saveStatus !== "idle" && (
+        <div style={{ marginBottom: 10, fontSize: 11, fontFamily: "var(--font-mono)" }}>
+          {saveStatus === "saving" && <span style={{ color: "var(--ink-2)" }}>Saving...</span>}
+          {saveStatus === "saved" && <span style={{ color: "var(--green)" }}>Saved</span>}
+          {saveStatus === "error" && <span style={{ color: "var(--red)" }}>Save failed</span>}
+        </div>
+      )}
+
+      {/* ===== Two-column: Local + Cloud ===== */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {/* LOCAL MODEL */}
+        <Card
+          title="Local model"
+          action={
+            aiStatus?.local?.active
+              ? <Badge color="var(--green)" mono><Dot color="var(--green)" size={5} pulse style={{ marginRight: 4 }} />active</Badge>
+              : <Badge color="var(--ink-2)" mono>offline</Badge>
+          }
+        >
+          {aiStatus?.local?.active ? (
+            <div style={{ padding: 12, background: "var(--bg-2)", borderRadius: 8, marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="cpu" size={16} color="var(--accent)" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{localModelName}</div>
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                  {localTokS ? `${localTokS} tok/s` : ""}{activeModel?.using_gpu ? " \u00B7 GPU" : ""}{activeModel?.total_inferences ? ` \u00B7 ${activeModel.total_inferences} inf` : ""}
+                </div>
+              </div>
+              <Btn size="sm" kind="ghost" onClick={handleDeactivateModel}>Deactivate</Btn>
+            </div>
+          ) : (
+            <div style={{ padding: 12, background: "var(--bg-2)", borderRadius: 8, marginBottom: 14, fontSize: 12, color: "var(--ink-2)" }}>
+              No model loaded. Download one for real-time AI monitoring.
+            </div>
+          )}
+
+          <div style={{ display: "grid", gap: 6 }}>
+            {catalog.map((m) => {
+              const status = getModelStatus(m.id);
+              const progress = downloadProgress[m.id];
+              const dlError = downloadErrors[m.id];
+              const isRecommended = m.is_default || (systemCaps && (
+                (systemCaps.total_ram_gb < 8 && m.id.includes("1b")) ||
+                (systemCaps.total_ram_gb >= 8 && systemCaps.total_ram_gb < 16 && m.id.includes("1.7b")) ||
+                (systemCaps.total_ram_gb >= 16 && m.id.includes("4b"))
+              ));
+              return (
+                <div key={m.id}>
+                  <div style={{
+                    padding: "9px 10px", borderRadius: 8,
+                    background: status === "active" ? "var(--accent-soft)" : "transparent",
+                    border: "1px solid " + (status === "active" ? "var(--accent-line)" : "var(--line-soft)"),
+                    display: "flex", alignItems: "center", gap: 10,
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                        {m.display_name}
+                        {isRecommended && <Badge color="var(--accent)">recommended</Badge>}
+                      </div>
+                      <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--ink-3)", marginTop: 2 }}>
+                        {formatBytes(m.size_bytes)} \u00B7 {m.min_ram_gb} GB RAM
+                      </div>
+                    </div>
+                    {status === "active" ? <Badge color="var(--accent)">active</Badge> :
+                     status === "downloaded" ? (
+                       <div style={{ display: "flex", gap: 4 }}>
+                         <Btn size="sm" kind="soft" disabled={activatingModel === m.id} onClick={() => handleActivateModel(m.id)}>
+                           {activatingModel === m.id ? "..." : "Activate"}
+                         </Btn>
+                         <Btn size="sm" kind="ghost" disabled={deletingModel === m.id} onClick={() => handleDeleteModel(m.id)}>
+                           {deletingModel === m.id ? "..." : "Del"}
+                         </Btn>
+                       </div>
+                     ) : status === "downloading" ? (
+                       <Btn size="sm" kind="ghost" onClick={() => handleCancelDownload(m.id)}>Cancel</Btn>
+                     ) : (
+                       <Btn size="sm" kind="ghost" icon="download" onClick={() => handleDownloadModel(m.id)}>Get</Btn>
+                     )}
+                  </div>
+                  {status === "downloading" && progress && (
+                    <div style={{ padding: "6px 10px" }}>
+                      <div style={{ width: "100%", height: 3, borderRadius: 2, background: "var(--bg-3)", overflow: "hidden" }}>
+                        <div style={{ width: `${Math.min(progress.percent, 100)}%`, height: "100%", borderRadius: 2, background: "var(--accent)", transition: "width 0.3s" }} />
+                      </div>
+                      <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--ink-3)", marginTop: 3, display: "flex", justifyContent: "space-between" }}>
+                        <span>{formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.bytes_total)}</span>
+                        <span>{progress.speed_bytes_per_sec > 0 && formatSpeed(progress.speed_bytes_per_sec)}{progress.eta_seconds > 0 && ` \u00B7 ~${Math.ceil(progress.eta_seconds)}s`}</span>
+                      </div>
+                    </div>
+                  )}
+                  {dlError && (
+                    <div style={{ padding: "4px 10px", fontSize: 10.5, color: "var(--red)" }}>
+                      {dlError}{" "}
+                      <button onClick={() => { handleCancelDownload(m.id); handleDownloadModel(m.id); }} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 10.5, textDecoration: "underline", padding: 0 }}>Retry</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Custom model */}
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line-soft)" }}>
+            <div style={{ fontSize: 11, color: "var(--ink-2)", marginBottom: 6 }}>Or load a custom .gguf model:</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input type="text" value={customModelPath} onChange={(e) => { setCustomModelPath(e.target.value); setCustomModelError(null); }} placeholder="/path/to/model.gguf"
+                style={{ flex: 1, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 8px", fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-0)", outline: "none" }} />
+              <Btn size="sm" kind="soft" disabled={customModelActivating} onClick={handleActivateCustomModel}>{customModelActivating ? "..." : "Activate"}</Btn>
+            </div>
+            {customModelError && <div style={{ fontSize: 10.5, color: "var(--red)", marginTop: 4 }}>{customModelError}</div>}
+          </div>
+        </Card>
+
+        {/* CLOUD REASONING */}
+        <Card
+          title="Cloud reasoning"
+          action={
+            aiStatus?.cloud?.active
+              ? <Badge color="var(--violet)" mono><Dot color="var(--green)" size={5} pulse style={{ marginRight: 4 }} />connected</Badge>
+              : <Badge color="var(--ink-2)" mono>offline</Badge>
+          }
+        >
+          <div style={{ display: "grid", gap: 12 }}>
+            {cloudProviders.length > 1 && (
+              <Field label="Provider">
+                <select value={selectedProvider} onChange={(e) => {
+                  setSelectedProvider(e.target.value); setCloudTestResult(null);
+                  const provider = cloudProviders.find((p) => p.id === e.target.value);
+                  if (provider && provider.models.length > 0) setSelectedCloudModel(provider.models[0].id);
+                }} style={{ width: "100%", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none" }}>
+                  {cloudProviders.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+                </select>
+              </Field>
+            )}
+
+            <Field label="Model">
+              <select value={selectedCloudModel} onChange={(e) => { setSelectedCloudModel(e.target.value); setCloudTestResult(null); }}
+                style={{ width: "100%", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none" }}>
+                {currentProvider?.models.map((cm) => (
+                  <option key={cm.id} value={cm.id}>{cm.display_name}{cm.recommended ? " (Recommended)" : ""}</option>
+                )) ?? <option>No providers available</option>}
+              </select>
+            </Field>
+
+            <Field label="Monthly budget">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <input type="range" min="5" max="100" value={cloudBudget} onChange={(e) => setCloudBudget(Number(e.target.value))} style={{ flex: 1, accentColor: "var(--accent)" }} />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-1)", width: 50 }}>${cloudBudget}</span>
+              </div>
+              {cloudUsage && (
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+                  used: ${cloudUsage.estimated_cost_usd.toFixed(2)} \u00B7 {cloudUsage.total_requests} requests
+                </div>
+              )}
+            </Field>
+
+            <Field label={`API key${hasApiKey ? " (saved)" : ""}`}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ flex: 1, position: "relative" }}>
+                  <input type={showApiKey ? "text" : "password"} value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder={hasApiKey ? "Enter new key to update" : "sk-ant-..."}
+                    style={{ width: "100%", boxSizing: "border-box", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px", paddingRight: 50, fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--ink-0)", outline: "none" }} />
+                  <button onClick={() => setShowApiKey(!showApiKey)} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", fontSize: 10, color: "var(--ink-3)", cursor: "pointer", padding: 0 }}>
+                    {showApiKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+                {hasApiKey && <Btn size="sm" kind="ghost" onClick={handleClearApiKey}>Clear</Btn>}
+              </div>
+            </Field>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn size="sm" kind="soft" disabled={cloudTesting || (!apiKeyInput.trim() && !hasApiKey)} onClick={handleSaveAndTestCloud}>
+                {cloudTesting ? "Testing..." : "Save & Test"}
+              </Btn>
+              {hasApiKey && cloudTestResult?.success && !aiStatus?.cloud?.active && (
+                <Btn size="sm" kind="primary" onClick={handleActivateCloud}>Activate</Btn>
+              )}
+              {aiStatus?.cloud?.active && <Btn size="sm" kind="ghost" onClick={handleDeactivateCloud}>Disconnect</Btn>}
+            </div>
+
+            {cloudTestResult && (
+              <div style={{
+                padding: "8px 10px", borderRadius: 8, fontSize: 11.5,
+                background: cloudTestResult.success ? "color-mix(in oklch, var(--green) 10%, transparent)" : "color-mix(in oklch, var(--red) 10%, transparent)",
+                color: cloudTestResult.success ? "var(--green)" : "var(--red)",
+              }}>
+                {cloudTestResult.success ? `Connected \u2014 ${cloudTestResult.latency_ms}ms` : `Failed: ${cloudTestResult.error}`}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* How they work together */}
+      <Card title="How they work together" style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 12.5, color: "var(--ink-1)", lineHeight: 1.65 }}>
+          Every event flows first into <span className="mono" style={{ color: "var(--accent)" }}>{localModelName}</span> for triage.
+          Anything <span style={{ color: "var(--red)" }}>suspicious</span> auto-escalates to <span className="mono" style={{ color: "var(--violet)" }}>{currentProvider?.display_name ?? "Cloud"}</span> with correlated context.
+          You always see which brain answered.
+        </div>
+      </Card>
+
+      {/* Feature Routing (collapsible) */}
+      <div style={{ marginTop: 14, background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+        <button onClick={() => setFeatureRoutingExpanded(!featureRoutingExpanded)}
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-0)" }}>Feature Routing</div>
+            <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 2 }}>Customize which AI backend handles each feature</div>
+          </div>
+          <Icon name="chevron" size={14} color="var(--ink-2)" />
+        </button>
+        {featureRoutingExpanded && (
+          <div style={{ padding: "0 16px 16px" }}>
+            {featureRoutingHasOverrides && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <Btn size="sm" kind="ghost" onClick={handleResetFeatureRouting}>Reset to Defaults</Btn>
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 1fr", gap: 8, padding: "0 8px 6px", borderBottom: "1px solid var(--line-soft)" }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Feature</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, textAlign: "center" }}>Default</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, textAlign: "center" }}>Setting</span>
+            </div>
+            {featureRouting.map((entry) => (
+              <div key={entry.feature} style={{ display: "grid", gridTemplateColumns: "1fr 70px 1fr", gap: 8, alignItems: "center", padding: "8px 8px" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-0)" }}>{entry.display_name}</div>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{entry.description}</div>
+                </div>
+                <span style={{ fontSize: 10.5, textAlign: "center", textTransform: "capitalize", color: entry.default_backend === "cloud" ? "var(--accent)" : "var(--green)" }}>
+                  {entry.default_backend}
+                </span>
+                <div style={{ display: "flex", borderRadius: 6, border: "1px solid var(--line)", overflow: "hidden" }}>
+                  {(["auto", "local", "cloud"] as const).map((opt) => (
+                    <button key={opt} onClick={() => handleFeatureRoutingChange(entry.feature, opt)}
+                      style={{ flex: 1, padding: "5px 0", fontSize: 10, fontWeight: 500, textTransform: "capitalize",
+                        background: entry.current_preference === opt ? "var(--accent)" : "transparent",
+                        color: entry.current_preference === opt ? "white" : "var(--ink-2)",
+                        border: "none", cursor: "pointer", transition: "background 0.15s, color 0.15s" }}>
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* General */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">
-          General
-        </h2>
-        <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-          {/* Theme */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Theme</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Choose appearance mode</p>
-            </div>
-            <select
-              value={settings.theme}
-              onChange={(e) => {
-                const newTheme = e.target.value as AppSettings["theme"];
-                updateField("theme", newTheme);
-                emit("clawdefender://theme-changed", newTheme);
-              }}
-              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
+      {/* ===== General Settings ===== */}
+      <div style={{ marginTop: 32 }}>
+        <SectionTitle sub="App preferences and general configuration.">General</SectionTitle>
+      </div>
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Theme</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Choose appearance mode</div></div>
+            <select value={settings.theme} onChange={(e) => { const t = e.target.value as AppSettings["theme"]; updateField("theme", t); emit("rookbot://theme-changed", t); }}
+              style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none" }}>
+              <option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option>
             </select>
           </div>
-
-          {/* Start at login */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Start at Login</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Auto-start daemon when you log in</p>
-            </div>
-            <ToggleSwitch
-              checked={settings.auto_start_daemon}
-              onChange={async (v) => {
-                try {
-                  if (v) {
-                    await invoke("enable_autostart");
-                  } else {
-                    await invoke("disable_autostart");
-                  }
-                  updateField("auto_start_daemon", v);
-                } catch (_err) {
-                  // Autostart toggle failed
-                }
-              }}
-            />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Start at Login</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Auto-start daemon when you log in</div></div>
+            <ToggleSwitch checked={settings.auto_start_daemon} onChange={async (v) => { try { if (v) await invoke("enable_autostart"); else await invoke("disable_autostart"); updateField("auto_start_daemon", v); } catch { /* noop */ } }} />
           </div>
-
-          {/* Show in menu bar */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Show in Menu Bar</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Minimize to system tray</p>
-            </div>
-            <ToggleSwitch
-              checked={settings.minimize_to_tray}
-              onChange={(v) => updateField("minimize_to_tray", v)}
-            />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Show in Menu Bar</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Minimize to system tray</div></div>
+            <ToggleSwitch checked={settings.minimize_to_tray} onChange={(v) => updateField("minimize_to_tray", v)} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Notifications</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Show alerts for blocked actions</div></div>
+            <ToggleSwitch checked={settings.notifications_enabled} onChange={(v) => updateField("notifications_enabled", v)} />
           </div>
         </div>
-      </section>
+      </Card>
 
       {/* Protection */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">
-          Protection
-        </h2>
-        <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-          {/* Security level */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Security Level</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Current protection template</p>
-            </div>
-            <select
-              value={settings.security_level}
-              onChange={(e) => {
-                const level = e.target.value;
-                setSettings((s) => ({ ...s, security_level: level }));
-                // Apply the template (maps monitor-only to permissive for backend)
-                const templateName = level === "monitor-only" ? "permissive" : level;
-                invoke("apply_template", { name: templateName }).then(() => {
-                  // Reload settings to get the inferred security level
-                  invoke<AppSettings>("get_settings").then((s) => setSettings(s)).catch(() => {});
-                }).catch(() => {});
-              }}
-              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="monitor-only">Monitor Only</option>
-              <option value="balanced">Balanced</option>
-              <option value="strict">Strict</option>
-              {settings.security_level === "custom" && (
-                <option value="custom">Custom</option>
-              )}
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Security Level</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Current protection template</div></div>
+            <select value={settings.security_level} onChange={(e) => {
+              const level = e.target.value;
+              setSettings((s) => ({ ...s, security_level: level }));
+              const templateName = level === "monitor-only" ? "permissive" : level;
+              invoke("apply_template", { name: templateName }).then(() => { invoke<AppSettings>("get_settings").then((s) => setSettings(s)).catch(() => {}); }).catch(() => {});
+            }} style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none" }}>
+              <option value="monitor-only">Monitor Only</option><option value="balanced">Balanced</option><option value="strict">Strict</option>
+              {settings.security_level === "custom" && <option value="custom">Custom</option>}
             </select>
           </div>
-
-          {/* Auto-block */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Notifications</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Show alerts for blocked actions</p>
-            </div>
-            <ToggleSwitch
-              checked={settings.notifications_enabled}
-              onChange={(v) => updateField("notifications_enabled", v)}
-            />
-          </div>
-
-          {/* Prompt timeout */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <p className="text-sm font-medium">Prompt Timeout</p>
-                <p className="text-xs text-[var(--color-text-secondary)]">Auto-deny after timeout</p>
-              </div>
-              <span className="text-sm text-[var(--color-text-secondary)]">{settings.prompt_timeout_seconds}s</span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div><div style={{ fontSize: 13, fontWeight: 500 }}>Prompt Timeout</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Auto-deny after timeout</div></div>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-2)" }}>{settings.prompt_timeout_seconds}s</span>
             </div>
-            <input
-              type="range"
-              min={15}
-              max={120}
-              step={5}
-              value={settings.prompt_timeout_seconds}
-              onChange={(e) => updateField("prompt_timeout_seconds", Number(e.target.value))}
-              className="w-full accent-[var(--color-accent)]"
-            />
-            <div className="flex justify-between text-xs text-[var(--color-text-secondary)]">
-              <span>15s</span>
-              <span>120s</span>
-            </div>
+            <input type="range" min={15} max={120} step={5} value={settings.prompt_timeout_seconds} onChange={(e) => updateField("prompt_timeout_seconds", Number(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
           </div>
-        </div>
-      </section>
-
-      {/* AI Analysis */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-1">
-          AI Analysis
-        </h2>
-        <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-          Your security agent uses two AI systems together: a fast local model for real-time monitoring, and an optional cloud API for deep investigations.
-        </p>
-
-        {/* Dual panels */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-
-          {/* Left: Local Model Panel */}
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className={`inline-block w-2 h-2 rounded-full ${aiStatus?.local?.active ? "bg-[var(--color-success)]" : "bg-[var(--color-text-secondary)]"}`} />
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Local Model</h3>
-              <span className="text-[10px] text-[var(--color-text-secondary)]">Always-On · Private</span>
-            </div>
-
-            {aiStatus?.local?.active ? (
-              <div className="space-y-3">
-                <div>
-                  <p className="text-xs font-medium text-[var(--color-text-primary)]">
-                    Active: {aiStatus.local.model_name || "Unknown"}
-                  </p>
-                  <p className="text-xs text-[var(--color-text-secondary)]">
-                    {aiStatus.local.avg_latency_ms > 0 ? `~${aiStatus.local.avg_latency_ms.toFixed(0)}ms latency` : ""}
-                    {aiStatus.local.avg_latency_ms > 0 && aiStatus.local.gpu_enabled ? " · " : ""}
-                    {aiStatus.local.gpu_enabled ? "GPU enabled" : ""}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider mb-1">Used for:</p>
-                  <ul className="text-xs text-[var(--color-text-secondary)] space-y-0.5 list-disc list-inside">
-                    <li>Real-time triage</li>
-                    <li>Event classification</li>
-                    <li>Anomaly explanation</li>
-                    <li>Context tracking</li>
-                  </ul>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setModelCatalogExpanded(!modelCatalogExpanded)}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-                  >
-                    Change Model
-                  </button>
-                  <button
-                    onClick={handleDeactivateModel}
-                    className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
-                  >
-                    Deactivate
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
-                  No model loaded. Download one for real-time AI monitoring.
-                </p>
-                <button
-                  onClick={() => setModelCatalogExpanded(!modelCatalogExpanded)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
-                >
-                  Set Up Local Model
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Cloud API Panel */}
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className={`inline-block w-2 h-2 rounded-full ${aiStatus?.cloud?.active ? "bg-[var(--color-success)]" : "bg-[var(--color-text-secondary)]"}`} />
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Cloud API</h3>
-              <span className="text-[10px] text-[var(--color-text-secondary)]">Optional · On-Demand</span>
-            </div>
-
-            {aiStatus?.cloud?.active ? (
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-[var(--color-text-primary)]">
-                  Connected: {aiStatus.cloud.provider}{aiStatus.cloud.model ? ` / ${aiStatus.cloud.model}` : ""}
-                </p>
-                <div>
-                  <p className="text-[10px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider mb-1">Used for:</p>
-                  <ul className="text-xs text-[var(--color-text-secondary)] space-y-0.5 list-disc list-inside">
-                    <li>Deep investigations</li>
-                    <li>AI security scans</li>
-                    <li>Ask Claw conversations</li>
-                    <li>Report generation</li>
-                  </ul>
-                </div>
-                {cloudUsage && (
-                  <p className="text-xs text-[var(--color-text-secondary)]">
-                    {cloudUsage.total_requests} requests · ~${cloudUsage.estimated_cost_usd.toFixed(2)}
-                  </p>
-                )}
-                <button
-                  onClick={handleDeactivateCloud}
-                  className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
-                  Adds deep investigation and conversational analysis.
-                </p>
-                <button
-                  onClick={() => setCloudSetupExpanded(!cloudSetupExpanded)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
-                >
-                  Set Up Cloud API
-                </button>
-              </div>
-            )}
-
-            <p className="text-[10px] text-[var(--color-text-secondary)] mt-3">
-              Cloud analysis sends event metadata to the selected provider. No file contents or credentials are ever sent.
-            </p>
-          </div>
-        </div>
-
-        {/* How they work together */}
-        <div className="rounded-lg bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] p-3 mb-4">
-          <p className="text-xs text-[var(--color-text-secondary)]">
-            <span className="font-medium text-[var(--color-text-primary)]">How they work together:</span>{" "}
-            Local model handles 95% of events instantly. Cloud API is called only for complex analysis that needs deeper reasoning. Without cloud, everything still works — you just don't get deep investigation features.
-          </p>
-        </div>
-
-        {/* Expandable: Model Catalog */}
-        {modelCatalogExpanded && (
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Model Catalog</h3>
-              <button
-                onClick={() => setModelCatalogExpanded(false)}
-                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-              >
-                Close
-              </button>
-            </div>
-
-            {/* System info banner */}
-            {systemCaps && (
-              <div className="flex items-center gap-3 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] px-3 py-2 mb-3">
-                <span className="text-xs text-[var(--color-text-secondary)]">
-                  Your Mac: {systemCaps.is_apple_silicon ? "Apple Silicon" : systemCaps.arch} · {systemCaps.total_ram_gb} GB RAM
-                </span>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {catalog.map((model) => {
-                const status = getModelStatus(model.id);
-                const progress = downloadProgress[model.id];
-                const dlError = downloadErrors[model.id];
-                const isActive = status === "active";
-                const speedEstimate = systemCaps?.is_apple_silicon
-                  ? model.tokens_per_sec_apple
-                  : model.tokens_per_sec_intel;
-                const ramGb = model.min_ram_gb;
-                const isRecommended = model.is_default || (systemCaps && (
-                  (systemCaps.total_ram_gb < 8 && model.id.includes("1b")) ||
-                  (systemCaps.total_ram_gb >= 8 && systemCaps.total_ram_gb < 16 && model.id.includes("1.7b")) ||
-                  (systemCaps.total_ram_gb >= 16 && model.id.includes("4b"))
-                ));
-
-                return (
-                  <div
-                    key={model.id}
-                    className={`rounded-lg border p-3 ${
-                      isActive
-                        ? "border-[var(--color-success)] bg-[var(--color-success)]/5"
-                        : isRecommended
-                        ? "border-[var(--color-accent)]/50 bg-[var(--color-bg-tertiary)]"
-                        : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)]"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{model.display_name}</p>
-                          {isActive && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] font-medium">
-                              Active
-                            </span>
-                          )}
-                          {status === "downloaded" && !isActive && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-medium">
-                              Downloaded
-                            </span>
-                          )}
-                          {isRecommended && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)] font-medium">
-                              Recommended for your Mac
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-[var(--color-text-secondary)] mb-1.5">
-                          {model.quantization} · by {model.author}
-                        </p>
-                        <p className="text-xs text-[var(--color-text-secondary)] mb-2">{model.description}</p>
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-secondary)]">
-                          <span>{formatBytes(model.size_bytes)} download</span>
-                          <span>~{ramGb} GB RAM</span>
-                          <QualityStars rating={model.quality_rating} />
-                          {speedEstimate > 0 && <span>~{speedEstimate} tok/s</span>}
-                        </div>
-                        {model.model_page_url && (
-                          <button
-                            onClick={() => open(model.model_page_url)}
-                            className="mt-2 text-[11px] text-[var(--color-accent)] hover:underline"
-                          >
-                            View on HuggingFace
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {status === "not_downloaded" && (
-                          <button
-                            onClick={() => handleDownloadModel(model.id)}
-                            className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-success)] text-white hover:opacity-90"
-                          >
-                            Download
-                          </button>
-                        )}
-                        {status === "downloading" && (
-                          <button
-                            onClick={() => handleCancelDownload(model.id)}
-                            className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                        {status === "downloaded" && (
-                          <>
-                            <button
-                              onClick={() => handleActivateModel(model.id)}
-                              disabled={activatingModel === model.id}
-                              className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
-                            >
-                              {activatingModel === model.id ? "Activating..." : "Activate"}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteModel(model.id)}
-                              disabled={deletingModel === model.id}
-                              className="px-2 py-1.5 rounded-md text-xs border border-[var(--color-danger)]/50 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white disabled:opacity-50"
-                              title="Delete model"
-                            >
-                              {deletingModel === model.id ? "..." : "Delete"}
-                            </button>
-                          </>
-                        )}
-                        {isActive && (
-                          <span className="text-xs text-[var(--color-success)] font-medium">In Use</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Download progress / error feedback */}
-                    {status === "downloading" && (
-                      <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
-                        {dlError && !progress ? (
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
-                            <button
-                              onClick={() => { handleCancelDownload(model.id); handleDownloadModel(model.id); }}
-                              className="ml-3 px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 shrink-0"
-                            >
-                              Retry
-                            </button>
-                          </div>
-                        ) : !progress ? (
-                          <p className="text-xs text-[var(--color-text-secondary)] animate-pulse">
-                            Connecting to server...
-                          </p>
-                        ) : (() => {
-                          const st = getStatusType(progress.status);
-                          const failedMsg = typeof progress.status === "object" && progress.status !== null
-                            ? (progress.status as { failed: string }).failed
-                            : null;
-                          return st === "failed" ? (
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs text-[var(--color-danger)] flex-1">
-                                {failedMsg || "Download failed"}
-                              </p>
-                              <button
-                                onClick={() => { handleCancelDownload(model.id); handleDownloadModel(model.id); }}
-                                className="ml-3 px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 shrink-0"
-                              >
-                                Retry
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mb-1.5">
-                                <span>
-                                  {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.bytes_total)}
-                                </span>
-                                <span>
-                                  {st === "pending" ? "Connecting..." : (
-                                    <>
-                                      {formatSpeed(progress.speed_bytes_per_sec)}
-                                      {progress.eta_seconds > 0 && ` · ~${Math.ceil(progress.eta_seconds)}s remaining`}
-                                    </>
-                                  )}
-                                </span>
-                              </div>
-                              <div className="w-full h-2.5 rounded-full bg-[var(--color-bg-primary)] overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all duration-300 ${
-                                    st === "verifying"
-                                      ? "bg-[var(--color-warning)] animate-pulse"
-                                      : "bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-success)]"
-                                  }`}
-                                  style={{ width: `${Math.max(Math.min(progress.percent, 100), st === "downloading" ? 1 : 0)}%` }}
-                                />
-                              </div>
-                              <p className="text-[10px] text-[var(--color-text-secondary)] mt-1 text-right">
-                                {st === "verifying" ? "Verifying checksum..." : `${progress.percent.toFixed(1)}%`}
-                              </p>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
-                    {/* Show download error with retry option */}
-                    {status !== "downloading" && dlError && (
-                      <div className="mt-3 pt-3 border-t border-[var(--color-danger)]/30">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-[var(--color-danger)] flex-1">{dlError}</p>
-                          <div className="flex items-center gap-2 ml-3 shrink-0">
-                            <button
-                              onClick={() => handleDownloadModel(model.id)}
-                              className="px-2 py-1 rounded text-[10px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
-                            >
-                              Retry
-                            </button>
-                            <button
-                              onClick={() => setDownloadErrors((prev) => { const next = { ...prev }; delete next[model.id]; return next; })}
-                              className="px-2 py-1 rounded text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-                            >
-                              Dismiss
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {catalog.length === 0 && (
-                <p className="text-xs text-[var(--color-text-secondary)] text-center py-4">
-                  No models available in catalog. Check your internet connection.
-                </p>
-              )}
-            </div>
-
-            {/* Custom Model */}
-            <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
-              <h4 className="text-sm font-semibold text-[var(--color-text-primary)] mb-1">Use Your Own Model</h4>
-              <p className="text-xs text-[var(--color-text-secondary)] mb-3">
-                Load a custom .gguf model file from your local filesystem
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={customModelPath}
-                  onChange={(e) => {
-                    setCustomModelPath(e.target.value);
-                    setCustomModelError(null);
-                  }}
-                  placeholder="/path/to/model.gguf"
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] font-mono text-xs"
-                />
-                <button
-                  onClick={handleActivateCustomModel}
-                  disabled={customModelActivating}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {customModelActivating ? "Activating..." : "Activate"}
-                </button>
-              </div>
-              {customModelError && (
-                <p className="text-xs text-[var(--color-danger)] mt-2">{customModelError}</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Expandable: Cloud Setup */}
-        {cloudSetupExpanded && (
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Cloud API Setup</h3>
-              <button
-                onClick={() => setCloudSetupExpanded(false)}
-                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Provider */}
-              <div>
-                <label className="text-xs text-[var(--color-text-secondary)] block mb-1">Provider</label>
-                <select
-                  value={selectedProvider}
-                  onChange={(e) => {
-                    setSelectedProvider(e.target.value);
-                    setCloudTestResult(null);
-                    const provider = cloudProviders.find((p) => p.id === e.target.value);
-                    if (provider && provider.models.length > 0) {
-                      setSelectedCloudModel(provider.models[0].id);
-                    }
-                  }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-                >
-                  {cloudProviders.map((p) => (
-                    <option key={p.id} value={p.id}>{p.display_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* API Key */}
-              <div>
-                <label className="text-xs text-[var(--color-text-secondary)] block mb-1">
-                  API Key {hasApiKey && <span className="text-[var(--color-success)]">(saved)</span>}
-                </label>
-                <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <input
-                      type={showApiKey ? "text" : "password"}
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder={hasApiKey ? "Key saved — enter new key to update" : "Enter API key"}
-                      className="w-full px-3 py-1.5 pr-16 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] font-mono text-xs"
-                    />
-                    <button
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-                    >
-                      {showApiKey ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                  {hasApiKey && (
-                    <button
-                      onClick={handleClearApiKey}
-                      className="px-2 py-1.5 rounded-md text-xs border border-[var(--color-danger)]/50 text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Model selection */}
-              <div>
-                <label className="text-xs text-[var(--color-text-secondary)] block mb-1">Model</label>
-                <select
-                  value={selectedCloudModel}
-                  onChange={(e) => {
-                    setSelectedCloudModel(e.target.value);
-                    setCloudTestResult(null);
-                  }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-                >
-                  {currentProvider?.models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.display_name}
-                      {m.recommended ? " (Recommended)" : ""}
-                      {` — $${m.cost_per_1k_input}/1k in, $${m.cost_per_1k_output}/1k out`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Save & Test / Activate */}
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSaveAndTestCloud}
-                  disabled={cloudTesting || (!apiKeyInput.trim() && !hasApiKey)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium border border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white disabled:opacity-50"
-                >
-                  {cloudTesting ? "Testing..." : "Save & Test"}
-                </button>
-                {hasApiKey && cloudTestResult?.success && !aiStatus?.cloud?.active && (
-                  <button
-                    onClick={handleActivateCloud}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90"
-                  >
-                    Activate Cloud API
-                  </button>
-                )}
-              </div>
-
-              {/* Test result */}
-              {cloudTestResult && (
-                <div
-                  className={`rounded-lg p-3 text-xs ${
-                    cloudTestResult.success
-                      ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
-                      : "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
-                  }`}
-                >
-                  {cloudTestResult.success
-                    ? `Connected — Latency: ${cloudTestResult.latency_ms}ms`
-                    : `Failed: ${cloudTestResult.error}`}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Analysis Frequency */}
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Analysis Frequency</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">When to run AI analysis on events</p>
-            </div>
-            <select
-              value={settings.analysis_frequency}
-              onChange={(e) => updateField("analysis_frequency", e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="all">Analyze all prompted events</option>
-              <option value="high_risk">Analyze high-risk events only</option>
-              <option value="disabled">Disabled</option>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Analysis Frequency</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>When to run AI analysis</div></div>
+            <select value={settings.analysis_frequency} onChange={(e) => updateField("analysis_frequency", e.target.value)}
+              style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none" }}>
+              <option value="all">All prompted events</option><option value="high_risk">High-risk only</option><option value="disabled">Disabled</option>
             </select>
           </div>
         </div>
-      </section>
+      </Card>
 
       {/* Network Protection */}
-      <section id="network-protection" className="mb-8">
-        <div className="flex items-center gap-2 mb-3">
-          <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-            Network Protection
-          </h2>
-          {(!netStatus || !netStatus.loaded) && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-danger)]/15 text-[var(--color-danger)] font-medium">
-              Not Available
-            </span>
-          )}
+      <div id="network-protection" style={{ marginTop: 32 }}>
+        <SectionTitle sub="Monitor and filter outbound connections from AI agents.">Network Protection</SectionTitle>
+      </div>
+      {(!netStatus || !netStatus.loaded) && (
+        <div style={{ padding: "10px 14px", background: "color-mix(in oklch, var(--red) 8%, transparent)", borderRadius: 8, fontSize: 11.5, color: "var(--red)", marginBottom: 10 }}>
+          Network Extension is not installed. This feature requires a macOS system extension.
         </div>
-        {(!netStatus || !netStatus.loaded) && (
-          <p className="text-xs text-[var(--color-text-secondary)] mb-3">
-            Network Extension is not installed. This feature requires a macOS system extension.
-          </p>
-        )}
-        <div className={`relative space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 ${!netStatus || !netStatus.loaded ? "select-none pointer-events-none opacity-40" : ""}`}>
-          {/* Status indicator */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${
-                  netStatus?.filter_active ? "bg-[var(--color-success)]" : "bg-[var(--color-text-secondary)]"
-                }`}
-              />
-              <p className="text-sm font-medium">
-                {netStatus?.filter_active ? "Active" : "Inactive"}
-              </p>
-              {netStatus?.filter_active && (
-                <span className="text-xs text-[var(--color-text-secondary)]">
-                  ({netStatus.filtering_count} connections filtered)
-                </span>
-              )}
-            </div>
-            {netStatus?.mock_mode && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)]">
-                Mock Mode
-              </span>
-            )}
+      )}
+      <Card style={{ marginBottom: 14, opacity: !netStatus || !netStatus.loaded ? 0.4 : 1, pointerEvents: !netStatus || !netStatus.loaded ? "none" : "auto" }}>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Enable Network Filtering</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Filter outbound connections from AI agents</div></div>
+            <ToggleSwitch checked={netSettings.filter_enabled} onChange={(v) => updateNetField("filter_enabled", v)} />
           </div>
-
-          {/* Enable network filtering */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Enable Network Filtering</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Filter outbound connections from AI agents</p>
-            </div>
-            <ToggleSwitch
-              checked={netSettings.filter_enabled}
-              onChange={(v) => updateNetField("filter_enabled", v)}
-            />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Enable DNS Filtering</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Monitor and filter DNS queries</div></div>
+            <ToggleSwitch checked={netSettings.dns_enabled} onChange={(v) => updateNetField("dns_enabled", v)} />
           </div>
-
-          {/* Enable DNS filtering */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Enable DNS Filtering</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Monitor and filter DNS queries</p>
-            </div>
-            <ToggleSwitch
-              checked={netSettings.dns_enabled}
-              onChange={(v) => updateNetField("dns_enabled", v)}
-            />
-          </div>
-
-          {/* Filter all processes */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Filter All Processes</p>
-              <p className="text-xs text-[var(--color-warning)]">Warning: may affect system performance</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={netSettings.filter_all_processes}
-              onChange={(e) => updateNetField("filter_all_processes", e.target.checked)}
-              className="w-4 h-4 accent-[var(--color-accent)]"
-            />
-          </div>
-
-          {/* Default action */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Default Action</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Action for unmatched connections</p>
-            </div>
-            <select
-              value={netSettings.default_action}
-              onChange={(e) => updateNetField("default_action", e.target.value as NetworkSettings["default_action"])}
-              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="prompt">Prompt</option>
-              <option value="block">Block</option>
-              <option value="allow">Allow</option>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Default Action</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Action for unmatched connections</div></div>
+            <select value={netSettings.default_action} onChange={(e) => updateNetField("default_action", e.target.value as NetworkSettings["default_action"])}
+              style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none" }}>
+              <option value="prompt">Prompt</option><option value="block">Block</option><option value="allow">Allow</option>
             </select>
           </div>
-
-          {/* Prompt timeout */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <p className="text-sm font-medium">Prompt Timeout</p>
-                <p className="text-xs text-[var(--color-text-secondary)]">Auto-deny after timeout</p>
-              </div>
-              <span className="text-sm text-[var(--color-text-secondary)]">{netSettings.prompt_timeout}s</span>
-            </div>
-            <input
-              type="range"
-              min={5}
-              max={60}
-              step={5}
-              value={netSettings.prompt_timeout}
-              onChange={(e) => updateNetField("prompt_timeout", Number(e.target.value))}
-              className="w-full accent-[var(--color-accent)]"
-            />
-            <div className="flex justify-between text-xs text-[var(--color-text-secondary)]">
-              <span>5s</span>
-              <span>60s</span>
-            </div>
-          </div>
-
-          {/* Block private ranges */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Block Private Ranges</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Block connections to private/internal networks</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={netSettings.block_private_ranges}
-              onChange={(e) => updateNetField("block_private_ranges", e.target.checked)}
-              className="w-4 h-4 accent-[var(--color-accent)]"
-            />
-          </div>
-
-          {/* Block DoH */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Block DNS-over-HTTPS</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Prevent DNS bypass via encrypted DNS</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={netSettings.block_doh}
-              onChange={(e) => updateNetField("block_doh", e.target.checked)}
-              className="w-4 h-4 accent-[var(--color-accent)]"
-            />
-          </div>
-
-          {/* Log DNS */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Log All DNS Queries</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Record all DNS lookups for audit</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={netSettings.log_dns}
-              onChange={(e) => updateNetField("log_dns", e.target.checked)}
-              className="w-4 h-4 accent-[var(--color-accent)]"
-            />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Block DNS-over-HTTPS</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Prevent DNS bypass via encrypted DNS</div></div>
+            <input type="checkbox" checked={netSettings.block_doh} onChange={(e) => updateNetField("block_doh", e.target.checked)} style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
           </div>
         </div>
-      </section>
+      </Card>
 
       {/* Advanced */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">
-          Advanced
-        </h2>
-        <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-          {/* Log level */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Log Level</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Verbosity of daemon logs</p>
-            </div>
-            <select
-              value={settings.log_level}
-              onChange={(e) => updateField("log_level", e.target.value as AppSettings["log_level"])}
-              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="trace">Trace</option>
-              <option value="debug">Debug</option>
-              <option value="info">Info</option>
-              <option value="warn">Warn</option>
-              <option value="error">Error</option>
+      <div style={{ marginTop: 32 }}>
+        <SectionTitle sub="Log level, data retention, import/export.">Advanced</SectionTitle>
+      </div>
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Log Level</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Verbosity of daemon logs</div></div>
+            <select value={settings.log_level} onChange={(e) => updateField("log_level", e.target.value as AppSettings["log_level"])}
+              style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none" }}>
+              <option value="trace">Trace</option><option value="debug">Debug</option><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option>
             </select>
           </div>
-
-          {/* Event retention */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Event Retention</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">Days to keep audit events</p>
-            </div>
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={settings.event_retention_days}
-              onChange={(e) => updateField("event_retention_days", Number(e.target.value))}
-              className="w-20 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] text-center"
-            />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Event Retention</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Days to keep audit events</div></div>
+            <input type="number" min={1} max={365} value={settings.event_retention_days} onChange={(e) => updateField("event_retention_days", Number(e.target.value))}
+              style={{ width: 70, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "var(--ink-0)", outline: "none", textAlign: "center" }} />
           </div>
-
-          {/* Export / Import / Reset */}
-          <div className="flex flex-col gap-2 pt-2 border-t border-[var(--color-border)]">
-            <div className="flex gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    const path = await invoke<string>("export_settings");
-                    setExportStatus(`Exported to ${path}`);
-                    setTimeout(() => setExportStatus(null), 4000);
-                  } catch (err) {
-                    setExportStatus(`Export failed: ${err}`);
-                    setTimeout(() => setExportStatus(null), 4000);
-                  }
-                }}
-                className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-              >
-                Export Config
-              </button>
-              <button
-                onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = ".json";
-                  input.onchange = async (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (file) {
-                      try {
-                        const content = await file.text();
-                        await invoke("import_settings_from_content", { content });
-                        setExportStatus("Settings imported successfully");
-                        loadSettings();
-                        setTimeout(() => setExportStatus(null), 4000);
-                      } catch (err) {
-                        setExportStatus(`Import failed: ${err}`);
-                        setTimeout(() => setExportStatus(null), 4000);
-                      }
-                    }
-                  };
-                  input.click();
-                }}
-                className="px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-              >
-                Import Config
-              </button>
-              <button
-                onClick={() => {
-                  if (window.confirm("Reset all settings to defaults? This cannot be undone.")) {
-                    setSettings(defaultSettings);
-                    invoke("update_settings", { settings: defaultSettings }).catch(() => {});
-                  }
-                }}
-                className="ml-auto px-3 py-1.5 rounded-md text-xs border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white"
-              >
-                Reset to Defaults
-              </button>
-            </div>
-            {exportStatus && (
-              <p className="text-xs text-[var(--color-text-secondary)]">{exportStatus}</p>
-            )}
+          <div style={{ paddingTop: 12, borderTop: "1px solid var(--line-soft)", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn size="sm" kind="soft" onClick={async () => {
+              try { const path = await invoke<string>("export_settings"); setExportStatus(`Exported to ${path}`); setTimeout(() => setExportStatus(null), 4000); }
+              catch (err) { setExportStatus(`Export failed: ${err}`); setTimeout(() => setExportStatus(null), 4000); }
+            }}>Export Config</Btn>
+            <Btn size="sm" kind="soft" onClick={() => {
+              const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+              input.onchange = async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (file) { try { const content = await file.text(); await invoke("import_settings_from_content", { content }); setExportStatus("Settings imported"); loadSettings(); setTimeout(() => setExportStatus(null), 4000); } catch (err) { setExportStatus(`Import failed: ${err}`); setTimeout(() => setExportStatus(null), 4000); } } };
+              input.click();
+            }}>Import Config</Btn>
+            <span style={{ flex: 1 }} />
+            <Btn size="sm" kind="danger" onClick={() => { if (window.confirm("Reset all settings to defaults?")) { setSettings(defaultSettings); invoke("update_settings", { settings: defaultSettings }).catch(() => {}); } }}>Reset to Defaults</Btn>
           </div>
+          {exportStatus && <div style={{ fontSize: 11, color: "var(--ink-2)" }}>{exportStatus}</div>}
         </div>
-      </section>
+      </Card>
     </div>
-  );
-}
-
-function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        checked ? "bg-[var(--color-accent)]" : "bg-[var(--color-border)]"
-      }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
-          checked ? "translate-x-6" : "translate-x-1"
-        }`}
-      />
-    </button>
   );
 }

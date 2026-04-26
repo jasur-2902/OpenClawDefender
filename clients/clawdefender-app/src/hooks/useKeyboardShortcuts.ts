@@ -10,7 +10,7 @@ export function useRefreshShortcut(onRefresh: () => void) {
       onRefresh();
     }
 
-    window.addEventListener("clawdefender:refresh", handleRefresh);
-    return () => window.removeEventListener("clawdefender:refresh", handleRefresh);
+    window.addEventListener("rookbot:refresh", handleRefresh);
+    return () => window.removeEventListener("rookbot:refresh", handleRefresh);
   }, [onRefresh]);
 }

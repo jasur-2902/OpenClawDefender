@@ -3,12 +3,12 @@ use tauri::{AppHandle, Emitter};
 
 use crate::state::{ActiveModelInfo, AuditEvent, PendingPrompt};
 
-pub const EVENT_AUDIT: &str = "clawdefender://event";
-pub const EVENT_PROMPT: &str = "clawdefender://prompt";
-pub const EVENT_ALERT: &str = "clawdefender://alert";
-pub const EVENT_AUTO_BLOCK: &str = "clawdefender://auto-block";
-pub const EVENT_STATUS_CHANGE: &str = "clawdefender://status-change";
-pub const EVENT_MODEL_CHANGED: &str = "clawdefender://model-changed";
+pub const EVENT_AUDIT: &str = "rookbot://event";
+pub const EVENT_PROMPT: &str = "rookbot://prompt";
+pub const EVENT_ALERT: &str = "rookbot://alert";
+pub const EVENT_AUTO_BLOCK: &str = "rookbot://auto-block";
+pub const EVENT_STATUS_CHANGE: &str = "rookbot://status-change";
+pub const EVENT_MODEL_CHANGED: &str = "rookbot://model-changed";
 
 /// A suspicious event entry shown inside the AlertWindow.
 #[derive(Debug, Clone, Serialize)]
@@ -85,11 +85,11 @@ pub fn emit_model_changed(app: &AppHandle, model_info: Option<&ActiveModelInfo>)
 
 // --- Phase 2: Cloud agent events ---
 
-pub const EVENT_CLOUD_RESPONSE: &str = "clawdefender://cloud-response";
-pub const EVENT_CLOUD_TOOL_CALL: &str = "clawdefender://cloud-tool-call";
-pub const EVENT_CLOUD_ERROR: &str = "clawdefender://cloud-error";
-pub const EVENT_BUDGET_WARNING: &str = "clawdefender://budget-warning";
-pub const EVENT_ACTION_PENDING: &str = "clawdefender://action-pending";
+pub const EVENT_CLOUD_RESPONSE: &str = "rookbot://cloud-response";
+pub const EVENT_CLOUD_TOOL_CALL: &str = "rookbot://cloud-tool-call";
+pub const EVENT_CLOUD_ERROR: &str = "rookbot://cloud-error";
+pub const EVENT_BUDGET_WARNING: &str = "rookbot://budget-warning";
+pub const EVENT_ACTION_PENDING: &str = "rookbot://action-pending";
 
 /// Payload for streaming text from a cloud agent session.
 #[derive(Debug, Clone, Serialize)]
@@ -166,10 +166,10 @@ pub fn emit_action_pending(app: &AppHandle, payload: &ActionPendingPayload) {
 
 // --- Phase 3: AI scan events ---
 
-pub const EVENT_SCAN_FINDING: &str = "clawdefender://scan-finding";
-pub const EVENT_SCAN_STAGE_COMPLETE: &str = "clawdefender://scan-stage-complete";
-pub const EVENT_SCAN_COMPLETE: &str = "clawdefender://scan-complete";
-pub const EVENT_SCAN_USER_REQUEST: &str = "clawdefender://scan-user-request";
+pub const EVENT_SCAN_FINDING: &str = "rookbot://scan-finding";
+pub const EVENT_SCAN_STAGE_COMPLETE: &str = "rookbot://scan-stage-complete";
+pub const EVENT_SCAN_COMPLETE: &str = "rookbot://scan-complete";
+pub const EVENT_SCAN_USER_REQUEST: &str = "rookbot://scan-user-request";
 
 /// Payload for a new finding discovered during an AI scan.
 #[derive(Debug, Clone, Serialize)]
@@ -234,10 +234,10 @@ pub fn emit_scan_user_request(app: &AppHandle, payload: &ScanUserRequestPayload)
 
 // --- Phase 4: Investigation events ---
 
-pub const EVENT_INVESTIGATION_STARTED: &str = "clawdefender://investigation-started";
-pub const EVENT_INVESTIGATION_PROGRESS: &str = "clawdefender://investigation-progress";
-pub const EVENT_INVESTIGATION_COMPLETE: &str = "clawdefender://investigation-complete";
-pub const EVENT_HUNT_FINDING: &str = "clawdefender://hunt-finding";
+pub const EVENT_INVESTIGATION_STARTED: &str = "rookbot://investigation-started";
+pub const EVENT_INVESTIGATION_PROGRESS: &str = "rookbot://investigation-progress";
+pub const EVENT_INVESTIGATION_COMPLETE: &str = "rookbot://investigation-complete";
+pub const EVENT_HUNT_FINDING: &str = "rookbot://hunt-finding";
 
 /// Payload for an investigation that has just started.
 #[derive(Debug, Clone, Serialize)]
@@ -303,13 +303,13 @@ pub fn emit_hunt_finding(app: &AppHandle, payload: &HuntFindingPayload) {
 
 // --- Phase 5: Proactive Security Agent events ---
 
-pub const EVENT_HOURLY_SWEEP: &str = "clawdefender://hourly-sweep";
-pub const EVENT_DAILY_BRIEF: &str = "clawdefender://daily-brief";
-pub const EVENT_WEEKLY_REPORT: &str = "clawdefender://weekly-report";
-pub const EVENT_DRIFT_DETECTED: &str = "clawdefender://drift-detected";
-pub const EVENT_POSTURE_CHANGE: &str = "clawdefender://posture-change";
-pub const EVENT_SIMULATION_COMPLETE: &str = "clawdefender://simulation-complete";
-pub const EVENT_KNOWLEDGE_UPDATED: &str = "clawdefender://knowledge-updated";
+pub const EVENT_HOURLY_SWEEP: &str = "rookbot://hourly-sweep";
+pub const EVENT_DAILY_BRIEF: &str = "rookbot://daily-brief";
+pub const EVENT_WEEKLY_REPORT: &str = "rookbot://weekly-report";
+pub const EVENT_DRIFT_DETECTED: &str = "rookbot://drift-detected";
+pub const EVENT_POSTURE_CHANGE: &str = "rookbot://posture-change";
+pub const EVENT_SIMULATION_COMPLETE: &str = "rookbot://simulation-complete";
+pub const EVENT_KNOWLEDGE_UPDATED: &str = "rookbot://knowledge-updated";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HourlySweepPayload {
@@ -394,13 +394,13 @@ pub fn emit_knowledge_updated(app: &AppHandle, payload: &KnowledgeUpdatedPayload
 
 // --- Phase 6: Agent Autonomy & Reporting events ---
 
-pub const EVENT_AUTONOMY_CHANGED: &str = "clawdefender://autonomy-changed";
-pub const EVENT_LOCKDOWN_ACTIVATED: &str = "clawdefender://lockdown-activated";
-pub const EVENT_LOCKDOWN_DEACTIVATED: &str = "clawdefender://lockdown-deactivated";
-pub const EVENT_PLAYBOOK_TRIGGERED: &str = "clawdefender://playbook-triggered";
-pub const EVENT_PLAYBOOK_COMPLETED: &str = "clawdefender://playbook-completed";
-pub const EVENT_REPORT_GENERATED: &str = "clawdefender://report-generated";
-pub const EVENT_CALIBRATION_COMPLETE: &str = "clawdefender://calibration-complete";
+pub const EVENT_AUTONOMY_CHANGED: &str = "rookbot://autonomy-changed";
+pub const EVENT_LOCKDOWN_ACTIVATED: &str = "rookbot://lockdown-activated";
+pub const EVENT_LOCKDOWN_DEACTIVATED: &str = "rookbot://lockdown-deactivated";
+pub const EVENT_PLAYBOOK_TRIGGERED: &str = "rookbot://playbook-triggered";
+pub const EVENT_PLAYBOOK_COMPLETED: &str = "rookbot://playbook-completed";
+pub const EVENT_REPORT_GENERATED: &str = "rookbot://report-generated";
+pub const EVENT_CALIBRATION_COMPLETE: &str = "rookbot://calibration-complete";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AutonomyChangedPayload {

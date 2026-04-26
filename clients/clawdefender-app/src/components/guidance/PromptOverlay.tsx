@@ -19,7 +19,7 @@ export function PromptOverlay() {
 
   useEffect(() => {
     const unlisten = listen<GuidanceEvent>(
-      "clawdefender://guidance-overlay",
+      "rookbot://guidance-overlay",
       (event) => {
         setMilestone(event.payload.milestone);
         requestAnimationFrame(() => {

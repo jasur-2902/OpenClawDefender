@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Installation metadata stored at `~/.clawdefender/install.json`.
+/// Installation metadata stored at `~/.rookbot/install.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstallMetadata {
     pub version: String,
@@ -49,7 +49,7 @@ impl InstallMetadata {
 pub fn default_metadata_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".clawdefender")
+        .join(".rookbot")
         .join("install.json")
 }
 
@@ -70,7 +70,7 @@ mod tests {
     fn test_metadata_serialize_roundtrip() {
         let meta = InstallMetadata::new(
             "0.1.0",
-            Path::new("/home/user/.clawdefender/bin/clawdefender"),
+            Path::new("/home/user/.rookbot/bin/clawdefender"),
             "linux-x86_64",
         );
         let json = serde_json::to_string_pretty(&meta).unwrap();

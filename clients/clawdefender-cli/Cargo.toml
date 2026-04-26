@@ -6,7 +6,7 @@ license.workspace = true
 description = "CLI client for interacting with the ClawDefender daemon"
 
 [[bin]]
-name = "clawdefender"
+name = "rookbot"
 path = "src/main.rs"
 
 [dependencies]
@@ -19,6 +19,7 @@ clawdefender-certify = { path = "../../crates/clawdefender-certify" }
 clawdefender-scanner = { path = "../../crates/clawdefender-scanner" }
 clawdefender-threat-intel = { path = "../../crates/clawdefender-threat-intel" }
 clap = { workspace = true }
+serde = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -26,8 +27,11 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
+uuid = { workspace = true }
+ctrlc = "3.5"
 open = "5"
 libc = "0.2"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

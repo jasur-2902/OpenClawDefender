@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="clawdefender/clawdefender"
+REPO="rookbot-io/rookbot"
 INSTALL_DIR="/usr/local/bin"
-BINARY_NAME="clawdefender"
+BINARY_NAME="rookbot"
+DAEMON_NAME="rookbot-daemon"
 GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
 GITHUB_DL="https://github.com/${REPO}/releases/download"
 
@@ -12,24 +13,40 @@ GITHUB_DL="https://github.com/${REPO}/releases/download"
 info()  { echo "==> $*"; }
 error() { echo "ERROR: $*" >&2; exit 1; }
 
-# --- Pre-flight checks ---
+# --- Detect platform ---
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
-    error "ClawDefender currently supports macOS only. See https://github.com/${REPO} for other platforms."
-fi
-
-MACOS_VER="$(sw_vers -productVersion 2>/dev/null || echo "0")"
-MACOS_MAJOR="$(echo "$MACOS_VER" | cut -d. -f1)"
-if [[ "$MACOS_MAJOR" -lt 13 ]]; then
-    error "ClawDefender requires macOS 13 (Ventura) or later. You have macOS $MACOS_VER."
-fi
-
+OS="$(uname -s)"
 ARCH="$(uname -m)"
+
+case "$OS" in
+    Darwin)
+        PLATFORM="macos"
+        MACOS_VER="$(sw_vers -productVersion 2>/dev/null || echo "0")"
+        MACOS_MAJOR="$(echo "$MACOS_VER" | cut -d. -f1)"
+        if [[ "$MACOS_MAJOR" -lt 13 ]]; then
+            error "Rookbot requires macOS 13 (Ventura) or later. You have macOS $MACOS_VER."
+        fi
+        TARBALL="rookbot-macos-universal.tar.gz"
+        info "Detected macOS $MACOS_VER on $ARCH"
+        ;;
+    Linux)
+        PLATFORM="linux"
+        case "$ARCH" in
+            x86_64)  TARBALL="rookbot-linux-x86_64.tar.gz" ;;
+            aarch64) TARBALL="rookbot-linux-aarch64.tar.gz" ;;
+            *)       error "Unsupported Linux architecture: $ARCH" ;;
+        esac
+        info "Detected Linux on $ARCH"
+        ;;
+    *)
+        error "Unsupported operating system: $OS. Rookbot supports macOS and Linux."
+        ;;
+esac
+
 case "$ARCH" in
     arm64|aarch64|x86_64) ;;
     *) error "Unsupported architecture: $ARCH" ;;
 esac
-info "Detected macOS $MACOS_VER on $ARCH"
 
 if command -v "$BINARY_NAME" &>/dev/null; then
     EXISTING="$(command -v "$BINARY_NAME")"
@@ -52,7 +69,6 @@ info "Latest release: $LATEST_TAG"
 
 # --- Download ---
 
-TARBALL="clawdefender-macos-universal.tar.gz"
 DOWNLOAD_URL="${GITHUB_DL}/${LATEST_TAG}/${TARBALL}"
 CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
 
@@ -71,7 +87,12 @@ curl -fsSL "$CHECKSUM_URL" -o "$TMPDIR/${TARBALL}.sha256" \
 
 info "Verifying SHA-256 checksum..."
 EXPECTED="$(awk '{print $1}' "$TMPDIR/${TARBALL}.sha256")"
-ACTUAL="$(shasum -a 256 "$TMPDIR/$TARBALL" | awk '{print $1}')"
+
+if command -v sha256sum &>/dev/null; then
+    ACTUAL="$(sha256sum "$TMPDIR/$TARBALL" | awk '{print $1}')"
+else
+    ACTUAL="$(shasum -a 256 "$TMPDIR/$TARBALL" | awk '{print $1}')"
+fi
 
 if [[ "$EXPECTED" != "$ACTUAL" ]]; then
     error "Checksum mismatch!\n  Expected: $EXPECTED\n  Actual:   $ACTUAL\nThe download may be corrupted. Please try again."
@@ -84,35 +105,35 @@ info "Checksum verified."
 info "Extracting..."
 tar xzf "$TMPDIR/$TARBALL" -C "$TMPDIR"
 chmod +x "$TMPDIR/$BINARY_NAME"
-chmod +x "$TMPDIR/clawdefender-daemon" 2>/dev/null || true
+chmod +x "$TMPDIR/$DAEMON_NAME" 2>/dev/null || true
 
 info "Installing to $INSTALL_DIR (may require sudo)..."
 if [[ -w "$INSTALL_DIR" ]]; then
     mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
-    if [[ -f "$TMPDIR/clawdefender-daemon" ]]; then
-        mv "$TMPDIR/clawdefender-daemon" "$INSTALL_DIR/clawdefender-daemon"
+    if [[ -f "$TMPDIR/$DAEMON_NAME" ]]; then
+        mv "$TMPDIR/$DAEMON_NAME" "$INSTALL_DIR/$DAEMON_NAME"
     fi
 else
     sudo mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
-    if [[ -f "$TMPDIR/clawdefender-daemon" ]]; then
-        sudo mv "$TMPDIR/clawdefender-daemon" "$INSTALL_DIR/clawdefender-daemon"
+    if [[ -f "$TMPDIR/$DAEMON_NAME" ]]; then
+        sudo mv "$TMPDIR/$DAEMON_NAME" "$INSTALL_DIR/$DAEMON_NAME"
     fi
 fi
 
 # --- Initialize ---
 
-info "Running 'clawdefender init'..."
+info "Running 'rookbot init'..."
 "$INSTALL_DIR/$BINARY_NAME" init || true
 
 # --- Done ---
 
 echo ""
-echo "ClawDefender $LATEST_TAG installed successfully!"
+echo "Rookbot $LATEST_TAG installed successfully!"
 echo ""
 echo "Next steps:"
-echo "  clawdefender wrap <server-name>   Protect an MCP server"
-echo "  clawdefender status               Check proxy status"
-echo "  clawdefender --help               Full usage information"
+echo "  rookbot wrap <server-name>   Protect an MCP server"
+echo "  rookbot status               Check proxy status"
+echo "  rookbot --help               Full usage information"
 echo ""
-echo "Configuration: ~/.config/clawdefender/"
-echo "Audit logs:    ~/.local/share/clawdefender/"
+echo "Configuration: ~/.config/rookbot/"
+echo "Audit logs:    ~/.local/share/rookbot/"

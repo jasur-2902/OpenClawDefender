@@ -151,7 +151,7 @@ mod tests {
         let mut config = json!({
             "mcpServers": {
                 "test-server": {
-                    "command": "clawdefender",
+                    "command": "rookbot",
                     "args": ["proxy", "--", "npx", "-y", "@mcp/server"],
                     "_clawdefender_original": {
                         "command": "npx",
@@ -241,7 +241,7 @@ mod tests {
         let mut config = json!({
             "servers": {
                 "cursor-server": {
-                    "command": "clawdefender",
+                    "command": "rookbot",
                     "args": ["proxy", "--", "node", "server.js"],
                     "_clawdefender_original": {
                         "command": "node",
@@ -279,7 +279,7 @@ mod tests {
                         "display_name": "Unwrap Test",
                         "server": {
                             "mcp_config": {
-                                "command": "clawdefender",
+                                "command": "rookbot",
                                 "args": ["proxy", "--", "node", "server.js", "--port", "3000"],
                                 "env": {"NODE_ENV": "production"},
                                 "_clawdefender_original": {
@@ -337,7 +337,7 @@ mod tests {
         let mut config = json!({
             "mcpServers": {
                 "legacy-server": {
-                    "command": "clawdefender",
+                    "command": "rookbot",
                     "args": ["proxy", "--", "python", "server.py"],
                     "_clawai_original": {
                         "command": "python",

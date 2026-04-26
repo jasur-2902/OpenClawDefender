@@ -1,4 +1,4 @@
-//! Template constants for Ask Claw response synthesis.
+//! Template constants for Ask Rook response synthesis.
 //!
 //! Every user-facing string lives here. Never hardcode a response string
 //! in synthesizer.rs — import from this module instead.

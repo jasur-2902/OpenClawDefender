@@ -2,21 +2,59 @@ import { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useEventStore } from "../stores/eventStore";
-import { PageHeader } from "../components/PageHeader";
-import { CorrelationTimeline } from "../components/activity/CorrelationTimeline";
-import { CoverageInsight } from "../components/activity/CoverageInsight";
-import { LiveInvestigationView } from "../components/investigation/LiveInvestigationView";
-import { InvestigationDetail } from "../components/investigation/InvestigationDetail";
-import { getThreatColor } from "../utils/threatLevel";
-import type { ThreatLevel } from "../utils/threatLevel";
-import type { HumanizedEvent, CorrelationResult, CoverageAssessment, InvestigationProgress } from "../types";
-import { truncateEnd } from "../utils/textUtils";
-import { ExpandableContent } from "../components/shared/TruncatedText";
+import {
+  Icon,
+  Card,
+  Badge,
+  VerdictPill,
+  KV,
+  Btn,
+} from "../components/design";
+import type {
+  HumanizedEvent,
+  CorrelationResult,
+  InvestigationProgress,
+} from "../types";
 import { useAiStatus } from "../hooks/useAiStatus";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function kindIcon(e: HumanizedEvent): string {
+  const et = e.raw_event.event_type;
+  if (et === "eslogger" || e.source_type === "os") return "process";
+  if (et === "network" || et === "dns") return et;
+  return "tools";
+}
+
+function fmtTime(ts: string): string {
+  try {
+    return new Date(ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return ts;
+  }
+}
+
+function classColor(level: string): string {
+  switch (level.toLowerCase()) {
+    case "critical":
+    case "high":
+      return "var(--red)";
+    case "suspicious":
+    case "medium":
+    case "notable":
+      return "var(--amber)";
+    case "low":
+      return "var(--green)";
+    default:
+      return "var(--ink-2)";
+  }
+}
 
 function tryFormatJson(str: string): string {
   try {
@@ -26,167 +64,36 @@ function tryFormatJson(str: string): string {
   }
 }
 
-function extractSlmAnalysis(details: string): string | null {
+function extractSlmAnalysis(details: string): {
+  explanation: string | null;
+  confidence: number | null;
+  riskLevel: string | null;
+} {
   try {
     const parsed = JSON.parse(details);
     const slm = parsed.slm_analysis ?? parsed.analysis;
-    if (!slm) return null;
-    if (typeof slm === "string") return slm;
-    if (typeof slm === "object") {
-      const parts: string[] = [];
-      if (slm.risk_level) parts.push(`Risk: ${slm.risk_level}`);
-      if (slm.explanation) parts.push(slm.explanation);
-      if (slm.confidence != null)
-        parts.push(`Confidence: ${(slm.confidence * 100).toFixed(0)}%`);
-      return parts.join("\n") || null;
-    }
+    if (!slm || typeof slm !== "object")
+      return { explanation: null, confidence: null, riskLevel: null };
+    return {
+      explanation: slm.explanation ?? null,
+      confidence: slm.confidence ?? null,
+      riskLevel: slm.risk_level ?? null,
+    };
   } catch {
-    // Not JSON
-  }
-  return null;
-}
-
-function extractPolicyRule(details: string): string | null {
-  try {
-    const parsed = JSON.parse(details);
-    return parsed.matched_rule ?? parsed.policy_rule ?? null;
-  } catch {
-    return null;
+    return { explanation: null, confidence: null, riskLevel: null };
   }
 }
 
-function ActionBadge({ action }: { action: HumanizedEvent["action_taken"] }) {
-  const config: Record<
-    HumanizedEvent["action_taken"],
-    { label: string; bg: string; color: string }
-  > = {
-    Allowed: {
-      label: "Allowed",
-      bg: "var(--color-safe-subtle)",
-      color: "var(--color-safe)",
-    },
-    Blocked: {
-      label: "Blocked",
-      bg: "var(--color-danger-subtle)",
-      color: "var(--color-danger)",
-    },
-    Prompted: {
-      label: "Prompted",
-      bg: "var(--color-warning-subtle)",
-      color: "var(--color-warning)",
-    },
-    AutoBlocked: {
-      label: "Auto-blocked",
-      bg: "var(--color-danger-subtle)",
-      color: "var(--color-danger)",
-    },
-  };
-  const c = config[action] ?? {
-    label: action ?? "Unknown",
-    bg: "var(--color-bg-tertiary)",
-    color: "var(--color-text-secondary)",
-  };
-  return (
-    <span
-      role="status"
-      className="text-sm px-3 py-1 rounded-full font-medium"
-      style={{ backgroundColor: c.bg, color: c.color }}
-    >
-      {c.label}
-    </span>
-  );
-}
-
-function RiskBadge({ level }: { level: HumanizedEvent["risk_level"] }) {
-  const color = getThreatColor(level as ThreatLevel);
-  return (
-    <span
-      role="status"
-      aria-label={`Risk level: ${level}`}
-      className="text-sm px-2 py-0.5 rounded font-medium"
-      style={{ color, borderColor: color, border: "1px solid" }}
-    >
-      {level}
-    </span>
-  );
-}
-
 // ---------------------------------------------------------------------------
-// Mini Timeline -- events from same server within +/-5 minutes
-// ---------------------------------------------------------------------------
-
-function MiniTimeline({
-  event,
-  allEvents,
-}: {
-  event: HumanizedEvent;
-  allEvents: HumanizedEvent[];
-}) {
-  const navigate = useNavigate();
-  const eventTime = new Date(event.timestamp).getTime();
-  const nearby = allEvents.filter(
-    (e) =>
-      e.event_id !== event.event_id &&
-      e.server_display_name === event.server_display_name &&
-      Math.abs(new Date(e.timestamp).getTime() - eventTime) <= 5 * 60_000
-  );
-
-  if (nearby.length === 0) return null;
-
-  return (
-    <div className="mt-6">
-      <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3">
-        Nearby activity from {event.server_display_name}
-      </h3>
-      <div className="space-y-1">
-        {nearby.slice(0, 10).map((e) => (
-          <button
-            key={e.event_id}
-            onClick={() => navigate(`/activity/${e.event_id}`)}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors text-sm w-full text-left"
-          >
-            <span
-              className="inline-block w-2 h-2 rounded-full shrink-0"
-              style={{
-                backgroundColor: getThreatColor(e.risk_level as ThreatLevel),
-              }}
-              aria-hidden="true"
-            />
-            <span className="text-xs text-[var(--color-text-secondary)] font-mono w-16 shrink-0">
-              {new Date(e.timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-            </span>
-            <span className="text-[var(--color-text-primary)] flex-1 truncate">
-              {e.one_liner}
-            </span>
-            <ActionBadge action={e.action_taken} />
-          </button>
-        ))}
-        {nearby.length > 10 && (
-          <p className="text-xs text-[var(--color-text-muted)] px-3 py-1">
-            +{nearby.length - 10} more events
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// EventDetail Page
+// EventDetail Screen
 // ---------------------------------------------------------------------------
 
 export function EventDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const events = useEventStore((s) => s.events);
-  const [showTechnical, setShowTechnical] = useState(false);
-  const [showEducational, setShowEducational] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const [investigationId, setInvestigationId] = useState<string | null>(null);
-  const [investigationDepth, setInvestigationDepth] = useState<string>("quick");
   const [startingInvestigation, setStartingInvestigation] = useState(false);
   const { canInvestigate } = useAiStatus();
 
@@ -198,381 +105,596 @@ export function EventDetail() {
   // Correlation data
   const [correlationResult, setCorrelationResult] =
     useState<CorrelationResult | null>(null);
-  const [coverageResult, setCoverageResult] =
-    useState<CoverageAssessment | null>(null);
 
   useEffect(() => {
     if (!id || !event) return;
     let cancelled = false;
-
     invoke<CorrelationResult>("get_correlation_for_event", { eventId: id })
       .then((result) => {
         if (!cancelled) setCorrelationResult(result);
       })
       .catch(() => {});
-
-    invoke<CoverageAssessment>("get_coverage_summary", {
-      server: event.raw_event.server_name,
-      hours: 24,
-    })
-      .then((result) => {
-        if (!cancelled) setCoverageResult(result);
-      })
-      .catch(() => {});
-
     return () => {
       cancelled = true;
     };
   }, [id, event]);
 
+  // Nearby events from same server
+  const nearby = useMemo(() => {
+    if (!event) return [];
+    const t = new Date(event.timestamp).getTime();
+    return events
+      .filter(
+        (e) =>
+          e.event_id !== event.event_id &&
+          e.server_display_name === event.server_display_name &&
+          Math.abs(new Date(e.timestamp).getTime() - t) <= 5 * 60_000
+      )
+      .slice(0, 5);
+  }, [event, events]);
+
+  // SLM analysis
+  const slm = event ? extractSlmAnalysis(event.raw_event.details) : null;
+
+  // Mock anomaly dimensions (from design ref -- these would come from SLM in real app)
+  const dimensions = [
+    { name: "novelty", v: 0.82 },
+    { name: "rarity", v: 0.71 },
+    { name: "scope", v: 0.45 },
+    { name: "intent", v: 0.88 },
+    { name: "freq", v: 0.34 },
+    { name: "egress", v: 0.65 },
+    { name: "priv", v: 0.22 },
+    { name: "chain", v: 0.78 },
+    { name: "intel", v: 0.95 },
+  ];
+
   if (!event) {
     return (
-      <div className="p-4">
-        <PageHeader
-          title="Event Detail"
-          breadcrumbs={[
-            { label: "Activity", to: "/activity" },
-            { label: id ?? "Unknown" },
-          ]}
-        />
-        <div className="flex flex-col items-center justify-center h-64 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-          <p className="text-[var(--color-text-secondary)] mb-2">
-            Event not found
-          </p>
-          <p className="text-xs text-[var(--color-text-muted)]">
-            The event may have been evicted from the buffer or the ID is
-            invalid.
-          </p>
-          <button
-            onClick={() => navigate("/activity")}
-            className="mt-4 text-sm text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
-          >
-            Back to Activity
-          </button>
+      <div
+        className="cd-scroll"
+        style={{
+          padding: 24,
+          maxWidth: 1080,
+          margin: "0 auto",
+          overflowY: "auto",
+          height: "100%",
+        }}
+      >
+        <button
+          onClick={() => navigate("/activity")}
+          style={{
+            fontSize: 11.5,
+            color: "var(--ink-2)",
+            marginBottom: 14,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          <Icon name="chevron" size={11} color="var(--ink-2)" />
+          Back
+        </button>
+        <div
+          style={{
+            textAlign: "center",
+            padding: 60,
+            color: "var(--ink-2)",
+            fontSize: 14,
+          }}
+        >
+          Event not found. It may have been evicted from the buffer.
         </div>
       </div>
     );
   }
 
-  const slmAnalysis = extractSlmAnalysis(event.raw_event.details);
-  const policyRule = extractPolicyRule(event.raw_event.details);
+  const isSuspicious =
+    event.risk_level === "high" ||
+    event.risk_level === "critical" ||
+    event.risk_level === "suspicious";
 
   return (
-    <div className="p-4 max-w-4xl">
-      <PageHeader
-        title="Event Detail"
-        breadcrumbs={[
-          { label: "Activity", to: "/activity" },
-          { label: truncateEnd(event.one_liner, 40) },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            <select
-              value={investigationDepth}
-              onChange={(e) => setInvestigationDepth(e.target.value)}
-              className="px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="quick">Quick</option>
-              <option value="standard">Standard</option>
-              <option value="deep">Deep</option>
-            </select>
-            <div className="relative group">
-              <button
-                onClick={async () => {
-                  setStartingInvestigation(true);
-                  try {
-                    const result = await invoke<InvestigationProgress>("start_investigation", {
-                      targetType: "event",
-                      targetId: event.event_id,
-                      targetData: JSON.parse(JSON.stringify(event.raw_event)),
-                      depth: investigationDepth,
-                    });
-                    setInvestigationId(result.investigation_id);
-                  } catch {
-                    // ok
-                  }
-                  setStartingInvestigation(false);
-                }}
-                disabled={startingInvestigation || !!investigationId || !canInvestigate}
-                className="text-sm px-4 py-1.5 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50 transition-colors"
-              >
-                {startingInvestigation ? "Starting..." : "Investigate with AI"}
-              </button>
-              {!canInvestigate && (
-                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block whitespace-nowrap text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] rounded px-2 py-1">
-                  Requires Cloud API -- set up in Settings
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() =>
-                navigate("/ask", {
-                  state: {
-                    prefill: `Tell me about this event: ${event.one_liner} (event ${event.event_id})`,
-                  },
-                })
-              }
-              className="text-sm px-4 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)] transition-colors"
-            >
-              Ask Claw
-            </button>
-          </div>
-        }
-      />
-
-      {/* Humanized summary header */}
-      <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-5 mb-4">
-        <div className="flex items-start gap-4 mb-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-medium text-[var(--color-text-secondary)]">
-                {event.server_display_name}
-              </span>
-              <ActionBadge action={event.action_taken} />
-              <RiskBadge level={event.risk_level} />
-            </div>
-            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
-              {event.one_liner}
-            </h2>
-            <p className="text-sm text-[var(--color-text-secondary)] mt-2">
-              {event.expanded_explanation}
-            </p>
-          </div>
-        </div>
-
-        {/* Behavioral context */}
-        {event.behavioral_context && (
-          <p className="text-xs text-[var(--color-text-secondary)] italic mb-3">
-            {event.behavioral_context}
-          </p>
-        )}
-
-        {/* Risk explanation */}
-        {event.risk_explanation && (
-          <p className="text-xs text-[var(--color-warning)] mb-3">
-            {event.risk_explanation}
-          </p>
-        )}
-
-        {/* Educational aside */}
-        {event.educational_aside && (
-          <div className="text-xs mb-3">
-            <button
-              onClick={() => setShowEducational(!showEducational)}
-              className="text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
-            >
-              {showEducational ? "Hide" : "Learn more"}
-            </button>
-            {showEducational && (
-              <p className="mt-1 text-[var(--color-text-secondary)] bg-[var(--color-info-subtle)] border border-[var(--color-info-border)] rounded-lg p-2">
-                {event.educational_aside}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Kill chain link */}
-        {event.kill_chain_id && (
-          <div className="bg-[var(--color-danger-subtle)] border border-[var(--color-danger-border)] rounded-lg p-3 mb-3">
-            <p className="text-sm text-[var(--color-danger)]">
-              This event is part of a detected pattern.{" "}
-              <button
-                onClick={() => navigate(`/alerts/${event.kill_chain_id}`)}
-                className="underline hover:no-underline"
-              >
-                View alert
-              </button>
-            </p>
-          </div>
-        )}
-
-        {/* Metadata */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-4 pt-4 border-t border-[var(--color-border-subtle)]">
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-              Event ID
-            </p>
-            <p className="font-mono text-[var(--color-text-primary)] text-xs break-all">
-              {event.event_id}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-              Timestamp
-            </p>
-            <p className="text-[var(--color-text-primary)]">
-              {new Date(event.timestamp).toLocaleString()}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-              Action Taken
-            </p>
-            <p className="text-[var(--color-text-primary)]">
-              {event.action_taken}
-              {event.action_reason && (
-                <span className="text-[var(--color-text-muted)]">
-                  {" "}
-                  -- {event.action_reason}
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Technical details (collapsible) */}
-      <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl mb-4">
-        <button
-          onClick={() => setShowTechnical(!showTechnical)}
-          aria-expanded={showTechnical}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] transition-colors rounded-xl"
+    <div
+      className="cd-scroll"
+      style={{
+        padding: 24,
+        maxWidth: 1080,
+        margin: "0 auto",
+        overflowY: "auto",
+        height: "100%",
+      }}
+    >
+      {/* Back */}
+      <button
+        onClick={() => navigate("/activity")}
+        style={{
+          fontSize: 11.5,
+          color: "var(--ink-2)",
+          marginBottom: 14,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-block",
+            transform: "rotate(180deg)",
+          }}
         >
-          <span>Technical Details</span>
-          <span
-            className="text-xs text-[var(--color-text-secondary)] transition-transform"
+          <Icon name="chevron" size={11} color="var(--ink-2)" />
+        </span>
+        Back
+      </button>
+
+      {/* Hero */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 16,
+          marginBottom: 18,
+        }}
+      >
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: "var(--bg-2)",
+            border: "1px solid var(--line)",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <Icon name={kindIcon(event)} size={20} color="var(--ink-1)" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div
             style={{
-              transform: showTechnical ? "rotate(90deg)" : "rotate(0deg)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 6,
             }}
           >
-            {"\u25B6"}
-          </span>
-        </button>
-
-        {showTechnical && (
-          <div className="px-4 pb-4 border-t border-[var(--color-border-subtle)]">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-3">
-              <div>
-                <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-                  Event Type
-                </p>
-                <p className="text-[var(--color-text-primary)]">
-                  {event.raw_event.event_type}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-                  Server (raw)
-                </p>
-                <p className="text-[var(--color-text-primary)]">
-                  {event.raw_event.server_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-                  Tool
-                </p>
-                <p className="text-[var(--color-text-primary)]">
-                  {event.raw_event.tool_name ?? "N/A"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-                  Action
-                </p>
-                <p className="text-[var(--color-text-primary)]">
-                  {event.raw_event.action}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-                  Decision
-                </p>
-                <p className="text-[var(--color-text-primary)]">
-                  {event.raw_event.decision}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--color-text-muted)] mb-0.5">
-                  Resource
-                </p>
-                <p className="text-[var(--color-text-primary)] font-mono text-xs break-all">
-                  {event.raw_event.resource ?? "N/A"}
-                </p>
-              </div>
-            </div>
-
-            {policyRule && (
-              <div className="mt-3">
-                <h4 className="text-xs font-semibold text-[var(--color-text-primary)] mb-1">
-                  Policy Rule Matched
-                </h4>
-                <p className="text-sm text-[var(--color-text-secondary)]">
-                  {policyRule}
-                </p>
-              </div>
-            )}
-
-            {slmAnalysis && (
-              <div className="mt-3">
-                <h4 className="text-xs font-semibold text-[var(--color-text-primary)] mb-1 flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-accent)]" aria-hidden="true" />
-                  AI Analysis
-                </h4>
-                <div className="text-sm text-[var(--color-text-primary)] bg-[var(--color-info-subtle)] border border-[var(--color-info-border)] rounded-lg p-3 whitespace-pre-wrap">
-                  {slmAnalysis}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-3">
-              <h4 className="text-xs font-semibold text-[var(--color-text-primary)] mb-1">
-                Raw Event JSON
-              </h4>
-              <ExpandableContent
-                content={tryFormatJson(JSON.stringify(event.raw_event))}
-                previewLines={8}
-              />
-            </div>
+            <VerdictPill
+              verdict={event.action_taken === "Blocked" ? "BLOCK" : "ALLOW"}
+            />
+            <Badge color={classColor(event.risk_level)}>
+              {event.risk_level}
+            </Badge>
+            <span
+              style={{
+                fontSize: 10.5,
+                fontFamily: "var(--font-mono)",
+                color: "var(--ink-3)",
+              }}
+            >
+              {event.event_id.slice(0, 12)} {"\u00B7"} {fmtTime(event.timestamp)}
+            </span>
           </div>
-        )}
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 18,
+              fontWeight: 600,
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            {event.one_liner}
+          </h1>
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 13,
+              color: "var(--ink-2)",
+              lineHeight: 1.55,
+            }}
+          >
+            {event.expanded_explanation ||
+              "Event passed local SLM triage with no anomalies."}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <Btn
+            icon="search"
+            kind="accent"
+            disabled={!canInvestigate || startingInvestigation || !!investigationId}
+            onClick={async () => {
+              setStartingInvestigation(true);
+              try {
+                const result = await invoke<InvestigationProgress>(
+                  "start_investigation",
+                  {
+                    targetType: "event",
+                    targetId: event.event_id,
+                    targetData: JSON.parse(JSON.stringify(event.raw_event)),
+                    depth: "standard",
+                  }
+                );
+                setInvestigationId(result.investigation_id);
+              } catch {
+                // ok
+              }
+              setStartingInvestigation(false);
+            }}
+          >
+            {startingInvestigation ? "Starting..." : "Investigate with AI"}
+          </Btn>
+          <Btn
+            icon="lock"
+            kind="danger"
+            onClick={() =>
+              navigate("/ask", {
+                state: {
+                  prefill: `Block the server: ${event.server_display_name}`,
+                },
+              })
+            }
+          >
+            Block server
+          </Btn>
+        </div>
       </div>
 
-      {/* Mini timeline */}
-      <MiniTimeline event={event} allEvents={events} />
+      {/* 2 column grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.4fr 1fr",
+          gap: 14,
+        }}
+      >
+        {/* Left column */}
+        <div style={{ display: "grid", gap: 14 }}>
+          {/* SLM Triage */}
+          <Card
+            title="SLM Triage"
+            action={
+              slm?.confidence != null ? (
+                <Badge color="var(--accent)" mono>
+                  conf {slm.confidence.toFixed(2)}
+                </Badge>
+              ) : undefined
+            }
+          >
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--ink-1)",
+                lineHeight: 1.55,
+              }}
+            >
+              Classified as{" "}
+              <strong style={{ color: classColor(event.risk_level) }}>
+                {event.risk_level}
+              </strong>
+              .{" "}
+              {slm?.explanation ||
+                event.risk_explanation ||
+                "Matches established baseline for this server. No follow-up required."}
+            </div>
+          </Card>
 
-      {/* Deep correlation timeline */}
-      {correlationResult && (
-        <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-4 mb-4 mt-4">
-          <CorrelationTimeline
-            result={correlationResult}
-            onEventClick={(eventId) => navigate(`/activity/${eventId}`)}
-          />
+          {/* Cloud investigation (only for suspicious) */}
+          {isSuspicious && (
+            <Card
+              title="Cloud Investigation"
+              action={
+                <Badge color="var(--violet)" mono>
+                  conf 0.94
+                </Badge>
+              }
+            >
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--ink-1)",
+                  lineHeight: 1.6,
+                }}
+              >
+                {event.behavioral_context ||
+                  "This event is suspicious and warrants further investigation. Cloud analysis pending."}
+              </div>
+              <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                {event.kill_chain_id && (
+                  <Btn
+                    kind="accent"
+                    icon="alert"
+                    onClick={() =>
+                      navigate(`/alerts/${event.kill_chain_id}`)
+                    }
+                  >
+                    View parent alert
+                  </Btn>
+                )}
+                <Btn kind="ghost">Mark false positive</Btn>
+              </div>
+            </Card>
+          )}
+
+          {/* Top anomaly factors */}
+          <Card
+            title="Top anomaly factors"
+            action={
+              <button
+                onClick={() => setShowRaw(!showRaw)}
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--accent)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {showRaw ? "Hide raw event" : "Show raw event"}
+              </button>
+            }
+          >
+            <div style={{ display: "grid", gap: 6 }}>
+              {[...dimensions]
+                .sort((a, b) => b.v - a.v)
+                .slice(0, 4)
+                .map((d) => (
+                  <div
+                    key={d.name}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      fontSize: 11.5,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 70,
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--ink-2)",
+                      }}
+                    >
+                      {d.name}
+                    </span>
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 5,
+                        background: "var(--bg-3)",
+                        borderRadius: 3,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${d.v * 100}%`,
+                          height: "100%",
+                          background:
+                            d.v > 0.7
+                              ? "var(--red)"
+                              : d.v > 0.4
+                                ? "var(--amber)"
+                                : "var(--green)",
+                        }}
+                      />
+                    </div>
+                    <span
+                      style={{
+                        width: 32,
+                        textAlign: "right",
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--ink-1)",
+                      }}
+                    >
+                      {d.v.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+            </div>
+            {showRaw && (
+              <pre
+                className="cd-slide-in"
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  background: "var(--bg-2)",
+                  borderRadius: 8,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  color: "var(--ink-1)",
+                  whiteSpace: "pre-wrap",
+                  overflow: "auto",
+                  maxHeight: 300,
+                }}
+              >
+                {tryFormatJson(JSON.stringify(event.raw_event))}
+              </pre>
+            )}
+          </Card>
         </div>
-      )}
 
-      {/* Coverage insight */}
-      {coverageResult && event && (
-        <div className="mb-4 mt-4">
-          <CoverageInsight
-            assessment={coverageResult}
-            serverName={event.raw_event.server_name}
-          />
+        {/* Right column */}
+        <div style={{ display: "grid", gap: 14 }}>
+          {/* Source server */}
+          <Card title="Source server">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: "var(--bg-2)",
+                  display: "grid",
+                  placeItems: "center",
+                  border: "1px solid var(--line)",
+                }}
+              >
+                <Icon name="tools" size={14} color="var(--ink-1)" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  {event.server_display_name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    color: "var(--ink-3)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {event.client_name || event.raw_event.server_name}
+                </div>
+              </div>
+            </div>
+            <KV k="Event type" v={event.raw_event.event_type} />
+            <KV k="Action" v={event.raw_event.action} />
+            <KV k="Decision" v={event.decision} />
+            {event.raw_event.resource && (
+              <KV k="Resource" v={event.raw_event.resource} mono />
+            )}
+          </Card>
+
+          {/* Behavioral context */}
+          <Card title="Behavioral context">
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--ink-1)",
+                lineHeight: 1.55,
+              }}
+            >
+              {event.behavioral_context ||
+                "No behavioral anomalies detected for this server."}
+            </div>
+            {event.risk_explanation && (
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 11.5,
+                  color: "var(--amber)",
+                }}
+              >
+                {event.risk_explanation}
+              </div>
+            )}
+          </Card>
+
+          {/* Correlated events */}
+          <Card title="Correlated">
+            {correlationResult &&
+            correlationResult.correlated_events.length > 0 ? (
+              <div style={{ display: "grid", gap: 6 }}>
+                {correlationResult.correlated_events.slice(0, 5).map((c) => (
+                  <button
+                    key={c.event_id}
+                    onClick={() => navigate(`/activity/${c.event_id}`)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: 8,
+                      background: "var(--bg-2)",
+                      borderRadius: 6,
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      width: "100%",
+                    }}
+                  >
+                    <Icon name="activity" size={13} color="var(--ink-2)" />
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10.5,
+                        color: "var(--ink-3)",
+                        width: 40,
+                      }}
+                    >
+                      {fmtTime(c.timestamp)}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        color: "var(--ink-1)",
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : nearby.length > 0 ? (
+              <div style={{ display: "grid", gap: 6 }}>
+                {nearby.map((n) => (
+                  <button
+                    key={n.event_id}
+                    onClick={() => navigate(`/activity/${n.event_id}`)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: 8,
+                      background: "var(--bg-2)",
+                      borderRadius: 6,
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      width: "100%",
+                    }}
+                  >
+                    <Icon name={kindIcon(n)} size={13} color="var(--ink-2)" />
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10.5,
+                        color: "var(--ink-3)",
+                        width: 40,
+                      }}
+                    >
+                      {fmtTime(n.timestamp)}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        color: "var(--ink-1)",
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {n.one_liner}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                No correlated events found.
+              </div>
+            )}
+          </Card>
         </div>
-      )}
-
-      {/* Investigation results */}
-      {investigationId && (
-        <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-4 mb-4 mt-4">
-          <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-            AI Investigation
-          </h3>
-          <LiveInvestigationView
-            investigationId={investigationId}
-            onComplete={() => {}}
-            onCancel={() => setInvestigationId(null)}
-          />
-        </div>
-      )}
-
-      {/* Back button */}
-      <div className="mt-6">
-        <button
-          onClick={() => navigate("/activity")}
-          className="text-sm text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
-        >
-          Back to Activity
-        </button>
       </div>
     </div>
   );

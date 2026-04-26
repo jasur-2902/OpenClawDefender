@@ -1,147 +1,197 @@
-import { useState, useEffect } from "react";
-import { NavLink } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
-import { useEventStore } from "../stores/eventStore";
+import { NavLink, useLocation } from "react-router-dom";
+import { Icon, Rook } from "./design";
 import { useAlertStore } from "../stores/alertStore";
-import { useAiStatus } from "../hooks/useAiStatus";
 
 interface NavItem {
+  id: string;
   path: string;
   label: string;
   icon: string;
-  badge?: "prompts" | "alerts";
+  badge?: "alerts";
 }
 
-const navItems: NavItem[] = [
-  { path: "/", label: "Home", icon: "grid" },
-  { path: "/activity", label: "Activity", icon: "clock" },
-  { path: "/alerts", label: "Alerts", icon: "shield", badge: "alerts" },
-  { path: "/tools", label: "My Tools", icon: "lock" },
-  { path: "/investigations", label: "Investigations", icon: "investigate" },
-  { path: "/ask", label: "Ask Claw", icon: "chat" },
-  { path: "/policy", label: "Policy", icon: "activity" },
-  { path: "/threat-intel", label: "Threat Intel", icon: "globe" },
-  { path: "/health", label: "System Health", icon: "network" },
-  { path: "/scanner", label: "Security Scan", icon: "search" },
-  { path: "/agent", label: "Agent", icon: "activity" },
-  { path: "/settings", label: "Settings", icon: "settings" },
+const NAV_ITEMS: NavItem[] = [
+  { id: "home", path: "/", label: "Home", icon: "home" },
+  { id: "activity", path: "/activity", label: "Activity", icon: "activity" },
+  { id: "alerts", path: "/alerts", label: "Alerts", icon: "alert", badge: "alerts" },
+  { id: "scan", path: "/scan", label: "Scans", icon: "scan" },
+  { id: "ask", path: "/ask", label: "Ask Rook", icon: "chat" },
+  { id: "tools", path: "/tools", label: "Tools", icon: "tools" },
+  { id: "transparency", path: "/transparency", label: "Activity log", icon: "audit" },
+  { id: "settings", path: "/settings", label: "Settings", icon: "settings" },
 ];
 
-const iconMap: Record<string, string> = {
-  grid: "\u25A6",
-  clock: "\u25F7",
-  shield: "\u25C8",
-  activity: "\u2248",
-  search: "\u2315",
-  lock: "\u2261",
-  globe: "\u2295",
-  network: "\u21C4",
-  list: "\u2630",
-  settings: "\u2699",
-  investigate: "\u2318",
-  chat: "\u2026",
-};
+interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
 
-export function Sidebar() {
-  const daemonRunning = useEventStore((s) => s.daemonRunning);
-  const pendingPrompts = useEventStore((s) => s.pendingPrompts);
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const unresolvedCount = useAlertStore((s) => s.unresolvedCount);
-  const [postureColor, setPostureColor] = useState("var(--color-success)");
-  const [postureName, setPostureName] = useState("Normal");
-  const { localActive, cloudActive } = useAiStatus();
-
-  useEffect(() => {
-    async function loadPosture() {
-      try {
-        const info = await invoke<any>("get_threat_posture");
-        setPostureName(info.level_name);
-        const colorMap: Record<string, string> = {
-          green: "var(--color-success)",
-          yellow: "var(--color-warning)",
-          orange: "#f97316",
-          red: "var(--color-danger)",
-        };
-        setPostureColor(colorMap[info.color] || "var(--color-success)");
-      } catch { /* ignore */ }
-    }
-    loadPosture();
-    const interval = setInterval(loadPosture, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const location = useLocation();
 
   return (
-    <aside className="flex flex-col w-56 h-full border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-      <div className="flex items-center gap-2 px-4 py-4 border-b border-[var(--color-border)]">
-        <span className="text-lg font-bold text-[var(--color-text-primary)]">
-          ClawDefender
-        </span>
+    <aside
+      style={{
+        background: "var(--bg-0)",
+        borderRight: "1px solid var(--line)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        width: collapsed ? 60 : 220,
+        transition: "width 0.2s ease",
+      }}
+    >
+      {/* Brand */}
+      <div
+        style={{
+          padding: collapsed ? "16px 12px" : "14px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          height: 56,
+          minHeight: 56,
+        }}
+      >
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            background: "var(--accent)",
+            display: "grid",
+            placeItems: "center",
+            flexShrink: 0,
+            boxShadow:
+              "0 1px 2px oklch(0 0 0 / 0.10), inset 0 1px 0 oklch(1 0 0 / 0.20)",
+          }}
+        >
+          <Rook size={15} color="white" />
+        </div>
+        {!collapsed && (
+          <div style={{ overflow: "hidden" }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                letterSpacing: -0.2,
+                lineHeight: 1.1,
+                color: "var(--ink-0)",
+              }}
+            >
+              RookBot
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="px-4 py-2 space-y-2">
-        <div className="flex items-center gap-2 text-xs" role="status" aria-label={`Daemon ${daemonRunning ? "running" : "stopped"}`}>
-          <span
-            aria-hidden="true"
-            className={`inline-block w-2 h-2 rounded-full ${
-              daemonRunning ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"
-            }`}
-          />
-          <span className="text-[var(--color-text-secondary)]">
-            Daemon {daemonRunning ? "Running" : "Stopped"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-xs" title={`Posture: ${postureName}`}>
-          <span
-            className="inline-block w-2 h-2 rounded-full"
-            style={{ backgroundColor: postureColor }}
-          />
-          <span className="text-[var(--color-text-secondary)]">{postureName}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className={`inline-block w-2 h-2 rounded-full ${localActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-secondary)]'}`} />
-          <span className="text-[var(--color-text-secondary)]">
-            Local AI {localActive ? '\u2713' : '\u2717'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className={`inline-block w-2 h-2 rounded-full ${cloudActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-secondary)]'}`} />
-          <span className="text-[var(--color-text-secondary)]">
-            Cloud AI {cloudActive ? '\u2713' : '\u2717'}
-          </span>
-        </div>
-      </div>
+      {/* Nav */}
+      <nav
+        style={{
+          flex: 1,
+          padding: collapsed ? 8 : "4px 8px",
+          overflowY: "auto",
+        }}
+        className="cd-scroll"
+      >
+        {NAV_ITEMS.map((item) => {
+          const isActive =
+            item.path === "/"
+              ? location.pathname === "/"
+              : location.pathname.startsWith(item.path);
 
-      <nav aria-label="Main navigation" className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === "/"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                isActive
-                  ? "bg-[var(--color-accent)] text-white"
-                  : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
-              }`
-            }
-          >
-            <span className="w-4 text-center">{iconMap[item.icon]}</span>
-            <span>{item.label}</span>
-            {item.path === "/" && pendingPrompts.length > 0 && (
-              <span className="ml-auto bg-[var(--color-danger)] text-white text-xs px-1.5 py-0.5 rounded-full" aria-label={`${pendingPrompts.length} pending prompts`}>
-                {pendingPrompts.length}
-              </span>
-            )}
-            {item.badge === "alerts" && unresolvedCount > 0 && (
-              <span className="ml-auto bg-[var(--color-warning)] text-white text-xs px-1.5 py-0.5 rounded-full" aria-label={`${unresolvedCount} unresolved alerts`}>
-                {unresolvedCount}
-              </span>
-            )}
-          </NavLink>
-        ))}
+          return (
+            <NavLink
+              key={item.id}
+              to={item.path}
+              end={item.path === "/"}
+              title={collapsed ? item.label : undefined}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: collapsed ? "8px 0" : "7px 9px",
+                justifyContent: collapsed ? "center" : "flex-start",
+                borderRadius: 7,
+                marginBottom: 1,
+                background: isActive ? "var(--accent)" : "transparent",
+                color: isActive ? "white" : "var(--ink-0)",
+                fontSize: 13,
+                fontWeight: isActive ? 500 : 400,
+                position: "relative",
+                transition: "background 0.12s",
+                textDecoration: "none",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive)
+                  e.currentTarget.style.background = "oklch(0 0 0 / 0.05)";
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive)
+                  e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <Icon
+                name={item.icon}
+                size={15}
+                stroke={1.7}
+                color={isActive ? "white" : "var(--ink-1)"}
+              />
+              {!collapsed && (
+                <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>
+              )}
+              {!collapsed &&
+                item.badge === "alerts" &&
+                unresolvedCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      background: isActive
+                        ? "rgba(255,255,255,0.25)"
+                        : "var(--red)",
+                      color: "white",
+                    }}
+                  >
+                    {unresolvedCount}
+                  </span>
+                )}
+            </NavLink>
+          );
+        })}
       </nav>
 
-      <div className="px-4 py-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-secondary)]">
-        v0.6.0-beta
+      {/* Footer: collapse toggle */}
+      <div style={{ padding: 8 }}>
+        <button
+          onClick={onToggle}
+          style={{
+            width: "100%",
+            padding: "6px 8px",
+            color: "var(--ink-3)",
+            fontSize: 11.5,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            borderRadius: 6,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) =>
+            (e.currentTarget.style.background = "oklch(0 0 0 / 0.04)")
+          }
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.background = "transparent")
+          }
+        >
+          <Icon name="sidebar" size={13} />
+          {!collapsed && "Collapse"}
+        </button>
       </div>
     </aside>
   );

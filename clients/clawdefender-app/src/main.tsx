@@ -24,7 +24,7 @@ class ErrorBoundary extends React.Component<
     if (this.state.error) {
       return (
         <div style={{ padding: 40, color: "#ef4444", fontFamily: "monospace", fontSize: 14 }}>
-          <h1 style={{ color: "#e5e5e5", marginBottom: 16 }}>ClawDefender — Render Error</h1>
+          <h1 style={{ color: "#e5e5e5", marginBottom: 16 }}>RookBot — Render Error</h1>
           <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {this.state.error.message}
           </pre>
