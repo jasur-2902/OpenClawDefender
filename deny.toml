@@ -1,6 +1,30 @@
 [advisories]
 vulnerability = "deny"
 unmaintained = "warn"
+# Known transitive dependency issues from yara-x 0.12 (wasmtime 26.0.1, rsa 0.9.10).
+# These will be resolved when yara-x is upgraded to 1.x.
+ignore = [
+    # wasmtime 26.0.1 — pinned by yara-x 0.12
+    "RUSTSEC-2025-0046",
+    "RUSTSEC-2025-0118",
+    "RUSTSEC-2026-0020",
+    "RUSTSEC-2026-0021",
+    "RUSTSEC-2026-0085",
+    "RUSTSEC-2026-0086",
+    "RUSTSEC-2026-0087",
+    "RUSTSEC-2026-0088",
+    "RUSTSEC-2026-0089",
+    "RUSTSEC-2026-0091",
+    "RUSTSEC-2026-0092",
+    "RUSTSEC-2026-0093",
+    "RUSTSEC-2026-0094",
+    "RUSTSEC-2026-0095",
+    "RUSTSEC-2026-0096",
+    # rsa 0.9.10 — pinned by yara-x 0.12
+    "RUSTSEC-2023-0071",
+    # lru 0.12.5 — no newer compatible version
+    "RUSTSEC-2026-0002",
+]
 
 [licenses]
 unlicensed = "deny"
