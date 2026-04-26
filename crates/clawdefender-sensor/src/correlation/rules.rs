@@ -277,7 +277,7 @@ pub fn extract_paths_from_args(args: &serde_json::Value) -> Vec<String> {
 
 fn collect_paths(value: &serde_json::Value, paths: &mut Vec<String>) {
     match value {
-        serde_json::Value::String(s) => {
+        serde_json::Value::String(s)
             // Heuristic: strings that look like file paths
             if s.starts_with('/')
                 || s.starts_with("~/")
@@ -292,10 +292,9 @@ fn collect_paths(value: &serde_json::Value, paths: &mut Vec<String>) {
                 || s.contains(".yaml")
                 || s.contains(".yml")
                 || s.contains(".md")
-                || s.contains(".sh")
-            {
-                paths.push(s.clone());
-            }
+                || s.contains(".sh") =>
+        {
+            paths.push(s.clone());
         }
         serde_json::Value::Object(map) => {
             // Check keys that commonly hold paths
