@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use anyhow::{Context, Result};
+#[cfg(target_os = "macos")]
+use anyhow::Context;
+use anyhow::Result;
 
 /// Supported LLM providers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
