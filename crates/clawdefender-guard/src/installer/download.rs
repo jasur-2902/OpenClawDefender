@@ -46,7 +46,7 @@ impl Downloader for GithubDownloader {
                 "30",
                 "-H",
                 "Accept: application/json",
-                "https://api.github.com/repos/clawdefender/clawdefender/releases/latest",
+                "https://api.github.com/repos/rookbot-io/rookbot/releases/latest",
             ])
             .output()
             .await?;
@@ -105,7 +105,7 @@ impl Downloader for MockDownloader {
         }
         if url.ends_with(".sha256") {
             // Return checksum file content: "<hash>  filename\n"
-            Ok(format!("{}  clawdefender\n", self.checksum).into_bytes())
+            Ok(format!("{}  rookbot\n", self.checksum).into_bytes())
         } else {
             Ok(self.binary_data.clone())
         }
@@ -147,12 +147,12 @@ pub fn verify_checksum(data: &[u8], checksum_content: &str) -> Result<()> {
 
 /// Build the download URL for a given platform.
 pub fn build_download_url(platform_string: &str) -> String {
-    format!("{RELEASE_BASE_URL}/clawdefender-{platform_string}")
+    format!("{RELEASE_BASE_URL}/rookbot-{platform_string}")
 }
 
 /// Build the checksum URL for a given platform.
 pub fn build_checksum_url(platform_string: &str) -> String {
-    format!("{RELEASE_BASE_URL}/clawdefender-{platform_string}.sha256")
+    format!("{RELEASE_BASE_URL}/rookbot-{platform_string}.sha256")
 }
 
 #[cfg(test)]
@@ -173,7 +173,7 @@ mod tests {
     fn test_verify_checksum_valid() {
         let data = b"test data";
         let hash = compute_sha256(data);
-        let checksum_content = format!("{hash}  clawdefender\n");
+        let checksum_content = format!("{hash}  rookbot\n");
         assert!(verify_checksum(data, &checksum_content).is_ok());
     }
 
@@ -181,7 +181,7 @@ mod tests {
     fn test_verify_checksum_invalid() {
         let data = b"test data";
         let checksum_content =
-            "0000000000000000000000000000000000000000000000000000000000000000  clawdefender\n";
+            "0000000000000000000000000000000000000000000000000000000000000000  rookbot\n";
         assert!(verify_checksum(data, checksum_content).is_err());
     }
 

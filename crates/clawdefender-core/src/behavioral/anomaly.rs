@@ -98,7 +98,7 @@ const DEFAULT_SENSITIVE_PATHS: &[&str] = &[
     "/.netrc",
     "/id_rsa",
     "/id_ed25519",
-    "/clawdefender/honeypot/",
+    "/rookbot/honeypot/",
 ];
 
 /// Scores behavioral events against a server profile.
