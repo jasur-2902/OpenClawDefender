@@ -670,7 +670,7 @@ fn exec_get_recent_events(
     }
 
     // Sort newest-first and truncate
-    events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    events.sort_by_key(|x| std::cmp::Reverse(x.timestamp.clone()));
     events.truncate(count);
 
     let cloned: Vec<AuditEvent> = events.into_iter().cloned().collect();

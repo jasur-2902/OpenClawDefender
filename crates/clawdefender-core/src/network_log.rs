@@ -154,7 +154,7 @@ impl NetworkSummary {
         }
 
         let mut top_destinations: Vec<(String, u64)> = dest_counts.into_iter().collect();
-        top_destinations.sort_by(|a, b| b.1.cmp(&a.1));
+        top_destinations.sort_by_key(|x| std::cmp::Reverse(x.1));
         top_destinations.truncate(10);
 
         NetworkSummary {

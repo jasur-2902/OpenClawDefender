@@ -71,7 +71,7 @@ pub fn query_logs(path: &Path, filter: &LogFilter) -> Result<Vec<AuditRecord>> {
     }
 
     // Newest first.
-    all_records.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    all_records.sort_by_key(|r| std::cmp::Reverse(r.timestamp));
 
     if filter.limit > 0 && all_records.len() > filter.limit {
         all_records.truncate(filter.limit);
@@ -228,12 +228,12 @@ fn compute_audit_stats(records: &[AuditRecord]) -> AuditStats {
     stats.unique_tools.sort();
 
     let mut bt: Vec<_> = blocked_tools.into_iter().collect();
-    bt.sort_by(|a, b| b.1.cmp(&a.1));
+    bt.sort_by_key(|x| std::cmp::Reverse(x.1));
     bt.truncate(10);
     stats.top_blocked_tools = bt;
 
     let mut bp: Vec<_> = blocked_paths.into_iter().collect();
-    bp.sort_by(|a, b| b.1.cmp(&a.1));
+    bp.sort_by_key(|x| std::cmp::Reverse(x.1));
     bp.truncate(10);
     stats.top_blocked_paths = bp;
 

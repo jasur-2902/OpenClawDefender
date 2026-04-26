@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -293,7 +294,7 @@ impl SecurityKnowledgeBase {
 
     pub fn list_incidents(&self, count: usize) -> Vec<&ResolvedIncident> {
         let mut incidents: Vec<&ResolvedIncident> = self.resolved_incidents.iter().collect();
-        incidents.sort_by(|a, b| b.resolved_at.cmp(&a.resolved_at));
+        incidents.sort_by_key(|x| Reverse(x.resolved_at));
         incidents.into_iter().take(count).collect()
     }
 
@@ -647,16 +648,14 @@ impl SecurityKnowledgeBase {
         removed += remove_patterns;
 
         if removed < to_remove {
-            self.false_positives
-                .sort_by(|a, b| a.hit_count.cmp(&b.hit_count));
+            self.false_positives.sort_by_key(|x| x.hit_count);
             let remove_fps = (to_remove - removed).min(self.false_positives.len() / 4);
             self.false_positives.drain(0..remove_fps);
             removed += remove_fps;
         }
 
         if removed < to_remove {
-            self.resolved_incidents
-                .sort_by(|a, b| a.resolved_at.cmp(&b.resolved_at));
+            self.resolved_incidents.sort_by_key(|x| x.resolved_at);
             let remove_incidents = (to_remove - removed).min(self.resolved_incidents.len() / 2);
             self.resolved_incidents.drain(0..remove_incidents);
             removed += remove_incidents;

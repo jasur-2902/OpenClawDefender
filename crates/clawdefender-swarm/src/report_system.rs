@@ -4,6 +4,7 @@
 //! and Executive Summaries in Markdown and HTML formats. Supports report
 //! persistence, listing, deletion, export, and history management.
 
+use std::cmp::Reverse;
 use std::path::PathBuf;
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -357,7 +358,7 @@ impl ReportGenerator {
             .iter()
             .filter(|r| report_type.is_none_or(|rt| r.report_type == *rt))
             .collect();
-        filtered.sort_by(|a, b| b.generated_at.cmp(&a.generated_at));
+        filtered.sort_by_key(|x| Reverse(x.generated_at));
         filtered.truncate(count);
         filtered
     }

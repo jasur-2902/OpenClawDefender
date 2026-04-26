@@ -103,7 +103,7 @@ fn list(server: Option<&str>, entry_type: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    entries.sort_by_key(|x| std::cmp::Reverse(x.created_at.clone()));
 
     println!("  {:<16} {:<12} {:<20} DESCRIPTION", "ID", "TYPE", "SERVER");
     println!("  {}", "-".repeat(80));

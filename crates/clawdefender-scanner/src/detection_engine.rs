@@ -255,7 +255,7 @@ impl DetectionEngine {
         // Cross-reference and deduplicate
         let mut enriched = findings;
         cross_reference_findings(&mut enriched);
-        enriched.sort_by(|a, b| b.finding.severity.cmp(&a.finding.severity));
+        enriched.sort_by_key(|x| std::cmp::Reverse(x.finding.severity));
 
         let summary = DetectionSummary::from_findings(&enriched);
 

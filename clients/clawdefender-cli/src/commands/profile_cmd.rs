@@ -87,7 +87,7 @@ pub fn show(server: &str) -> Result<()> {
         println!("    (no tools observed)");
     } else {
         let mut tools: Vec<_> = profile.tool_profile.tool_counts.iter().collect();
-        tools.sort_by(|a, b| b.1.cmp(a.1));
+        tools.sort_by_key(|x| std::cmp::Reverse(x.1));
         for (name, count) in tools.iter().take(20) {
             println!("    {:<30} {} calls", name, count);
         }
@@ -112,7 +112,7 @@ pub fn show(server: &str) -> Result<()> {
     if !profile.file_profile.extension_counts.is_empty() {
         println!("    Extensions:");
         let mut exts: Vec<_> = profile.file_profile.extension_counts.iter().collect();
-        exts.sort_by(|a, b| b.1.cmp(a.1));
+        exts.sort_by_key(|x| std::cmp::Reverse(x.1));
         for (ext, count) in exts.iter().take(10) {
             println!("      .{:<10} {} files", ext, count);
         }

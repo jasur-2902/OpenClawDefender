@@ -674,7 +674,7 @@ mod tests {
         assert!(s.contains('\u{200D}'));
         assert!(s.contains('\u{202E}'));
         // Ensure it's valid UTF-8 (it is, since it's a Rust String)
-        assert!(s.len() > 0);
+        assert!(!s.is_empty());
     }
 
     #[test]

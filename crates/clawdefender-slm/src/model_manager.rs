@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -73,7 +73,7 @@ impl ModelManager {
                 });
             }
         }
-        installed.sort_by(|a, b| a.filename.cmp(&b.filename));
+        installed.sort_by_key(|x| x.filename.clone());
         Ok(installed)
     }
 

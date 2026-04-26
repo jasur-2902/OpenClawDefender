@@ -1219,8 +1219,10 @@ mod tests {
     #[test]
     fn test_config_update() {
         let mut posture = ThreatPosture::new();
-        let mut config = PostureConfig::default();
-        config.auto_adjust_enabled = false;
+        let config = PostureConfig {
+            auto_adjust_enabled: false,
+            ..Default::default()
+        };
 
         posture.update_config(config);
         assert!(!posture.get_config().auto_adjust_enabled);

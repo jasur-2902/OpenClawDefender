@@ -55,7 +55,7 @@ fn injection_close_tag_escape() {
         "Random delimiter must be present in wrapped output"
     );
     // The attacker's fake close tag should not match the real nonce
-    assert!(!wrapped.contains(&format!("</UNTRUSTED_INPUT_abc123>")));
+    assert!(!wrapped.contains("</UNTRUSTED_INPUT_abc123>"));
 }
 
 // ---------------------------------------------------------------------------

@@ -158,7 +158,7 @@ pub fn list_hunts(limit: usize) -> Result<()> {
     }
 
     // Sort by time (newest first)
-    hunts.sort_by(|a, b| b.time_range.end.cmp(&a.time_range.end));
+    hunts.sort_by_key(|x| std::cmp::Reverse(x.time_range.end));
     hunts.truncate(limit);
 
     println!(

@@ -192,7 +192,7 @@ async fn check_intent_allowed_returns_true() {
         result["suggestions"].is_null()
             || result["suggestions"]
                 .as_array()
-                .map_or(true, |a| a.is_empty())
+                .is_none_or(|a| a.is_empty())
     );
 }
 
@@ -272,7 +272,7 @@ async fn report_action_creates_audit_record() {
     let result = call_report_action(&server, "file_write", "/tmp/output.txt", "success").await;
 
     assert_eq!(result["recorded"], true);
-    assert!(result["event_id"].as_str().unwrap().len() > 0);
+    assert!(!result["event_id"].as_str().unwrap().is_empty());
 
     // Verify audit record source
     let records = logger.records();

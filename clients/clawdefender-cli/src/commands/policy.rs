@@ -320,7 +320,7 @@ pub fn suggest(config: &ClawConfig) -> Result<()> {
 
     // Suggest auto-allow for frequently allowed patterns (>= 5 occurrences).
     let mut allowed: Vec<_> = allow_patterns.into_iter().collect();
-    allowed.sort_by(|a, b| b.1.cmp(&a.1));
+    allowed.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (pattern, count) in &allowed {
         if *count >= 5 {
             suggestions.push(format!(
@@ -332,7 +332,7 @@ pub fn suggest(config: &ClawConfig) -> Result<()> {
 
     // Suggest keeping blocks for frequently blocked patterns.
     let mut blocked: Vec<_> = block_patterns.into_iter().collect();
-    blocked.sort_by(|a, b| b.1.cmp(&a.1));
+    blocked.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (pattern, count) in &blocked {
         if *count >= 2 {
             suggestions.push(format!(

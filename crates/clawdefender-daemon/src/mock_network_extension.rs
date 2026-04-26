@@ -377,8 +377,10 @@ mod tests {
 
     #[test]
     fn cache_pruning() {
-        let mut config = MockNetworkExtensionConfig::default();
-        config.policy_cache_ttl_secs = 0; // Expire immediately.
+        let config = MockNetworkExtensionConfig {
+            policy_cache_ttl_secs: 0, // Expire immediately.
+            ..Default::default()
+        };
         let mut ext = MockNetworkExtension::new(config);
 
         let event = test_event(1234, "api.example.com", 443);

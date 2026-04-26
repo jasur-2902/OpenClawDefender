@@ -353,9 +353,11 @@ fn daemon_creates_with_eslogger_disabled() {
     use clawdefender_core::config::settings::ClawConfig;
 
     let dir = tempfile::TempDir::new().unwrap();
-    let mut config = ClawConfig::default();
-    config.audit_log_path = dir.path().join("audit.jsonl");
-    config.daemon_socket_path = dir.path().join("test.sock");
+    let mut config = ClawConfig {
+        audit_log_path: dir.path().join("audit.jsonl"),
+        daemon_socket_path: dir.path().join("test.sock"),
+        ..Default::default()
+    };
     config.eslogger.enabled = false;
 
     let daemon = clawdefender_daemon::Daemon::new(config, false);

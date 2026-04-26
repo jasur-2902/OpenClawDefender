@@ -1,9 +1,7 @@
 //! Tests for the telemetry system.
 
 #[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
+mod telemetry_tests {
     use crate::telemetry::{
         aggregator::TelemetryAggregator,
         consent::ConsentManager,

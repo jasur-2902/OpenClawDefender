@@ -237,7 +237,7 @@ impl EntityExtractor {
 
         // First, try exact matches against known servers (longest first for specificity)
         let mut sorted_servers: Vec<&&str> = KNOWN_SERVERS.iter().collect();
-        sorted_servers.sort_by(|a, b| b.len().cmp(&a.len()));
+        sorted_servers.sort_by_key(|x| std::cmp::Reverse(x.len()));
 
         for server in &sorted_servers {
             // Check for the server name as a whole word or in compound form

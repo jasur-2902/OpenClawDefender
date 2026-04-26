@@ -429,9 +429,7 @@ mod tests {
 
     #[test]
     fn test_wrap_dxt_extension() {
-        use super::super::{
-            backup_config, is_dxt_wrapped, read_config, write_config, DxtExtension,
-        };
+        use super::super::{is_dxt_wrapped, read_config, write_config, DxtExtension};
 
         let (_dir, path) = make_dxt_installations(
             &serde_json::to_string(&json!({
@@ -453,7 +451,7 @@ mod tests {
             .unwrap(),
         );
 
-        let ext = DxtExtension {
+        let _ext = DxtExtension {
             id: "com.example.test-ext".to_string(),
             display_name: "Test Extension".to_string(),
             installations_path: path.clone(),

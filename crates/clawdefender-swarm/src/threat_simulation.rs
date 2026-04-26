@@ -1041,7 +1041,7 @@ mod tests {
 
     #[test]
     fn test_credential_theft_caught_by_ssh_policy() {
-        let mut sim = ThreatSimulator::new();
+        let sim = ThreatSimulator::new();
 
         let policy = PolicySimulator::with_rules(
             vec![SimulatedRule {
@@ -1071,7 +1071,7 @@ mod tests {
 
     #[test]
     fn test_credential_theft_missed_with_no_policy() {
-        let mut sim = ThreatSimulator::new();
+        let sim = ThreatSimulator::new();
         let policy = PolicySimulator::new();
         let anomaly = AnomalySimulator::new(1.5); // High threshold
 
@@ -1084,7 +1084,7 @@ mod tests {
 
     #[test]
     fn test_prompt_injection_caught_by_shell_policy() {
-        let mut sim = ThreatSimulator::new();
+        let sim = ThreatSimulator::new();
 
         let policy = PolicySimulator::with_rules(
             vec![SimulatedRule {
@@ -1109,7 +1109,7 @@ mod tests {
 
     #[test]
     fn test_data_exfiltration_caught_by_anomaly() {
-        let mut sim = ThreatSimulator::new();
+        let sim = ThreatSimulator::new();
         let policy = PolicySimulator::new();
 
         // Create profile without the exfil server
@@ -1138,7 +1138,7 @@ mod tests {
 
     #[test]
     fn test_privilege_escalation_caught_by_file_write_policy() {
-        let mut sim = ThreatSimulator::new();
+        let sim = ThreatSimulator::new();
 
         let policy = PolicySimulator::with_rules(
             vec![SimulatedRule {
@@ -1164,7 +1164,7 @@ mod tests {
 
     #[test]
     fn test_supply_chain_caught_by_blocklist() {
-        let mut sim = ThreatSimulator::new();
+        let sim = ThreatSimulator::new();
         let policy = PolicySimulator::new();
         let anomaly = AnomalySimulator::new(1.0);
 
@@ -1181,7 +1181,7 @@ mod tests {
 
     #[test]
     fn test_lateral_movement_caught_by_cross_server() {
-        let mut sim = ThreatSimulator::new();
+        let sim = ThreatSimulator::new();
         let policy = PolicySimulator::new();
         // Use slightly higher threshold to avoid anomaly detection on step 1 (which scores 1.0)
         let anomaly = AnomalySimulator::new(1.01);

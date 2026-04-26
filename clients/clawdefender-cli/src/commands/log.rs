@@ -43,7 +43,7 @@ pub fn run(
             println!();
             println!("  By source:");
             let mut sources: Vec<_> = s.by_source.iter().collect();
-            sources.sort_by(|a, b| b.1.cmp(a.1));
+            sources.sort_by_key(|x| std::cmp::Reverse(x.1));
             for (source, count) in sources {
                 println!("    {:<20} {}", source, count);
             }

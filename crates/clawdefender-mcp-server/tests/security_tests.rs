@@ -450,7 +450,7 @@ fn test_validation_null_byte() {
 
 #[test]
 fn test_validation_bidi_char() {
-    let val = format!("normal\u{202E}reversed");
+    let val = "normal\u{202E}reversed".to_string();
     assert!(clawdefender_mcp_server::validation::validate_string_field("test", &val).is_err());
 }
 

@@ -7,6 +7,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -808,7 +809,7 @@ impl ThresholdCalibrator {
             *fp_categories.entry(d.alert_type.clone()).or_insert(0) += 1;
         }
         let mut common_fp: Vec<(String, u32)> = fp_categories.into_iter().collect();
-        common_fp.sort_by(|a, b| b.1.cmp(&a.1));
+        common_fp.sort_by_key(|x| Reverse(x.1));
         let common_fp_categories: Vec<String> =
             common_fp.into_iter().take(5).map(|(k, _)| k).collect();
 
@@ -819,7 +820,7 @@ impl ThresholdCalibrator {
             }
         }
         let mut useful: Vec<(String, u32)> = playbook_counts.into_iter().collect();
-        useful.sort_by(|a, b| b.1.cmp(&a.1));
+        useful.sort_by_key(|x| Reverse(x.1));
         let useful_playbook_types: Vec<String> =
             useful.into_iter().take(5).map(|(k, _)| k).collect();
 

@@ -182,7 +182,7 @@ impl Scanner {
         }
 
         // Sort findings by severity (highest first)
-        all_findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+        all_findings.sort_by_key(|x| std::cmp::Reverse(x.severity));
 
         // Apply threshold filter
         if let Some(ref threshold) = config.threshold {
@@ -279,7 +279,7 @@ pub fn deduplicate_findings(findings: Vec<Finding>) -> Vec<Finding> {
         f.evidence.messages.sort();
         f.evidence.messages.dedup();
     }
-    results.sort_by(|a, b| b.severity.cmp(&a.severity));
+    results.sort_by_key(|x| std::cmp::Reverse(x.severity));
     results
 }
 

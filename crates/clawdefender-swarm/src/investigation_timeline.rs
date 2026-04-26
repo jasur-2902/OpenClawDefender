@@ -959,6 +959,7 @@ mod tests {
         })
     }
 
+    #[allow(dead_code)]
     fn make_critical_event(id: &str, server: &str, timestamp: &str) -> serde_json::Value {
         json!({
             "id": id,
@@ -1732,7 +1733,8 @@ Minimal entry
             narrative_summary: "Test".to_string(),
         };
 
-        let comparisons = TimelineBuilder::compare_with_past(&timeline, &[timeline.clone()]);
+        let comparisons =
+            TimelineBuilder::compare_with_past(&timeline, std::slice::from_ref(&timeline));
         assert!(comparisons.is_empty());
     }
 
@@ -1973,7 +1975,7 @@ More text."#;
         assert_eq!(parsed.investigation_id, "inv-test");
         assert_eq!(parsed.entries.len(), 1);
         assert_eq!(parsed.entries[0].entry_type, TimelineEntryType::McpToolCall);
-        assert_eq!(parsed.entries[0].is_key_moment, true);
+        assert!(parsed.entries[0].is_key_moment);
     }
 
     #[test]

@@ -460,7 +460,7 @@ pub fn list_reports(type_filter: Option<String>, limit: usize) -> Result<()> {
     }
 
     // Sort by date (newest first)
-    reports.sort_by(|a, b| b.2.cmp(&a.2));
+    reports.sort_by_key(|x| std::cmp::Reverse(x.2));
     reports.truncate(limit);
 
     println!("{:<40} {:<12} Generated", "Report File", "Type");

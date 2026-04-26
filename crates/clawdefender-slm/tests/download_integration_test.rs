@@ -26,17 +26,11 @@ async fn test_download_starts_and_progresses() {
                         "Poll {}: status={:?} downloaded={} total={} percent={:.1}%",
                         i, prog.status, prog.bytes_downloaded, prog.bytes_total, prog.percent
                     );
-                    match &prog.status {
-                        clawdefender_slm::downloader::DownloadStatus::Failed(err) => {
-                            println!("DOWNLOAD FAILED with error: {}", err);
-                            // This is likely the TLS root cert issue
-                            assert!(
-                                false,
-                                "Download failed (likely TLS root cert issue): {}",
-                                err
-                            );
-                        }
-                        _ => {}
+                    if let clawdefender_slm::downloader::DownloadStatus::Failed(err) = &prog.status
+                    {
+                        println!("DOWNLOAD FAILED with error: {}", err);
+                        // This is likely the TLS root cert issue
+                        panic!("Download failed (likely TLS root cert issue): {}", err);
                     }
                     if prog.bytes_downloaded > 0 {
                         println!(
@@ -61,7 +55,7 @@ async fn test_download_starts_and_progresses() {
         }
         Err(e) => {
             println!("Download FAILED to start: {}", e);
-            assert!(false, "start_download failed: {}", e);
+            panic!("start_download failed: {}", e);
         }
     }
 
@@ -145,13 +139,13 @@ async fn test_reqwest_https_connectivity() {
                             "Fix: Add 'rustls-tls-native-roots' to reqwest features in Cargo.toml"
                         );
                     }
-                    assert!(false, "HTTPS request failed: {}", e);
+                    panic!("HTTPS request failed: {}", e);
                 }
             }
         }
         Err(e) => {
             println!("Failed to build reqwest client: {}", e);
-            assert!(false, "Client build failed: {}", e);
+            panic!("Client build failed: {}", e);
         }
     }
 }

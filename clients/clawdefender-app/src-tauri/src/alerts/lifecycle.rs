@@ -158,7 +158,7 @@ pub fn get_alert_history(store: &[IntelligentAlert], days: u32) -> Vec<Intellige
         .cloned()
         .collect();
 
-    history.sort_by(|a, b| b.resolved_at.cmp(&a.resolved_at));
+    history.sort_by_key(|x| std::cmp::Reverse(x.resolved_at.clone()));
     history
 }
 

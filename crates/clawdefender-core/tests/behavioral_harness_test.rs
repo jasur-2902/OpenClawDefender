@@ -180,7 +180,7 @@ fn test_harness_full_simulation() {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".into());
 
     // Sensitive file access sequence
-    let sensitive_paths = vec![
+    let sensitive_paths = [
         format!("{}/.ssh/id_rsa", home),
         format!("{}/.aws/credentials", home),
         format!("{}/.gnupg/secring.gpg", home),
@@ -232,7 +232,7 @@ fn test_harness_full_simulation() {
     }
 
     // Network connections after credential reads
-    let network_targets = vec![("c2.attacker.com", 4444u16), ("evil.example.org", 8080u16)];
+    let network_targets = [("c2.attacker.com", 4444u16), ("evil.example.org", 8080u16)];
 
     for (j, (host, port)) in network_targets.iter().enumerate() {
         let i = compromise_start_idx + sensitive_paths.len() as u64 + j as u64;

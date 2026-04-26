@@ -132,7 +132,7 @@ fn summarize_territory(events: &[AuditEvent]) -> Vec<DirectorySummary> {
 
     let total: u64 = dir_counts.values().sum();
     let mut sorted: Vec<(String, u64)> = dir_counts.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     let mut result: Vec<DirectorySummary> = sorted
         .iter()
@@ -207,7 +207,7 @@ fn summarize_tools(events: &[AuditEvent]) -> Vec<ToolUsageSummary> {
 
     let total: u64 = tool_counts.values().sum();
     let mut sorted: Vec<(String, u64)> = tool_counts.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     sorted
         .into_iter()

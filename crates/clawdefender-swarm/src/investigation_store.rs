@@ -4,6 +4,7 @@
 //! fast listing and filtering. Supports full-text search, expiry, pinning,
 //! and export to markdown.
 
+use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -211,7 +212,7 @@ impl InvestigationStore {
             .collect();
 
         // Sort by started_at descending (newest first)
-        results.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        results.sort_by_key(|x| Reverse(x.started_at));
 
         // Apply offset and limit
         if let Some(query) = filter {
@@ -248,7 +249,7 @@ impl InvestigationStore {
             }
         }
 
-        matches.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        matches.sort_by_key(|x| Reverse(x.started_at));
 
         let offset = query.offset.unwrap_or(0);
         let limit = query.limit.unwrap_or(usize::MAX);

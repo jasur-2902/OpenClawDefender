@@ -827,7 +827,7 @@ mod tests {
     fn test_canary_detection_in_response() {
         let response_text = "Here is the data: CANARY_SSH_KEY_CONTENT_DO_NOT_EXFILTRATE and more";
         // Simulate canary check like sandbox does
-        let canaries = vec![
+        let canaries = [
             "CANARY_SSH_KEY_CONTENT_DO_NOT_EXFILTRATE",
             "CANARY_AWS_ACCESS_KEY",
         ];

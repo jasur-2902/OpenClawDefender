@@ -1332,12 +1332,12 @@ mod tests {
         let preview = mgr.preview_import(&result.file_path).unwrap();
         assert_eq!(preview.version, CURRENT_VERSION);
         assert!(!preview.source_machine.is_empty());
-        assert!(preview.components_available.len() >= 1);
+        assert!(!preview.components_available.is_empty());
     }
 
     #[test]
     fn test_preview_import_detects_config_conflict() {
-        let (mut mgr, tmp) = test_manager();
+        let (mgr, tmp) = test_manager();
         // Write a fake export with config from a different machine
         let mut export = sample_export();
         export.machine_id_hash = "different_machine_hash".to_string();

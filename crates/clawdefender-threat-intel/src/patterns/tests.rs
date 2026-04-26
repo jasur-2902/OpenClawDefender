@@ -1,7 +1,7 @@
 //! Integration tests for the patterns module.
 
 #[cfg(test)]
-mod tests {
+mod patterns_tests {
     use chrono::Utc;
     use regex::Regex;
 
@@ -372,7 +372,7 @@ mod tests {
     fn test_hot_reload_replaces_old_patterns() {
         let builtin_names = vec!["builtin_1".to_string()];
 
-        let _old_patterns = vec![DynamicAttackPattern {
+        let _old_patterns = [DynamicAttackPattern {
             id: "feed_old".into(),
             name: "Old Pattern".into(),
             severity: Severity::Low,

@@ -529,6 +529,6 @@ mod tests {
 
     #[test]
     fn triage_timeout_is_shorter_than_deep() {
-        assert!(TRIAGE_TIMEOUT_SECS < DEEP_ANALYSIS_TIMEOUT_SECS);
+        const { assert!(TRIAGE_TIMEOUT_SECS < DEEP_ANALYSIS_TIMEOUT_SECS) };
     }
 }

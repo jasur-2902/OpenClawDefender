@@ -225,7 +225,7 @@ fn profile(name: &str, config: &ClawConfig) -> Result<()> {
     if !tool_calls.is_empty() {
         println!("  Top tools:");
         let mut tools: Vec<_> = tool_calls.iter().collect();
-        tools.sort_by(|a, b| b.1.cmp(a.1));
+        tools.sort_by_key(|x| std::cmp::Reverse(x.1));
         for (tool, count) in tools.iter().take(10) {
             println!("    {:<30} {}", tool, count);
         }

@@ -442,7 +442,9 @@ mod tests {
         let tmp_path = tmp_dir.path().to_path_buf();
 
         let mut watcher = FsWatcher::new().expect("failed to create FsWatcher");
-        let mut rx = watcher.watch(&[tmp_path.clone()]).expect("failed to watch");
+        let mut rx = watcher
+            .watch(std::slice::from_ref(&tmp_path))
+            .expect("failed to watch");
 
         // Small delay to let the watcher initialize
         tokio::time::sleep(Duration::from_millis(100)).await;

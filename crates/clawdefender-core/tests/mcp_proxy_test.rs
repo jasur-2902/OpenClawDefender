@@ -167,7 +167,7 @@ fn all_fixtures_valid_json() {
     for entry in std::fs::read_dir(&fixtures_dir).expect("failed to read fixtures dir") {
         let entry = entry.expect("failed to read dir entry");
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "json") {
+        if path.extension().is_some_and(|e| e == "json") {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
             let _: serde_json::Value = serde_json::from_str(&content)
@@ -184,7 +184,7 @@ fn all_expected_files_valid() {
     for entry in std::fs::read_dir(&fixtures_dir).expect("failed to read fixtures dir") {
         let entry = entry.expect("failed to read dir entry");
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "expected") {
+        if path.extension().is_some_and(|e| e == "expected") {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
                 .trim()

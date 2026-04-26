@@ -1,7 +1,7 @@
 //! Tests for the community rules engine.
 
 #[cfg(test)]
-mod tests {
+mod rules_tests {
     use chrono::Utc;
     use tempfile::TempDir;
 

@@ -118,8 +118,8 @@ mod tests {
 
     #[test]
     fn bidi_override_rejected() {
-        let value = format!("normal\u{202E}reversed");
-        assert!(validate_string_field("test", &value).is_err());
+        let value = "normal\u{202E}reversed";
+        assert!(validate_string_field("test", value).is_err());
     }
 
     #[test]
@@ -137,8 +137,8 @@ mod tests {
 
     #[test]
     fn sanitize_strips_bidi() {
-        let input = format!("safe\u{202E}text");
-        let sanitized = sanitize_string(&input);
+        let input = "safe\u{202E}text";
+        let sanitized = sanitize_string(input);
         assert_eq!(sanitized, "safetext");
     }
 

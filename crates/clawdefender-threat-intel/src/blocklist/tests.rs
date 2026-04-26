@@ -1,7 +1,7 @@
 //! Tests for the blocklist matching engine.
 
 #[cfg(test)]
-mod tests {
+mod blocklist_tests {
     use crate::blocklist::matching::BlocklistMatcher;
     use crate::blocklist::types::*;
 

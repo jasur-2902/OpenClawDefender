@@ -235,7 +235,7 @@ fn test_behavioral_harness_detects_compromise() {
 
     // Phase 3: Compromise — reading sensitive files, then network exfiltration
     let compromise_start = normal_start + Duration::seconds(2000);
-    let malicious_events = vec![
+    let malicious_events = [
         malicious_file_event("/home/user/.ssh/id_rsa", compromise_start),
         malicious_file_event(
             "/home/user/.aws/credentials",

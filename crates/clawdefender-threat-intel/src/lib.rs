@@ -84,7 +84,7 @@ mod integration_tests {
         let _m_sig = server
             .mock("GET", "/v1/signatures/latest.sig")
             .with_status(200)
-            .with_body(sig.to_bytes().to_vec())
+            .with_body(sig.to_bytes())
             .create_async()
             .await;
 
@@ -100,8 +100,10 @@ mod integration_tests {
         let cache = FeedCache::new(dir.path().join("cache"));
         let verifier = FeedVerifier::from_hex(&pub_hex).unwrap();
 
-        let mut config = ThreatIntelConfig::default();
-        config.feed_url = format!("{}/v1/", server.url());
+        let config = ThreatIntelConfig {
+            feed_url: format!("{}/v1/", server.url()),
+            ..ThreatIntelConfig::default()
+        };
 
         let mut client = FeedClient::new(config, cache, verifier).unwrap();
         let result = client.check_update().await.unwrap();
@@ -150,8 +152,10 @@ mod integration_tests {
         )
         .unwrap();
 
-        let mut config = ThreatIntelConfig::default();
-        config.feed_url = "http://127.0.0.1:1/v1/".into();
+        let config = ThreatIntelConfig {
+            feed_url: "http://127.0.0.1:1/v1/".into(),
+            ..ThreatIntelConfig::default()
+        };
 
         let mut client = FeedClient::new(config, cache, verifier).unwrap();
         let result = client.check_update().await.unwrap();
@@ -174,8 +178,10 @@ mod integration_tests {
         )
         .unwrap();
 
-        let mut config = ThreatIntelConfig::default();
-        config.feed_url = "http://127.0.0.1:1/v1/".into();
+        let config = ThreatIntelConfig {
+            feed_url: "http://127.0.0.1:1/v1/".into(),
+            ..ThreatIntelConfig::default()
+        };
 
         let mut client = FeedClient::new(config, cache, verifier).unwrap();
         let result = client.check_update().await.unwrap();
@@ -275,7 +281,7 @@ mod integration_tests {
         let _m_sig = server
             .mock("GET", "/v1/signatures/latest.sig")
             .with_status(200)
-            .with_body(sig.to_bytes().to_vec())
+            .with_body(sig.to_bytes())
             .create_async()
             .await;
 
@@ -297,8 +303,10 @@ mod integration_tests {
             .await;
 
         let verifier = FeedVerifier::from_hex(&pub_hex).unwrap();
-        let mut config = ThreatIntelConfig::default();
-        config.feed_url = format!("{}/v1/", server.url());
+        let config = ThreatIntelConfig {
+            feed_url: format!("{}/v1/", server.url()),
+            ..ThreatIntelConfig::default()
+        };
 
         let mut feed_client = FeedClient::new(config, cache, verifier).unwrap();
         let result = feed_client.check_update().await.unwrap();
@@ -347,15 +355,17 @@ mod integration_tests {
         let _s1 = server
             .mock("GET", "/v1/signatures/latest.sig")
             .with_status(200)
-            .with_body(sig1.to_bytes().to_vec())
+            .with_body(sig1.to_bytes())
             .create_async()
             .await;
 
         let dir = TempDir::new().unwrap();
         let cache = FeedCache::new(dir.path().join("cache"));
         let verifier = FeedVerifier::from_hex(&pub_hex1).unwrap();
-        let mut config = ThreatIntelConfig::default();
-        config.feed_url = format!("{}/v1/", server.url());
+        let config = ThreatIntelConfig {
+            feed_url: format!("{}/v1/", server.url()),
+            ..ThreatIntelConfig::default()
+        };
 
         let mut feed_client = FeedClient::new(config, cache, verifier).unwrap();
         let result = feed_client.check_update().await.unwrap();
@@ -385,7 +395,7 @@ mod integration_tests {
         let _s2 = server2
             .mock("GET", "/v1/signatures/latest.sig")
             .with_status(200)
-            .with_body(sig2.to_bytes().to_vec())
+            .with_body(sig2.to_bytes())
             .create_async()
             .await;
 
@@ -395,8 +405,10 @@ mod integration_tests {
         let mut verifier2 = FeedVerifier::from_hex(&pub_hex1).unwrap();
         verifier2.set_next_key(&pub_hex2).unwrap();
 
-        let mut config2 = ThreatIntelConfig::default();
-        config2.feed_url = format!("{}/v1/", server2.url());
+        let config2 = ThreatIntelConfig {
+            feed_url: format!("{}/v1/", server2.url()),
+            ..ThreatIntelConfig::default()
+        };
 
         let mut client2 = FeedClient::new(config2, cache2, verifier2).unwrap();
         let result2 = client2.check_update().await.unwrap();

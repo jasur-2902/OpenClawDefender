@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
@@ -922,7 +923,7 @@ impl DriftDetector {
     /// Get recent drift reports
     pub fn get_recent_reports(&self, count: usize) -> Vec<&DriftReport> {
         let mut reports: Vec<_> = self.drift_reports.iter().collect();
-        reports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        reports.sort_by_key(|x| Reverse(x.timestamp));
         reports.into_iter().take(count).collect()
     }
 
@@ -933,7 +934,7 @@ impl DriftDetector {
             .iter()
             .filter(|r| r.server_name == server_name)
             .collect();
-        reports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        reports.sort_by_key(|x| Reverse(x.timestamp));
         reports
     }
 }

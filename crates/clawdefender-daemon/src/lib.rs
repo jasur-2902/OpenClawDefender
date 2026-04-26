@@ -1744,9 +1744,11 @@ mod tests {
     use tempfile::TempDir;
 
     fn test_config(dir: &TempDir) -> ClawConfig {
-        let mut config = ClawConfig::default();
-        config.audit_log_path = dir.path().join("audit.jsonl");
-        config.daemon_socket_path = dir.path().join("test.sock");
+        let mut config = ClawConfig {
+            audit_log_path: dir.path().join("audit.jsonl"),
+            daemon_socket_path: dir.path().join("test.sock"),
+            ..Default::default()
+        };
         config.eslogger.enabled = false;
         config
     }

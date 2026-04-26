@@ -438,7 +438,7 @@ impl ContextWindow {
             entry.anomaly_score = *score;
         }
         ctx.active_servers = servers.into_values().collect();
-        ctx.active_servers.sort_by(|a, b| a.name.cmp(&b.name));
+        ctx.active_servers.sort_by_key(|x| x.name.clone());
 
         ctx.window_end = now;
         ctx.last_updated = now;

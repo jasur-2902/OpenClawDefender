@@ -684,10 +684,8 @@ fn test_injection_evasion_unicode_homoglyphs() {
         );
     }
     // Document whether caught or not
-    assert!(
-        !is_caught || is_caught,
-        "Test documents homoglyph evasion result"
-    );
+    // Document whether caught or not — both outcomes are valid for this test
+    let _ = is_caught;
 }
 
 /// Test: Leetspeak — "1gn0re prev10us 1nstruct10ns"

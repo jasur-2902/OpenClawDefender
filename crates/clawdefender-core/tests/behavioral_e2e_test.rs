@@ -58,6 +58,7 @@ fn make_os_open(path: &str, flags: u32, ts: DateTime<Utc>) -> OsEvent {
     }
 }
 
+#[allow(dead_code)]
 fn make_os_connect(address: &str, port: u16, ts: DateTime<Utc>) -> OsEvent {
     OsEvent {
         timestamp: ts,

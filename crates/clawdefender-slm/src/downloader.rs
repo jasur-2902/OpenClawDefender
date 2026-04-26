@@ -482,7 +482,7 @@ async fn run_download(
                             let elapsed = start_time.elapsed().as_secs_f64();
                             let net_downloaded = downloaded - resume_from;
                             let speed = if elapsed > 0.0 { net_downloaded as f64 / elapsed } else { 0.0 };
-                            let remaining = if bytes_total > downloaded { bytes_total - downloaded } else { 0 };
+                            let remaining = bytes_total.saturating_sub(downloaded);
                             let eta = if speed > 0.0 { remaining as f64 / speed } else { 0.0 };
                             let percent = if bytes_total > 0 { (downloaded as f64 / bytes_total as f64) * 100.0 } else { 0.0 };
 
@@ -611,6 +611,7 @@ fn check_disk_space(dir: &Path, needed_bytes: u64) -> Result<()> {
             let mut stat = MaybeUninit::<libc::statvfs>::uninit();
             if libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) == 0 {
                 let stat = stat.assume_init();
+                #[allow(clippy::unnecessary_cast)]
                 let available = stat.f_bavail as u64 * stat.f_frsize as u64;
                 let buffer = 100 * 1024 * 1024; // 100 MB buffer
                 if available < needed_bytes + buffer {
@@ -677,7 +678,7 @@ pub fn list_installed_models(models_dir: &Path) -> Result<Vec<InstalledModelInfo
         }
     }
 
-    installed.sort_by(|a, b| a.filename.cmp(&b.filename));
+    installed.sort_by_key(|x| x.filename.clone());
     Ok(installed)
 }
 

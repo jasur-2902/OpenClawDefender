@@ -129,7 +129,7 @@ async fn e2e_mixed_verdicts_produce_medium() {
     let low_resp = specialist_response("LOW", "No issues found", "Safe");
     let medium_resp = specialist_response("MEDIUM", "Minor concern", "Moderate risk");
 
-    let reports = vec![
+    let reports = [
         parse_specialist_response(&high_resp),
         parse_specialist_response(&low_resp),
         parse_specialist_response(&medium_resp),

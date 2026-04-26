@@ -551,12 +551,12 @@ fn compute_stats(records: &[AuditRecord]) -> AuditStats {
     stats.unique_tools.sort();
 
     let mut bt: Vec<_> = blocked_tools.into_iter().collect();
-    bt.sort_by(|a, b| b.1.cmp(&a.1));
+    bt.sort_by_key(|x| std::cmp::Reverse(x.1));
     bt.truncate(10);
     stats.top_blocked_tools = bt;
 
     let mut bp: Vec<_> = blocked_paths.into_iter().collect();
-    bp.sort_by(|a, b| b.1.cmp(&a.1));
+    bp.sort_by_key(|x| std::cmp::Reverse(x.1));
     bp.truncate(10);
     stats.top_blocked_paths = bp;
 

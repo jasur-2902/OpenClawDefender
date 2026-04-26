@@ -58,7 +58,7 @@ pub fn check_kill_chain(event: &AuditEvent, recent_events: &[AuditEvent]) -> Opt
         .collect();
 
     // Sort by timestamp ascending
-    server_events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    server_events.sort_by_key(|x| x.timestamp.clone());
 
     // Add current event at the end for pattern matching
     // (We will reference it directly when needed)

@@ -1316,11 +1316,11 @@ mod tests {
     fn test_alert_rate_tracking() {
         let mut engine = SmartAlertEngine::new();
 
-        for i in 0..20 {
+        for _i in 0..20 {
             engine.record_alert();
         }
 
-        assert!(engine.fatigue.alert_rate.hourly_counts.len() > 0);
+        assert!(!engine.fatigue.alert_rate.hourly_counts.is_empty());
     }
 
     #[test]

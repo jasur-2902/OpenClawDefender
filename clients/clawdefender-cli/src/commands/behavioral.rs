@@ -190,7 +190,7 @@ pub fn stats(config: &ClawConfig) -> Result<()> {
     if !dimension_counts.is_empty() {
         println!("  Top Anomaly Triggers:");
         let mut sorted: Vec<_> = dimension_counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|x| std::cmp::Reverse(x.1));
         for (dim, count) in sorted.iter().take(10) {
             println!("    {}: {} events", dim, count);
         }

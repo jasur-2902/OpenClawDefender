@@ -135,7 +135,7 @@ fn compute_stats(events: &[&AuditEvent], profiles: &[ServerProfileSummary]) -> D
     }
 
     let mut tool_vec: Vec<(String, u64)> = tool_counts.into_iter().collect();
-    tool_vec.sort_by(|a, b| b.1.cmp(&a.1));
+    tool_vec.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     let most_active_tools: Vec<ToolActivity> = tool_vec
         .into_iter()
@@ -184,7 +184,7 @@ fn compute_highlights(events: &[&AuditEvent]) -> Vec<DigestHighlight> {
         .filter(|e| e.decision == "blocked" || e.decision == "denied")
         .collect();
 
-    blocked_events.sort_by(|a, b| risk_score(&b.risk_level).cmp(&risk_score(&a.risk_level)));
+    blocked_events.sort_by_key(|x| std::cmp::Reverse(risk_score(&x.risk_level)));
 
     for event in blocked_events.iter().take(2) {
         highlights.push(DigestHighlight {

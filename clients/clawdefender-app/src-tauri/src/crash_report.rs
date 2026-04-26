@@ -88,7 +88,7 @@ pub fn list_crash_reports() -> Vec<CrashReport> {
         }
     }
 
-    reports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    reports.sort_by_key(|x| std::cmp::Reverse(x.timestamp.clone()));
     reports
 }
 

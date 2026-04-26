@@ -3,6 +3,7 @@
 //!
 //! Supports report persistence, listing, loading, and scan-to-scan comparison.
 
+use std::cmp::Reverse;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -452,7 +453,7 @@ impl ReportGenerator {
             });
         }
 
-        summaries.sort_by(|a, b| b.generated_at.cmp(&a.generated_at));
+        summaries.sort_by_key(|x| Reverse(x.generated_at.clone()));
         Ok(summaries)
     }
 

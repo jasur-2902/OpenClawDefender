@@ -182,7 +182,7 @@ mod tests {
         let data = b"test data";
         let checksum_content =
             "0000000000000000000000000000000000000000000000000000000000000000  clawdefender\n";
-        assert!(verify_checksum(data, &checksum_content).is_err());
+        assert!(verify_checksum(data, checksum_content).is_err());
     }
 
     #[test]

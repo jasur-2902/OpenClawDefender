@@ -659,7 +659,7 @@ fn toml_to_policy_rules(doc: &toml::Value) -> Vec<PolicyRule> {
             }
         }
     }
-    rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+    rules.sort_by_key(|x| std::cmp::Reverse(x.priority));
     rules
 }
 
@@ -1273,7 +1273,7 @@ pub async fn get_recent_events(
     }
 
     // Sort newest-first by timestamp (descending)
-    merged.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    merged.sort_by_key(|x| std::cmp::Reverse(x.timestamp.clone()));
 
     // Truncate to requested count
     merged.truncate(count);
@@ -3771,7 +3771,7 @@ pub async fn get_network_summary() -> Result<NetworkSummaryData, String> {
     }
 
     let mut dest_vec: Vec<(String, u64)> = dest_counts.into_iter().collect();
-    dest_vec.sort_by(|a, b| b.1.cmp(&a.1));
+    dest_vec.sort_by_key(|x| std::cmp::Reverse(x.1));
     let top_destinations: Vec<DestinationCount> = dest_vec
         .into_iter()
         .take(5)
@@ -3825,7 +3825,7 @@ pub async fn get_network_traffic_by_server() -> Result<Vec<ServerTrafficData>, S
         })
         .collect();
 
-    results.sort_by(|a, b| b.total_connections.cmp(&a.total_connections));
+    results.sort_by_key(|x| std::cmp::Reverse(x.total_connections));
 
     Ok(results)
 }
