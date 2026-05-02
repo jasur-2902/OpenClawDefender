@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://github.com/rookbot-io/rookbot/raw/main/assets/logo.png" alt="Rookbot" width="120" />
-</p>
-
 <h1 align="center">Rookbot</h1>
 
 <p align="center">
@@ -10,10 +6,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rookbot-io/rookbot/actions/workflows/ci.yml"><img src="https://github.com/rookbot-io/rookbot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/rookbot-io/rookbot/releases"><img src="https://img.shields.io/github/v/release/rookbot-io/rookbot?label=release" alt="Release"></a>
+  <a href="https://github.com/jasurshukurov/Rookbot-io/actions/workflows/ci.yml"><img src="https://github.com/jasurshukurov/Rookbot-io/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/jasurshukurov/Rookbot-io/releases"><img src="https://img.shields.io/github/v/release/jasurshukurov/Rookbot-io?label=release" alt="Release"></a>
   <a href="https://www.npmjs.com/package/rookbot"><img src="https://img.shields.io/npm/v/rookbot?color=cb3837" alt="npm"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
 </p>
 
 ---
@@ -44,10 +40,10 @@ npm install -g rookbot
 brew install rookbot-io/tap/rookbot
 
 # Shell script
-curl -fsSL https://raw.githubusercontent.com/rookbot-io/rookbot/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jasurshukurov/Rookbot-io/mainline/scripts/install.sh | bash
 
 # Build from source
-git clone https://github.com/rookbot-io/rookbot.git && cd rookbot
+git clone https://github.com/jasurshukurov/Rookbot-io.git && cd Rookbot-io
 cargo build --workspace --release && just install
 ```
 
@@ -226,4 +222,4 @@ rookbot policy test --policy policy.toml --fixture fixtures/read-ssh-key.json --
 
 ## License
 
-MIT
+Apache 2.0
