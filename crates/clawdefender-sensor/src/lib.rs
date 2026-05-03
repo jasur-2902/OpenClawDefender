@@ -10,7 +10,8 @@ pub mod limits;
 pub mod proctree;
 
 pub use eslogger::{
-    parse_event, sanitize_path, EsloggerEvent, EsloggerManager, EsloggerProcess, EventPreFilter,
+    parse_event, sanitize_path, BudgetStats, BudgetTier, EsloggerEvent, EsloggerManager,
+    EsloggerProcess, EventBudget, EventPreFilter, ProcessDecision,
 };
 pub use fsevents::{
     classify_path, default_watch_paths, EnhancedFsWatcher, EsloggerCorrelator, FsEvent,

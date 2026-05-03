@@ -149,11 +149,22 @@ pub trait SlmBackend: Send + Sync {
 
     /// Whether GPU acceleration is active.
     fn using_gpu(&self) -> bool;
+
+    /// Advise the backend to release non-essential memory (e.g., KV cache,
+    /// mmap advisory). Called when the engine has been idle for 5+ minutes.
+    /// Default implementation is a no-op; real llama-cpp backends should
+    /// override this to call `madvise(MADV_DONTNEED)` or equivalent.
+    fn advise_memory_reclaim(&self) {}
 }
 
 // ---------------------------------------------------------------------------
 // Engine
 // ---------------------------------------------------------------------------
+
+/// Duration of idle time before advising the OS to allow page eviction
+/// on model memory. 5 minutes is long enough to avoid thrashing during
+/// bursty workloads while reclaiming memory during quiet periods.
+const MODEL_IDLE_TIMEOUT_SECS: u64 = 300;
 
 /// The core SLM inference engine. Wraps a backend with concurrency control and stats.
 pub struct SlmEngine {
@@ -168,6 +179,9 @@ pub struct SlmEngine {
     total_tokens: AtomicU64,
     total_latency_ms: AtomicU64,
     last_latency_ms: AtomicU64,
+    /// Timestamp (as epoch seconds) of the last completed inference.
+    /// Used to detect idle periods for memory hint advisories.
+    last_inference_epoch: AtomicU64,
 }
 
 const MAX_QUEUED: usize = 10;
@@ -185,6 +199,7 @@ impl SlmEngine {
             total_tokens: AtomicU64::new(0),
             total_latency_ms: AtomicU64::new(0),
             last_latency_ms: AtomicU64::new(0),
+            last_inference_epoch: AtomicU64::new(0),
         }
     }
 
@@ -232,6 +247,13 @@ impl SlmEngine {
         self.total_latency_ms
             .fetch_add(latency_ms, Ordering::Relaxed);
         self.last_latency_ms.store(latency_ms, Ordering::Relaxed);
+        self.last_inference_epoch.store(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            Ordering::Relaxed,
+        );
 
         Ok(raw_output)
     }
@@ -292,6 +314,13 @@ impl SlmEngine {
         self.total_latency_ms
             .fetch_add(latency_ms, Ordering::Relaxed);
         self.last_latency_ms.store(latency_ms, Ordering::Relaxed);
+        self.last_inference_epoch.store(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            Ordering::Relaxed,
+        );
 
         Ok(response)
     }
@@ -319,6 +348,50 @@ impl SlmEngine {
     /// Access the engine config.
     pub fn config(&self) -> &SlmConfig {
         &self.config
+    }
+
+    /// Check if the model has been idle long enough to advise memory reclamation.
+    ///
+    /// Returns `true` if no inference has occurred in the last 5 minutes and
+    /// at least one inference has been performed (i.e., the model was loaded).
+    /// The caller can use this to issue OS memory advisories (e.g., `madvise`
+    /// on macOS/Linux) or unload non-essential model layers.
+    pub fn is_idle_for_memory_reclaim(&self) -> bool {
+        let last_epoch = self.last_inference_epoch.load(Ordering::Relaxed);
+        if last_epoch == 0 {
+            return false; // No inference has ever run.
+        }
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        now_epoch.saturating_sub(last_epoch) >= MODEL_IDLE_TIMEOUT_SECS
+    }
+
+    /// If the engine has been idle for 5+ minutes, advise the backend to
+    /// release non-essential memory. Returns `true` if the advisory was issued.
+    ///
+    /// Call this from a periodic maintenance loop (e.g., every 60 seconds).
+    pub fn maybe_reclaim_memory(&self) -> bool {
+        if self.is_idle_for_memory_reclaim() {
+            self.backend.advise_memory_reclaim();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns seconds since the last inference, or `None` if no inference has run.
+    pub fn idle_seconds(&self) -> Option<u64> {
+        let last_epoch = self.last_inference_epoch.load(Ordering::Relaxed);
+        if last_epoch == 0 {
+            return None;
+        }
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Some(now_epoch.saturating_sub(last_epoch))
     }
 }
 

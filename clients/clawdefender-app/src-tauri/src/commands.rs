@@ -48,8 +48,15 @@ pub const MCP_CLIENT_CONFIGS: &[(&str, &str, &[&str])] = &[
         "claude_code",
         "Claude Code",
         &[
-            ".claude.json",
             ".claude/settings.json",
+            ".claude.json",
+        ],
+    ),
+    (
+        "codex",
+        "Codex",
+        &[
+            ".codex/config.toml",
         ],
     ),
 ];
@@ -88,6 +95,21 @@ pub fn mcp_config_candidates_for(client_id: &str) -> Vec<PathBuf> {
     Vec::new()
 }
 
+/// Extract MCP server names from a TOML config (used by Codex).
+/// Codex stores MCP servers under `[mcp_servers.<name>]` sections.
+pub fn extract_servers_from_toml(contents: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let table: toml::Table = toml::from_str(contents).ok()?;
+    let mcp_servers = table.get("mcp_servers")?.as_table()?;
+    let mut map = serde_json::Map::new();
+    for (name, value) in mcp_servers {
+        // Convert TOML value to JSON value for uniform handling
+        let json_str = serde_json::to_string(&value).unwrap_or_default();
+        let json_val: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
+        map.insert(name.clone(), json_val);
+    }
+    if map.is_empty() { None } else { Some(map) }
+}
+
 /// Extract MCP server entries from a config JSON, handling VS Code's nested
 /// settings structure and the standard mcpServers/servers top-level keys.
 /// Returns an owned map so it works for both top-level and nested layouts.
@@ -117,11 +139,11 @@ pub fn count_wrapped_servers() -> u32 {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let config: serde_json::Value = match serde_json::from_str(&contents) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        if let Some(servers) = extract_servers(&config) {
+        let servers_opt = serde_json::from_str::<serde_json::Value>(&contents)
+            .ok()
+            .and_then(|config| extract_servers(&config))
+            .or_else(|| extract_servers_from_toml(&contents));
+        if let Some(servers) = servers_opt {
             for (_name, entry) in &servers {
                 if entry.get("_clawdefender_original").is_some()
                     || entry.get("_clawai_original").is_some()
@@ -301,6 +323,562 @@ pub async fn detect_mcp_clients() -> Result<Vec<McpClient>, String> {
     }
 
     Ok(results)
+}
+
+// --- Tool descriptions and process patterns for My Tools ---
+
+const TOOL_DESCRIPTIONS: &[(&str, &str)] = &[
+    ("claude", "Anthropic's desktop app"),
+    ("cursor", "AI-first code editor"),
+    ("vscode", "With MCP extension"),
+    ("windsurf", "Codeium's AI IDE"),
+    ("claude_code", "CLI for Claude"),
+    ("codex", "OpenAI's AI coding app"),
+];
+
+const TOOL_PROCESS_PATTERNS: &[(&str, &[&str])] = &[
+    ("claude", &["Claude"]),
+    ("cursor", &["Cursor"]),
+    ("vscode", &["Code Helper", "Code"]),
+    ("windsurf", &["Windsurf"]),
+    ("claude_code", &["claude"]),
+    ("codex", &["Codex", "Codex Helper"]),
+];
+
+fn tool_description(client_id: &str) -> &'static str {
+    TOOL_DESCRIPTIONS
+        .iter()
+        .find(|(id, _)| *id == client_id)
+        .map(|(_, desc)| *desc)
+        .unwrap_or("AI tool")
+}
+
+fn tool_process_patterns(client_id: &str) -> &'static [&'static str] {
+    TOOL_PROCESS_PATTERNS
+        .iter()
+        .find(|(id, _)| *id == client_id)
+        .map(|(_, patterns)| *patterns)
+        .unwrap_or(&[])
+}
+
+/// Process stats collected from sysinfo.
+struct ToolProcessStats {
+    running: bool,
+    pid: Option<u32>,
+    children_count: u32,
+    memory_bytes: u64,
+    disk_read_bytes: u64,
+    disk_written_bytes: u64,
+    cpu_percent: f32,
+}
+
+/// Detect running processes matching a tool's known process name patterns.
+/// Collects PID, children count, memory, disk I/O, and CPU stats.
+fn detect_tool_process(client_id: &str, sys: &sysinfo::System) -> ToolProcessStats {
+    let patterns = tool_process_patterns(client_id);
+    if patterns.is_empty() {
+        return ToolProcessStats {
+            running: false, pid: None, children_count: 0,
+            memory_bytes: 0, disk_read_bytes: 0, disk_written_bytes: 0, cpu_percent: 0.0,
+        };
+    }
+
+    let mut main_pid: Option<sysinfo::Pid> = None;
+    let mut children_count: u32 = 0;
+    let mut memory_bytes: u64 = 0;
+    let mut disk_read_bytes: u64 = 0;
+    let mut disk_written_bytes: u64 = 0;
+    let mut cpu_percent: f32 = 0.0;
+
+    for (pid, process) in sys.processes() {
+        let name = process.name().to_string_lossy();
+        for pattern in patterns {
+            if name.contains(pattern) {
+                if main_pid.is_none() {
+                    main_pid = Some(*pid);
+                } else {
+                    children_count += 1;
+                }
+                memory_bytes += process.memory();
+                let disk = process.disk_usage();
+                disk_read_bytes += disk.total_read_bytes;
+                disk_written_bytes += disk.total_written_bytes;
+                cpu_percent += process.cpu_usage();
+                break;
+            }
+        }
+    }
+
+    match main_pid {
+        Some(pid) => ToolProcessStats {
+            running: true, pid: Some(pid.as_u32()), children_count,
+            memory_bytes, disk_read_bytes, disk_written_bytes, cpu_percent,
+        },
+        None => ToolProcessStats {
+            running: false, pid: None, children_count: 0,
+            memory_bytes: 0, disk_read_bytes: 0, disk_written_bytes: 0, cpu_percent: 0.0,
+        },
+    }
+}
+
+/// Load audit events from today, returning per-server stats.
+/// Returns a map of server_name -> (file_events, network_events, tool_call_events, last_timestamp).
+fn load_today_audit_stats() -> std::collections::HashMap<String, (u32, u32, u32, Option<String>)> {
+    let mut stats: std::collections::HashMap<String, (u32, u32, u32, Option<String>)> =
+        std::collections::HashMap::new();
+
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return stats,
+    };
+    let audit_path = home.join(".local/share/rookbot/audit.jsonl");
+    let file = match std::fs::File::open(&audit_path) {
+        Ok(f) => f,
+        Err(_) => return stats,
+    };
+
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    use std::io::BufRead;
+    let reader = std::io::BufReader::new(file);
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        let entry: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Filter to today's events only
+        let timestamp = entry.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
+        if !timestamp.starts_with(&today) {
+            continue;
+        }
+
+        let server = match entry.get("server_name").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+
+        let event_type = entry
+            .get("event_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let action = entry
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let entry_stats = stats.entry(server).or_insert((0, 0, 0, None));
+
+        // Classify event
+        if event_type == "file_access" || action.contains("read") || action.contains("write") {
+            entry_stats.0 += 1;
+        } else if event_type == "network" || action.contains("http") || action.contains("fetch") {
+            entry_stats.1 += 1;
+        }
+        // All proxy events count as tool calls
+        if event_type == "proxy" || event_type == "tool_call" {
+            entry_stats.2 += 1;
+        }
+
+        // Track the latest timestamp
+        if entry_stats
+            .3
+            .as_ref()
+            .map_or(true, |prev| timestamp > prev.as_str())
+        {
+            entry_stats.3 = Some(timestamp.to_string());
+        }
+    }
+
+    stats
+}
+
+#[tauri::command]
+pub async fn get_detected_tools_with_stats() -> Result<Vec<DetectedToolStats>, String> {
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+
+    // Load today's audit stats once (shared across all tools)
+    let audit_stats = load_today_audit_stats();
+
+    // Create one shared sysinfo::System for all tools (avoids repeated process scans)
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
+
+    let mut results = Vec::new();
+
+    for &(client_id, display_name, rel_paths) in MCP_CLIENT_CONFIGS {
+        let paths: Vec<PathBuf> = rel_paths.iter().map(|r| home.join(r)).collect();
+        let found_path = paths.iter().find(|p| p.exists());
+        let installed = found_path.is_some();
+        let config_path = found_path
+            .unwrap_or(&paths[0])
+            .to_string_lossy()
+            .to_string();
+
+        // Process detection + live stats
+        let proc_stats = detect_tool_process(client_id, &sys);
+
+        // MCP servers from config
+        let mut mcp_servers = Vec::new();
+        let mut files_accessed_today: u32 = 0;
+        let mut network_connections_today: u32 = 0;
+        let mut last_active: Option<String> = None;
+
+        if let Some(cfg_path) = found_path {
+            if let Ok(contents) = std::fs::read_to_string(cfg_path) {
+                // Try JSON first, then TOML (for Codex)
+                let servers_opt = serde_json::from_str::<serde_json::Value>(&contents)
+                    .ok()
+                    .and_then(|config| extract_servers(&config))
+                    .or_else(|| extract_servers_from_toml(&contents));
+
+                if let Some(servers) = servers_opt {
+                    for (name, entry) in &servers {
+                        let wrapped = entry.get("_clawdefender_original").is_some()
+                            || entry.get("_clawai_original").is_some();
+
+                        let server_stats = audit_stats.get(name.as_str());
+                        let tool_calls_today = server_stats.map(|s| s.2).unwrap_or(0);
+
+                        if let Some(ss) = server_stats {
+                            files_accessed_today += ss.0;
+                            network_connections_today += ss.1;
+                            if let Some(ref ts) = ss.3 {
+                                if last_active
+                                    .as_ref()
+                                    .map_or(true, |prev| ts.as_str() > prev.as_str())
+                                {
+                                    last_active = Some(ts.clone());
+                                }
+                            }
+                        }
+
+                        let status = if wrapped && proc_stats.running {
+                            "running".to_string()
+                        } else {
+                            "stopped".to_string()
+                        };
+
+                        mcp_servers.push(McpServerInfo {
+                            name: name.clone(),
+                            wrapped,
+                            tool_calls_today,
+                            status,
+                        });
+                    }
+                }
+            }
+        }
+
+        results.push(DetectedToolStats {
+            name: client_id.to_string(),
+            display_name: display_name.to_string(),
+            description: tool_description(client_id).to_string(),
+            config_path,
+            installed,
+            running: proc_stats.running,
+            pid: proc_stats.pid,
+            children_count: proc_stats.children_count,
+            memory_bytes: proc_stats.memory_bytes,
+            disk_read_bytes: proc_stats.disk_read_bytes,
+            disk_written_bytes: proc_stats.disk_written_bytes,
+            cpu_percent: proc_stats.cpu_percent,
+            files_accessed_today,
+            network_connections_today,
+            last_active,
+            mcp_servers,
+        });
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_tool_live_activity(tool_name: String) -> Result<ToolLiveActivity, String> {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
+
+    let patterns = tool_process_patterns(&tool_name);
+    if patterns.is_empty() {
+        return Err(format!("Unknown tool: {}", tool_name));
+    }
+
+    // Collect all PIDs for this tool
+    let mut pids: Vec<u32> = Vec::new();
+    for (pid, process) in sys.processes() {
+        let name = process.name().to_string_lossy();
+        for pattern in patterns {
+            if name.contains(pattern) {
+                pids.push(pid.as_u32());
+                break;
+            }
+        }
+    }
+
+    if pids.is_empty() {
+        return Ok(ToolLiveActivity {
+            tool_name,
+            pids: vec![],
+            open_files: vec![],
+            network_connections: vec![],
+        });
+    }
+
+    // Use lsof to get open files and network connections for all PIDs at once
+    let pid_args: String = pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",");
+
+    let mut open_files = Vec::new();
+    let mut network_connections = Vec::new();
+
+    // Run lsof with full path, -n -P to skip DNS/port-name lookups, -F tfn for terse output
+    if let Ok(output) = std::process::Command::new("/usr/sbin/lsof")
+        .args(["-p", &pid_args, "-n", "-P", "-F", "tfn"])
+        .output()
+    {
+        // Parse stdout even if lsof returns non-zero (it may still have valid partial output)
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut current_type = String::new();
+
+        for line in stdout.lines() {
+            if line.starts_with('t') {
+                current_type = line[1..].to_string();
+            } else if line.starts_with('n') {
+                let current_name = &line[1..];
+
+                // Skip system/framework paths and invalid entries
+                if current_name.is_empty()
+                    || current_name.starts_with("/dev/")
+                    || current_name.starts_with("/System/")
+                    || current_name.starts_with("/usr/lib/")
+                    || current_name.starts_with("/Library/Apple/")
+                    || current_name.contains("dyld_shared_cache")
+                {
+                    continue;
+                }
+
+                match current_type.as_str() {
+                    "IPv4" | "IPv6" => {
+                        // Parse network: "host:port->remote:port" or "*:port"
+                        let (conn, state) = if let Some(arrow_pos) = current_name.find("->") {
+                            let remote = &current_name[arrow_pos + 2..];
+                            let state = if remote.contains("(ESTABLISHED)") {
+                                "ESTABLISHED"
+                            } else if remote.contains("(LISTEN)") {
+                                "LISTEN"
+                            } else if remote.contains("(CLOSE_WAIT)") {
+                                "CLOSE_WAIT"
+                            } else {
+                                "CONNECTED"
+                            };
+                            (remote.split(" (").next().unwrap_or(remote).to_string(), state.to_string())
+                        } else if current_name.contains("*:") || current_name.contains("LISTEN") {
+                            (current_name.to_string(), "LISTEN".to_string())
+                        } else {
+                            (current_name.to_string(), "UNKNOWN".to_string())
+                        };
+                        network_connections.push(NetworkEntry {
+                            connection: conn,
+                            protocol: if current_type == "IPv6" { "TCP6".to_string() } else { "TCP".to_string() },
+                            state,
+                        });
+                    }
+                    "REG" | "DIR" => {
+                        open_files.push(OpenFileEntry {
+                            path: current_name.to_string(),
+                            fd_type: current_type.clone(),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Deduplicate files by path
+    open_files.sort_by(|a, b| a.path.cmp(&b.path));
+    open_files.dedup_by(|a, b| a.path == b.path);
+
+    // Deduplicate network by connection
+    network_connections.sort_by(|a, b| a.connection.cmp(&b.connection));
+    network_connections.dedup_by(|a, b| a.connection == b.connection);
+
+    Ok(ToolLiveActivity {
+        tool_name,
+        pids,
+        open_files,
+        network_connections,
+    })
+}
+
+/// Get the list of MCP server names belonging to a tool (by client_id).
+fn server_names_for_tool(client_id: &str) -> Vec<String> {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+    for &(id, _, rel_paths) in MCP_CLIENT_CONFIGS {
+        if id != client_id {
+            continue;
+        }
+        for rel in rel_paths {
+            let full = home.join(rel);
+            if let Ok(contents) = std::fs::read_to_string(&full) {
+                // Try JSON first, then TOML (for Codex)
+                if let Ok(config) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    if let Some(servers) = extract_servers(&config) {
+                        return servers.keys().cloned().collect();
+                    }
+                }
+                if let Some(servers) = extract_servers_from_toml(&contents) {
+                    return servers.keys().cloned().collect();
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Get filtered activity events for a specific tool.
+///
+/// Returns recent audit events that belong to the tool's MCP servers,
+/// with a human-readable one_liner for each. Supports pagination via
+/// `count` and `offset`.
+#[tauri::command]
+pub async fn get_tool_activity(
+    state: tauri::State<'_, AppState>,
+    tool_name: String,
+    count: usize,
+    offset: usize,
+) -> Result<Vec<ToolActivityEvent>, String> {
+    let server_names = server_names_for_tool(&tool_name);
+
+    // Collect matching events from the in-memory buffer
+    let buf = state.event_buffer.lock().map_err(|e| e.to_string())?;
+    let mut matching: Vec<ToolActivityEvent> = buf
+        .iter()
+        .rev()
+        .filter(|e| server_names.iter().any(|s| s == &e.server_name))
+        .map(|e| {
+            let one_liner = format!("{} — {}", e.server_name, e.action);
+            ToolActivityEvent {
+                id: e.id.clone(),
+                timestamp: e.timestamp.clone(),
+                event_type: e.event_type.clone(),
+                server_name: e.server_name.clone(),
+                tool_name: e.tool_name.clone(),
+                action: e.action.clone(),
+                decision: e.decision.clone(),
+                risk_level: e.risk_level.clone(),
+                details: e.details.clone(),
+                resource: e.resource.clone(),
+                one_liner,
+            }
+        })
+        .collect();
+    drop(buf);
+
+    // If the buffer doesn't have enough, supplement from audit.jsonl
+    let need_from_file = (count + offset).saturating_sub(matching.len());
+    if need_from_file > 0 {
+        let historical = read_historical_events(need_from_file + 200, &[]);
+        for e in historical.into_iter().rev() {
+            if server_names.iter().any(|s| s == &e.server_name) {
+                let one_liner = format!("{} — {}", e.server_name, e.action);
+                matching.push(ToolActivityEvent {
+                    id: e.id.clone(),
+                    timestamp: e.timestamp.clone(),
+                    event_type: e.event_type.clone(),
+                    server_name: e.server_name.clone(),
+                    tool_name: e.tool_name.clone(),
+                    action: e.action.clone(),
+                    decision: e.decision.clone(),
+                    risk_level: e.risk_level.clone(),
+                    details: e.details.clone(),
+                    resource: e.resource.clone(),
+                    one_liner,
+                });
+            }
+        }
+    }
+
+    // Apply pagination
+    let result: Vec<ToolActivityEvent> = matching
+        .into_iter()
+        .skip(offset)
+        .take(count)
+        .collect();
+
+    Ok(result)
+}
+
+/// Get detailed process tree information for a specific tool.
+#[tauri::command]
+pub async fn get_tool_process_info(tool_name: String) -> Result<ToolProcessInfo, String> {
+    use sysinfo::System;
+
+    let patterns = tool_process_patterns(&tool_name);
+    if patterns.is_empty() {
+        return Ok(ToolProcessInfo {
+            tool_name,
+            running: false,
+            main_pid: None,
+            total_memory_bytes: 0,
+            total_cpu_percent: 0.0,
+            processes: Vec::new(),
+        });
+    }
+
+    let mut sys = System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
+
+    let mut processes = Vec::new();
+    let mut main_pid: Option<u32> = None;
+    let mut total_memory: u64 = 0;
+    let mut total_cpu: f32 = 0.0;
+
+    for (pid, process) in sys.processes() {
+        let name = process.name().to_string_lossy().to_string();
+        let matches = patterns.iter().any(|p| name.contains(p));
+        if !matches {
+            continue;
+        }
+
+        let pid_u32 = pid.as_u32();
+        let mem = process.memory();
+        let cpu = process.cpu_usage();
+        let parent = process.parent().map(|p| p.as_u32());
+
+        if main_pid.is_none() {
+            main_pid = Some(pid_u32);
+        }
+
+        total_memory += mem;
+        total_cpu += cpu;
+
+        processes.push(ToolProcessEntry {
+            pid: pid_u32,
+            name,
+            memory_bytes: mem,
+            cpu_percent: cpu,
+            parent_pid: parent,
+        });
+    }
+
+    // Sort by PID so the main process is first
+    processes.sort_by_key(|p| p.pid);
+
+    Ok(ToolProcessInfo {
+        tool_name,
+        running: main_pid.is_some(),
+        main_pid,
+        total_memory_bytes: total_memory,
+        total_cpu_percent: total_cpu,
+        processes,
+    })
 }
 
 #[tauri::command]
@@ -6249,68 +6827,85 @@ pub async fn get_tool_cards() -> Result<Vec<serde_json::Value>, String> {
     let known = load_known_servers();
     let audit_counts = load_audit_event_counts();
 
+    let config_paths = mcp_config_paths();
+    eprintln!("[get_tool_cards] found {} config files", config_paths.len());
+
     let mut cards = Vec::new();
-    for (path, _client_id, client_name) in mcp_config_paths() {
+    for (path, _client_id, client_name) in config_paths {
+        eprintln!("[get_tool_cards] reading config: {} (client: {})", path.display(), client_name);
         let contents = match std::fs::read_to_string(&path) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("[get_tool_cards] failed to read {}: {}", path.display(), e);
+                continue;
+            }
         };
         let config: serde_json::Value = match serde_json::from_str(&contents) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("[get_tool_cards] failed to parse JSON {}: {}", path.display(), e);
+                continue;
+            }
         };
-        if let Some(servers) = extract_servers(&config) {
-            for (name, entry) in &servers {
-                let wrapped = entry.get("_clawdefender_original").is_some()
-                    || entry.get("_clawai_original").is_some();
+        let servers = match extract_servers(&config) {
+            Some(s) => s,
+            None => {
+                eprintln!("[get_tool_cards] no servers key found in {}", path.display());
+                continue;
+            }
+        };
+        eprintln!("[get_tool_cards] found {} servers in {}", servers.len(), path.display());
+        for (name, entry) in &servers {
+            let wrapped = entry.get("_clawdefender_original").is_some()
+                || entry.get("_clawai_original").is_some();
 
-                // Build command vec for capability inference
-                let mut command = Vec::new();
-                if let Some(cmd) = entry.get("command").and_then(|v| v.as_str()) {
-                    command.push(cmd.to_string());
-                }
-                if let Some(args) = entry.get("args").and_then(|v| v.as_array()) {
-                    for arg in args {
-                        if let Some(s) = arg.as_str() {
-                            command.push(s.to_string());
-                        }
+            // Build command vec for capability inference
+            let mut command = Vec::new();
+            if let Some(cmd) = entry.get("command").and_then(|v| v.as_str()) {
+                command.push(cmd.to_string());
+            }
+            if let Some(args) = entry.get("args").and_then(|v| v.as_array()) {
+                for arg in args {
+                    if let Some(s) = arg.as_str() {
+                        command.push(s.to_string());
                     }
                 }
-
-                let caps = infer_capabilities(name, &command);
-
-                // Look up persisted trust level from known_servers.json
-                let trust_level = known
-                    .servers
-                    .get(name.as_str())
-                    .map(|e| e.trust_level.as_str())
-                    .unwrap_or("default");
-
-                // Audit event count for this server
-                let event_count = audit_counts.get(name.as_str()).copied().unwrap_or(0);
-
-                cards.push(serde_json::json!({
-                    "server_name": name,
-                    "client_name": client_name,
-                    "display_name": name,
-                    "wrapped": wrapped,
-                    "status": if wrapped { "protected" } else { "unprotected" },
-                    "trust_level": trust_level,
-                    "event_count": event_count,
-                    "anomaly_score": 0.0,
-                    "capabilities": {
-                        "read_files": caps.can_read_files,
-                        "write_files": caps.can_write_files,
-                        "execute_commands": caps.can_execute_commands,
-                        "network_access": caps.can_access_network,
-                        "browser_access": caps.can_sample_llm
-                    },
-                    "capability_source": caps.source,
-                    "last_activity": null
-                }));
             }
+
+            let caps = infer_capabilities(name, &command);
+
+            // Look up persisted trust level from known_servers.json
+            let trust_level = known
+                .servers
+                .get(name.as_str())
+                .map(|e| e.trust_level.as_str())
+                .unwrap_or("default");
+
+            // Audit event count for this server
+            let event_count = audit_counts.get(name.as_str()).copied().unwrap_or(0);
+
+            cards.push(serde_json::json!({
+                "server_name": name,
+                "client_name": client_name,
+                "display_name": name,
+                "wrapped": wrapped,
+                "status": if wrapped { "protected" } else { "unprotected" },
+                "trust_level": trust_level,
+                "event_count": event_count,
+                "anomaly_score": 0.0,
+                "capabilities": {
+                    "read_files": caps.can_read_files,
+                    "write_files": caps.can_write_files,
+                    "execute_commands": caps.can_execute_commands,
+                    "network_access": caps.can_access_network,
+                    "browser_access": caps.can_sample_llm
+                },
+                "capability_source": caps.source,
+                "last_activity": null
+            }));
         }
     }
+    eprintln!("[get_tool_cards] returning {} tool cards total", cards.len());
     Ok(cards)
 }
 
@@ -6354,9 +6949,16 @@ pub async fn get_new_tools() -> Result<Vec<serde_json::Value>, String> {
                 "server_name": s.server_name,
                 "client_name": s.client_name,
                 "client_display_name": s.client_display_name,
+                "display_name": s.server_name,
                 "command": s.command,
-                "first_detected": s.first_detected,
-                "capabilities": s.capabilities,
+                "detected_at": s.first_detected,
+                "capabilities": {
+                    "read_files": s.capabilities.can_read_files,
+                    "write_files": s.capabilities.can_write_files,
+                    "execute_commands": s.capabilities.can_execute_commands,
+                    "network_access": s.capabilities.can_access_network,
+                    "browser_access": s.capabilities.can_sample_llm
+                },
                 "suggested_trust_level": s.suggested_trust_level,
             })
         })
@@ -8844,6 +9446,7 @@ pub struct SensorHealth {
     pub events_flowing: bool,
 }
 
+
 /// Check macOS version >= 13 (Ventura) for eslogger support.
 fn is_macos_13_or_later() -> bool {
     let output = std::process::Command::new("sw_vers")
@@ -8881,49 +9484,30 @@ pub async fn get_sensor_health() -> Result<SensorHealth, String> {
         .map(|t| t.elapsed().map(|d| d.as_secs() < 120).unwrap_or(false))
         .unwrap_or(false);
 
-    // Check if audit.jsonl has any content at all (events were recorded at some point).
-    // This means the daemon had FDA at some point and eslogger worked.
-    let audit_has_content = std::fs::metadata(&audit_path)
-        .map(|m| m.len() > 0)
+    // FDA granted: check the daemon's sensor-status.json file.
+    //
+    // The daemon writes this file after starting its sensors. It records
+    // whether eslogger was successfully started (which requires FDA).
+    // This is the most reliable signal because the daemon performs its own
+    // FDA check before attempting to start eslogger.
+    //
+    // Fallback: if the status file doesn't exist or is stale, check if an
+    // eslogger process is running via pgrep.
+    let status_path =
+        std::path::PathBuf::from(&home).join(".local/share/rookbot/sensor-status.json");
+    let daemon_says_fda = std::fs::read_to_string(&status_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("fda_granted")?.as_bool())
         .unwrap_or(false);
 
-    // FDA granted: The daemon (not the app) needs FDA for eslogger.
-    // Consider FDA working if:
-    //   1. Events are actively flowing (daemon has FDA and eslogger is running), OR
-    //   2. Audit log has content (daemon had FDA and recorded events before), OR
-    //   3. This process can read TCC-protected directories directly
-    let fda_granted = if events_flowing || (daemon_running && audit_has_content) {
-        true
-    } else {
-        // Check if this process has FDA by probing TCC-protected directories
-        let tcc_paths = [
-            "Library/Mail",
-            "Library/Messages",
-            "Library/Safari",
-            "Library/Cookies",
-        ];
-        let home_path = std::path::PathBuf::from(&home);
-        let mut granted = false;
-        for rel in &tcc_paths {
-            let path = home_path.join(rel);
-            match std::fs::read_dir(&path) {
-                Ok(_) => {
-                    granted = true;
-                    break;
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    continue;
-                }
-                Err(_) => {
-                    // Permission denied — FDA not granted to this process.
-                    // But don't break; try remaining paths in case this one
-                    // has a non-TCC error.
-                    continue;
-                }
-            }
-        }
-        granted
-    };
+    let eslogger_running = std::process::Command::new("pgrep")
+        .args(["-x", "eslogger"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let fda_granted = daemon_says_fda || eslogger_running;
 
     // eslogger available: binary exists + FDA granted
     let eslogger_available =
@@ -9398,6 +9982,256 @@ pub async fn get_login_anomalies() -> Result<serde_json::Value, String> {
         "total_findings": findings.len(),
         "checked_at": chrono::Utc::now().to_rfc3339(),
     }))
+}
+
+// --- Performance & Battery commands ---
+
+#[tauri::command]
+pub async fn get_performance_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<PerformanceStats, String> {
+    // Gather approximate stats from available state
+    let events_processed = state
+        .cached_status
+        .lock()
+        .ok()
+        .and_then(|s| s.as_ref().map(|ds| ds.events_processed))
+        .unwrap_or(0);
+
+    let event_buffer_len = state
+        .event_buffer
+        .lock()
+        .ok()
+        .map(|b| b.len())
+        .unwrap_or(0);
+
+    // Use sysinfo to get process-level CPU and memory usage
+    let (cpu_percent, memory_bytes) = {
+        use sysinfo::{System, Pid};
+        let mut sys = System::new();
+        let pid = Pid::from_u32(std::process::id());
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
+        if let Some(proc_info) = sys.process(pid) {
+            (proc_info.cpu_usage() as f64, proc_info.memory())
+        } else {
+            (0.0, 0)
+        }
+    };
+
+    // Estimate event rates based on buffer activity
+    // These are approximations — real rates come from the daemon
+    let events_per_sec = if events_processed > 0 {
+        (event_buffer_len as f64).min(100.0) / 5.0 // rough 5s window
+    } else {
+        0.0
+    };
+
+    let mode = state
+        .monitoring_mode
+        .lock()
+        .ok()
+        .map(|m| *m)
+        .unwrap_or_default();
+
+    let sample_rate = match mode {
+        MonitoringMode::Full => 100.0,
+        MonitoringMode::Balanced => 85.0,
+        MonitoringMode::Light => 50.0,
+        MonitoringMode::Minimal => 15.0,
+    };
+
+    Ok(PerformanceStats {
+        cpu_percent,
+        memory_bytes,
+        memory_model_bytes: 0, // populated when SLM is loaded
+        memory_buffers_bytes: (event_buffer_len * 512) as u64, // rough estimate
+        events_per_sec,
+        events_total_per_sec: events_per_sec / (sample_rate / 100.0_f64).max(0.01_f64),
+        events_sampled_percent: sample_rate,
+        disk_writes_per_sec: 0.0, // approximation
+    })
+}
+
+#[tauri::command]
+pub async fn get_monitoring_mode(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let mode = state
+        .monitoring_mode
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    let name = match *mode {
+        MonitoringMode::Full => "full",
+        MonitoringMode::Balanced => "balanced",
+        MonitoringMode::Light => "light",
+        MonitoringMode::Minimal => "minimal",
+    };
+    Ok(name.to_string())
+}
+
+#[tauri::command]
+pub async fn set_monitoring_mode(
+    mode: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let parsed = match mode.as_str() {
+        "full" => MonitoringMode::Full,
+        "balanced" => MonitoringMode::Balanced,
+        "light" => MonitoringMode::Light,
+        "minimal" => MonitoringMode::Minimal,
+        _ => return Err(format!("Unknown monitoring mode: {}", mode)),
+    };
+
+    if let Ok(mut m) = state.monitoring_mode.lock() {
+        *m = parsed;
+    }
+
+    // Persist to config.toml under [performance]
+    let path = config_toml_path();
+    let mut table: toml::Value = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(toml::Value::Table(Default::default()))
+    } else {
+        toml::Value::Table(Default::default())
+    };
+
+    if table.get("performance").is_none() {
+        table
+            .as_table_mut()
+            .ok_or("Config is not a TOML table")?
+            .insert("performance".to_string(), toml::Value::Table(Default::default()));
+    }
+    let perf = table
+        .get_mut("performance")
+        .and_then(|v| v.as_table_mut())
+        .ok_or("Failed to access [performance] section")?;
+    perf.insert("monitoring_mode".to_string(), toml::Value::String(mode));
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&path, table.to_string())
+        .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+
+    tracing::info!("Monitoring mode set to {:?}", parsed);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_battery_auto_adjust(
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    let val = state
+        .battery_auto_adjust
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(*val)
+}
+
+#[tauri::command]
+pub async fn set_battery_auto_adjust(
+    enabled: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    if let Ok(mut v) = state.battery_auto_adjust.lock() {
+        *v = enabled;
+    }
+
+    // Persist to config.toml under [performance]
+    let path = config_toml_path();
+    let mut table: toml::Value = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(toml::Value::Table(Default::default()))
+    } else {
+        toml::Value::Table(Default::default())
+    };
+
+    if table.get("performance").is_none() {
+        table
+            .as_table_mut()
+            .ok_or("Config is not a TOML table")?
+            .insert("performance".to_string(), toml::Value::Table(Default::default()));
+    }
+    let perf = table
+        .get_mut("performance")
+        .and_then(|v| v.as_table_mut())
+        .ok_or("Failed to access [performance] section")?;
+    perf.insert("auto_adjust_on_battery".to_string(), toml::Value::Boolean(enabled));
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&path, table.to_string())
+        .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+
+    tracing::info!("Battery auto-adjust set to {}", enabled);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pause_monitoring(
+    duration_minutes: u64,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let resume_at = chrono::Utc::now() + chrono::Duration::minutes(duration_minutes as i64);
+    if let Ok(mut p) = state.pause_until.lock() {
+        *p = Some(resume_at);
+    }
+    tracing::info!("Monitoring paused for {} minutes (until {})", duration_minutes, resume_at);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn resume_monitoring(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    if let Ok(mut p) = state.pause_until.lock() {
+        *p = None;
+    }
+    tracing::info!("Monitoring resumed manually");
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_pause_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<PauseStatus, String> {
+    let pause_until = state
+        .pause_until
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?
+        .clone();
+
+    match pause_until {
+        Some(until) => {
+            let now = chrono::Utc::now();
+            if now >= until {
+                // Pause expired — auto-resume
+                drop(state.pause_until.lock().map(|mut p| *p = None));
+                Ok(PauseStatus {
+                    paused: false,
+                    remaining_seconds: 0,
+                    pause_until: None,
+                })
+            } else {
+                let remaining = (until - now).num_seconds().max(0) as u64;
+                Ok(PauseStatus {
+                    paused: true,
+                    remaining_seconds: remaining,
+                    pause_until: Some(until.to_rfc3339()),
+                })
+            }
+        }
+        None => Ok(PauseStatus {
+            paused: false,
+            remaining_seconds: 0,
+            pause_until: None,
+        }),
+    }
 }
 
 #[cfg(test)]

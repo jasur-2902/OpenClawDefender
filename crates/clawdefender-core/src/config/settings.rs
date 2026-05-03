@@ -75,6 +75,46 @@ pub struct ClawConfig {
     /// Network policy engine configuration.
     #[serde(default)]
     pub network_policy: NetworkPolicyConfig,
+
+    /// Performance and battery optimization settings.
+    #[serde(default)]
+    pub performance: PerformanceConfig,
+}
+
+/// Monitoring intensity mode for performance/protection tradeoff.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MonitoringMode {
+    Full,
+    Balanced,
+    Light,
+    Minimal,
+}
+
+impl Default for MonitoringMode {
+    fn default() -> Self {
+        MonitoringMode::Balanced
+    }
+}
+
+/// Performance and battery optimization settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerformanceConfig {
+    /// Current monitoring intensity mode.
+    #[serde(default)]
+    pub monitoring_mode: MonitoringMode,
+    /// Whether to auto-adjust monitoring on battery power.
+    #[serde(default = "default_true")]
+    pub auto_adjust_on_battery: bool,
+}
+
+impl Default for PerformanceConfig {
+    fn default() -> Self {
+        Self {
+            monitoring_mode: MonitoringMode::default(),
+            auto_adjust_on_battery: true,
+        }
+    }
 }
 
 /// Network policy engine configuration.
@@ -358,6 +398,11 @@ pub struct EsloggerConfig {
     /// Extra path prefixes to ignore in the pre-filter.
     #[serde(default)]
     pub ignore_paths: Vec<String>,
+    /// Optional hard cap on events processed per second. When set, overrides
+    /// the automatic tier-based budget limits. `None` means use automatic
+    /// tier-based limits (recommended).
+    #[serde(default)]
+    pub max_events_per_second: Option<u32>,
 }
 
 /// Unified sensor configuration.
@@ -395,6 +440,10 @@ pub struct EsloggerSensorConfig {
     /// Extra path prefixes to ignore.
     #[serde(default)]
     pub ignore_paths: Vec<String>,
+    /// Optional hard cap on events processed per second. Overrides tier-based
+    /// limits when set. `None` = automatic (recommended).
+    #[serde(default)]
+    pub max_events_per_second: Option<u32>,
 }
 
 /// FSEvents sensor config.
@@ -433,8 +482,10 @@ pub struct ProcessTreeConfig {
     pub refresh_interval_secs: u64,
 }
 
+/// Reduced from 10,000: 5,000 is sufficient for burst absorption while
+/// halving peak memory usage for the eslogger event channel.
 fn default_channel_capacity() -> usize {
-    10_000
+    5_000
 }
 
 fn default_correlation_window_ms() -> u64 {
@@ -467,6 +518,7 @@ impl Default for EsloggerSensorConfig {
             channel_capacity: default_channel_capacity(),
             ignore_processes: Vec::new(),
             ignore_paths: Vec::new(),
+            max_events_per_second: None,
         }
     }
 }
@@ -644,23 +696,28 @@ fn default_max_files() -> u32 {
 
 fn default_es_events() -> Vec<String> {
     vec![
-        // Core events
+        // Core filesystem events
         "exec".into(),
         "open".into(),
-        "close".into(),
+        // NOTE: "close" removed from defaults — it generates ~30-40% of event
+        // volume with near-zero security value. Add it back explicitly in config
+        // when threat posture is HIGH or CRITICAL.
+        "create".into(),
         "rename".into(),
         "unlink".into(),
-        "connect".into(),
+        "write".into(),
+        // Process lifecycle
         "fork".into(),
         "exit".into(),
+        // Network (use uipc_connect, not "connect" which is invalid)
+        "uipc_connect".into(),
+        // High-value, low-noise events
         "pty_grant".into(),
         "setmode".into(),
-        // High-value, low-noise events
         "kextload".into(),
         "setuid".into(),
         "setgid".into(),
         "link".into(),
-        "symlink".into(),
         "btm_launch_item_add".into(),
         "login_login".into(),
         "login_logout".into(),
@@ -674,8 +731,10 @@ fn default_es_events() -> Vec<String> {
     ]
 }
 
+/// Reduced from 4096: 2048 provides adequate buffering for eslogger event
+/// batching while halving memory usage for the internal ring buffer.
 fn default_buffer_size() -> usize {
-    4096
+    2048
 }
 
 fn default_true() -> bool {
@@ -717,6 +776,7 @@ impl Default for ClawConfig {
             guard_api: GuardApiConfig::default(),
             threat_intel: ThreatIntelConfig::default(),
             network_policy: NetworkPolicyConfig::default(),
+            performance: PerformanceConfig::default(),
         }
     }
 }
@@ -738,6 +798,7 @@ impl Default for EsloggerConfig {
             enabled: true,
             ignore_processes: Vec::new(),
             ignore_paths: Vec::new(),
+            max_events_per_second: None,
         }
     }
 }

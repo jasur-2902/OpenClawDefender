@@ -21,8 +21,8 @@ use crate::config::settings::LogRotation;
 
 /// Maximum file size in bytes before rotation (50 MB).
 const DEFAULT_MAX_SIZE_BYTES: u64 = 50 * 1024 * 1024;
-/// Flush interval for the buffered writer.
-const FLUSH_INTERVAL: Duration = Duration::from_secs(1);
+/// Flush interval for the buffered writer (reduced from 1s to 10s for battery).
+const FLUSH_INTERVAL: Duration = Duration::from_secs(10);
 /// Flush after this many records.
 const FLUSH_RECORD_COUNT: usize = 100;
 /// Default retention: delete rotated files older than 30 days.
@@ -31,6 +31,8 @@ const DEFAULT_RETENTION_DAYS: i64 = 30;
 /// Internal command sent to the writer thread.
 enum WriterCommand {
     Write(Box<AuditRecord>),
+    /// Write a high-priority record (block/suspicious) and flush immediately.
+    WritePriority(Box<AuditRecord>),
     Flush,
     Shutdown,
 }
@@ -66,6 +68,29 @@ impl WriterState {
         if let Ok(meta) = fs::metadata(&self.log_path) {
             if meta.len() >= max_bytes {
                 self.flush()?;
+                self.rotate()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Write a record and immediately flush — used for security-critical events
+    /// (block, suspicious) that must not be delayed.
+    fn write_record_and_flush(&mut self, record: &AuditRecord) -> Result<()> {
+        let json = serde_json::to_string(record)?;
+        writeln!(self.writer, "{json}")?;
+        self.flush()?;
+
+        // Check rotation after writing.
+        let max_bytes = if self.rotation.max_size_mb > 0 {
+            self.rotation.max_size_mb * 1024 * 1024
+        } else {
+            DEFAULT_MAX_SIZE_BYTES
+        };
+
+        if let Ok(meta) = fs::metadata(&self.log_path) {
+            if meta.len() >= max_bytes {
                 self.rotate()?;
             }
         }
@@ -117,14 +142,20 @@ impl WriterState {
     }
 }
 
+/// Bounded channel capacity for the audit writer.
+/// 500 slots provides enough buffering for burst writes while capping memory.
+/// When full, low-priority events (allow/log) are dropped; high-priority
+/// events (block/suspicious) always succeed via blocking send.
+const AUDIT_CHANNEL_CAPACITY: usize = 500;
+
 /// A file-backed audit logger that writes JSON Lines with channel-based async writes,
 /// buffered I/O, log rotation, session tracking, and retention cleanup.
 pub struct FileAuditLogger {
     log_path: PathBuf,
     rotation: LogRotation,
     session_id: String,
-    /// Channel sender for async writes.
-    sender: mpsc::Sender<WriterCommand>,
+    /// Bounded channel sender for async writes (capacity: 500).
+    sender: mpsc::SyncSender<WriterCommand>,
     /// Writer thread handle. Wrapped in Option for Drop.
     writer_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
     /// Counters for session-end summary.
@@ -132,6 +163,8 @@ pub struct FileAuditLogger {
     blocked_count: AtomicU64,
     allowed_count: AtomicU64,
     prompted_count: AtomicU64,
+    /// Counter for dropped low-priority events (channel full).
+    dropped_count: AtomicU64,
     /// Direct file access for reads (query/stats). Separate from writer.
     file_for_read: Mutex<()>,
     /// Optional server name included in session-start/session-end records.
@@ -167,8 +200,8 @@ impl FileAuditLogger {
         // Clean up old rotated files.
         cleanup_old_files(&log_path, &rotation);
 
-        // Set up channel and writer thread.
-        let (sender, receiver) = mpsc::channel::<WriterCommand>();
+        // Set up bounded channel and writer thread.
+        let (sender, receiver) = mpsc::sync_channel::<WriterCommand>(AUDIT_CHANNEL_CAPACITY);
 
         let mut state = WriterState {
             writer: BufWriter::new(file),
@@ -184,6 +217,12 @@ impl FileAuditLogger {
                     WriterCommand::Write(record) => {
                         if let Err(e) = state.write_record(&record) {
                             warn!(error = %e, "failed to write audit record");
+                        }
+                    }
+                    WriterCommand::WritePriority(record) => {
+                        // Write and immediately flush for security-critical events.
+                        if let Err(e) = state.write_record_and_flush(&record) {
+                            warn!(error = %e, "failed to write priority audit record");
                         }
                     }
                     WriterCommand::Flush => {
@@ -211,6 +250,7 @@ impl FileAuditLogger {
             blocked_count: AtomicU64::new(0),
             allowed_count: AtomicU64::new(0),
             prompted_count: AtomicU64::new(0),
+            dropped_count: AtomicU64::new(0),
             file_for_read: Mutex::new(()),
             server_name: server_name.clone(),
             source_name: source_name.clone(),
@@ -300,6 +340,7 @@ impl FileAuditLogger {
                 "blocked": self.blocked_count.load(Ordering::Relaxed),
                 "allowed": self.allowed_count.load(Ordering::Relaxed),
                 "prompted": self.prompted_count.load(Ordering::Relaxed),
+                "dropped_low_priority": self.dropped_count.load(Ordering::Relaxed),
             }),
             rule_matched: None,
             action_taken: "log".to_string(),
@@ -416,6 +457,7 @@ impl Drop for FileAuditLogger {
                 "blocked": self.blocked_count.load(Ordering::Relaxed),
                 "allowed": self.allowed_count.load(Ordering::Relaxed),
                 "prompted": self.prompted_count.load(Ordering::Relaxed),
+                "dropped_low_priority": self.dropped_count.load(Ordering::Relaxed),
             }),
             rule_matched: None,
             action_taken: "log".to_string(),
@@ -565,9 +607,50 @@ fn compute_stats(records: &[AuditRecord]) -> AuditStats {
 
 impl AuditLogger for FileAuditLogger {
     fn log(&self, record: &AuditRecord) -> Result<()> {
-        self.sender
-            .send(WriterCommand::Write(Box::new(record.clone())))
-            .map_err(|e| anyhow::anyhow!("audit writer channel closed: {e}"))?;
+        // Security-critical events (block actions, suspicious/high-risk classifications)
+        // are flushed immediately to prevent data loss. All other events use the
+        // batched write path (flush every 100 records or 10 seconds).
+        let is_priority = record.action_taken == "block"
+            || matches!(
+                record.classification.as_deref(),
+                Some("block") | Some("suspicious")
+            )
+            || matches!(
+                record.slm_analysis.as_ref().map(|s| s.risk_level.as_str()),
+                Some("HIGH") | Some("CRITICAL")
+            );
+
+        if is_priority {
+            // High-priority events (block/suspicious) use blocking send —
+            // they must never be dropped, even if it means brief back-pressure.
+            self.sender
+                .send(WriterCommand::WritePriority(Box::new(record.clone())))
+                .map_err(|e| anyhow::anyhow!("audit writer channel closed: {e}"))?;
+        } else {
+            // Low-priority events use try_send — if the channel is full (500 slots),
+            // drop the event and log a warning rather than blocking the caller.
+            match self
+                .sender
+                .try_send(WriterCommand::Write(Box::new(record.clone())))
+            {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Full(_)) => {
+                    let dropped = self.dropped_count.fetch_add(1, Ordering::Relaxed) + 1;
+                    if dropped % 100 == 1 {
+                        warn!(
+                            dropped_total = dropped,
+                            "Audit channel full (capacity {}), dropping low-priority event",
+                            AUDIT_CHANNEL_CAPACITY
+                        );
+                    }
+                    // Return Ok — dropping a low-priority event is acceptable.
+                    return Ok(());
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    return Err(anyhow::anyhow!("audit writer channel closed"));
+                }
+            }
+        }
 
         self.total_logged.fetch_add(1, Ordering::Relaxed);
         match record.action_taken.as_str() {
@@ -1049,10 +1132,18 @@ mod tests {
         let path = dir.path().join("audit.jsonl");
         let logger = FileAuditLogger::new(path, default_rotation()).unwrap();
 
-        for i in 0..1000 {
-            let mut r = make_record(&format!("src-{}", i % 10), "allow");
-            r.event_summary = format!("event-{i}");
-            logger.log(&r).unwrap();
+        // With a bounded channel (capacity 500), low-priority events may be
+        // dropped if the writer can't keep up. Write in batches with small
+        // sleeps to let the writer drain the channel.
+        for batch in 0..10 {
+            for i in 0..100 {
+                let idx = batch * 100 + i;
+                let mut r = make_record(&format!("src-{}", idx % 10), "allow");
+                r.event_summary = format!("event-{idx}");
+                logger.log(&r).unwrap();
+            }
+            // Give the writer thread time to drain between batches.
+            std::thread::sleep(Duration::from_millis(10));
         }
         flush_and_wait(&logger);
 
@@ -1105,11 +1196,15 @@ mod tests {
         let path = dir.path().join("audit.jsonl");
         let logger = FileAuditLogger::new(path.clone(), default_rotation()).unwrap();
 
-        // Fire off many records quickly.
-        for i in 0..500 {
-            let mut r = make_record("fast", "allow");
-            r.event_summary = format!("fast-{i}");
-            logger.log(&r).unwrap();
+        // Fire off records in batches to avoid overwhelming the bounded channel.
+        for batch in 0..5 {
+            for i in 0..100 {
+                let idx = batch * 100 + i;
+                let mut r = make_record("fast", "allow");
+                r.event_summary = format!("fast-{idx}");
+                logger.log(&r).unwrap();
+            }
+            std::thread::sleep(Duration::from_millis(10));
         }
 
         // Explicit shutdown to ensure all records are flushed.
@@ -1117,8 +1212,7 @@ mod tests {
 
         let contents = fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = contents.lines().filter(|l| !l.trim().is_empty()).collect();
-        // session-start + 500 records + session-end (from shutdown) + session-end (from drop, but writer already stopped so this one won't be written)
-        // Actually drop's send will fail since channel is closed after shutdown. So: session-start + 500 + session-end = 502
+        // session-start + 500 records + session-end = 502
         assert!(
             lines.len() >= 502,
             "expected at least 502 lines (start + 500 + end), got {}",

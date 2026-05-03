@@ -67,6 +67,7 @@ pub fn compute_tool_coverage() -> ScoreFactor {
         ("Cursor", home.join(".cursor/mcp.json")),
         ("VS Code", home.join(".vscode/mcp.json")),
         ("Windsurf", home.join(".codeium/windsurf/mcp_config.json")),
+        ("Claude Code", home.join(".claude/settings.json")),
     ];
 
     let mut total_servers: u32 = 0;
@@ -330,14 +331,17 @@ pub fn compute_system_visibility(state: &AppState) -> ScoreFactor {
         };
     }
 
-    // Check FDA by looking for eslogger access / TCC.db
-    // We approximate: if the audit log exists and is being written to, FDA is likely granted.
-    let audit_path = crate::event_stream::audit_log_path();
-    let has_fda = audit_path.exists() && {
-        std::fs::metadata(&audit_path)
-            .map(|m| m.len() > 0)
-            .unwrap_or(false)
-    };
+    // Check FDA by reading the daemon's sensor-status.json file.
+    // The daemon writes this after starting its sensors, recording whether
+    // eslogger (which requires FDA) was successfully started.
+    let home = std::env::var("HOME").unwrap_or_default();
+    let status_path =
+        std::path::PathBuf::from(&home).join(".local/share/rookbot/sensor-status.json");
+    let has_fda = std::fs::read_to_string(&status_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("fda_granted")?.as_bool())
+        .unwrap_or(false);
 
     if has_fda {
         ScoreFactor {

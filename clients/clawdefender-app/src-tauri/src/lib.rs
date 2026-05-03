@@ -504,6 +504,10 @@ pub fn run() {
             commands::start_daemon,
             commands::stop_daemon,
             commands::detect_mcp_clients,
+            commands::get_detected_tools_with_stats,
+            commands::get_tool_live_activity,
+            commands::get_tool_activity,
+            commands::get_tool_process_info,
             commands::list_mcp_servers,
             commands::wrap_server,
             commands::unwrap_server,
@@ -788,6 +792,15 @@ pub fn run() {
             // Browser Extension Audit & Login Anomalies
             commands::run_browser_audit,
             commands::get_login_anomalies,
+            // Performance & Battery commands
+            commands::get_performance_stats,
+            commands::get_monitoring_mode,
+            commands::set_monitoring_mode,
+            commands::get_battery_auto_adjust,
+            commands::set_battery_auto_adjust,
+            commands::pause_monitoring,
+            commands::resume_monitoring,
+            commands::get_pause_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

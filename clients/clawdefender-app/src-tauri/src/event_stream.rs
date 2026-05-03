@@ -252,6 +252,27 @@ fn label_from_path(path: &str) -> Option<&'static str> {
     }
 }
 
+/// Map a process executable path to a known AI tool display name.
+fn tool_name_from_process_path(proc_path: &str) -> Option<&'static str> {
+    let lower = proc_path.to_lowercase();
+    // Order matters: check specific patterns before generic ones
+    if lower.contains("codex") {
+        Some("Codex")
+    } else if lower.contains("claude-code") || lower.ends_with("/claude") {
+        Some("Claude Code")
+    } else if lower.contains("claude") && lower.contains("application") {
+        Some("Claude Desktop")
+    } else if lower.contains("cursor") {
+        Some("Cursor")
+    } else if lower.contains("windsurf") {
+        Some("Windsurf")
+    } else if lower.contains("code helper") || (lower.contains("/code") && !lower.contains("codex")) {
+        Some("VS Code")
+    } else {
+        None
+    }
+}
+
 /// Extract the process name from an OS event record.
 fn extract_os_process_name(record: &DaemonAuditRecord) -> String {
     // Try event_details.process_name first
@@ -262,12 +283,17 @@ fn extract_os_process_name(record: &DaemonAuditRecord) -> String {
             }
         }
     }
-    // Try to extract from correlation os_events[0].process_path
+    // Try to extract from correlation os_events[0].process_path and map to tool name
     if let Some(ref details) = record.event_details {
         if let Some(os_events) = details.get("os_events").and_then(|v| v.as_array()) {
             if let Some(first) = os_events.first() {
                 let proc_path = first.get("process_path").and_then(|v| v.as_str()).unwrap_or("");
                 if !proc_path.is_empty() {
+                    // Map to known AI tool first
+                    if let Some(tool) = tool_name_from_process_path(proc_path) {
+                        return tool.to_string();
+                    }
+                    // Fall back to basename
                     if let Some(basename) = proc_path.rsplit('/').next() {
                         if !basename.is_empty() {
                             return basename.to_string();
@@ -291,6 +317,10 @@ fn extract_os_process_name(record: &DaemonAuditRecord) -> String {
         let path = rest.split(" (pid=").next().unwrap_or(rest);
         if let Some(basename) = path.rsplit('/').next() {
             if !basename.is_empty() {
+                // Also try tool mapping for exec events
+                if let Some(tool) = tool_name_from_process_path(path) {
+                    return tool.to_string();
+                }
                 return basename.to_string();
             }
         }

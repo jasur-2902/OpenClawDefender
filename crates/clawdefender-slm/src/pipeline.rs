@@ -25,6 +25,7 @@ use crate::clustering::{ClusterEvent, ClusteringBuffer, EventCluster};
 use crate::context_window::{ContextWindow, SuspiciousEventBrief};
 use crate::engine::SlmEngine;
 use crate::offline_intel::OfflineIntelEngine;
+use crate::scheduler::{FastPathResult, SlmScheduler};
 use crate::triage::{DeepAnalysis, TriageEngine, TriageInput, TriageLevel};
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,10 @@ pub struct PipelineResult {
 /// Owns the clustering buffer, triage engine, context window, and offline
 /// intelligence engine. Events flow through clustering → triage → deep
 /// analysis → context updates.
+///
+/// When an [`SlmScheduler`] is attached, clusters are routed through the
+/// scheduler for demand-driven processing with system load awareness,
+/// knowledge base fast-path, and battery-aware pausing.
 pub struct SlmPipeline {
     clustering: Arc<ClusteringBuffer>,
     triage: Arc<TriageEngine>,
@@ -94,6 +99,8 @@ pub struct SlmPipeline {
     offline_intel: Arc<OfflineIntelEngine>,
     cluster_rx: mpsc::Receiver<EventCluster>,
     result_tx: mpsc::Sender<PipelineResult>,
+    /// Optional scheduler for demand-driven inference throttling.
+    scheduler: Option<Arc<SlmScheduler>>,
 }
 
 impl SlmPipeline {
@@ -125,9 +132,24 @@ impl SlmPipeline {
             offline_intel,
             cluster_rx,
             result_tx,
+            scheduler: None,
         };
 
         (pipeline, result_rx)
+    }
+
+    /// Attach an SLM scheduler for demand-driven inference throttling.
+    ///
+    /// When a scheduler is attached, clusters are checked against the knowledge
+    /// base before SLM inference and processing respects system load / battery state.
+    pub fn with_scheduler(mut self, scheduler: Arc<SlmScheduler>) -> Self {
+        self.scheduler = Some(scheduler);
+        self
+    }
+
+    /// Get a reference to the attached scheduler, if any.
+    pub fn scheduler(&self) -> Option<&Arc<SlmScheduler>> {
+        self.scheduler.as_ref()
     }
 
     /// Get a handle to the clustering buffer for ingesting events.
@@ -161,10 +183,11 @@ impl SlmPipeline {
 
     /// Start the pipeline processing loops.
     ///
-    /// Spawns three background tasks:
+    /// Spawns background tasks:
     /// 1. Cluster flush loop (checks for expired clusters periodically).
     /// 2. Cluster processing loop (triage + deep analysis for each cluster).
     /// 3. Context window update loop (refresh + persist).
+    /// 4. (Optional) CPU sampling loop when a scheduler is attached.
     ///
     /// Returns handles to all spawned tasks.
     pub fn spawn(self, config: &PipelineConfig) -> PipelineHandles {
@@ -177,6 +200,19 @@ impl SlmPipeline {
             ctx.run_loop().await;
         });
 
+        // 4. CPU sampling loop (when scheduler is attached).
+        let cpu_sample_handle = self.scheduler.as_ref().map(|sched| {
+            let sched = Arc::clone(sched);
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(5));
+                loop {
+                    interval.tick().await;
+                    let cpu = crate::scheduler::sample_cpu_usage();
+                    sched.update_cpu_load(cpu).await;
+                }
+            })
+        });
+
         // 3. Cluster processing loop.
         let process_handle = tokio::spawn(async move {
             self.process_clusters().await;
@@ -186,14 +222,137 @@ impl SlmPipeline {
             flush_handle,
             context_handle,
             process_handle,
+            cpu_sample_handle,
         }
     }
 
     /// Main processing loop: receives finalized clusters and runs triage + analysis.
+    ///
+    /// When an [`SlmScheduler`] is attached, clusters are routed through it for
+    /// knowledge base fast-path checks and demand-driven scheduling. The scheduler
+    /// controls _when_ inference happens based on system load, power state, and
+    /// cooldown timers. Clusters that match known patterns are resolved immediately
+    /// without SLM inference.
     async fn process_clusters(mut self) {
         info!("SLM pipeline cluster processor started");
 
         while let Some(cluster) = self.cluster_rx.recv().await {
+            // If a scheduler is attached, route through it.
+            if let Some(ref scheduler) = self.scheduler {
+                let cluster_id = cluster.id.clone();
+                let server_name = cluster.server_name.clone();
+                let event_count = cluster.events.len();
+
+                // Check knowledge base fast-path.
+                if let Some((level, fast_result)) = scheduler.submit(cluster.clone()).await {
+                    let description = match &fast_result {
+                        FastPathResult::KnownRoutine(reason) => reason.clone(),
+                        FastPathResult::KnownSuspicious(reason) => reason.clone(),
+                        FastPathResult::NoMatch => unreachable!(),
+                    };
+
+                    // Record in context window.
+                    self.context_window.record_event(&server_name, level);
+                    if level == TriageLevel::Suspicious {
+                        self.context_window.record_suspicious(SuspiciousEventBrief {
+                            timestamp: chrono::Utc::now().format("%H:%M:%S").to_string(),
+                            server_name: server_name.clone(),
+                            description: format!(
+                                "Knowledge base match: {} ({} events)",
+                                description, event_count
+                            ),
+                        });
+                    }
+
+                    let result = PipelineResult {
+                        cluster_id,
+                        server_name,
+                        event_count,
+                        triage_level: level,
+                        deep_analysis: None,
+                        processing_ms: 0,
+                    };
+                    if let Err(e) = self.result_tx.try_send(result) {
+                        warn!("Pipeline result channel full, dropping result: {e}");
+                    }
+                    continue;
+                }
+
+                // Cluster was queued in the scheduler. Now wait for the scheduler
+                // to allow processing, then drain what's ready.
+                self.process_scheduled_batches(scheduler).await;
+            } else {
+                // No scheduler: process immediately (original behavior).
+                self.process_cluster_immediate(&cluster).await;
+            }
+        }
+
+        info!("SLM pipeline cluster processor stopped (channel closed)");
+    }
+
+    /// Process a cluster immediately without scheduling (original behavior).
+    async fn process_cluster_immediate(&self, cluster: &EventCluster) {
+        let start = std::time::Instant::now();
+        let cluster_id = cluster.id.clone();
+        let server_name = cluster.server_name.clone();
+        let event_count = cluster.events.len();
+
+        match self.process_single_cluster(cluster).await {
+            Ok((level, deep)) => {
+                let processing_ms = start.elapsed().as_millis() as u64;
+
+                debug!(
+                    cluster_id = %cluster_id,
+                    server = %server_name,
+                    events = event_count,
+                    triage = %level,
+                    deep = deep.is_some(),
+                    ms = processing_ms,
+                    "Pipeline processed cluster"
+                );
+
+                let result = PipelineResult {
+                    cluster_id,
+                    server_name,
+                    event_count,
+                    triage_level: level,
+                    deep_analysis: deep,
+                    processing_ms,
+                };
+
+                if let Err(e) = self.result_tx.try_send(result) {
+                    warn!("Pipeline result channel full, dropping result: {e}");
+                }
+            }
+            Err(e) => {
+                warn!(
+                    cluster_id = %cluster_id,
+                    error = %e,
+                    "Pipeline failed to process cluster, recording as suspicious (fail-closed)"
+                );
+                self.context_window
+                    .record_event(&server_name, TriageLevel::Suspicious);
+                self.context_window.record_suspicious(SuspiciousEventBrief {
+                    timestamp: chrono::Utc::now().format("%H:%M:%S").to_string(),
+                    server_name: server_name.clone(),
+                    description: format!(
+                        "Analysis failed for cluster with {} events: {}",
+                        event_count, e
+                    ),
+                });
+            }
+        }
+    }
+
+    /// Process pending batches from the scheduler when it signals readiness.
+    async fn process_scheduled_batches(&self, scheduler: &Arc<SlmScheduler>) {
+        // Check if the scheduler allows processing now.
+        if !scheduler.should_process().await {
+            return;
+        }
+
+        // Take and process the next batch.
+        if let Some(cluster) = scheduler.take_next_batch().await {
             let start = std::time::Instant::now();
             let cluster_id = cluster.id.clone();
             let server_name = cluster.server_name.clone();
@@ -202,6 +361,7 @@ impl SlmPipeline {
             match self.process_single_cluster(&cluster).await {
                 Ok((level, deep)) => {
                     let processing_ms = start.elapsed().as_millis() as u64;
+                    scheduler.mark_batch_complete(processing_ms).await;
 
                     debug!(
                         cluster_id = %cluster_id,
@@ -210,7 +370,7 @@ impl SlmPipeline {
                         triage = %level,
                         deep = deep.is_some(),
                         ms = processing_ms,
-                        "Pipeline processed cluster"
+                        "Pipeline processed scheduled cluster"
                     );
 
                     let result = PipelineResult {
@@ -227,29 +387,25 @@ impl SlmPipeline {
                     }
                 }
                 Err(e) => {
+                    scheduler.mark_batch_complete(start.elapsed().as_millis() as u64).await;
                     warn!(
                         cluster_id = %cluster_id,
                         error = %e,
-                        "Pipeline failed to process cluster, recording as suspicious (fail-closed)"
+                        "Pipeline failed to process scheduled cluster (fail-closed)"
                     );
-
-                    // Fail-closed: record as suspicious so the context window
-                    // reflects that we couldn't analyze this cluster.
                     self.context_window
                         .record_event(&server_name, TriageLevel::Suspicious);
                     self.context_window.record_suspicious(SuspiciousEventBrief {
                         timestamp: chrono::Utc::now().format("%H:%M:%S").to_string(),
                         server_name: server_name.clone(),
                         description: format!(
-                            "Analysis failed for cluster with {} events: {}",
+                            "Scheduled analysis failed for cluster with {} events: {}",
                             event_count, e
                         ),
                     });
                 }
             }
         }
-
-        info!("SLM pipeline cluster processor stopped (channel closed)");
     }
 
     /// Process a single cluster through the triage + deep analysis pipeline.
@@ -297,6 +453,8 @@ pub struct PipelineHandles {
     pub flush_handle: tokio::task::JoinHandle<()>,
     pub context_handle: tokio::task::JoinHandle<()>,
     pub process_handle: tokio::task::JoinHandle<()>,
+    /// CPU sampling loop handle (only present when a scheduler is attached).
+    pub cpu_sample_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 // ---------------------------------------------------------------------------

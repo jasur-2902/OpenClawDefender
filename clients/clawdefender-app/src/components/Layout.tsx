@@ -94,7 +94,7 @@ export function Layout() {
       }
     }
     loadPosture();
-    const interval = setInterval(loadPosture, 30000);
+    const interval = setInterval(loadPosture, 60_000);
     return () => clearInterval(interval);
   }, []);
 

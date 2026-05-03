@@ -5,6 +5,7 @@ import { useEventStore } from "../stores/eventStore";
 import { Icon, Dot, VerdictPill, Badge } from "../components/design";
 import { useToastStore } from "../components/notifications/ToastContainer";
 import type { HumanizedEvent } from "../types";
+import { PermissionBanner } from "../components/PermissionBanner";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -204,7 +205,8 @@ export function Activity() {
   }, [events, onlyNotable, activeKind, activeServer, searchText]);
 
   return (
-    <div style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100%" }}>
+    <div style={{ display: "grid", gridTemplateRows: "auto auto 1fr", height: "100%" }}>
+      <PermissionBanner />
       {/* Toolbar */}
       <div
         style={{

@@ -1282,3 +1282,70 @@ export type TauriEvent =
   | { type: "prompt"; payload: PendingPrompt }
   | { type: "alert"; payload: { level: string; message: string; details: string } }
   | { type: "status-change"; payload: { daemon_running: boolean } };
+
+// --- Detected Tools (OS-level process monitoring) ---
+
+export interface ToolLiveActivity {
+  tool_name: string;
+  pids: number[];
+  open_files: OpenFileEntry[];
+  network_connections: NetworkEntry[];
+}
+
+export interface OpenFileEntry {
+  path: string;
+  fd_type: string;
+}
+
+export interface NetworkEntry {
+  connection: string;
+  protocol: string;
+  state: string;
+}
+
+export interface McpServerInfo {
+  name: string;
+  wrapped: boolean;
+  tool_calls_today: number;
+  status: string; // "running" | "stopped"
+}
+
+export interface DetectedToolStats {
+  name: string;
+  display_name: string;
+  description: string;
+  config_path: string;
+  installed: boolean;
+  running: boolean;
+  pid: number | null;
+  children_count: number;
+  memory_bytes: number;
+  disk_read_bytes: number;
+  disk_written_bytes: number;
+  cpu_percent: number;
+  files_accessed_today: number;
+  network_connections_today: number;
+  last_active: string | null;
+  mcp_servers: McpServerInfo[];
+}
+
+// --- Performance & Battery types ---
+
+export type MonitoringMode = "full" | "balanced" | "light" | "minimal";
+
+export interface PerformanceStats {
+  cpu_percent: number;
+  memory_bytes: number;
+  memory_model_bytes: number;
+  memory_buffers_bytes: number;
+  events_per_sec: number;
+  events_total_per_sec: number;
+  events_sampled_percent: number;
+  disk_writes_per_sec: number;
+}
+
+export interface PauseStatus {
+  paused: boolean;
+  remaining_seconds: number;
+  pause_until: string | null;
+}

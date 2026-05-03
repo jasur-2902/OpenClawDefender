@@ -26,6 +26,8 @@ use clawdefender_swarm::feedback_calibration::{FeedbackCollector, ThresholdCalib
 use clawdefender_swarm::data_portability::DataPortabilityManager;
 use clawdefender_swarm::transparency::TransparencyDashboard;
 
+use chrono::{DateTime, Utc};
+
 use crate::alerts::engine::IntelligentAlert;
 use crate::ipc_client::DaemonIpcClient;
 
@@ -423,6 +425,169 @@ pub struct ScanTracker {
     pub result: Option<ScanResult>,
 }
 
+// --- Detected Tool Stats types (My Tools page) ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectedToolStats {
+    /// Tool identity (e.g. "claude", "cursor")
+    pub name: String,
+    /// Human-readable display name (e.g. "Claude Desktop")
+    pub display_name: String,
+    /// Short description of the tool
+    pub description: String,
+    /// Path to the MCP config file
+    pub config_path: String,
+    /// Whether the config file exists on disk
+    pub installed: bool,
+
+    // Process monitoring
+    /// Whether the tool's process is currently running
+    pub running: bool,
+    /// Main process PID if running
+    pub pid: Option<u32>,
+    /// Number of child processes
+    pub children_count: u32,
+
+    // Live process stats (from sysinfo)
+    /// Total memory usage in bytes across all tool processes
+    pub memory_bytes: u64,
+    /// Total disk bytes read since process start
+    pub disk_read_bytes: u64,
+    /// Total disk bytes written since process start
+    pub disk_written_bytes: u64,
+    /// CPU usage percentage (sum across all processes)
+    pub cpu_percent: f32,
+
+    // Activity stats (from audit events)
+    /// File access events today
+    pub files_accessed_today: u32,
+    /// Network connection events today
+    pub network_connections_today: u32,
+    /// ISO timestamp of the last audit event for this tool
+    pub last_active: Option<String>,
+
+    // MCP servers configured under this tool
+    pub mcp_servers: Vec<McpServerInfo>,
+}
+
+/// Live activity snapshot for a tool — open files and network connections right now.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolLiveActivity {
+    pub tool_name: String,
+    pub pids: Vec<u32>,
+    pub open_files: Vec<OpenFileEntry>,
+    pub network_connections: Vec<NetworkEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenFileEntry {
+    pub path: String,
+    pub fd_type: String, // "REG", "DIR", "CHR", etc.
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkEntry {
+    pub connection: String, // e.g. "api.anthropic.com:443"
+    pub protocol: String,   // "TCP", "UDP"
+    pub state: String,      // "ESTABLISHED", "LISTEN", etc.
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerInfo {
+    pub name: String,
+    pub wrapped: bool,
+    pub tool_calls_today: u32,
+    pub status: String,
+}
+
+/// Activity event for a specific tool, returned by `get_tool_activity`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolActivityEvent {
+    pub id: String,
+    pub timestamp: String,
+    pub event_type: String,
+    pub server_name: String,
+    pub tool_name: Option<String>,
+    pub action: String,
+    pub decision: String,
+    pub risk_level: String,
+    pub details: String,
+    pub resource: Option<String>,
+    /// Human-readable one-liner for display
+    pub one_liner: String,
+}
+
+/// Process info for a single process in the tool's process tree.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolProcessEntry {
+    pub pid: u32,
+    pub name: String,
+    pub memory_bytes: u64,
+    pub cpu_percent: f32,
+    pub parent_pid: Option<u32>,
+}
+
+/// Detailed process tree info for a tool, returned by `get_tool_process_info`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolProcessInfo {
+    pub tool_name: String,
+    pub running: bool,
+    pub main_pid: Option<u32>,
+    pub total_memory_bytes: u64,
+    pub total_cpu_percent: f32,
+    pub processes: Vec<ToolProcessEntry>,
+}
+
+// --- Performance Monitoring types ---
+
+/// Monitoring intensity mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MonitoringMode {
+    Full,
+    Balanced,
+    Light,
+    Minimal,
+}
+
+impl Default for MonitoringMode {
+    fn default() -> Self {
+        MonitoringMode::Balanced
+    }
+}
+
+impl std::fmt::Display for MonitoringMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MonitoringMode::Full => write!(f, "Full Protection"),
+            MonitoringMode::Balanced => write!(f, "Balanced"),
+            MonitoringMode::Light => write!(f, "Light"),
+            MonitoringMode::Minimal => write!(f, "Minimal"),
+        }
+    }
+}
+
+/// Real-time performance statistics exposed to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerformanceStats {
+    pub cpu_percent: f64,
+    pub memory_bytes: u64,
+    pub memory_model_bytes: u64,
+    pub memory_buffers_bytes: u64,
+    pub events_per_sec: f64,
+    pub events_total_per_sec: f64,
+    pub events_sampled_percent: f64,
+    pub disk_writes_per_sec: f64,
+}
+
+/// Pause monitoring status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PauseStatus {
+    pub paused: bool,
+    pub remaining_seconds: u64,
+    pub pause_until: Option<String>,
+}
+
 /// Maximum number of events to keep in the buffer to prevent unbounded memory growth.
 const MAX_EVENT_BUFFER: usize = 10_000;
 
@@ -502,6 +667,13 @@ pub struct AppState {
     pub clipboard_threats: Mutex<Vec<ClipboardThreatEntry>>,
     /// Whether the clipboard monitor background loop is currently active.
     pub clipboard_monitor_active: Mutex<bool>,
+    // --- Performance monitoring state ---
+    /// Current monitoring mode (Full/Balanced/Light/Minimal).
+    pub monitoring_mode: Mutex<MonitoringMode>,
+    /// Whether to auto-adjust monitoring mode when on battery.
+    pub battery_auto_adjust: Mutex<bool>,
+    /// If monitoring is paused, the UTC timestamp when it resumes.
+    pub pause_until: Mutex<Option<DateTime<Utc>>>,
 }
 
 impl AppState {
@@ -593,6 +765,9 @@ impl Default for AppState {
             transparency_dashboard: Mutex::new(Some(TransparencyDashboard::new())),
             clipboard_threats: Mutex::new(Vec::new()),
             clipboard_monitor_active: Mutex::new(false),
+            monitoring_mode: Mutex::new(MonitoringMode::default()),
+            battery_auto_adjust: Mutex::new(true),
+            pause_until: Mutex::new(None),
         }
     }
 }

@@ -10,7 +10,9 @@ use crate::events;
 use crate::state::{AppState, DaemonStatus};
 
 /// Poll interval for the connection monitor.
-const POLL_INTERVAL: Duration = Duration::from_secs(3);
+/// Reduced from 3s to 10s — the daemon pushes status changes via events,
+/// so this poll is only a fallback for detecting missed transitions.
+const POLL_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Spawns a background thread that periodically checks the daemon connection
 /// and updates AppState + emits frontend events on state changes.

@@ -5,6 +5,7 @@
 //! exponential moving averages and conservative set expansion.
 
 pub mod anomaly;
+pub mod classifier;
 pub mod decision;
 pub mod injection_detector;
 pub mod killchain;
@@ -26,6 +27,7 @@ pub use injection_detector::{
 };
 pub use killchain::{AttackPattern, KillChainDetector, KillChainEvent, KillChainMatch};
 pub use learning::LearningEngine;
-pub use persistence::ProfileStore;
+pub use persistence::{ProfileBatcher, ProfileStore};
 pub use profile::{FileProfile, NetworkProfile, ServerProfile, TemporalProfile, ToolProfile};
+pub use classifier::{tier1_classify, EventPriority};
 pub use update::ProfileUpdater;

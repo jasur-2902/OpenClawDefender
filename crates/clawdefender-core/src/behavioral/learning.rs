@@ -4,12 +4,17 @@
 //! - Every event updates the profile directly
 //! - No anomaly scores are generated
 //! - Learning ends when both thresholds are met
+//!
+//! Profile updates are accumulated in a batch buffer and flushed periodically
+//! (50 events or 30 seconds, whichever comes first) to reduce SQLite write
+//! frequency from 100+/s to 2-3/s.
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::config::settings::BehavioralConfig;
 use crate::event::mcp::{McpEvent, McpEventKind};
@@ -17,12 +22,23 @@ use crate::event::os::{OsEvent, OsEventKind};
 
 use super::profile::ServerProfile;
 
+/// Maximum number of events to buffer before flushing profiles to persistence.
+const BATCH_FLUSH_EVENT_THRESHOLD: usize = 50;
+/// Maximum time in seconds before flushing profiles to persistence.
+const BATCH_FLUSH_TIME_SECS: u64 = 30;
+
 /// Manages the learning phase for behavioral baselines.
 pub struct LearningEngine {
     /// Active profiles keyed by server_name.
     profiles: HashMap<String, ServerProfile>,
     /// Configuration thresholds.
     config: BehavioralConfig,
+    /// Number of events accumulated since the last persistence flush.
+    batch_event_count: usize,
+    /// Timestamp of the last persistence flush.
+    batch_last_flush: Instant,
+    /// Server names that have been modified since the last flush.
+    batch_dirty_servers: Vec<String>,
 }
 
 impl LearningEngine {
@@ -31,6 +47,9 @@ impl LearningEngine {
         Self {
             profiles: HashMap::new(),
             config,
+            batch_event_count: 0,
+            batch_last_flush: Instant::now(),
+            batch_dirty_servers: Vec::new(),
         }
     }
 
@@ -126,6 +145,9 @@ impl LearningEngine {
             _ => {}
         }
 
+        // Track for batch persistence
+        self.track_dirty(server_name);
+
         // Check if learning should complete
         if was_learning {
             return self.check_learning_complete(server_name);
@@ -176,6 +198,9 @@ impl LearningEngine {
             }
             _ => {}
         }
+
+        // Track for batch persistence
+        self.track_dirty(server_name);
 
         if was_learning {
             return self.check_learning_complete(server_name);
@@ -234,6 +259,100 @@ impl LearningEngine {
     /// Get a reference to the config.
     pub fn config(&self) -> &BehavioralConfig {
         &self.config
+    }
+
+    // -----------------------------------------------------------------------
+    // Batch profile update support
+    // -----------------------------------------------------------------------
+
+    /// Track that a server profile was modified (for batch persistence).
+    fn track_dirty(&mut self, server_name: &str) {
+        self.batch_event_count += 1;
+        if !self.batch_dirty_servers.contains(&server_name.to_string()) {
+            self.batch_dirty_servers.push(server_name.to_string());
+        }
+    }
+
+    /// Check if the batch buffer should be flushed to persistence.
+    ///
+    /// Returns `true` when either:
+    /// - 50+ events have accumulated since the last flush, OR
+    /// - 30+ seconds have elapsed since the last flush and there are dirty profiles
+    pub fn should_flush_batch(&self) -> bool {
+        if self.batch_dirty_servers.is_empty() {
+            return false;
+        }
+        self.batch_event_count >= BATCH_FLUSH_EVENT_THRESHOLD
+            || self.batch_last_flush.elapsed().as_secs() >= BATCH_FLUSH_TIME_SECS
+    }
+
+    /// Drain the list of dirty server names and reset the batch counters.
+    ///
+    /// The caller is responsible for persisting the returned profiles.
+    /// This allows the persistence layer to write all modified profiles
+    /// in a single SQLite transaction.
+    pub fn drain_dirty_servers(&mut self) -> Vec<String> {
+        self.batch_event_count = 0;
+        self.batch_last_flush = Instant::now();
+        std::mem::take(&mut self.batch_dirty_servers)
+    }
+
+    /// Get the profiles for a list of server names (for batch persistence).
+    pub fn get_profiles_for_servers(&self, server_names: &[String]) -> Vec<&ServerProfile> {
+        server_names
+            .iter()
+            .filter_map(|name| self.profiles.get(name))
+            .collect()
+    }
+
+    // -----------------------------------------------------------------------
+    // Memory management
+    // -----------------------------------------------------------------------
+
+    /// Evict in-memory profiles for servers not seen in the last 24 hours.
+    ///
+    /// Returns the names of evicted servers. The caller should ensure these
+    /// profiles are persisted to SQLite before calling this method so they
+    /// can be reloaded on demand when the server reconnects.
+    pub fn evict_stale_profiles(&mut self) -> Vec<String> {
+        let now = Utc::now();
+        // 24 hours of inactivity before eviction
+        let cutoff = chrono::Duration::hours(24);
+        let stale: Vec<String> = self
+            .profiles
+            .iter()
+            .filter(|(_, p)| now - p.last_updated > cutoff)
+            .map(|(name, _)| name.clone())
+            .collect();
+
+        for name in &stale {
+            self.profiles.remove(name);
+        }
+
+        if !stale.is_empty() {
+            debug!(
+                evicted = stale.len(),
+                "Evicted stale behavioral profiles (inactive 24h+)"
+            );
+        }
+
+        stale
+    }
+
+    /// Enforce memory caps on all in-memory profiles.
+    ///
+    /// Call this periodically (e.g., every few minutes) to prevent
+    /// unbounded growth of per-profile collections (file paths, network
+    /// hosts, tool counts).
+    pub fn enforce_memory_caps(&mut self) {
+        for profile in self.profiles.values_mut() {
+            profile.enforce_memory_caps();
+        }
+    }
+
+    /// Number of profiles currently held in memory.
+    pub fn profile_count(&self) -> usize {
+        self.profiles.len()
     }
 }
 

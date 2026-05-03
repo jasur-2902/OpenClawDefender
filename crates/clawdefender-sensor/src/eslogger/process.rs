@@ -22,6 +22,7 @@ mod platform {
     use tokio_stream::wrappers::LinesStream;
     use tracing::{debug, error, info, warn};
 
+    use crate::eslogger::budget::{EventBudget, ProcessDecision};
     use crate::eslogger::filter::EventPreFilter;
     use crate::eslogger::parser::parse_event;
 
@@ -72,13 +73,18 @@ mod platform {
             }
         }
 
-        /// Check whether Full Disk Access is granted by attempting to read a
-        /// TCC-protected path.
+        /// Check whether Full Disk Access is granted by attempting to read
+        /// TCC-protected directories. We try several because not all exist on
+        /// every system (e.g. `~/Library/Mail` is missing if Mail was never used).
         pub fn check_fda() -> bool {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/var/root".to_string());
-            let tcc_path = format!("{home}/Library/Mail");
-            // If we can read the directory, FDA is likely granted
-            std::fs::read_dir(&tcc_path).is_ok()
+            let candidates = [
+                format!("{home}/Library/Mail"),
+                format!("{home}/Library/Safari"),
+                format!("{home}/Library/Suggestions"),
+                format!("{home}/Library/Containers/com.apple.mail"),
+            ];
+            candidates.iter().any(|p| std::fs::read_dir(p).is_ok())
         }
 
         /// Return human-readable FDA setup instructions.
@@ -104,6 +110,20 @@ mod platform {
             ignore_processes: &[String],
             ignore_paths: &[String],
         ) -> Result<(Self, mpsc::Receiver<OsEvent>)> {
+            Self::spawn_with_budget(events, channel_capacity, ignore_processes, ignore_paths, None)
+        }
+
+        /// Spawn with an optional event budget cap.
+        ///
+        /// `max_events_per_second`: optional hard cap overriding tier-based limits.
+        /// Pass `None` for automatic tier-based budgeting (recommended).
+        pub fn spawn_with_budget(
+            events: &[&str],
+            channel_capacity: Option<usize>,
+            ignore_processes: &[String],
+            ignore_paths: &[String],
+            max_events_per_second: Option<u32>,
+        ) -> Result<(Self, mpsc::Receiver<OsEvent>)> {
             let subscribed = events.iter().map(|e| e.to_string()).collect::<Vec<_>>();
             let capacity = channel_capacity.unwrap_or(DEFAULT_CHANNEL_CAPACITY);
             let shutdown = Arc::new(AtomicBool::new(false));
@@ -120,7 +140,15 @@ mod platform {
             let ignore_procs = ignore_processes.to_vec();
             let ignore_paths = ignore_paths.to_vec();
             tokio::spawn(async move {
-                supervisor_loop(events_clone, tx, shutdown, &ignore_procs, &ignore_paths).await;
+                supervisor_loop(
+                    events_clone,
+                    tx,
+                    shutdown,
+                    &ignore_procs,
+                    &ignore_paths,
+                    max_events_per_second,
+                )
+                .await;
             });
 
             Ok((manager, rx))
@@ -145,14 +173,16 @@ mod platform {
     /// Spawn the eslogger child process.
     fn spawn_eslogger(events: &[String]) -> Result<Child> {
         let mut cmd = Command::new("sudo");
-        cmd.arg("eslogger");
+        // -n: non-interactive (no password prompt — requires NOPASSWD sudoers rule)
+        // Use absolute path to match the sudoers entry.
+        cmd.args(["-n", "/usr/bin/eslogger"]);
         // eslogger outputs NDJSON by default; no --format flag needed.
         // Pass event types as positional arguments.
         for event in events {
             cmd.arg(event);
         }
         cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::piped());
         cmd.kill_on_drop(true);
 
         let child = cmd.spawn().context("failed to spawn eslogger process")?;
@@ -168,9 +198,13 @@ mod platform {
         shutdown: Arc<AtomicBool>,
         ignore_processes: &[String],
         ignore_paths: &[String],
+        max_events_per_second: Option<u32>,
     ) {
         let mut backoff =
             ExponentialBackoff::new(INITIAL_BACKOFF, MAX_BACKOFF, BACKOFF_RESET_AFTER);
+
+        // The budget persists across session restarts so rate tracking is continuous.
+        let mut budget = EventBudget::new(max_events_per_second);
 
         loop {
             if shutdown.load(Ordering::SeqCst) {
@@ -190,8 +224,15 @@ mod platform {
             };
 
             let spawn_time = Instant::now();
-            let exit_reason =
-                run_eslogger_session(child, &tx, &shutdown, ignore_processes, ignore_paths).await;
+            let exit_reason = run_eslogger_session(
+                child,
+                &tx,
+                &shutdown,
+                ignore_processes,
+                ignore_paths,
+                &mut budget,
+            )
+            .await;
 
             if shutdown.load(Ordering::SeqCst) {
                 info!("eslogger supervisor shutting down after session end");
@@ -239,6 +280,7 @@ mod platform {
         shutdown: &Arc<AtomicBool>,
         ignore_processes: &[String],
         ignore_paths: &[String],
+        budget: &mut EventBudget,
     ) -> SessionExit {
         let child_pid = child.id();
 
@@ -256,11 +298,24 @@ mod platform {
         let mut last_event_time = Instant::now();
         let mut overflow_count: u64 = 0;
 
+        // Capture stderr for debugging before moving child into wait task.
+        let stderr_handle = child.stderr.take();
+
         // Spawn a task to wait for the child process to exit
         let (exit_tx, mut exit_rx) = mpsc::channel::<Option<i32>>(1);
         tokio::spawn(async move {
             match child.wait().await {
                 Ok(status) => {
+                    // Log stderr on non-zero exit for debugging.
+                    if !status.success() {
+                        if let Some(mut stderr) = stderr_handle {
+                            use tokio::io::AsyncReadExt;
+                            let mut buf = String::new();
+                            if stderr.read_to_string(&mut buf).await.is_ok() && !buf.is_empty() {
+                                warn!(stderr = %buf.trim(), "eslogger stderr output");
+                            }
+                        }
+                    }
                     let _ = exit_tx.send(status.code()).await;
                 }
                 Err(e) => {
@@ -291,6 +346,17 @@ mod platform {
                             }
                             match parse_event(&line) {
                                 Ok(es_event) => {
+                                    // Budget check BEFORE expensive OsEvent conversion.
+                                    // Extract the event path cheaply from the parsed JSON.
+                                    let event_path = extract_event_path(&es_event.event);
+                                    let decision = budget.should_process(
+                                        &es_event.event_type,
+                                        event_path.as_deref(),
+                                    );
+                                    if decision == ProcessDecision::Drop {
+                                        continue;
+                                    }
+
                                     let os_event = OsEvent::from(es_event);
                                     if filter.should_pass(&os_event) {
                                         last_event_time = Instant::now();
@@ -336,6 +402,20 @@ mod platform {
                 }
             }
         }
+    }
+
+    /// Cheaply extract the event path from a parsed EsloggerEvent's JSON payload.
+    /// Avoids deserializing the entire event structure; just reads the "path" field.
+    fn extract_event_path(event_value: &serde_json::Value) -> Option<String> {
+        // The flattened event payloads use "path" for open/close/unlink/etc,
+        // "target_path" for exec, "source" for rename, "address" for connect.
+        event_value
+            .get("path")
+            .or_else(|| event_value.get("target_path"))
+            .or_else(|| event_value.get("source"))
+            .or_else(|| event_value.get("address"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
 
     /// Send SIGTERM to a process, wait 3 seconds, then SIGKILL if still alive.
@@ -497,6 +577,21 @@ mod platform {
             _channel_capacity: Option<usize>,
             _ignore_processes: &[String],
             _ignore_paths: &[String],
+        ) -> Result<(
+            Self,
+            tokio::sync::mpsc::Receiver<clawdefender_core::event::os::OsEvent>,
+        )> {
+            let _ = events;
+            anyhow::bail!("eslogger is only available on macOS with Endpoint Security entitlements")
+        }
+
+        /// Spawn with an optional event budget cap. Not available on non-macOS.
+        pub fn spawn_with_budget(
+            events: &[&str],
+            _channel_capacity: Option<usize>,
+            _ignore_processes: &[String],
+            _ignore_paths: &[String],
+            _max_events_per_second: Option<u32>,
         ) -> Result<(
             Self,
             tokio::sync::mpsc::Receiver<clawdefender_core::event::os::OsEvent>,

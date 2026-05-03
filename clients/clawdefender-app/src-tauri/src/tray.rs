@@ -8,7 +8,7 @@ use tauri::{
 };
 
 use crate::daemon;
-use crate::state::AppState;
+use crate::state::{AppState, MonitoringMode};
 
 /// Data extracted from AppState for building the tray menu.
 struct TrayMenuData {
@@ -16,6 +16,12 @@ struct TrayMenuData {
     pending_prompts: usize,
     blocked_today: usize,
     daemon_connected: bool,
+    cpu_percent: f32,
+    memory_mb: u64,
+    events_per_sec: f64,
+    monitoring_mode: MonitoringMode,
+    is_paused: bool,
+    pause_remaining_min: u64,
 }
 
 fn collect_tray_data(app: &AppHandle) -> TrayMenuData {
@@ -24,6 +30,12 @@ fn collect_tray_data(app: &AppHandle) -> TrayMenuData {
         pending_prompts: 0,
         blocked_today: 0,
         daemon_connected: false,
+        cpu_percent: 0.0,
+        memory_mb: 0,
+        events_per_sec: 0.0,
+        monitoring_mode: MonitoringMode::Balanced,
+        is_paused: false,
+        pause_remaining_min: 0,
     };
 
     if let Some(state) = app.try_state::<AppState>() {
@@ -55,6 +67,39 @@ fn collect_tray_data(app: &AppHandle) -> TrayMenuData {
                         .unwrap_or(false)
                 })
                 .count();
+
+            // Estimate events per second from recent buffer
+            let recent_cutoff = chrono::Utc::now() - chrono::Duration::seconds(5);
+            let recent_count = events.iter().rev().take(100).filter(|e| {
+                chrono::DateTime::parse_from_rfc3339(&e.timestamp)
+                    .map(|t| t >= recent_cutoff)
+                    .unwrap_or(false)
+            }).count();
+            data.events_per_sec = recent_count as f64 / 5.0;
+        }
+        if let Ok(mode) = state.monitoring_mode.lock() {
+            data.monitoring_mode = *mode;
+        }
+        if let Ok(pause) = state.pause_until.lock() {
+            if let Some(until) = *pause {
+                let now = chrono::Utc::now();
+                if now < until {
+                    data.is_paused = true;
+                    data.pause_remaining_min = ((until - now).num_seconds().max(0) as u64) / 60;
+                }
+            }
+        }
+
+        // Quick process stats for tray display
+        {
+            use sysinfo::{System, Pid};
+            let mut sys = System::new();
+            let pid = Pid::from_u32(std::process::id());
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
+            if let Some(proc_info) = sys.process(pid) {
+                data.cpu_percent = proc_info.cpu_usage();
+                data.memory_mb = proc_info.memory() / (1024 * 1024);
+            }
         }
     }
 
@@ -128,6 +173,12 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         pending_prompts: 0,
         blocked_today: 0,
         daemon_connected: false,
+        cpu_percent: 0.0,
+        memory_mb: 0,
+        events_per_sec: 0.0,
+        monitoring_mode: MonitoringMode::Balanced,
+        is_paused: false,
+        pause_remaining_min: 0,
     };
     let menu = build_menu(app, "RookBot — Starting\u{2026}", &initial_data)?;
     let icon = make_status_icon(TrayStatus::Warning); // yellow while loading
@@ -161,17 +212,43 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 let _ = app.emit("rookbot://navigate", "/audit");
             }
             "toggle_protection" => {
-                let connected = app
+                // Check if monitoring is currently paused
+                let is_paused = app
                     .try_state::<AppState>()
-                    .and_then(|state| state.daemon_connected.lock().ok().map(|g| *g))
+                    .and_then(|state| {
+                        state.pause_until.lock().ok().map(|p| {
+                            p.map(|until| chrono::Utc::now() < until).unwrap_or(false)
+                        })
+                    })
                     .unwrap_or(false);
 
-                if connected {
-                    tracing::info!("Pausing protection (stopping daemon)");
-                    let _ = daemon::stop_daemon_process();
+                if is_paused {
+                    // Resume monitoring
+                    if let Some(state) = app.try_state::<AppState>() {
+                        if let Ok(mut p) = state.pause_until.lock() {
+                            *p = None;
+                        }
+                    }
+                    tracing::info!("Monitoring resumed from tray");
                 } else {
-                    tracing::info!("Resuming protection (starting daemon)");
-                    let _ = daemon::start_daemon_process();
+                    let connected = app
+                        .try_state::<AppState>()
+                        .and_then(|state| state.daemon_connected.lock().ok().map(|g| *g))
+                        .unwrap_or(false);
+
+                    if connected {
+                        // Pause for 1 hour
+                        let resume_at = chrono::Utc::now() + chrono::Duration::hours(1);
+                        if let Some(state) = app.try_state::<AppState>() {
+                            if let Ok(mut p) = state.pause_until.lock() {
+                                *p = Some(resume_at);
+                            }
+                        }
+                        tracing::info!("Monitoring paused for 1 hour from tray");
+                    } else {
+                        tracing::info!("Resuming protection (starting daemon)");
+                        let _ = daemon::start_daemon_process();
+                    }
                 }
             }
             "quit" => {
@@ -264,6 +341,26 @@ fn build_menu(
         .enabled(false)
         .build(app)?;
 
+    // Resource usage line
+    let resource_label = format!(
+        "CPU: {:.1}%  Mem: {} MB",
+        data.cpu_percent, data.memory_mb
+    );
+    let resource_info = MenuItemBuilder::with_id("info_resources", &resource_label)
+        .enabled(false)
+        .build(app)?;
+
+    let events_label = format!("Events: {:.0}/sec", data.events_per_sec);
+    let events_info = MenuItemBuilder::with_id("info_events", &events_label)
+        .enabled(false)
+        .build(app)?;
+
+    // Mode and pause status
+    let mode_label = format!("Mode: {}", data.monitoring_mode);
+    let mode_info = MenuItemBuilder::with_id("info_mode", &mode_label)
+        .enabled(false)
+        .build(app)?;
+
     let open_dashboard = MenuItemBuilder::with_id("open_dashboard", "Open Dashboard\u{2026}")
         .build(app)?;
     let view_timeline = MenuItemBuilder::with_id("view_timeline", "View Timeline\u{2026}")
@@ -271,17 +368,23 @@ fn build_menu(
     let view_audit = MenuItemBuilder::with_id("view_audit", "View Audit Log\u{2026}")
         .build(app)?;
 
-    let pause_label = if data.daemon_connected {
-        "Pause Protection"
+    let pause_label = if data.is_paused {
+        format!("Resume Monitoring ({}m left)", data.pause_remaining_min)
+    } else if data.daemon_connected {
+        "Pause for 1 hour".to_string()
     } else {
-        "Resume Protection"
+        "Resume Protection".to_string()
     };
-    let pause_resume = MenuItemBuilder::with_id("toggle_protection", pause_label).build(app)?;
+    let pause_resume = MenuItemBuilder::with_id("toggle_protection", &pause_label).build(app)?;
 
     let quit = MenuItemBuilder::with_id("quit", "Quit RookBot").build(app)?;
 
     let mut builder = MenuBuilder::new(app)
         .text("header", header)
+        .item(&resource_info)
+        .item(&events_info)
+        .separator()
+        .item(&mode_info)
         .item(&servers_info)
         .separator();
 
@@ -301,6 +404,14 @@ fn build_menu(
         .build(app)?;
     builder = builder.item(&blocked_item);
 
+    // Show pause indicator
+    if data.is_paused {
+        let paused_item = MenuItemBuilder::with_id("info_paused", "Monitoring paused")
+            .enabled(false)
+            .build(app)?;
+        builder = builder.item(&paused_item);
+    }
+
     let menu = builder
         .separator()
         .item(&open_dashboard)
@@ -316,38 +427,13 @@ fn build_menu(
 }
 
 // ---------------------------------------------------------------------------
-// Icon generation — 22×22 RGBA shield shape with status color
+// Icon generation — shield+rook tray icon colorized per status
 // ---------------------------------------------------------------------------
 
-const ICON_SIZE: u32 = 22;
-
-/// Test whether point (px, py) lies inside a shield shape centered at (cx, cy)
-/// with the given half-width and height.  The shield has a flat top, straight
-/// sides that taper, and a pointed bottom.
-fn point_in_shield(px: f64, py: f64, cx: f64, cy: f64, half_w: f64, height: f64) -> f64 {
-    let top = cy - height * 0.45;
-    let bottom = cy + height * 0.55;
-    let mid_y = top + (bottom - top) * 0.55; // where taper begins
-
-    // Normalised y position
-    if py < top || py > bottom {
-        return -1.0; // outside
-    }
-
-    // Determine the half-width of the shield at this y
-    let hw = if py <= mid_y {
-        // Upper portion: nearly straight sides, slight outward curve
-        let t = (py - top) / (mid_y - top);
-        half_w * (0.95 + 0.05 * (t * std::f64::consts::PI).sin())
-    } else {
-        // Lower portion: taper to a point
-        let t = (py - mid_y) / (bottom - mid_y);
-        half_w * (1.0 - t)
-    };
-
-    // Signed distance from edge (positive = inside)
-    hw - (px - cx).abs()
-}
+/// Embed the shield+rook tray icon PNG (44×44 retina) at compile time.
+/// The template uses two shades of black: the shield body (#000) and the
+/// rook cutout (#444).  We colorize them to the status color at runtime.
+const TRAY_TEMPLATE: &[u8] = include_bytes!("../icons/icon-tray.png");
 
 fn make_status_icon(status: TrayStatus) -> Image<'static> {
     let (r, g, b) = match status {
@@ -356,54 +442,38 @@ fn make_status_icon(status: TrayStatus) -> Image<'static> {
         TrayStatus::Error => (0xEF, 0x44, 0x44),      // red
     };
 
-    // Border color: slightly darker version of the fill
-    let (br, bg, bb) = (
-        (r as f64 * 0.7) as u8,
-        (g as f64 * 0.7) as u8,
-        (b as f64 * 0.7) as u8,
+    // Darker shade for the rook silhouette inside the shield
+    let (dr, dg, db) = (
+        (r as f64 * 0.40) as u8,
+        (g as f64 * 0.40) as u8,
+        (b as f64 * 0.40) as u8,
     );
 
-    let mut pixels = vec![0u8; (ICON_SIZE * ICON_SIZE * 4) as usize];
-    let cx = ICON_SIZE as f64 / 2.0;
-    let cy = ICON_SIZE as f64 / 2.0;
-    let half_w = (ICON_SIZE as f64 / 2.0) - 1.5;
-    let height = ICON_SIZE as f64 - 2.0;
+    let template = Image::from_bytes(TRAY_TEMPLATE).expect("embedded tray PNG is valid");
+    let rgba = template.rgba();
+    let w = template.width();
+    let h = template.height();
 
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
-            let px = x as f64 + 0.5;
-            let py = y as f64 + 0.5;
-            let dist = point_in_shield(px, py, cx, cy, half_w, height);
-
-            let idx = ((y * ICON_SIZE + x) * 4) as usize;
-
-            if dist < -0.5 {
-                // Outside — transparent
-                continue;
-            }
-
-            if dist < 0.5 {
-                // Anti-aliased edge (border zone)
-                let alpha = ((dist + 0.5) * 255.0).clamp(0.0, 255.0) as u8;
-                pixels[idx] = br;
-                pixels[idx + 1] = bg;
-                pixels[idx + 2] = bb;
-                pixels[idx + 3] = alpha;
-            } else if dist < 1.8 {
-                // Border ring
-                pixels[idx] = br;
-                pixels[idx + 1] = bg;
-                pixels[idx + 2] = bb;
-                pixels[idx + 3] = 255;
+    let mut pixels = rgba.to_vec();
+    for chunk in pixels.chunks_exact_mut(4) {
+        let alpha = chunk[3];
+        if alpha > 0 {
+            // The rook cutout is lighter gray (#444), the shield is black (#000).
+            // Use brightness to distinguish them.
+            let brightness = chunk[0].max(chunk[1]).max(chunk[2]);
+            if brightness > 0x20 {
+                // Rook interior — darker shade
+                chunk[0] = dr;
+                chunk[1] = dg;
+                chunk[2] = db;
             } else {
-                // Fill
-                pixels[idx] = r;
-                pixels[idx + 1] = g;
-                pixels[idx + 2] = b;
-                pixels[idx + 3] = 255;
+                // Shield body — full status color
+                chunk[0] = r;
+                chunk[1] = g;
+                chunk[2] = b;
             }
         }
     }
 
-    Image::new_owned(pixels, ICON_SIZE, ICON_SIZE)
+    Image::new_owned(pixels, w, h)
 }

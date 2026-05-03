@@ -992,6 +992,13 @@ fn exec_list_mcp_servers() -> Result<serde_json::Value, String> {
             "windsurf",
             vec![home.join(".codeium/windsurf/mcp_config.json")],
         ),
+        (
+            "claude_code",
+            vec![
+                home.join(".claude/settings.json"),
+                home.join(".claude.json"),
+            ],
+        ),
     ];
 
     let mut all_servers = Vec::new();

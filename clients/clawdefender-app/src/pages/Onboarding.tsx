@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { Rook, Btn, Icon } from "../components/design";
-import type { McpClient, McpServer } from "../types";
+import type { McpClient, McpServer, SensorHealth } from "../types";
 
 /* ---------- local types ---------- */
 
@@ -80,6 +80,31 @@ const STEPS = [
   { t: "Wrap your AI tools", d: "We found MCP servers. Wrap them to start monitoring tool calls." },
 ] as const;
 
+/* ---------- small helpers ---------- */
+
+function StatusRow({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <div style={{
+      padding: "8px 14px",
+      background: "var(--bg-2)",
+      borderRadius: 8,
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+    }}>
+      <Icon
+        name={ok ? "check" : "alert"}
+        size={14}
+        color={ok ? "var(--green)" : "var(--red)"}
+      />
+      <span style={{ fontSize: 12.5, color: "var(--ink-1)", flex: 1 }}>{label}</span>
+      <span style={{ fontSize: 11, color: ok ? "var(--green)" : "var(--ink-3)" }}>
+        {ok ? "Ready" : "Required"}
+      </span>
+    </div>
+  );
+}
+
 /* ============================================================
    ONBOARDING PAGE
    ============================================================ */
@@ -87,6 +112,9 @@ const STEPS = [
 export function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+
+  // Step 1 (Kernel access / FDA) state
+  const [sensorHealth, setSensorHealth] = useState<SensorHealth | null>(null);
 
   // Step 2 (Pick model) state
   const [capabilities, setCapabilities] = useState<SystemCapabilities | null>(null);
@@ -107,6 +135,20 @@ export function Onboarding() {
   // Step 4 (Wrap servers) state
   const [servers, setServers] = useState<DetectedServer[]>([]);
   const [serversLoading, setServersLoading] = useState(true);
+
+  // Poll sensor health when on step 1
+  useEffect(() => {
+    if (step !== 1) return;
+    const poll = async () => {
+      try {
+        const h = await invoke<SensorHealth>("get_sensor_health");
+        setSensorHealth(h);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
+  }, [step]);
 
   // Load model data when reaching step 2
   useEffect(() => {
@@ -281,6 +323,39 @@ export function Onboarding() {
           <p style={{ margin: "10px auto 0", fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.6, maxWidth: 420 }}>
             {s.d}
           </p>
+
+          {/* Step 1: Grant kernel access */}
+          {step === 1 && (
+            <div style={{ marginTop: 22, textAlign: "left" }}>
+              {/* Status checklist */}
+              <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+                <StatusRow
+                  label="macOS version"
+                  ok={sensorHealth?.os_version_ok ?? false}
+                />
+                <StatusRow
+                  label="Full Disk Access"
+                  ok={sensorHealth?.fda_granted ?? false}
+                />
+                <StatusRow
+                  label="Daemon running"
+                  ok={sensorHealth?.daemon_running ?? false}
+                />
+              </div>
+
+              {/* Open System Settings button */}
+              <div style={{ textAlign: "center", marginBottom: 12 }}>
+                <Btn kind="primary" onClick={() => invoke("open_system_settings_fda")}>
+                  Open System Settings
+                </Btn>
+              </div>
+
+              {/* Skip note */}
+              <div style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "center" }}>
+                You can set this up later in Settings
+              </div>
+            </div>
+          )}
 
           {/* Step 2: Pick a local model */}
           {step === 2 && (

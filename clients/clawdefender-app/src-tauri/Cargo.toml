@@ -33,6 +33,7 @@ clawdefender-scanner = { path = "../../../crates/clawdefender-scanner" }
 clawdefender-slm = { path = "../../../crates/clawdefender-slm", features = ["cloud", "download", "gguf"] }
 clawdefender-swarm = { path = "../../../crates/clawdefender-swarm" }
 dirs = "5"
+sysinfo = "0.31"
 sha2 = "0.10"
 uuid = { version = "1", features = ["serde", "v4"] }
 

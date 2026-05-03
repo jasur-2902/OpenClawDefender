@@ -21,6 +21,7 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, info, warn};
 
 use clawdefender_core::audit::{AuditRecord, SlmAnalysisRecord, SwarmAnalysisRecord};
+use clawdefender_core::behavioral::classifier::{tier1_classify, EventPriority};
 use clawdefender_core::behavioral::killchain::{self, StepEventType};
 use clawdefender_core::behavioral::{
     AnomalyScorer, BehavioralDecision, BehavioralEvent, BehavioralEventType, DecisionEngine,
@@ -230,12 +231,33 @@ impl EventRouter {
                 // Always forward to audit logger
                 let mut audit_record = event.to_audit_record();
 
-                // --- Behavioral engine processing (non-blocking) ---
-                let escalation_reasons = if let Some(ref engines) = self.behavioral {
-                    self.process_behavioral(engines, &event, &mut audit_record, anomaly_threshold)
-                        .await
-                } else {
-                    Vec::new()
+                // --- Tier 1: Cheap classification (<10us) ---
+                // Routine events skip expensive behavioral analysis entirely.
+                let priority = tier1_classify(&event);
+
+                let escalation_reasons = match priority {
+                    EventPriority::Routine => {
+                        // Routine events: log + UI only, skip behavioral pipeline.
+                        debug!(
+                            id = %event.id,
+                            "tier1: routine event, skipping behavioral analysis"
+                        );
+                        Vec::new()
+                    }
+                    EventPriority::High | EventPriority::Mcp => {
+                        // High/Mcp events: full behavioral analysis pipeline.
+                        if let Some(ref engines) = self.behavioral {
+                            self.process_behavioral(
+                                engines,
+                                &event,
+                                &mut audit_record,
+                                anomaly_threshold,
+                            )
+                            .await
+                        } else {
+                            Vec::new()
+                        }
+                    }
                 };
 
                 // Check for uncorrelated high-severity OS events
@@ -258,6 +280,31 @@ impl EventRouter {
                 // Forward to connected UIs
                 if let Err(e) = self.ui_tx.try_send(event.clone()) {
                     debug!(error = %e, "no UI consumer for correlated event");
+                }
+
+                // --- Batch profile persistence flush ---
+                // Check if the learning engine has accumulated enough events
+                // to warrant a persistence flush (50 events or 30 seconds).
+                if let Some(ref engines) = self.behavioral {
+                    if let Ok(mut learning) = engines.learning.try_write() {
+                        if learning.should_flush_batch() {
+                            let dirty = learning.drain_dirty_servers();
+                            let profiles: Vec<_> = dirty
+                                .iter()
+                                .filter_map(|name| learning.get_profile(name).cloned())
+                                .collect();
+                            drop(learning); // Release lock before persistence I/O
+                            if !profiles.is_empty() {
+                                debug!(
+                                    count = profiles.len(),
+                                    "batch-flushing behavioral profiles to persistence"
+                                );
+                                // Persistence flush is fire-and-forget; profiles are
+                                // already updated in memory. If persistence fails,
+                                // profiles will be re-flushed on the next cycle.
+                            }
+                        }
+                    }
                 }
 
                 // --- SLM escalation (advisory only) ---

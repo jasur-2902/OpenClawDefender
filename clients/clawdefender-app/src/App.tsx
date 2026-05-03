@@ -19,8 +19,10 @@ import type { AuditEvent } from "./types";
 import { AskClaw } from "./pages/AskClaw";
 import { MyTools } from "./pages/MyTools";
 import { ToolDetail } from "./pages/ToolDetail";
+import { ToolActivity } from "./pages/ToolActivity";
 import { Scanner } from "./pages/Scanner";
 import { AuditLog } from "./pages/AuditLog";
+import { SetupPermissions } from "./pages/SetupPermissions";
 
 function TrayNavigationListener() {
   const navigate = useNavigate();
@@ -117,9 +119,11 @@ function App() {
             <Route path="/ask" element={<AskClaw />} />
             <Route path="/tools" element={<MyTools />} />
             <Route path="/tools/:name" element={<ToolDetail />} />
+            <Route path="/tools/:name/activity" element={<ToolActivity />} />
             <Route path="/scan" element={<Scanner />} />
             <Route path="/transparency" element={<AuditLog />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/setup-permissions" element={<SetupPermissions />} />
           </Route>
         </Routes>
       </OnboardingRedirect>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { SectionTitle, Card, Badge, Btn, Icon, Dot } from "../components/design";
@@ -11,6 +11,10 @@ import type {
   FeatureRoutingEntry,
   FeatureRoutingResponse,
   FeatureBackendPreference,
+  SensorHealth,
+  MonitoringMode,
+  PerformanceStats,
+  PauseStatus,
 } from "../types";
 
 /* ---------- local types ---------- */
@@ -209,6 +213,8 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
 
 export function Settings() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [fdaGranted, setFdaGranted] = useState<boolean | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [netStatus, setNetStatus] = useState<NetworkExtensionStatus | null>(null);
@@ -250,6 +256,12 @@ export function Settings() {
   const [featureRouting, setFeatureRouting] = useState<FeatureRoutingEntry[]>([]);
   const [featureRoutingHasOverrides, setFeatureRoutingHasOverrides] = useState(false);
   const [featureRoutingExpanded, setFeatureRoutingExpanded] = useState(false);
+
+  // Performance & Battery state
+  const [monitoringMode, setMonitoringMode] = useState<MonitoringMode>("balanced");
+  const [batteryAutoAdjust, setBatteryAutoAdjust] = useState(true);
+  const [perfStats, setPerfStats] = useState<PerformanceStats | null>(null);
+  const [pauseStatus, setPauseStatus] = useState<PauseStatus | null>(null);
 
   const downloadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollFailCountRef = useRef<Record<string, number>>({});
@@ -316,6 +328,23 @@ export function Settings() {
     }
   }, []);
 
+  const loadPerformanceData = useCallback(async () => {
+    try {
+      const [mode, autoAdj, stats, pause] = await Promise.all([
+        invoke<string>("get_monitoring_mode").catch(() => "balanced"),
+        invoke<boolean>("get_battery_auto_adjust").catch(() => true),
+        invoke<PerformanceStats>("get_performance_stats").catch(() => null),
+        invoke<PauseStatus>("get_pause_status").catch(() => null),
+      ]);
+      setMonitoringMode(mode as MonitoringMode);
+      setBatteryAutoAdjust(autoAdj);
+      setPerfStats(stats);
+      setPauseStatus(pause);
+    } catch {
+      // Performance data not available
+    }
+  }, []);
+
   const loadSettings = useCallback(async () => {
     try {
       const s = await invoke<AppSettings>("get_settings");
@@ -348,10 +377,14 @@ export function Settings() {
     loadAiStatus();
     loadCloudProviders();
     loadFeatureRouting();
+    loadPerformanceData();
     invoke<boolean>("is_autostart_enabled")
       .then((enabled) => setSettings((s) => ({ ...s, auto_start_daemon: enabled })))
       .catch(() => {});
-  }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData, loadAiStatus, loadCloudProviders, loadFeatureRouting]);
+    invoke<SensorHealth>("get_sensor_health")
+      .then((h) => setFdaGranted(h.fda_granted))
+      .catch(() => {});
+  }, [loadSettings, loadNetworkState, loadSlmStatus, loadModelData, loadAiStatus, loadCloudProviders, loadFeatureRouting, loadPerformanceData]);
 
   useEffect(() => {
     if (!loading && location.state && (location.state as { scrollTo?: string }).scrollTo) {
@@ -415,6 +448,21 @@ export function Settings() {
     }, 500);
     return () => { if (downloadPollRef.current) { clearInterval(downloadPollRef.current); downloadPollRef.current = null; } };
   }, [downloads, loadModelData]);
+
+  // Poll performance stats every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const [stats, pause] = await Promise.all([
+          invoke<PerformanceStats>("get_performance_stats").catch(() => null),
+          invoke<PauseStatus>("get_pause_status").catch(() => null),
+        ]);
+        if (stats) setPerfStats(stats);
+        if (pause) setPauseStatus(pause);
+      } catch { /* noop */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (selectedProvider) {
@@ -823,6 +871,171 @@ export function Settings() {
           </div>
         )}
       </div>
+
+      {/* ===== Performance & Battery ===== */}
+      <div style={{ marginTop: 32 }}>
+        <SectionTitle sub="Adjust monitoring intensity and view resource usage.">Performance & Battery</SectionTitle>
+      </div>
+
+      {/* Pause banner */}
+      {pauseStatus?.paused && (
+        <div style={{
+          padding: "10px 14px", background: "color-mix(in oklch, var(--amber) 12%, transparent)",
+          borderRadius: 8, fontSize: 12, color: "var(--amber)", marginBottom: 10,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <span>
+            Monitoring paused — {Math.floor((pauseStatus.remaining_seconds || 0) / 60)}m {(pauseStatus.remaining_seconds || 0) % 60}s remaining (critical paths still active)
+          </span>
+          <Btn size="sm" kind="ghost" onClick={async () => { try { await invoke("resume_monitoring"); setPauseStatus({ paused: false, remaining_seconds: 0, pause_until: null }); } catch { /* noop */ } }}>
+            Resume Now
+          </Btn>
+        </div>
+      )}
+
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "grid", gap: 18 }}>
+          {/* Monitoring Intensity */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Monitoring Intensity</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {([
+                { value: "full" as MonitoringMode, label: "Full Protection", desc: "Maximum detection, higher battery usage", recommended: false },
+                { value: "balanced" as MonitoringMode, label: "Balanced", desc: "Smart sampling under load, SLM throttled", recommended: true },
+                { value: "light" as MonitoringMode, label: "Light", desc: "Aggressive sampling, SLM paused on battery, reduced polling", recommended: false },
+                { value: "minimal" as MonitoringMode, label: "Minimal", desc: "Passive monitoring only, no SLM, no polling", recommended: false },
+              ] as const).map((opt) => (
+                <label
+                  key={opt.value}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8,
+                    border: "1px solid " + (monitoringMode === opt.value ? "var(--accent-line)" : "var(--line-soft)"),
+                    background: monitoringMode === opt.value ? "var(--accent-soft)" : "transparent",
+                    cursor: "pointer", transition: "background 0.15s, border-color 0.15s",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="monitoring_mode"
+                    checked={monitoringMode === opt.value}
+                    onChange={async () => {
+                      setMonitoringMode(opt.value);
+                      try { await invoke("set_monitoring_mode", { mode: opt.value }); } catch { /* noop */ }
+                    }}
+                    style={{ accentColor: "var(--accent)" }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                      {opt.label}
+                      {opt.recommended && <Badge color="var(--accent)">recommended</Badge>}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Auto-adjust on battery */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>Auto-adjust on battery</div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)" }}>Switch to Light on unplug, restore on plug-in</div>
+            </div>
+            <ToggleSwitch
+              checked={batteryAutoAdjust}
+              onChange={async (v) => {
+                setBatteryAutoAdjust(v);
+                try { await invoke("set_battery_auto_adjust", { enabled: v }); } catch { /* noop */ }
+              }}
+            />
+          </div>
+
+          {/* Current Usage */}
+          {perfStats && (
+            <div style={{ paddingTop: 12, borderTop: "1px solid var(--line-soft)" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                Current Usage
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.3 }}>CPU</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--ink-0)", marginTop: 2 }}>
+                    {perfStats.cpu_percent.toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: 9.5, color: "var(--ink-3)" }}>average (last 5 min)</div>
+                </div>
+                <div style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.3 }}>Memory</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--ink-0)", marginTop: 2 }}>
+                    {(perfStats.memory_bytes / (1024 * 1024 * 1024)).toFixed(2)} GB
+                  </div>
+                  <div style={{ fontSize: 9.5, color: "var(--ink-3)" }}>
+                    model: {(perfStats.memory_model_bytes / (1024 * 1024)).toFixed(0)} MB, buffers: {(perfStats.memory_buffers_bytes / (1024 * 1024)).toFixed(0)} MB
+                  </div>
+                </div>
+                <div style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.3 }}>Events</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--ink-0)", marginTop: 2 }}>
+                    {perfStats.events_per_sec.toFixed(0)}/sec
+                  </div>
+                  <div style={{ fontSize: 9.5, color: "var(--ink-3)" }}>
+                    {perfStats.events_total_per_sec.toFixed(0)}/sec total, {perfStats.events_sampled_percent.toFixed(0)}% sampled
+                  </div>
+                </div>
+                <div style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.3 }}>Disk</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--ink-0)", marginTop: 2 }}>
+                    {perfStats.disk_writes_per_sec.toFixed(1)}/sec
+                  </div>
+                  <div style={{ fontSize: 9.5, color: "var(--ink-3)" }}>writes</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Quick pause action */}
+          {!pauseStatus?.paused && (
+            <div style={{ paddingTop: 12, borderTop: "1px solid var(--line-soft)", display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Pause Monitoring</div>
+                <div style={{ fontSize: 11, color: "var(--ink-3)" }}>Temporarily pause non-essential monitoring (critical path monitoring stays active)</div>
+              </div>
+              <Btn size="sm" kind="soft" onClick={async () => {
+                try {
+                  await invoke("pause_monitoring", { durationMinutes: 60 });
+                  setPauseStatus({ paused: true, remaining_seconds: 3600, pause_until: new Date(Date.now() + 3600000).toISOString() });
+                } catch { /* noop */ }
+              }}>
+                Pause 1 hour
+              </Btn>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* ===== Monitoring ===== */}
+      <div style={{ marginTop: 32 }}>
+        <SectionTitle sub="System permissions for full monitoring.">Monitoring</SectionTitle>
+      </div>
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Dot color={fdaGranted ? "var(--green)" : "var(--amber)"} size={8} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>Full Disk Access</div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                {fdaGranted ? "Granted — full monitoring active" : "Not granted — limited to file-path monitoring"}
+              </div>
+            </div>
+          </div>
+          {fdaGranted ? (
+            <Badge color="var(--green)">Granted</Badge>
+          ) : (
+            <Btn size="sm" kind="soft" onClick={() => navigate("/setup-permissions")}>Set up</Btn>
+          )}
+        </div>
+      </Card>
 
       {/* ===== General Settings ===== */}
       <div style={{ marginTop: 32 }}>

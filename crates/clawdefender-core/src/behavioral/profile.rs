@@ -170,3 +170,72 @@ impl Default for TemporalProfile {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Memory caps — prevent unbounded growth of profile collections
+// ---------------------------------------------------------------------------
+
+/// Maximum directory prefixes (file paths) to keep per profile.
+/// Keeps the most frequently accessed by retaining those whose extensions
+/// appear most often. 100 is enough to capture the working set of any
+/// reasonably-scoped MCP server.
+const MAX_DIRECTORY_PREFIXES: usize = 100;
+/// Maximum network hosts to keep per profile.
+const MAX_NETWORK_HOSTS: usize = 50;
+/// Maximum tools to keep per profile.
+const MAX_TOOL_COUNTS: usize = 50;
+
+impl ServerProfile {
+    /// Enforce memory caps on unbounded collections within this profile.
+    ///
+    /// When a collection exceeds its cap, only the most frequently accessed
+    /// entries are retained. Call this periodically (e.g., every N events)
+    /// to bound memory usage per profile.
+    pub fn enforce_memory_caps(&mut self) {
+        // Cap tool_counts: keep top MAX_TOOL_COUNTS by call count.
+        if self.tool_profile.tool_counts.len() > MAX_TOOL_COUNTS {
+            let mut entries: Vec<(String, u64)> =
+                self.tool_profile.tool_counts.drain().collect();
+            entries.sort_by(|a, b| b.1.cmp(&a.1));
+            entries.truncate(MAX_TOOL_COUNTS);
+            self.tool_profile.tool_counts = entries.into_iter().collect();
+        }
+
+        // Cap directory_prefixes: keep top MAX_DIRECTORY_PREFIXES.
+        // Since directory_prefixes is a HashSet without counts, we keep the
+        // ones whose extensions appear in extension_counts (proxy for frequency).
+        // If we still exceed the cap, drop the longest paths (least specific).
+        if self.file_profile.directory_prefixes.len() > MAX_DIRECTORY_PREFIXES {
+            let mut prefixes: Vec<String> =
+                self.file_profile.directory_prefixes.drain().collect();
+            // Prefer shorter paths (more general, higher-value for anomaly detection)
+            prefixes.sort_by_key(|p| p.len());
+            prefixes.truncate(MAX_DIRECTORY_PREFIXES);
+            self.file_profile.directory_prefixes = prefixes.into_iter().collect();
+        }
+
+        // Cap observed_hosts: keep top MAX_NETWORK_HOSTS.
+        // Since it's a HashSet without counts, keep shorter hostnames
+        // (more likely to be significant domain names vs long CDN URLs).
+        if self.network_profile.observed_hosts.len() > MAX_NETWORK_HOSTS {
+            let mut hosts: Vec<String> =
+                self.network_profile.observed_hosts.drain().collect();
+            hosts.sort_by_key(|h| h.len());
+            hosts.truncate(MAX_NETWORK_HOSTS);
+            self.network_profile.observed_hosts = hosts.into_iter().collect();
+        }
+
+        // Cap argument_patterns: keep only for tools that remain after tool_counts cap.
+        self.tool_profile
+            .argument_patterns
+            .retain(|tool, _| self.tool_profile.tool_counts.contains_key(tool));
+
+        // Cap sequence_bigrams: keep only bigrams involving retained tools.
+        self.tool_profile
+            .sequence_bigrams
+            .retain(|(a, b), _| {
+                self.tool_profile.tool_counts.contains_key(a)
+                    && self.tool_profile.tool_counts.contains_key(b)
+            });
+    }
+}

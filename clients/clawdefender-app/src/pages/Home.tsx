@@ -8,13 +8,13 @@ import {
   Icon,
   Dot,
   Btn,
-  MiniBoard,
-  postureBoard,
+  Rook,
   posturePhrase,
 } from "../components/design";
 import type { Posture } from "../components/design";
 import type { IntelligentAlert } from "../types";
 import { AskRookDock } from "../components/AskRookDock";
+import { PermissionBanner } from "../components/PermissionBanner";
 
 function isToday(timestamp: string): boolean {
   const d = new Date(timestamp);
@@ -198,7 +198,7 @@ export function Home() {
       }
     }
     loadPosture();
-    const interval = setInterval(loadPosture, 30_000);
+    const interval = setInterval(loadPosture, 60_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -212,7 +212,6 @@ export function Home() {
   const postureColor = POSTURE_COLOR[posture] || "var(--green)";
   const isOk = posture === "low" || posture === "normal";
   const phrase = posturePhrase(posture);
-  const board = postureBoard(posture);
 
   const latestAlert: IntelligentAlert | undefined = alerts[0];
 
@@ -253,7 +252,7 @@ export function Home() {
   return (
     <div className="cd-scroll" style={{ overflowY: "auto", height: "100%" }}>
       <div
-        style={{ maxWidth: 640, margin: "0 auto", padding: "44px 28px 24px" }}
+        style={{ maxWidth: 640, margin: "0 auto", padding: "16px 28px 24px" }}
       >
         {/* Hero: chessboard scene */}
         <div style={{ textAlign: "center", marginBottom: 36 }}>
@@ -262,17 +261,11 @@ export function Home() {
               display: "inline-flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 16,
-              padding: "20px 28px 22px",
-              background: "var(--bg-1)",
-              border: "1px solid var(--line)",
-              borderRadius: 18,
-              boxShadow:
-                "0 1px 2px oklch(0 0 0 / 0.04), 0 8px 28px oklch(0 0 0 / 0.05)",
+              gap: 14,
               marginBottom: 22,
             }}
           >
-            <MiniBoard size={5} cells={board} tileSize={36} />
+            <Rook size={72} color="var(--accent)" />
             <div
               style={{
                 fontSize: 11,
@@ -393,6 +386,8 @@ export function Home() {
             <Icon name="chevron" size={14} color="var(--ink-3)" />
           </button>
         )}
+
+        <PermissionBanner />
 
         {/* Today summary */}
         <div style={{ marginBottom: 14 }}>

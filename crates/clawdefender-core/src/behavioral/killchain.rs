@@ -583,15 +583,24 @@ fn step_matches_event(step: &PatternStep, event: &KillChainEvent) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Maximum events to keep per server in the sliding window.
-const MAX_WINDOW_SIZE: usize = 1000;
+/// Reduced from 1000: attack patterns rarely span more than 200 events, and
+/// the time-based eviction (5 min) already removes stale entries. This cuts
+/// per-server peak memory by ~80%.
+const MAX_WINDOW_SIZE: usize = 200;
 /// Default window duration.
 const WINDOW_DURATION_SECS: i64 = 300; // 5 minutes
+/// Evict per-server windows after this many seconds of inactivity.
+/// Servers idle for 30+ minutes are unlikely to be mid-attack; their windows
+/// can be reclaimed and rebuilt on demand if new events arrive.
+const INACTIVE_EVICTION_SECS: i64 = 1800; // 30 minutes
 
 /// The kill chain detector maintains per-server event windows and checks
 /// incoming events against all registered attack patterns.
 pub struct KillChainDetector {
     patterns: Vec<AttackPattern>,
     event_windows: HashMap<String, VecDeque<TimestampedEvent>>,
+    /// Tracks the last event timestamp per server for inactive eviction.
+    last_activity: HashMap<String, DateTime<Utc>>,
     custom_patterns_path: Option<PathBuf>,
     last_config_modified: Option<std::time::SystemTime>,
 }
@@ -602,6 +611,7 @@ impl KillChainDetector {
         Self {
             patterns: builtin_patterns(),
             event_windows: HashMap::new(),
+            last_activity: HashMap::new(),
             custom_patterns_path: None,
             last_config_modified: None,
         }
@@ -660,6 +670,9 @@ impl KillChainDetector {
     ) -> Vec<KillChainMatch> {
         let server = event.server_name.clone();
 
+        // Track last activity for inactive eviction.
+        self.last_activity.insert(server.clone(), timestamp);
+
         // Mutate the window in a block so the mutable borrow is released.
         {
             let window = self.event_windows.entry(server.clone()).or_default();
@@ -685,6 +698,24 @@ impl KillChainDetector {
         // Now borrow self immutably for pattern checking.
         let window = self.event_windows.get(&server).unwrap();
         self.check_patterns(window)
+    }
+
+    /// Evict event windows for servers that have been inactive for 30+ minutes.
+    /// Call this periodically (e.g., from a tick/maintenance loop) to reclaim memory.
+    pub fn evict_inactive_servers(&mut self) {
+        let now = Utc::now();
+        let cutoff = Duration::seconds(INACTIVE_EVICTION_SECS);
+        let stale_servers: Vec<String> = self
+            .last_activity
+            .iter()
+            .filter(|(_, last_ts)| now - **last_ts > cutoff)
+            .map(|(server, _)| server.clone())
+            .collect();
+
+        for server in stale_servers {
+            self.event_windows.remove(&server);
+            self.last_activity.remove(&server);
+        }
     }
 
     fn check_patterns(&self, window: &VecDeque<TimestampedEvent>) -> Vec<KillChainMatch> {
@@ -769,11 +800,13 @@ impl KillChainDetector {
     /// Clear the event window for a specific server.
     pub fn clear_server(&mut self, server_name: &str) {
         self.event_windows.remove(server_name);
+        self.last_activity.remove(server_name);
     }
 
     /// Clear all event windows.
     pub fn clear_all(&mut self) {
         self.event_windows.clear();
+        self.last_activity.clear();
     }
 }
 
@@ -1397,8 +1430,8 @@ mod tests {
         let mut det = KillChainDetector::new();
         let now = Utc::now();
 
-        // Insert more than MAX_WINDOW_SIZE events
-        for i in 0..1010 {
+        // Insert more than MAX_WINDOW_SIZE events (200)
+        for i in 0..310 {
             det.ingest(
                 make_event(StepEventType::FileRead, Some("/tmp/f"), None, "srv"),
                 ts(now, i),
@@ -1583,6 +1616,32 @@ event_type = "shell_exec"
 
         det.clear_all();
         assert!(det.event_windows.is_empty());
+    }
+
+    #[test]
+    fn test_evict_inactive_servers() {
+        let mut det = KillChainDetector::new();
+        let now = Utc::now();
+
+        // Server A had activity 31 minutes ago (should be evicted)
+        det.ingest(
+            make_event(StepEventType::FileRead, Some("/tmp/a"), None, "srv-old"),
+            now - Duration::minutes(31),
+        );
+
+        // Server B had activity just now (should be kept)
+        det.ingest(
+            make_event(StepEventType::FileRead, Some("/tmp/b"), None, "srv-new"),
+            now,
+        );
+
+        assert_eq!(det.event_windows.len(), 2);
+
+        det.evict_inactive_servers();
+
+        assert_eq!(det.event_windows.len(), 1);
+        assert!(!det.event_windows.contains_key("srv-old"));
+        assert!(det.event_windows.contains_key("srv-new"));
     }
 
     // -- Helper function tests --

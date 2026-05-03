@@ -39,7 +39,8 @@ export const useToolStore = create<ToolStore>((set, get) => ({
       const tools = await invoke<ToolCardData[]>("get_tool_cards");
       set({ tools, loading: false, error: null });
     } catch (e) {
-      set({ loading: false, error: String(e) });
+      console.error("[toolStore] fetchTools failed:", e);
+      set({ tools: [], loading: false, error: String(e) });
     }
   },
 
@@ -47,8 +48,8 @@ export const useToolStore = create<ToolStore>((set, get) => ({
     try {
       const newTools = await invoke<NewToolInfo[]>("get_new_tools");
       set({ newTools });
-    } catch {
-      // Command may not exist yet
+    } catch (e) {
+      console.error("[toolStore] fetchNewTools failed:", e);
     }
   },
 

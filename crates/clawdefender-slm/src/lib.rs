@@ -32,6 +32,7 @@ pub mod output_validator;
 pub mod pipeline;
 pub mod profiles;
 pub mod sanitizer;
+pub mod scheduler;
 pub mod task_router;
 pub mod triage;
 

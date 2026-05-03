@@ -25,8 +25,8 @@ export function ToolCard({ tool }: ToolCardProps) {
 
     if (tool.blocked_count_today > 0) {
       parts.push(`${tool.blocked_count_today} blocked`);
-    } else if (tool.health_warnings.length > 0) {
-      const critical = tool.health_warnings.filter((w) => w.severity === "critical").length;
+    } else if ((tool.health_warnings ?? []).length > 0) {
+      const critical = (tool.health_warnings ?? []).filter((w) => w.severity === "critical").length;
       if (critical > 0) {
         parts.push(`${critical} issue${critical !== 1 ? "s" : ""} found`);
       } else {
@@ -43,12 +43,12 @@ export function ToolCard({ tool }: ToolCardProps) {
     if (!tool.is_wrapped) return "var(--color-text-muted)";
     if (tool.behavioral_status === "learning") return "var(--color-info)";
     if (tool.blocked_count_today > 0) return "var(--color-warning)";
-    if (tool.health_warnings.some((w) => w.severity === "critical"))
+    if (tool.health_warnings?.some((w) => w.severity === "critical"))
       return "var(--color-danger)";
     return "var(--color-text-secondary)";
   }, [tool]);
 
-  const hasCriticalWarning = tool.health_warnings.some(
+  const hasCriticalWarning = (tool.health_warnings ?? []).some(
     (w) => w.severity === "critical"
   );
 
@@ -114,7 +114,7 @@ export function ToolCard({ tool }: ToolCardProps) {
       {/* Health warning strip */}
       {hasCriticalWarning && (
         <div role="alert" className="mt-2 px-2 py-1 rounded bg-[var(--color-danger-light)] text-[var(--color-danger)] text-xs">
-          {tool.health_warnings.find((w) => w.severity === "critical")?.title}
+          {(tool.health_warnings ?? []).find((w) => w.severity === "critical")?.title}
         </div>
       )}
 

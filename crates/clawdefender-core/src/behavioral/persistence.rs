@@ -1,9 +1,13 @@
 //! SQLite persistence for behavioral profiles.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use tracing::warn;
 
 use super::profile::ServerProfile;
 
@@ -66,6 +70,28 @@ impl ProfileStore {
         Ok(())
     }
 
+    /// Load a single profile by server name (for on-demand reload after eviction).
+    ///
+    /// Returns `None` if the server has no persisted profile.
+    pub fn load_profile(&self, server_name: &str) -> Result<Option<ServerProfile>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT profile_json FROM profiles WHERE server_name = ?1")?;
+        let result = stmt
+            .query_row(rusqlite::params![server_name], |row| {
+                let json: String = row.get(0)?;
+                Ok(json)
+            })
+            .ok();
+        match result {
+            Some(json) => {
+                let profile: ServerProfile = serde_json::from_str(&json)?;
+                Ok(Some(profile))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Load all profiles from the database.
     pub fn load_all_profiles(&self) -> Result<Vec<ServerProfile>> {
         let mut stmt = self.conn.prepare("SELECT profile_json FROM profiles")?;
@@ -122,6 +148,121 @@ impl ProfileStore {
             rusqlite::params![server_name],
         )?;
         Ok(())
+    }
+
+    /// Save multiple profiles in a single SQLite transaction.
+    ///
+    /// This is significantly more efficient than calling `save_profile` in a loop,
+    /// as it amortizes the transaction overhead and performs a single fsync.
+    pub fn save_profiles_batch(&self, profiles: &[ServerProfile]) -> Result<()> {
+        if profiles.is_empty() {
+            return Ok(());
+        }
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        for profile in profiles {
+            let json = serde_json::to_string(profile)?;
+            let updated_at = profile.last_updated.to_rfc3339();
+            if let Err(e) = self.conn.execute(
+                "INSERT INTO profiles (server_name, profile_json, updated_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(server_name) DO UPDATE SET
+                    profile_json = excluded.profile_json,
+                    updated_at = excluded.updated_at",
+                rusqlite::params![profile.server_name, json, updated_at],
+            ) {
+                // Rollback on error to keep the database consistent.
+                let _ = self.conn.execute_batch("ROLLBACK");
+                return Err(e.into());
+            }
+        }
+        self.conn.execute_batch("COMMIT")?;
+        Ok(())
+    }
+}
+
+/// Flush interval for the profile batcher (30 seconds).
+const PROFILE_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Batches profile updates in memory and writes them to SQLite in a single
+/// transaction every 30 seconds. This reduces disk I/O from potentially
+/// hundreds of individual writes per minute to a single batched write.
+///
+/// Thread-safe: all internal state is behind a `Mutex`.
+pub struct ProfileBatcher {
+    store: Arc<ProfileStore>,
+    /// Profiles that have been modified since the last flush.
+    pending: Mutex<HashMap<String, ServerProfile>>,
+    /// Last time profiles were flushed to disk.
+    last_flush: Mutex<Instant>,
+}
+
+impl ProfileBatcher {
+    /// Create a new batcher wrapping the given store.
+    pub fn new(store: Arc<ProfileStore>) -> Self {
+        Self {
+            store,
+            pending: Mutex::new(HashMap::new()),
+            last_flush: Mutex::new(Instant::now()),
+        }
+    }
+
+    /// Queue a profile update. The profile will be written to SQLite on the
+    /// next flush (at most 30 seconds away). If the same server is updated
+    /// multiple times between flushes, only the latest snapshot is written.
+    pub fn queue_update(&self, profile: ServerProfile) {
+        if let Ok(mut pending) = self.pending.lock() {
+            pending.insert(profile.server_name.clone(), profile);
+        }
+
+        // Check if it's time to flush.
+        if self.should_flush() {
+            self.flush();
+        }
+    }
+
+    /// Returns true if enough time has elapsed since the last flush.
+    fn should_flush(&self) -> bool {
+        match self.last_flush.lock() {
+            Ok(last) => last.elapsed() >= PROFILE_FLUSH_INTERVAL,
+            Err(_) => true,
+        }
+    }
+
+    /// Flush all pending profiles to SQLite in a single transaction.
+    /// Safe to call at any time; does nothing if there are no pending updates.
+    pub fn flush(&self) {
+        let profiles: Vec<ServerProfile> = {
+            match self.pending.lock() {
+                Ok(mut pending) => {
+                    if pending.is_empty() {
+                        return;
+                    }
+                    let drained: Vec<_> = pending.drain().map(|(_, v)| v).collect();
+                    drained
+                }
+                Err(_) => return,
+            }
+        };
+
+        if let Err(e) = self.store.save_profiles_batch(&profiles) {
+            warn!(error = %e, count = profiles.len(), "failed to batch-flush profiles to SQLite");
+        }
+
+        if let Ok(mut last) = self.last_flush.lock() {
+            *last = Instant::now();
+        }
+    }
+
+    /// Returns the number of pending (unflushed) profile updates.
+    pub fn pending_count(&self) -> usize {
+        self.pending.lock().map(|p| p.len()).unwrap_or(0)
+    }
+}
+
+impl Drop for ProfileBatcher {
+    fn drop(&mut self) {
+        // Ensure all pending profiles are written on shutdown.
+        self.flush();
     }
 }
 
@@ -238,5 +379,101 @@ mod tests {
 
         let loaded = store.load_all_profiles().unwrap();
         assert_eq!(loaded.len(), 3);
+    }
+
+    #[test]
+    fn test_save_profiles_batch() {
+        let store = ProfileStore::open_in_memory().unwrap();
+        let profiles = vec![
+            make_test_profile("server-a"),
+            make_test_profile("server-b"),
+            make_test_profile("server-c"),
+        ];
+
+        store.save_profiles_batch(&profiles).unwrap();
+
+        let loaded = store.load_all_profiles().unwrap();
+        assert_eq!(loaded.len(), 3);
+    }
+
+    #[test]
+    fn test_save_profiles_batch_empty() {
+        let store = ProfileStore::open_in_memory().unwrap();
+        store.save_profiles_batch(&[]).unwrap();
+
+        let loaded = store.load_all_profiles().unwrap();
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_save_profiles_batch_upsert() {
+        let store = ProfileStore::open_in_memory().unwrap();
+        let profiles = vec![make_test_profile("server-a")];
+        store.save_profiles_batch(&profiles).unwrap();
+
+        // Update with a batch containing the same server
+        let mut updated = make_test_profile("server-a");
+        updated.observation_count = 999;
+        store.save_profiles_batch(&[updated]).unwrap();
+
+        let loaded = store.load_all_profiles().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].observation_count, 999);
+    }
+
+    #[test]
+    fn test_profile_batcher_queues_and_flushes() {
+        let store = Arc::new(ProfileStore::open_in_memory().unwrap());
+        let batcher = ProfileBatcher::new(Arc::clone(&store));
+
+        batcher.queue_update(make_test_profile("server-a"));
+        batcher.queue_update(make_test_profile("server-b"));
+
+        // Should be pending (flush interval hasn't elapsed)
+        assert_eq!(batcher.pending_count(), 2);
+
+        // Manual flush
+        batcher.flush();
+
+        assert_eq!(batcher.pending_count(), 0);
+        let loaded = store.load_all_profiles().unwrap();
+        assert_eq!(loaded.len(), 2);
+    }
+
+    #[test]
+    fn test_profile_batcher_deduplicates_updates() {
+        let store = Arc::new(ProfileStore::open_in_memory().unwrap());
+        let batcher = ProfileBatcher::new(Arc::clone(&store));
+
+        let mut profile1 = make_test_profile("server-a");
+        profile1.observation_count = 100;
+        batcher.queue_update(profile1);
+
+        let mut profile2 = make_test_profile("server-a");
+        profile2.observation_count = 200;
+        batcher.queue_update(profile2);
+
+        // Only 1 pending because same server_name
+        assert_eq!(batcher.pending_count(), 1);
+
+        batcher.flush();
+
+        let loaded = store.load_all_profiles().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].observation_count, 200);
+    }
+
+    #[test]
+    fn test_profile_batcher_drop_flushes() {
+        let store = Arc::new(ProfileStore::open_in_memory().unwrap());
+        {
+            let batcher = ProfileBatcher::new(Arc::clone(&store));
+            batcher.queue_update(make_test_profile("server-drop"));
+            // Batcher dropped here -- should auto-flush
+        }
+
+        let loaded = store.load_all_profiles().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].server_name, "server-drop");
     }
 }

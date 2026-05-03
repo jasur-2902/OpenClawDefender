@@ -8,6 +8,7 @@
 pub mod event_router;
 pub mod ipc;
 pub mod mock_network_extension;
+pub mod scheduler;
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -22,7 +23,7 @@ use clawdefender_core::audit::logger::FileAuditLogger;
 use clawdefender_core::audit::{AuditLogger, AuditRecord};
 use clawdefender_core::behavioral::{
     AnomalyScorer, DecisionEngine, InjectionDetector, InjectionDetectorConfig, KillChainDetector,
-    LearningEngine, ProfileStore,
+    LearningEngine, ProfileBatcher, ProfileStore,
 };
 use clawdefender_core::config::settings::{ClawConfig, SensorConfig};
 use clawdefender_core::dns::cache::DnsCache;
@@ -77,6 +78,8 @@ pub struct Daemon {
     injection_detector: Option<Arc<RwLock<InjectionDetector>>>,
     /// Profile store (SQLite persistence).
     profile_store: Option<Arc<ProfileStore>>,
+    /// Profile batcher for batched SQLite writes (30s interval).
+    profile_batcher: Option<Arc<ProfileBatcher>>,
     /// Guard registry for agent guard management.
     guard_registry: Arc<GuardRegistry>,
     /// IoC database for threat intelligence matching.
@@ -137,6 +140,7 @@ impl Daemon {
             decision_engine,
             injection_detector,
             profile_store,
+            profile_batcher,
         ) = if config.behavioral.enabled {
             // Open profile store
             let store = match ProfileStore::open(&ProfileStore::default_path()) {
@@ -151,6 +155,9 @@ impl Daemon {
             };
             #[allow(clippy::arc_with_non_send_sync)]
             let store = Arc::new(store);
+
+            // Create profile batcher for batched SQLite writes (30s interval).
+            let batcher = Arc::new(ProfileBatcher::new(Arc::clone(&store)));
 
             // Load existing profiles into learning engine
             let mut learning = LearningEngine::new(config.behavioral.clone());
@@ -198,10 +205,11 @@ impl Daemon {
                 Some(Arc::new(RwLock::new(dec_engine))),
                 Some(Arc::new(RwLock::new(inj_detector))),
                 Some(store),
+                Some(batcher),
             )
         } else {
             info!("Behavioral engine: disabled in config");
-            (None, None, None, None, None, None)
+            (None, None, None, None, None, None, None)
         };
 
         // --- Threat intelligence initialization ---
@@ -401,6 +409,7 @@ impl Daemon {
             decision_engine,
             injection_detector,
             profile_store,
+            profile_batcher,
             guard_registry: Arc::new(GuardRegistry::new()),
             ioc_database,
             blocklist_matcher,
@@ -432,36 +441,19 @@ impl Daemon {
         // Take a snapshot of sensor config for startup (avoid holding lock across awaits).
         let sensor_cfg = self.sensor_config.read().await.clone();
 
-        // --- Step 1: Process tree with refresh timer ---
+        // --- Step 1: Process tree initial refresh ---
+        // The periodic refresh is handled by the unified scheduler (see run/run_proxy).
         {
-            let tree = Arc::clone(&process_tree);
-            let refresh_secs = sensor_cfg.process_tree.refresh_interval_secs;
-            let tree_for_init = Arc::clone(&tree);
-
-            // Initial refresh
-            {
-                let mut t = tree_for_init.write().await;
-                match t.refresh() {
-                    Ok(()) => info!(
-                        count = t.len(),
-                        "Process tree: monitoring {} processes",
-                        t.len()
-                    ),
-                    Err(e) => warn!(error = %e, "Process tree: initial refresh failed"),
-                }
+            let tree_for_init = Arc::clone(&process_tree);
+            let mut t = tree_for_init.write().await;
+            match t.refresh() {
+                Ok(()) => info!(
+                    count = t.len(),
+                    "Process tree: monitoring {} processes",
+                    t.len()
+                ),
+                Err(e) => warn!(error = %e, "Process tree: initial refresh failed"),
             }
-
-            let handle = tokio::spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(refresh_secs));
-                loop {
-                    interval.tick().await;
-                    let mut t = tree.write().await;
-                    if let Err(e) = t.refresh() {
-                        warn!(error = %e, "process tree refresh failed");
-                    }
-                }
-            });
-            handles.push(handle);
         }
 
         // --- Step 2: Correlation engine ---
@@ -525,6 +517,7 @@ impl Daemon {
         }
 
         // --- Step 4: eslogger (if FDA is granted) ---
+        let mut eslogger_active = false;
         if sensor_cfg.eslogger.enabled {
             let fda_granted = EsloggerManager::check_fda();
             if fda_granted {
@@ -534,14 +527,16 @@ impl Daemon {
                     .iter()
                     .map(|s| s.as_str())
                     .collect();
-                match EsloggerManager::spawn(
+                match EsloggerManager::spawn_with_budget(
                     &events,
                     Some(sensor_cfg.eslogger.channel_capacity),
                     &sensor_cfg.eslogger.ignore_processes,
                     &sensor_cfg.eslogger.ignore_paths,
+                    sensor_cfg.eslogger.max_events_per_second,
                 ) {
                     Ok((_manager, mut eslogger_rx)) => {
                         info!("eslogger: active");
+                        eslogger_active = true;
                         let corr_tx = correlation_input_tx.clone();
                         let handle = tokio::spawn(async move {
                             while let Some(os_event) = eslogger_rx.recv().await {
@@ -609,6 +604,29 @@ impl Daemon {
             }
         } else {
             info!("FSEvents: disabled in config");
+        }
+
+        // --- Write sensor status file for the GUI to read ---
+        // The Tauri app reads this to determine whether eslogger (FDA) is active
+        // without needing to independently probe TCC-protected directories.
+        {
+            let status_dir = if let Some(home) = std::env::var_os("HOME") {
+                std::path::PathBuf::from(home).join(".local/share/rookbot")
+            } else {
+                std::path::PathBuf::from("/tmp/clawdefender")
+            };
+            let status_path = status_dir.join("sensor-status.json");
+            let status = serde_json::json!({
+                "eslogger_active": eslogger_active,
+                "fsevents_active": sensor_cfg.fsevents.enabled,
+                "fda_granted": eslogger_active,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            if let Err(e) = std::fs::write(&status_path, status.to_string()) {
+                warn!(error = %e, "Failed to write sensor-status.json");
+            } else {
+                info!(path = %status_path.display(), "Wrote sensor-status.json");
+            }
         }
 
         // --- Step 6: Sensor config hot-reload ---
@@ -739,16 +757,6 @@ impl Daemon {
             None
         };
 
-        // --- Guard PID cleanup task ---
-        let guard_registry_cleanup = Arc::clone(&self.guard_registry);
-        let guard_cleanup_handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
-            loop {
-                interval.tick().await;
-                guard_registry_cleanup.cleanup_dead_pids().await;
-            }
-        });
-
         // --- Guard REST API server ---
         let guard_api_handle = if self.config.guard_api.enabled {
             let registry_for_api = (*self.guard_registry).clone();
@@ -798,6 +806,52 @@ impl Daemon {
                 Some(Arc::clone(&ai_manager)),
             )
             .await;
+
+        // --- Unified power-aware scheduler ---
+        // Replaces independent tokio::spawn intervals for process tree refresh
+        // and guard PID cleanup with a single coalesced tick loop.
+        let scheduler_tree = Arc::clone(&process_tree);
+        let scheduler_guard = Arc::clone(&self.guard_registry);
+        let process_tree_refresh_secs = {
+            let cfg = self.sensor_config.read().await;
+            cfg.process_tree.refresh_interval_secs
+        };
+        let scheduler_handle = tokio::spawn(async move {
+            use scheduler::{detect_power_state, Scheduler, TaskId};
+
+            let mut sched = Scheduler::with_daemon_tasks(process_tree_refresh_secs);
+            let mut interval = tokio::time::interval(sched.tick_interval());
+
+            info!(
+                tasks = sched.task_count(),
+                "Unified scheduler: started with {} tasks",
+                sched.task_count(),
+            );
+
+            loop {
+                interval.tick().await;
+
+                let due = sched.tick();
+                for task_idx in due {
+                    match task_idx {
+                        idx if idx == TaskId::ProcessTreeRefresh as usize => {
+                            let mut t = scheduler_tree.write().await;
+                            if let Err(e) = t.refresh() {
+                                warn!(error = %e, "process tree refresh failed");
+                            }
+                        }
+                        idx if idx == TaskId::GuardPidCleanup as usize => {
+                            scheduler_guard.cleanup_dead_pids().await;
+                        }
+                        idx if idx == TaskId::PowerStateCheck as usize => {
+                            let state = detect_power_state();
+                            sched.set_power_state(state);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
 
         // --- Policy hot-reload via notify ---
         let policy_path = self.config.policy_path.clone();
@@ -905,7 +959,7 @@ impl Daemon {
         for handle in sensor_handles {
             handle.abort();
         }
-        guard_cleanup_handle.abort();
+        scheduler_handle.abort();
         if let Some(handle) = guard_api_handle {
             handle.abort();
             info!("guard API server stopped");
@@ -920,6 +974,12 @@ impl Daemon {
         drop(audit_tx);
         drop(_prompt_tx);
         drop(_event_tx);
+
+        // Flush pending behavioral profiles to SQLite before shutdown.
+        if let Some(ref batcher) = self.profile_batcher {
+            batcher.flush();
+            info!("Behavioral profiles flushed to disk on shutdown");
+        }
 
         // Wait for audit writer to flush remaining records.
         let _ = tokio::time::timeout(Duration::from_secs(3), audit_writer_handle).await;
@@ -1147,16 +1207,6 @@ impl Daemon {
             None
         };
 
-        // --- Guard PID cleanup task ---
-        let guard_registry_cleanup = Arc::clone(&self.guard_registry);
-        let guard_cleanup_handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
-            loop {
-                interval.tick().await;
-                guard_registry_cleanup.cleanup_dead_pids().await;
-            }
-        });
-
         // --- Guard REST API server ---
         let guard_api_handle = if self.config.guard_api.enabled {
             let registry_for_api = (*self.guard_registry).clone();
@@ -1206,6 +1256,52 @@ impl Daemon {
                 Some(Arc::clone(&ai_manager)),
             )
             .await;
+
+        // --- Unified power-aware scheduler ---
+        // Replaces independent tokio::spawn intervals for process tree refresh
+        // and guard PID cleanup with a single coalesced tick loop.
+        let scheduler_tree = Arc::clone(&process_tree);
+        let scheduler_guard = Arc::clone(&self.guard_registry);
+        let process_tree_refresh_secs = {
+            let cfg = self.sensor_config.read().await;
+            cfg.process_tree.refresh_interval_secs
+        };
+        let scheduler_handle = tokio::spawn(async move {
+            use scheduler::{detect_power_state, Scheduler, TaskId};
+
+            let mut sched = Scheduler::with_daemon_tasks(process_tree_refresh_secs);
+            let mut interval = tokio::time::interval(sched.tick_interval());
+
+            info!(
+                tasks = sched.task_count(),
+                "Unified scheduler: started with {} tasks",
+                sched.task_count(),
+            );
+
+            loop {
+                interval.tick().await;
+
+                let due = sched.tick();
+                for task_idx in due {
+                    match task_idx {
+                        idx if idx == TaskId::ProcessTreeRefresh as usize => {
+                            let mut t = scheduler_tree.write().await;
+                            if let Err(e) = t.refresh() {
+                                warn!(error = %e, "process tree refresh failed");
+                            }
+                        }
+                        idx if idx == TaskId::GuardPidCleanup as usize => {
+                            scheduler_guard.cleanup_dead_pids().await;
+                        }
+                        idx if idx == TaskId::PowerStateCheck as usize => {
+                            let state = detect_power_state();
+                            sched.set_power_state(state);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
 
         // --- TUI or headless ---
         let ui_mode = if self.enable_tui && std::io::stdout().is_terminal() {
@@ -1368,7 +1464,7 @@ impl Daemon {
         for handle in sensor_handles {
             handle.abort();
         }
-        guard_cleanup_handle.abort();
+        scheduler_handle.abort();
         if let Some(handle) = guard_api_handle {
             handle.abort();
             info!("guard API server stopped");
@@ -1387,6 +1483,12 @@ impl Daemon {
         drop(audit_tx);
         drop(_prompt_tx);
         drop(_event_tx);
+
+        // Flush pending behavioral profiles to SQLite before shutdown.
+        if let Some(ref batcher) = self.profile_batcher {
+            batcher.flush();
+            info!("Behavioral profiles flushed to disk on shutdown");
+        }
 
         // Wait for audit writer to flush remaining records.
         let _ = tokio::time::timeout(Duration::from_secs(3), audit_writer_handle).await;

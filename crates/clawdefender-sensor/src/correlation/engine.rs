@@ -41,8 +41,12 @@ impl Default for CorrelationConfig {
     fn default() -> Self {
         Self {
             match_window: Duration::from_secs(5),
-            max_mcp_window: 500,
-            max_os_window: 5000,
+            // Reduced from 500: most MCP correlations resolve within a few seconds,
+            // so 200 events is sufficient for the 10s sliding window.
+            max_mcp_window: 200,
+            // Reduced from 5000: OS events older than ~2000 entries rarely participate
+            // in correlation matches, cutting peak memory by ~60%.
+            max_os_window: 2000,
             window_duration: Duration::from_secs(10),
             server_pid: 0,
             project_dir: None,
