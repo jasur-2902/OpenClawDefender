@@ -236,10 +236,11 @@ fn extract_event_payload(event_type: &str, event_val: &Value) -> Value {
             } else {
                 String::new()
             };
-            // Map create to an open-like payload so downstream treats it as a file operation
+            // Map create to an open-like payload so downstream treats it as a file operation.
+            // Use flags=1 (write) so the pre-filter doesn't drop this as a read-only open.
             serde_json::json!({
                 "path": path,
-                "flags": 0u32,
+                "flags": 1u32,
             })
         }
         "rename" => {
@@ -311,14 +312,15 @@ fn extract_event_payload(event_type: &str, event_val: &Value) -> Value {
             })
         }
         "write" => {
-            // Write events: target file path
+            // Write events: target file path.
+            // Use flags=1 (write) so the pre-filter doesn't drop this as a read-only open.
             let path = inner
                 .get("target")
                 .and_then(|t| t.get("path").and_then(|p| p.as_str()))
                 .unwrap_or("");
             serde_json::json!({
                 "path": path,
-                "flags": 0u32,
+                "flags": 1u32,
             })
         }
         "uipc_connect" => {

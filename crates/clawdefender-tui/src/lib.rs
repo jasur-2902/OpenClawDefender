@@ -293,6 +293,20 @@ impl TuiState {
 
 // ── Public entry point (async) ──────────────────────────────────
 
+/// Check if demo mode is enabled in config.toml.
+pub fn load_demo_mode() -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let path = std::path::PathBuf::from(home).join(".config/rookbot/config.toml");
+    if !path.exists() {
+        return false;
+    }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|c| c.parse::<toml::Value>().ok())
+        .and_then(|t| t.get("ui")?.get("demo_mode")?.as_bool())
+        .unwrap_or(false)
+}
+
 /// Run the interactive TUI.
 ///
 /// Receives new prompts and events through channels and renders the dashboard.
@@ -300,6 +314,8 @@ pub async fn run(
     mut prompt_rx: tokio::sync::mpsc::Receiver<PendingPrompt>,
     mut event_rx: tokio::sync::mpsc::Receiver<EventRecord>,
 ) -> Result<()> {
+    let demo_mode = load_demo_mode();
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     stdout.execute(EnterAlternateScreen)?;
@@ -307,7 +323,96 @@ pub async fn run(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run_loop(&mut terminal, &mut prompt_rx, &mut event_rx).await;
+    // In demo mode, spawn background tasks that inject mock events and prompts
+    if demo_mode {
+        let event_tx = {
+            let (tx, rx) = tokio::sync::mpsc::channel(64);
+            event_rx = rx;
+            tx
+        };
+        let prompt_tx = {
+            let (tx, rx) = tokio::sync::mpsc::channel(16);
+            prompt_rx = rx;
+            tx
+        };
+
+        // Spawn demo event generator
+        tokio::spawn(async move {
+            let mut idx: usize = 0;
+            let servers = ["filesystem_server", "brave-search", "github-mcp", "memory-server", "sequential-thinking"];
+            let methods = ["tools/call", "resources/read", "tools/list", "tools/call", "tools/call"];
+            let actions = ["readFile", "search", "createPR", "writeFile", "think"];
+            let delays_ms: &[u64] = &[3000, 2500, 4000, 2000, 3500, 5000, 2800, 4500, 3200, 2200];
+
+            // Send initial mock prompts after a short delay
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let _ = prompt_tx.send(PendingPrompt {
+                id: "demo-prompt-1".to_string(),
+                server_name: "filesystem_server".to_string(),
+                method: "tools/call".to_string(),
+                tool_name: Some("readFile".to_string()),
+                arguments: serde_json::json!({"path": "/Users/demo/.ssh/id_rsa"}),
+                policy_rule: "sensitive_file_access".to_string(),
+                policy_message: "Access to SSH private key requires approval".to_string(),
+                received_at: std::time::Instant::now(),
+                timeout: Duration::from_secs(30),
+                response_tx: None,
+                slm_enrichment: Some(SlmEnrichment {
+                    risk_level: "HIGH".to_string(),
+                    explanation: "Accessing SSH private keys is a high-risk operation that could lead to credential theft.".to_string(),
+                    confidence: 0.92,
+                }),
+                swarm_enrichment: None,
+                noise_filtered: false,
+            }).await;
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let _ = prompt_tx.send(PendingPrompt {
+                id: "demo-prompt-2".to_string(),
+                server_name: "brave-search".to_string(),
+                method: "tools/call".to_string(),
+                tool_name: Some("search".to_string()),
+                arguments: serde_json::json!({"query": "company internal API keys"}),
+                policy_rule: "sensitive_search".to_string(),
+                policy_message: "Search query may reveal sensitive information".to_string(),
+                received_at: std::time::Instant::now(),
+                timeout: Duration::from_secs(30),
+                response_tx: None,
+                slm_enrichment: Some(SlmEnrichment {
+                    risk_level: "MEDIUM".to_string(),
+                    explanation: "Search query mentions API keys which could indicate data leakage intent.".to_string(),
+                    confidence: 0.78,
+                }),
+                swarm_enrichment: None,
+                noise_filtered: false,
+            }).await;
+
+            loop {
+                let delay = delays_ms[idx % delays_ms.len()];
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+
+                let server = servers[idx % servers.len()];
+                let method = methods[idx % methods.len()];
+                let action = actions[idx % actions.len()];
+
+                let event = EventRecord {
+                    timestamp: chrono::Utc::now(),
+                    action: if idx % 7 == 0 { "blocked" } else { "allowed" }.to_string(),
+                    server_name: server.to_string(),
+                    method: method.to_string(),
+                    summary: format!("{} called {} on demo resource", server, action),
+                    risk_level: if idx % 7 == 0 { Some("high".to_string()) } else { None },
+                };
+
+                if event_tx.send(event).await.is_err() {
+                    break;
+                }
+                idx += 1;
+            }
+        });
+    }
+
+    let result = run_loop(&mut terminal, &mut prompt_rx, &mut event_rx, demo_mode).await;
 
     // Always restore terminal.
     disable_raw_mode()?;
@@ -321,9 +426,33 @@ async fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     prompt_rx: &mut tokio::sync::mpsc::Receiver<PendingPrompt>,
     event_rx: &mut tokio::sync::mpsc::Receiver<EventRecord>,
+    demo_mode: bool,
 ) -> Result<()> {
     let mut state = TuiState::default();
     let mut tick_interval = tokio::time::interval(RENDER_INTERVAL);
+
+    // Pre-populate stats in demo mode
+    if demo_mode {
+        state.stats = LiveStats {
+            uptime: Duration::from_secs(86400),
+            messages_total: 12_847,
+            messages_blocked: 23,
+            messages_prompted: 156,
+            active_servers: vec![
+                "filesystem_server".to_string(),
+                "brave-search".to_string(),
+                "github-mcp".to_string(),
+                "memory-server".to_string(),
+                "sequential-thinking".to_string(),
+            ],
+            slm_status: Some(SlmStatus {
+                enabled: true,
+                model_name: "Heuristic Analyzer".to_string(),
+                avg_latency_ms: 8.3,
+            }),
+            swarm_status: Some(SwarmStatus { enabled: true }),
+        };
+    }
 
     loop {
         if !state.running {
@@ -348,7 +477,7 @@ async fn run_loop(
                 }
 
                 // Render.
-                terminal.draw(|frame| draw_ui(frame, &state))?;
+                terminal.draw(|frame| draw_ui(frame, &state, demo_mode))?;
             }
             Some(prompt) = prompt_rx.recv() => {
                 state.add_prompt(prompt);
@@ -387,7 +516,7 @@ pub async fn run_headless(mut prompt_rx: tokio::sync::mpsc::Receiver<PendingProm
 
 // ── Drawing ─────────────────────────────────────────────────────
 
-fn draw_ui(frame: &mut ratatui::Frame, state: &TuiState) {
+fn draw_ui(frame: &mut ratatui::Frame, state: &TuiState, demo_mode: bool) {
     let area = frame.area();
 
     // Layout: header (1 line) + prompt panel + event log + footer (1 line).
@@ -409,7 +538,7 @@ fn draw_ui(frame: &mut ratatui::Frame, state: &TuiState) {
         ])
         .split(area);
 
-    draw_status_bar(frame, state, chunks[0]);
+    draw_status_bar(frame, state, chunks[0], demo_mode);
     if prompt_height > 0 {
         draw_prompts(frame, state, chunks[1]);
     }
@@ -417,7 +546,7 @@ fn draw_ui(frame: &mut ratatui::Frame, state: &TuiState) {
     draw_footer(frame, state, chunks[3]);
 }
 
-fn draw_status_bar(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
+fn draw_status_bar(frame: &mut ratatui::Frame, state: &TuiState, area: Rect, demo_mode: bool) {
     let uptime = format_uptime(state.stats.uptime.as_secs());
     let blocked = state.stats.messages_blocked;
     let total = state.stats.messages_total;
@@ -445,7 +574,20 @@ fn draw_status_bar(frame: &mut ratatui::Frame, state: &TuiState, area: Rect) {
         ),
     };
 
+    let demo_span = if demo_mode {
+        Span::styled(
+            " [DEMO] ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        Span::raw("")
+    };
+
     let text = Line::from(vec![
+        demo_span,
         Span::styled(
             " RookBot ",
             Style::default()

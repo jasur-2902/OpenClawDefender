@@ -141,6 +141,7 @@ export interface AppSettings {
   behavioral_threshold: number;
   analysis_frequency: string;
   security_level: string;
+  demo_mode: boolean;
 }
 
 // --- Threat Intelligence types ---

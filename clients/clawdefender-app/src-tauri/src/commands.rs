@@ -160,6 +160,10 @@ pub fn count_wrapped_servers() -> u32 {
 pub async fn get_daemon_status(
     state: tauri::State<'_, AppState>,
 ) -> Result<DaemonStatus, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_daemon_status());
+    }
+
     let sock = daemon::socket_path().to_string_lossy().to_string();
     let wrapped = count_wrapped_servers();
 
@@ -269,6 +273,10 @@ pub async fn stop_daemon(
 
 #[tauri::command]
 pub async fn detect_mcp_clients() -> Result<Vec<McpClient>, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_mcp_clients());
+    }
+
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
 
     let mut results = Vec::new();
@@ -883,6 +891,10 @@ pub async fn get_tool_process_info(tool_name: String) -> Result<ToolProcessInfo,
 
 #[tauri::command]
 pub async fn list_mcp_servers(client: String) -> Result<Vec<McpServer>, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_mcp_servers());
+    }
+
     let candidates = mcp_config_candidates_for(&client);
     if candidates.is_empty() {
         return Err(format!("Unknown client: {}", client));
@@ -1811,6 +1823,10 @@ pub async fn get_recent_events(
     state: tauri::State<'_, AppState>,
     count: u32,
 ) -> Result<Vec<AuditEvent>, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_recent_events());
+    }
+
     let count = count.min(10_000) as usize;
 
     // 1. Read events from the in-memory buffer (populated by the event stream watcher)
@@ -2041,6 +2057,10 @@ pub async fn get_profiles() -> Result<Vec<ServerProfileSummary>, String> {
 pub async fn get_behavioral_status(
     state: tauri::State<'_, AppState>,
 ) -> Result<BehavioralStatus, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_behavioral_status());
+    }
+
     // Try live IPC query to the daemon for real-time stats.
     if let Ok(metrics) = state.ipc_client.query_status() {
         if let Some(bs) = metrics.behavioral_status {
@@ -3143,6 +3163,7 @@ fn default_settings() -> AppSettings {
         analysis_frequency: "all".to_string(),
         security_level: "balanced".to_string(),
         clipboard_monitor_enabled: false,
+        demo_mode: false,
     }
 }
 
@@ -3213,6 +3234,7 @@ pub async fn get_settings() -> Result<AppSettings, String> {
         analysis_frequency: get_str(&table, "slm", "analysis_frequency", &defaults.analysis_frequency),
         security_level,
         clipboard_monitor_enabled: get_bool(&table, "monitoring", "clipboard_monitor_enabled", defaults.clipboard_monitor_enabled),
+        demo_mode: get_bool(&table, "ui", "demo_mode", defaults.demo_mode),
     })
 }
 
@@ -3259,6 +3281,7 @@ pub async fn update_settings(
     ui.insert("minimize_to_tray".to_string(), toml::Value::Boolean(settings.minimize_to_tray));
     ui.insert("log_level".to_string(), toml::Value::String(settings.log_level.clone()));
     ui.insert("event_retention_days".to_string(), toml::Value::Integer(settings.event_retention_days as i64));
+    ui.insert("demo_mode".to_string(), toml::Value::Boolean(settings.demo_mode));
 
     // Ensure [network_policy] section exists
     if table.get("network_policy").is_none() {
@@ -3332,6 +3355,9 @@ pub async fn update_settings(
     })?;
 
     tracing::info!("Settings saved to {}", path.display());
+
+    // Refresh demo mode cache
+    crate::demo_data::refresh_demo_mode();
 
     // If daemon is connected, trigger a config/policy reload
     try_reload_daemon(&state);
@@ -5708,6 +5734,10 @@ pub async fn get_slm_status(
 pub async fn get_active_alerts_cmd(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<crate::alerts::engine::IntelligentAlert>, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_alerts());
+    }
+
     let store = state
         .alert_store
         .lock()
@@ -5719,6 +5749,10 @@ pub async fn get_active_alerts_cmd(
 pub async fn get_alert_stats_cmd(
     state: tauri::State<'_, AppState>,
 ) -> Result<crate::alerts::lifecycle::AlertStats, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_alert_stats());
+    }
+
     let store = state
         .alert_store
         .lock()
@@ -5805,6 +5839,11 @@ pub async fn get_humanized_events(
     count: usize,
     offset: usize,
 ) -> Result<Vec<serde_json::Value>, String> {
+    if crate::demo_data::is_demo_mode() {
+        let all = crate::demo_data::mock_humanized_events();
+        return Ok(all.into_iter().skip(offset).take(count).collect());
+    }
+
     let buf = state.event_buffer.lock().map_err(|e| e.to_string())?;
     let events: Vec<serde_json::Value> = buf
         .iter()
@@ -5861,6 +5900,10 @@ pub async fn get_humanized_events(
 pub async fn get_protection_score(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_protection_score());
+    }
+
     let local_active = state.ai_backends.local_available();
     let cloud_active = state.ai_backends.cloud_available();
     let ai_points: u32 = if local_active {
@@ -6386,6 +6429,10 @@ pub async fn load_conversation(
 pub async fn list_conversations(
     limit: Option<u32>,
 ) -> Result<String, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_conversations());
+    }
+
     let dir = conversations_dir()?;
     let entries = match std::fs::read_dir(&dir) {
         Ok(e) => e,
@@ -6824,6 +6871,10 @@ pub async fn analyze_file(
 
 #[tauri::command]
 pub async fn get_tool_cards() -> Result<Vec<serde_json::Value>, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_tool_cards());
+    }
+
     let known = load_known_servers();
     let audit_counts = load_audit_event_counts();
 
@@ -8978,6 +9029,9 @@ pub async fn export_knowledge_base(
 pub async fn get_autonomy_level(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_autonomy_level());
+    }
     let guard = state.autonomy_framework.lock().map_err(|e| e.to_string())?;
     let framework = guard.as_ref().ok_or("Autonomy framework not initialized")?;
     serde_json::to_value(&serde_json::json!({
@@ -9086,6 +9140,9 @@ pub async fn get_autonomy_stats(
 pub async fn list_response_playbooks(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_response_playbooks());
+    }
     let guard = state.playbook_manager.lock().map_err(|e| e.to_string())?;
     let mgr = guard.as_ref().ok_or("Playbook manager not initialized")?;
     serde_json::to_value(mgr.list_playbooks()).map_err(|e| e.to_string())
@@ -9142,6 +9199,9 @@ pub async fn list_reports(
     state: tauri::State<'_, AppState>,
     report_type: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_reports());
+    }
     let guard = state.report_generator.lock().map_err(|e| e.to_string())?;
     let gen = guard.as_ref().ok_or("Report generator not initialized")?;
     let rtype = report_type.as_deref().and_then(|t| match t {
@@ -9195,6 +9255,9 @@ pub async fn delete_report(
 pub async fn get_feedback_stats(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_feedback_stats());
+    }
     let fc_guard = state.feedback_collector.lock().map_err(|e| e.to_string())?;
     let fc = fc_guard.as_ref().ok_or("Feedback collector not initialized")?;
     let tc_guard = state.threshold_calibrator.lock().map_err(|e| e.to_string())?;
@@ -9207,6 +9270,9 @@ pub async fn get_feedback_stats(
 pub async fn get_self_assessment(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_self_assessment());
+    }
     let fc_guard = state.feedback_collector.lock().map_err(|e| e.to_string())?;
     let fc = fc_guard.as_ref().ok_or("Feedback collector not initialized")?;
     let tc_guard = state.threshold_calibrator.lock().map_err(|e| e.to_string())?;
@@ -9295,6 +9361,9 @@ pub async fn get_export_history(
 pub async fn get_dashboard_summary(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_dashboard_summary());
+    }
     let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
     let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
     let summary = dashboard.get_dashboard_summary();
@@ -9348,6 +9417,9 @@ pub async fn get_decision_explanations(
     state: tauri::State<'_, AppState>,
     count: Option<usize>,
 ) -> Result<serde_json::Value, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_decision_explanations());
+    }
     let guard = state.transparency_dashboard.lock().map_err(|e| e.to_string())?;
     let dashboard = guard.as_ref().ok_or("Transparency dashboard not initialized")?;
     let explanations = dashboard.decision_explainer.get_recent(count.unwrap_or(20));
@@ -9470,6 +9542,10 @@ fn is_macos_13_or_later() -> bool {
 /// Get sensor health status (FDA, eslogger, daemon, event flow).
 #[tauri::command]
 pub async fn get_sensor_health() -> Result<SensorHealth, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_sensor_health());
+    }
+
     let home = std::env::var("HOME").unwrap_or_default();
 
     // Daemon running: check IPC socket or pid file
@@ -9990,6 +10066,10 @@ pub async fn get_login_anomalies() -> Result<serde_json::Value, String> {
 pub async fn get_performance_stats(
     state: tauri::State<'_, AppState>,
 ) -> Result<PerformanceStats, String> {
+    if crate::demo_data::is_demo_mode() {
+        return Ok(crate::demo_data::mock_performance_stats());
+    }
+
     // Gather approximate stats from available state
     let events_processed = state
         .cached_status

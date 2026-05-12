@@ -230,6 +230,7 @@ export function AdvancedSettings({ settings, onUpdateField }: AdvancedSettingsPr
                   behavioral_threshold: 75,
                   analysis_frequency: "all",
                   security_level: "balanced",
+                  demo_mode: false,
                 };
                 for (const [key, value] of Object.entries(defaults)) {
                   onUpdateField(key as keyof AppSettings, value as AppSettings[keyof AppSettings]);

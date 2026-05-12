@@ -210,6 +210,64 @@ fn extract_correlation_os_event(record: &DaemonAuditRecord) -> Option<(&'static 
             dest
         };
         Some(("rename", path.to_string()))
+    } else if let Some(close) = kind.get("Close") {
+        let path = close.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("close", path.to_string()))
+    } else if let Some(fork) = kind.get("Fork") {
+        let child_pid = fork.get("child_pid").and_then(|v| v.as_u64()).unwrap_or(0);
+        Some(("fork", format!("child pid {child_pid}")))
+    } else if let Some(exit) = kind.get("Exit") {
+        let status = exit.get("status").and_then(|v| v.as_i64()).unwrap_or(-1);
+        Some(("exit", format!("status {status}")))
+    } else if let Some(kextload) = kind.get("Kextload") {
+        let id = kextload.get("identifier").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("kextload", id.to_string()))
+    } else if let Some(setuid) = kind.get("Setuid") {
+        let path = setuid.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("setuid", path.to_string()))
+    } else if let Some(setgid) = kind.get("Setgid") {
+        let path = setgid.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("setgid", path.to_string()))
+    } else if let Some(link) = kind.get("Link") {
+        let path = link.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("link", path.to_string()))
+    } else if let Some(symlink) = kind.get("Symlink") {
+        let path = symlink.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("symlink", path.to_string()))
+    } else if let Some(btm) = kind.get("BtmLaunchItemAdd") {
+        let url = btm.get("item_url").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("btm_launch_item_add", url.to_string()))
+    } else if let Some(auth) = kind.get("Authentication") {
+        let success = auth.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+        Some(("authentication", if success { "success" } else { "failed" }.to_string()))
+    } else if let Some(xp) = kind.get("XpMalwareDetected") {
+        let name = xp.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("xp_malware_detected", name.to_string()))
+    } else if let Some(gk) = kind.get("GatekeeperUserOverride") {
+        let path = gk.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("gatekeeper_user_override", path.to_string()))
+    } else if let Some(gt) = kind.get("GetTask") {
+        let target_pid = gt.get("target_pid").and_then(|v| v.as_u64()).unwrap_or(0);
+        Some(("get_task", format!("target pid {target_pid}")))
+    } else if let Some(trace) = kind.get("Trace") {
+        let target_pid = trace.get("target_pid").and_then(|v| v.as_u64()).unwrap_or(0);
+        Some(("trace", format!("target pid {target_pid}")))
+    } else if let Some(pc) = kind.get("ProcCheck") {
+        let target_pid = pc.get("target_pid").and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| pc.get("target_pid").and_then(|v| v.as_u64()).map(|n| n.to_string()))
+            .unwrap_or_default();
+        Some(("proc_check", format!("target pid {target_pid}")))
+    } else if kind.get("LoginLogin").is_some() {
+        Some(("login_login", String::new()))
+    } else if kind.get("LoginLogout").is_some() {
+        Some(("login_logout", String::new()))
+    } else if let Some(pty) = kind.get("PtyGrant") {
+        let path = pty.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("pty_grant", path.to_string()))
+    } else if let Some(sm) = kind.get("SetMode") {
+        let path = sm.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        Some(("setmode", path.to_string()))
     } else {
         None
     }
@@ -361,12 +419,17 @@ fn format_os_action(kind: &str, target: &str) -> String {
         "btm_launch_item_add" => format!("Login item added: {sanitized}"),
         "login_login" => "User login".to_string(),
         "login_logout" => "User logout".to_string(),
-        "authentication" => "Authentication event".to_string(),
+        "authentication" => format!("Authentication {sanitized}"),
         "xp_malware_detected" => format!("XProtect detected malware: {sanitized}"),
         "gatekeeper_user_override" => format!("Gatekeeper warning bypassed for {sanitized}"),
         "get_task" => format!("Process inspection: {sanitized}"),
         "trace" => format!("Process tracing: {sanitized}"),
         "proc_check" => format!("Process check: {sanitized}"),
+        "fork" => format!("Forked process ({sanitized})"),
+        "exit" => format!("Process exited ({sanitized})"),
+        "close" => format!("Closed {sanitized}"),
+        "pty_grant" => format!("PTY granted: {sanitized}"),
+        "setmode" => format!("Changed permissions on {sanitized}"),
         _ => {
             if kind.is_empty() {
                 return sanitized;
@@ -876,6 +939,12 @@ pub(crate) fn read_last_n_lines(path: &PathBuf, n: usize) -> (Vec<String>, u64) 
 /// and feeds them into the GUI as real-time events.
 pub fn start_event_stream(app: AppHandle) {
     thread::spawn(move || {
+        // If demo mode is active, run the synthetic event emitter instead
+        if crate::demo_data::is_demo_mode() {
+            run_demo_event_stream(&app);
+            return;
+        }
+
         let path = audit_log_path();
         let mut seq: u64 = 0;
         let mut last_size: u64 = 0;
@@ -989,6 +1058,51 @@ pub fn start_event_stream(app: AppHandle) {
             last_size = current_size;
         }
     });
+}
+
+/// Demo mode event stream: emits synthetic events on a timer.
+fn run_demo_event_stream(app: &AppHandle) {
+    info!("Event stream: running in DEMO MODE — emitting synthetic events");
+
+    let mut index: usize = 0;
+
+    // Emit initial status-change so the dashboard shows connected
+    let _ = app.emit("rookbot://status-change", serde_json::json!({ "daemon_running": true }));
+
+    // Varying delays to simulate realistic event flow (2-5s cycle)
+    let delays_ms: &[u64] = &[3000, 2500, 4000, 2000, 3500, 5000, 2800, 4500, 3200, 2200];
+
+    loop {
+        let delay = delays_ms[index % delays_ms.len()];
+        thread::sleep(Duration::from_millis(delay));
+
+        // Check if demo mode was disabled while running
+        if !crate::demo_data::is_demo_mode() {
+            info!("Demo mode disabled, stopping synthetic event stream");
+            break;
+        }
+
+        // Emit a humanized event
+        let event = crate::demo_data::mock_stream_event(index);
+        if let Err(e) = app.emit("rookbot://event", &event) {
+            debug!(error = %e, "Failed to emit demo event");
+        }
+
+        // Every ~30 seconds (10 events), emit a mock intelligent alert
+        if index % 10 == 9 {
+            let alerts = crate::demo_data::mock_alerts();
+            if let Some(alert) = alerts.get(index % alerts.len()) {
+                let _ = app.emit("rookbot://intelligent-alert", alert);
+            }
+        }
+
+        // Periodically re-emit status to keep dashboard alive
+        if index % 15 == 0 {
+            let _ = app.emit("rookbot://status-change", serde_json::json!({ "daemon_running": true }));
+        }
+
+        index += 1;
+    }
 }
 
 #[cfg(test)]

@@ -12,3 +12,8 @@ node_modules/
 dist/
 __pycache__/
 *.pyc
+
+# Secrets
+.env*
+credentials
+*.pem

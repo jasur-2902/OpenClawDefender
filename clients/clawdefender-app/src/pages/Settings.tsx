@@ -146,6 +146,7 @@ const defaultSettings: AppSettings = {
   behavioral_threshold: 75,
   analysis_frequency: "all",
   security_level: "balanced",
+  demo_mode: false,
 };
 
 const defaultNetworkSettings: NetworkSettings = {
@@ -1061,6 +1062,10 @@ export function Settings() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div><div style={{ fontSize: 13, fontWeight: 500 }}>Notifications</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Show alerts for blocked actions</div></div>
             <ToggleSwitch checked={settings.notifications_enabled} onChange={(v) => updateField("notifications_enabled", v)} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div><div style={{ fontSize: 13, fontWeight: 500 }}>Demo Mode</div><div style={{ fontSize: 11, color: "var(--ink-3)" }}>Show simulated data for demos and screenshots</div></div>
+            <ToggleSwitch checked={settings.demo_mode} onChange={(v) => { updateField("demo_mode", v); setTimeout(() => window.location.reload(), 300); }} />
           </div>
         </div>
       </Card>

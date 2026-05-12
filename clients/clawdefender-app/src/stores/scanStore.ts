@@ -13,6 +13,8 @@ export interface ScanHistoryEntry {
   status: string;
   findings_count: number;
   started_at: string;
+  playbook_id?: string;
+  playbook_name?: string;
 }
 
 export interface ActivityItem {
@@ -72,12 +74,17 @@ interface ScanFinding {
 
 type AiScanPhase = "select" | "scanning" | "results";
 export type ScanTabType = "quick" | "ai" | "history";
+export type ActiveScanType = "ai" | "quick" | null;
 
 interface ScanStore {
   // AI Scan state
   aiScanPhase: AiScanPhase;
   aiScanId: string | null;
   aiScanError: string | null;
+
+  // Active scan tracking
+  activeScanType: ActiveScanType;
+  lastPlaybookId: string | null;
 
   // Quick Scan state
   quickScanActiveScan: ScanProgress | null;
@@ -96,6 +103,10 @@ interface ScanStore {
 
   // Actions — tabs
   setActiveTab: (tab: ScanTabType) => void;
+
+  // Actions — active scan type
+  setActiveScanType: (type: ActiveScanType) => void;
+  setLastPlaybookId: (id: string | null) => void;
 
   // Actions — AI scan
   setAiScanPhase: (phase: AiScanPhase) => void;
@@ -130,6 +141,10 @@ export const useScanStore = create<ScanStore>()(
       aiScanId: null,
       aiScanError: null,
 
+      // Active scan tracking
+      activeScanType: null,
+      lastPlaybookId: null,
+
       // Quick scan defaults
       quickScanActiveScan: null,
       quickScanResult: null,
@@ -148,6 +163,10 @@ export const useScanStore = create<ScanStore>()(
       // --- Tab actions ---
       setActiveTab: (tab) => set({ activeTab: tab }),
 
+      // --- Active scan type actions ---
+      setActiveScanType: (type) => set({ activeScanType: type }),
+      setLastPlaybookId: (id) => set({ lastPlaybookId: id }),
+
       // --- AI scan actions ---
       setAiScanPhase: (phase) => set({ aiScanPhase: phase }),
       setAiScanId: (id) => set({ aiScanId: id }),
@@ -163,6 +182,7 @@ export const useScanStore = create<ScanStore>()(
           aiScanId: null,
           aiScanPhase: "select",
           aiScanError: null,
+          activeScanType: null,
         }),
 
       // --- Quick scan actions ---

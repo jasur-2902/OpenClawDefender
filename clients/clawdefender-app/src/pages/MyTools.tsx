@@ -8,15 +8,19 @@ import { PermissionBanner } from "../components/PermissionBanner";
 
 const POLL_INTERVAL = 10_000;
 
+// Module-level cache so data persists across page navigations
+let _cachedTools: DetectedToolStats[] | null = null;
+
 export function MyTools() {
   const navigate = useNavigate();
-  const [tools, setTools] = useState<DetectedToolStats[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tools, setTools] = useState<DetectedToolStats[]>(_cachedTools ?? []);
+  const [loading, setLoading] = useState(_cachedTools === null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchTools = useCallback(async () => {
     try {
       const result = await invoke<DetectedToolStats[]>("get_detected_tools_with_stats");
+      _cachedTools = result;
       setTools(result);
     } catch (e) {
       console.error("Failed to fetch detected tools:", e);

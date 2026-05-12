@@ -253,28 +253,21 @@ export function Activity() {
             alignItems: "center",
           }}
         >
-          <div style={{ position: "relative" }}>
-            <Icon
-              name="search"
-              size={12}
-              color="var(--ink-3)"
-            />
-            <input
-              placeholder="Search\u2026"
-              value={searchText}
-              onChange={(ev) => setSearchText(ev.target.value)}
-              style={{
-                background: "var(--bg-2)",
-                border: "none",
-                borderRadius: 6,
-                padding: "5px 10px 5px 26px",
-                fontSize: 12.5,
-                color: "var(--ink-0)",
-                width: 200,
-                outline: "none",
-              }}
-            />
-          </div>
+          <input
+            placeholder="Search…"
+            value={searchText}
+            onChange={(ev) => setSearchText(ev.target.value)}
+            style={{
+              background: "var(--bg-2)",
+              border: "none",
+              borderRadius: 6,
+              padding: "5px 10px",
+              fontSize: 12.5,
+              color: "var(--ink-0)",
+              width: 200,
+              outline: "none",
+            }}
+          />
           <Pill
             label="kind"
             value={activeKind}

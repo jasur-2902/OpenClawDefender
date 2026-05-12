@@ -12,6 +12,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
 </p>
 
+<p align="center">
+  <img src="img/dashboard.png" width="720" alt="Rookbot Dashboard — You're Protected" />
+</p>
+
 ---
 
 ## What is Rookbot?
@@ -27,6 +31,21 @@ MCP Client ──── Rookbot Proxy ──── MCP Server
 ```
 
 If a tool call violates your policy, Rookbot blocks it. If it's ambiguous, Rookbot asks you. Everything is logged.
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="img/alerts.png" width="360" alt="Alerts — threat severity breakdown" /></td>
+    <td><img src="img/ask-rook.png" width="360" alt="Ask Rook — AI chat interface" /></td>
+  </tr>
+  <tr>
+    <td><img src="img/tools.png" width="360" alt="My Tools — monitored AI applications" /></td>
+    <td><img src="img/activity.png" width="360" alt="Activity — live event feed" /></td>
+  </tr>
+</table>
 
 ---
 
@@ -110,9 +129,9 @@ On macOS, Rookbot observes actual system activity via `eslogger` — file access
 
 **Prompt Injection Hardening** — Input sanitization, nonce delimiters, output validation, canary tokens. Fail-closed: unknown output defaults to HIGH risk.
 
-**Cloud Escalation (BYOK)** — Optionally escalate ambiguous events to a multi-agent swarm (Anthropic / OpenAI). Keys stored in macOS Keychain. Daily/monthly budget caps.
+**Cloud Escalation (BYOK)** — Optionally escalate ambiguous events to a multi-agent swarm powered by Anthropic, OpenAI, or Google Gemini. API keys are stored in `~/.config/rookbot/credentials` (file-based, per-provider). You can also set keys via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). Daily and monthly budget caps enforced.
 
-**Desktop App** — Tauri GUI with real-time alerts, event timeline, AI analysis display, and interactive prompts.
+**Desktop App** — Tauri GUI with real-time alerts, event timeline, AI analysis display, interactive prompts, and tool monitoring.
 
 ---
 
@@ -198,8 +217,11 @@ rookbot policy test --policy policy.toml --fixture fixtures/read-ssh-key.json --
 |------|---------|
 | `~/.config/rookbot/config.toml` | Main configuration |
 | `~/.config/rookbot/policy.toml` | Security policy rules |
+| `~/.config/rookbot/credentials` | Cloud API keys (per-provider, file-based) |
 | `~/.local/share/rookbot/audit.jsonl` | Audit log |
 | `~/.local/share/rookbot/models/` | Downloaded AI models |
+
+API keys can also be provided via environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`.
 
 ---
 

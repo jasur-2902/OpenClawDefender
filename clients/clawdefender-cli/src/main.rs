@@ -351,6 +351,12 @@ enum Commands {
         #[command(subcommand)]
         action: commands::yara::YaraAction,
     },
+
+    /// Demo mode for presentations and video recording.
+    Demo {
+        #[command(subcommand)]
+        action: commands::demo::DemoAction,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -956,6 +962,10 @@ async fn main() -> anyhow::Result<()> {
                 commands::yara::show_rules(count, list)?;
             }
         },
+
+        Commands::Demo { action } => {
+            commands::demo::run(&action, &config)?;
+        }
 
         Commands::Config { action } => {
             let keystore = clawdefender_swarm::keychain::default_keystore();

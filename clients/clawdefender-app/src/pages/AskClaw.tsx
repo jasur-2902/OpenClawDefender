@@ -39,7 +39,7 @@ function formatRelativeTime(iso: string): string {
   try {
     const diff = Date.now() - new Date(iso).getTime();
     if (diff < 60_000) return "just now";
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
     return new Date(iso).toLocaleDateString();
   } catch {
@@ -47,10 +47,25 @@ function formatRelativeTime(iso: string): string {
   }
 }
 
+function groupByDate(iso: string): string {
+  try {
+    const date = new Date(iso);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return "Earlier this week";
+    return "Older";
+  } catch {
+    return "Older";
+  }
+}
+
 function renderMarkdown(text: string | undefined | null): React.ReactNode[] {
   if (!text) return [text ?? ""];
   const parts: React.ReactNode[] = [];
-  const regex = /(\*\*(.+?)\*\*|\[(.+?)\]\((.+?)\))/g;
+  // Handle bold, italic, inline code, and links
+  const regex = /(\*\*(.+?)\*\*|_(.+?)_|`([^`]+)`|\[(.+?)\]\((.+?)\))/g;
   let lastIndex = 0;
   let match;
   let key = 0;
@@ -60,11 +75,25 @@ function renderMarkdown(text: string | undefined | null): React.ReactNode[] {
       parts.push(text.slice(lastIndex, match.index));
     }
     if (match[2]) {
+      // Bold
       parts.push(<strong key={key++}>{match[2]}</strong>);
-    } else if (match[3] && match[4]) {
+    } else if (match[3]) {
+      // Italic
+      parts.push(<em key={key++}>{match[3]}</em>);
+    } else if (match[4]) {
+      // Inline code
       parts.push(
-        <a key={key++} href={match[4]} style={{ color: "var(--accent)" }} target="_blank" rel="noopener noreferrer">
-          {match[3]}
+        <code key={key++} style={{
+          fontFamily: "var(--font-mono)", fontSize: "0.9em",
+          padding: "1px 5px", borderRadius: 3,
+          background: "var(--bg-1)", color: "var(--ink-0)",
+        }}>{match[4]}</code>
+      );
+    } else if (match[5] && match[6]) {
+      // Link
+      parts.push(
+        <a key={key++} href={match[6]} style={{ color: "var(--accent)" }} target="_blank" rel="noopener noreferrer">
+          {match[5]}
         </a>,
       );
     }
@@ -83,6 +112,12 @@ function getSuggestions(lastIntentId?: string): readonly string[] {
   if (lastIntentId.startsWith("explain.")) return ASK_CLAW.suggestions.afterExplain;
   return ASK_CLAW.suggestions.default;
 }
+
+const EMPTY_SUGGESTIONS = [
+  "What happened today?",
+  "Should I worry about shell-runner?",
+  "Run a quick checkup",
+];
 
 // ---------------------------------------------------------------------------
 // Rich Data Renderers
@@ -122,7 +157,7 @@ function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
           <div key={evt.id} style={{
             display: "flex", alignItems: "center", gap: 8, fontSize: 11,
             fontFamily: "var(--font-mono)", padding: "6px 10px",
-            background: "var(--bg-2)", borderRadius: 6,
+            background: "var(--bg-1)", borderRadius: 6,
           }}>
             <span style={{ color: "var(--ink-3)", width: 60, flexShrink: 0 }}>{formatRelativeTime(evt.timestamp)}</span>
             <span style={{ color: "var(--accent)", width: 90, flexShrink: 0 }}>{evt.server_name}</span>
@@ -142,7 +177,7 @@ function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
     return (
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
         {servers.map((srv) => (
-          <div key={srv.name} style={{ padding: 12, background: "var(--bg-2)", borderRadius: 8, border: "1px solid var(--line)" }}>
+          <div key={srv.name} style={{ padding: 12, background: "var(--bg-1)", borderRadius: 8, border: "1px solid var(--line)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink-0)" }}>{srv.name}</span>
               <span style={{ width: 7, height: 7, borderRadius: 999, background: srv.status === "running" ? "var(--green)" : "var(--ink-3)" }} />
@@ -205,7 +240,7 @@ function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
         {contextRefs.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {contextRefs.map((ref, i) => (
-              <span key={i} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: "var(--bg-2)", color: "var(--accent)" }} title={`${ref.ref_type}: ${ref.id}`}>
+              <span key={i} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: "var(--bg-1)", color: "var(--accent)" }} title={`${ref.ref_type}: ${ref.id}`}>
                 {ref.label}
               </span>
             ))}
@@ -229,6 +264,60 @@ function StructuredDataCard({ data }: { data: Record<string, unknown> }) {
 }
 
 // ---------------------------------------------------------------------------
+// ToolChip — inline tool-use display inside Rook bubbles
+// ---------------------------------------------------------------------------
+
+function ToolChip({ tool }: { tool: { tool_name: string; summary: string; args?: string; result?: string } }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-2)",
+          background: "none", border: "none", cursor: "pointer", padding: "2px 0",
+        }}
+      >
+        <Icon name="wrench" size={11} color="var(--accent)" />
+        <span style={{ color: "var(--accent)" }}>{tool.tool_name}</span>
+        {tool.args && <span style={{ color: "var(--ink-3)" }}>({tool.args})</span>}
+        <span style={{ color: "var(--green)" }}>&#10003;</span>
+        {tool.summary && <span>{tool.summary}</span>}
+      </button>
+      {expanded && (tool.result || tool.args) && (
+        <div style={{
+          marginTop: 4, marginLeft: 17, padding: "8px 10px",
+          fontFamily: "var(--font-mono)", fontSize: 10.5,
+          background: "var(--bg-0)", border: "1px solid var(--line)",
+          borderRadius: 8, color: "var(--ink-1)", whiteSpace: "pre-wrap",
+          maxHeight: 200, overflowY: "auto",
+        }} className="cd-scroll">
+          {tool.result ?? tool.args ?? ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SystemRow — centered status line with hairlines
+// ---------------------------------------------------------------------------
+
+function SystemRow({ text }: { text: string }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      maxWidth: 360, margin: "0 auto", padding: "4px 0",
+    }}>
+      <div style={{ flex: 1, height: 1, background: "var(--line-soft)" }} />
+      <span style={{ fontSize: 11.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{text}</span>
+      <div style={{ flex: 1, height: 1, background: "var(--line-soft)" }} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -244,18 +333,19 @@ export function AskClaw() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingConfirmations, setPendingConfirmations] = useState<Map<string, string>>(new Map());
   const [aiMode, setAiMode] = useState<string | null>(null);
-  const [backendPref, setBackendPref] = useState<"cloud" | "local" | "auto">("auto");
-  const [switchingBackend, setSwitchingBackend] = useState(false);
+  const [, setBackendPref] = useState<"cloud" | "local" | "auto">("auto");
   const [, setLastToolCalls] = useState<ToolCallInfo[]>([]);
   const [, setLastSuggestedActions] = useState<SuggestedAction[]>([]);
   const [, setLastContextRefs] = useState<ContextReference[]>([]);
+  const [composerFocused, setComposerFocused] = useState(false);
+  const userScrolledRef = useRef(false);
 
   const daemonRunning = useEventStore((s) => s.daemonRunning);
-  const { status: aiStatus, cloudActive, localActive } = useAiStatus();
+  const { status: aiStatus } = useAiStatus();
   const {
     messages, isLoading, conversationId, conversations,
     loadLatestConversation, startNewConversation, addUserMessage, addClawResponse,
-    setCurrentPage, loadConversation, listConversations,
+    setCurrentPage, loadConversation, listConversations, deleteConversation,
   } = useConversationStore();
 
   useEffect(() => { setCurrentPage("/ask"); }, [setCurrentPage]);
@@ -281,33 +371,59 @@ export function AskClaw() {
     }
   }, [location.state]);
 
+  // Auto-scroll: scroll to bottom on new messages unless user scrolled up
   useEffect(() => {
-    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    if (feedRef.current && !userScrolledRef.current) {
+      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    }
   }, [messages, isThinking]);
+
+  // Detect user scroll to freeze auto-scroll
+  useEffect(() => {
+    const el = feedRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+      userScrolledRef.current = !atBottom;
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     if (!isThinking && messages.length > 0) inputRef.current?.focus();
   }, [isThinking, messages.length]);
 
+  // Auto-grow textarea
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`; // max ~5 lines
   }, [inputValue]);
+
+  // ⌘N for new chat
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault();
+        startNewConversation();
+        setPendingConfirmations(new Map());
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [startNewConversation]);
 
   const lastIntentId = [...messages].reverse().find((m) => m.role === "claw")?.intentId;
 
-  const switchBackend = useCallback(async (target: "cloud" | "local") => {
-    if (target === backendPref || switchingBackend) return;
-    setSwitchingBackend(true);
-    try {
-      const modeStr = await invoke<string>("set_ask_claw_backend", { backend: target });
-      setBackendPref(target);
-      try { setAiMode(JSON.parse(modeStr)); } catch { setAiMode(modeStr); }
-    } catch (err) { console.error("Failed to switch backend:", err); }
-    finally { setSwitchingBackend(false); }
-  }, [backendPref, switchingBackend]);
+  // Derive the "Powered by" pill from the latest Rook message
+  const latestClawMsg = [...messages].reverse().find((m) => m.role === "claw");
+  const poweredByCloud = aiMode === "Cloud" || (latestClawMsg?.contentRichJson?.includes("ai_tool_calls"));
+  const poweredByLabel = poweredByCloud
+    ? (aiStatus?.cloud.provider ? `claude-haiku-4-5` : "Claude")
+    : (aiStatus?.local.model_name ?? "local-llama-7b");
 
   const submitMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -317,6 +433,7 @@ export function AskClaw() {
     setMessageHistory((prev) => [...prev, trimmed]);
     setHistoryIndex(-1);
     setIsThinking(true);
+    userScrolledRef.current = false; // re-enable auto-scroll on send
     await addUserMessage(trimmed);
 
     try {
@@ -454,9 +571,12 @@ export function AskClaw() {
   }, [addUserMessage, addClawResponse]);
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitMessage(inputValue); }
-    else if (e.key === "Escape") { setInputValue(""); }
-    else if (e.key === "ArrowUp" && inputValue === "") {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      submitMessage(inputValue);
+    } else if (e.key === "Escape") {
+      inputRef.current?.blur();
+    } else if (e.key === "ArrowUp" && inputValue === "") {
       e.preventDefault();
       if (messageHistory.length > 0) {
         const newIndex = historyIndex === -1 ? messageHistory.length - 1 : Math.max(0, historyIndex - 1);
@@ -480,135 +600,270 @@ export function AskClaw() {
   const showDaemonWarning = !daemonRunning;
   const suggestions = getSuggestions(lastIntentId);
 
+  // Group conversations by date
+  const grouped = conversations.reduce<Record<string, typeof conversations>>((acc, conv) => {
+    const group = groupByDate(conv.updatedAt);
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(conv);
+    return acc;
+  }, {});
+  const groupOrder = ["Today", "Yesterday", "Earlier this week", "Older"];
+
   return (
     <DragDropZone onFileDrop={handleFileDrop} onUrlDrop={handleUrlDrop}>
-      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", height: "100%" }}>
-        {/* Conversation sidebar */}
-        <aside style={{ borderRight: "1px solid var(--line)", padding: 14, background: "var(--bg-1)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <Btn kind="accent" icon="sparkles" style={{ width: "100%", justifyContent: "center", marginBottom: 12 }}
-            onClick={() => { startNewConversation(); setPendingConfirmations(new Map()); }}>
-            New conversation
-          </Btn>
-          <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8, padding: "0 4px" }}>History</div>
-          <div style={{ flex: 1, overflowY: "auto" }} className="cd-scroll">
+      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", height: "100%" }}>
+        {/* ─── Left sidebar ─── */}
+        <aside style={{
+          borderRight: "1px solid var(--line)",
+          background: "var(--bg-1)",
+          display: "flex", flexDirection: "column",
+          overflow: "hidden",
+        }}>
+          {/* New chat button */}
+          <div style={{ padding: "14px 14px 10px" }}>
+            <button
+              onClick={() => { startNewConversation(); setPendingConfirmations(new Map()); requestAnimationFrame(() => inputRef.current?.focus()); }}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 12px", borderRadius: 8,
+                background: "transparent", border: "1px solid var(--line)",
+                cursor: "pointer", color: "var(--ink-0)",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: 6,
+                background: "var(--accent-soft)",
+                display: "grid", placeItems: "center", flexShrink: 0,
+              }}>
+                <Rook size={13} color="var(--accent)" />
+              </div>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 500, textAlign: "left" }}>New chat</span>
+              <kbd style={{
+                fontSize: 10, color: "var(--ink-3)",
+                padding: "2px 5px", borderRadius: 4,
+                background: "var(--bg-2)", border: "1px solid var(--line)",
+                fontFamily: "var(--font-ui)",
+              }}>&#8984;N</kbd>
+            </button>
+          </div>
+
+          {/* Conversation list */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "0 10px 14px" }} className="cd-scroll">
             {conversations.length === 0 && (
               <p style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "center", padding: "20px 4px" }}>No conversations yet</p>
             )}
-            {conversations.map((conv) => {
-              const isActive = conv.id === conversationId;
+            {groupOrder.map((group) => {
+              const items = grouped[group];
+              if (!items || items.length === 0) return null;
               return (
-                <button key={conv.id}
-                  onClick={() => { loadConversation(conv.id); setPendingConfirmations(new Map()); }}
-                  style={{
-                    width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 6, marginBottom: 2,
-                    background: isActive ? "var(--bg-2)" : "transparent",
-                    color: isActive ? "var(--ink-0)" : "var(--ink-2)",
-                    border: "none", cursor: "pointer",
-                  }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {conv.lastMessagePreview || conv.summary || "Empty conversation"}
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
-                    {formatRelativeTime(conv.updatedAt)}
-                  </div>
-                </button>
+                <div key={group}>
+                  <div style={{
+                    fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
+                    letterSpacing: 0.5, padding: "12px 4px 6px", fontWeight: 500,
+                  }}>{group}</div>
+                  {items.map((conv) => {
+                    const isActive = conv.id === conversationId;
+                    return (
+                      <button
+                        key={conv.id}
+                        onClick={() => { loadConversation(conv.id); setPendingConfirmations(new Map()); }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          if (confirm("Delete this conversation?")) {
+                            deleteConversation(conv.id);
+                          }
+                        }}
+                        style={{
+                          width: "100%", textAlign: "left",
+                          padding: "9px 10px", borderRadius: 6, marginBottom: 1,
+                          background: isActive ? "var(--accent-soft)" : "transparent",
+                          color: isActive ? "var(--ink-0)" : "var(--ink-2)",
+                          border: "none", cursor: "pointer",
+                          display: "flex", alignItems: "stretch", gap: 0,
+                          position: "relative",
+                        }}
+                      >
+                        {/* Active left edge */}
+                        {isActive && (
+                          <div style={{
+                            position: "absolute", left: 0, top: 0, bottom: 0,
+                            width: 4, borderRadius: 2,
+                            background: "var(--accent)",
+                          }} />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0, paddingLeft: isActive ? 6 : 0 }}>
+                          <div style={{
+                            fontSize: 14, fontWeight: 500,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            color: isActive ? "var(--ink-0)" : "var(--ink-1)",
+                          }}>
+                            {conv.lastMessagePreview || conv.summary || "Empty conversation"}
+                          </div>
+                          <div style={{
+                            fontSize: 12, color: "var(--ink-3)", marginTop: 2,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                            {conv.lastMessagePreview ? conv.lastMessagePreview.slice(0, 60) : ""}
+                          </div>
+                        </div>
+                        <span style={{
+                          fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--font-mono)",
+                          flexShrink: 0, marginLeft: 8, alignSelf: "flex-start", marginTop: 3,
+                        }}>
+                          {formatRelativeTime(conv.updatedAt)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               );
             })}
           </div>
         </aside>
 
-        {/* Chat area */}
+        {/* ─── Right pane ─── */}
         <div style={{ display: "grid", gridTemplateRows: "auto 1fr auto", overflow: "hidden" }}>
-          {/* Header */}
-          <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
-            <Icon name="chat" size={15} color="var(--accent)" />
-            <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--ink-0)", flex: 1 }}>Ask Rook</h2>
-            <Badge color="var(--violet)" mono>
-              <Icon name="cloud" size={10} color="var(--violet)" />
-              {aiMode === "Cloud" ? `Powered by ${aiStatus?.cloud.provider ?? "Claude"}` : aiMode === "LocalSlm" ? `Local: ${aiStatus?.local.model_name ?? "SLM"}` : "Offline"}
-            </Badge>
-            {(cloudActive || localActive) && (
-              <div style={{ display: "flex", borderRadius: 6, border: "1px solid var(--line)", overflow: "hidden" }}>
-                <button onClick={() => switchBackend("cloud")} disabled={!cloudActive || switchingBackend}
-                  style={{
-                    padding: "4px 10px", fontSize: 11, fontWeight: 500, border: "none", cursor: cloudActive ? "pointer" : "not-allowed",
-                    background: (backendPref === "cloud" || (backendPref === "auto" && aiMode === "Cloud")) ? "var(--accent)" : "transparent",
-                    color: (backendPref === "cloud" || (backendPref === "auto" && aiMode === "Cloud")) ? "white" : "var(--ink-2)",
-                    opacity: cloudActive ? 1 : 0.4,
-                  }}>Cloud</button>
-                <button onClick={() => switchBackend("local")} disabled={!localActive || switchingBackend}
-                  style={{
-                    padding: "4px 10px", fontSize: 11, fontWeight: 500, border: "none", cursor: localActive ? "pointer" : "not-allowed",
-                    background: (backendPref === "local" || (backendPref === "auto" && aiMode === "LocalSlm")) ? "var(--accent)" : "transparent",
-                    color: (backendPref === "local" || (backendPref === "auto" && aiMode === "LocalSlm")) ? "white" : "var(--ink-2)",
-                    opacity: localActive ? 1 : 0.4,
-                  }}>Local</button>
-              </div>
-            )}
+          {/* Header bar — 56px, sticky */}
+          <div style={{
+            height: 56, padding: "0 20px",
+            borderBottom: "1px solid var(--line)",
+            background: "var(--bg-1)",
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: "var(--accent-soft)",
+              display: "grid", placeItems: "center", flexShrink: 0,
+            }}>
+              <Rook size={18} color="var(--accent)" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--ink-0)" }}>
+                {conversations.find((c) => c.id === conversationId)?.summary
+                  ?? conversations.find((c) => c.id === conversationId)?.lastMessagePreview
+                  ?? "Ask Rook"}
+              </h2>
+              <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Asking Rook</div>
+            </div>
+            {/* Powered by pill */}
+            <div
+              title={poweredByCloud ? "Cloud AI model in use" : "Local model answering"}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                padding: "4px 10px", borderRadius: 999,
+                background: poweredByCloud ? "color-mix(in oklch, var(--violet) 10%, transparent)" : "var(--bg-2)",
+                border: `1px solid ${poweredByCloud ? "color-mix(in oklch, var(--violet) 25%, transparent)" : "var(--line)"}`,
+                fontSize: 11, fontFamily: "var(--font-mono)",
+                color: poweredByCloud ? "var(--violet)" : "var(--ink-2)",
+              }}
+            >
+              {poweredByCloud && <Icon name="cloud" size={10} color="var(--violet)" />}
+              {poweredByLabel}
+            </div>
           </div>
 
-          {/* Messages */}
+          {/* Messages area */}
           <div ref={feedRef} className="cd-scroll" style={{ overflowY: "auto", padding: "20px 24px" }}>
             {showDaemonWarning && (
-              <div style={{ padding: 12, marginBottom: 16, borderRadius: 10, background: "var(--amber-soft)", border: "1px solid color-mix(in oklch, var(--amber) 30%, transparent)", fontSize: 12.5, color: "var(--ink-1)" }}>
+              <div style={{ padding: 12, marginBottom: 16, borderRadius: 10, background: "var(--amber-soft)", border: "1px solid color-mix(in oklch, var(--amber) 30%, transparent)", fontSize: 12.5, color: "var(--ink-1)", maxWidth: 760, margin: "0 auto 16px" }}>
                 {ASK_CLAW.offlineMessage}
               </div>
             )}
             {isLoading && <div style={{ display: "flex", justifyContent: "center", padding: "40px 0", color: "var(--ink-3)" }}>Loading conversation...</div>}
 
+            {/* Empty state */}
             {isEmpty && !isLoading && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", textAlign: "center" }}>
-                <div style={{ width: 48, height: 48, borderRadius: 999, background: "var(--accent-soft)", display: "grid", placeItems: "center", marginBottom: 16 }}>
-                  <Rook size={24} color="var(--accent)" />
+              <div style={{
+                display: "flex", flexDirection: "column", alignItems: "center",
+                justifyContent: "center", padding: "80px 0", textAlign: "center",
+              }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 14,
+                  background: "var(--accent-soft)",
+                  display: "grid", placeItems: "center", marginBottom: 20,
+                }}>
+                  <Rook size={28} color="var(--accent)" />
                 </div>
-                <p style={{ fontSize: 14, color: "var(--ink-0)", marginBottom: 4 }}>{ASK_CLAW.firstTimeGreeting}</p>
-                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 20 }}>
-                  {ASK_CLAW.suggestions.default.map((s) => (
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: "var(--ink-0)" }}>
+                  What can I help you check?
+                </h2>
+                <div style={{ display: "grid", gap: 8, marginTop: 24 }}>
+                  {EMPTY_SUGGESTIONS.map((s) => (
                     <button key={s} onClick={() => submitMessage(s)}
-                      style={{ padding: "7px 14px", fontSize: 12, borderRadius: 999, border: "1px solid var(--line)", background: "transparent", color: "var(--ink-2)", cursor: "pointer" }}>
-                      {s}
-                    </button>
+                      style={{
+                        padding: "8px 14px", fontSize: 13.5,
+                        borderRadius: 999, border: "1px solid var(--line)",
+                        background: "transparent", color: "var(--ink-1)",
+                        cursor: "pointer",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-2)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >{s}</button>
                   ))}
                 </div>
               </div>
             )}
 
+            {/* Message bubbles */}
             <div style={{ maxWidth: 760, margin: "0 auto", display: "grid", gap: 16 }}>
               {messages.map((msg) => {
                 const actions = parseActions(msg);
                 const richData = parseRichData(msg);
                 const isUser = msg.role === "user";
                 const hasConfirmation = pendingConfirmations.has(msg.id);
+                const toolCalls = richData?.type === "ai_tool_calls"
+                  ? (richData.tool_calls as Array<{ tool_name: string; summary: string; args?: string; result?: string }>) ?? []
+                  : [];
+
                 return (
                   <div key={msg.id}>
                     {isUser ? (
+                      /* ── User bubble ── */
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <div style={{ maxWidth: "75%", padding: "10px 14px", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", borderRadius: 10, fontSize: 13, color: "var(--ink-0)" }}>
-                          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{renderMarkdown(msg.contentText)}</p>
+                        <div style={{ maxWidth: "80%" }}>
+                          <div style={{
+                            padding: "10px 14px",
+                            background: "var(--accent)", color: "white",
+                            borderRadius: 16, borderBottomRightRadius: 4,
+                            fontSize: 14, lineHeight: 1.5,
+                          }}>
+                            <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{msg.contentText}</p>
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right", marginTop: 4 }}>
+                            {formatRelativeTime(msg.timestamp)}
+                          </div>
                         </div>
                       </div>
                     ) : (
+                      /* ── Rook bubble ── */
                       <div style={{ display: "flex", gap: 10 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: 999, flexShrink: 0, background: "var(--accent-soft)", display: "grid", placeItems: "center", marginTop: 2 }}>
+                        <div style={{
+                          width: 28, height: 28, borderRadius: 7,
+                          background: "var(--accent-soft)",
+                          display: "grid", placeItems: "center",
+                          flexShrink: 0, marginTop: 2,
+                        }}>
                           <Rook size={16} color="var(--accent)" />
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {/* Tool call chips */}
-                          {richData && richData.type === "ai_tool_calls" && (richData.tool_calls as Array<{ tool_name: string; summary: string }>)?.length > 0 && (
-                            <div style={{ marginBottom: 10, display: "grid", gap: 4 }}>
-                              {(richData.tool_calls as Array<{ tool_name: string; summary: string }>).map((t, j) => (
-                                <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)" }}>
-                                  <Icon name="search" size={11} color="var(--accent)" />
-                                  <span style={{ color: "var(--accent)" }}>{t.tool_name}</span>
-                                  <span>&rarr;</span>
-                                  <span>{t.summary}</span>
-                                </div>
+                        <div style={{ flex: 1, minWidth: 0, maxWidth: "80%" }}>
+                          {/* Tool-use chips */}
+                          {toolCalls.length > 0 && (
+                            <div style={{ marginBottom: 8, display: "grid", gap: 4 }}>
+                              {toolCalls.map((t, j) => (
+                                <ToolChip key={j} tool={t} />
                               ))}
                             </div>
                           )}
-                          <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg-2)", fontSize: 13.5, color: "var(--ink-0)", lineHeight: 1.6 }}>
+                          <div style={{
+                            padding: "10px 14px",
+                            background: "var(--bg-2)", color: "var(--ink-0)",
+                            border: "1px solid var(--line-soft)",
+                            borderRadius: 16, borderBottomLeftRadius: 4,
+                            fontSize: 14, lineHeight: 1.5,
+                          }}>
                             <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{renderMarkdown(msg.contentText)}</p>
                             {richData && <StructuredDataCard data={richData} />}
+                            {/* Action buttons */}
                             {actions.length > 0 && !hasConfirmation && (
                               <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
                                 {actions.map((action) => (
@@ -622,7 +877,9 @@ export function AskClaw() {
                             )}
                           </div>
                           {hasConfirmation && <ConfirmationCard description={msg.contentText} onConfirm={() => handleConfirm(msg.id)} onCancel={() => handleCancelConfirm(msg.id)} />}
-                          <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 4 }}>{formatRelativeTime(msg.timestamp)}</div>
+                          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 4 }}>
+                            {formatRelativeTime(msg.timestamp)}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -630,27 +887,56 @@ export function AskClaw() {
                 );
               })}
 
+              {/* Typing indicator */}
               {isThinking && (
                 <div style={{ display: "flex", gap: 10 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 999, flexShrink: 0, background: "var(--accent-soft)", display: "grid", placeItems: "center" }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 7,
+                    background: "var(--accent-soft)",
+                    display: "grid", placeItems: "center", flexShrink: 0,
+                  }}>
                     <Rook size={16} color="var(--accent)" />
                   </div>
-                  <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg-2)", fontSize: 13, color: "var(--ink-2)" }}>
-                    <span className="cd-pulse">{ASK_CLAW.thinkingIndicator}</span>
+                  <div style={{
+                    padding: "12px 16px",
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--line-soft)",
+                    borderRadius: 16, borderBottomLeftRadius: 4,
+                    display: "flex", gap: 5, alignItems: "center",
+                  }}>
+                    {[0, 1, 2].map((i) => (
+                      <span key={i} className="cd-typing-dot" style={{
+                        width: 6, height: 6, borderRadius: 999,
+                        background: "var(--accent)",
+                        animationDelay: `${i * 0.15}s`,
+                      }} />
+                    ))}
                   </div>
                 </div>
               )}
 
+              {/* Error */}
               {error && (
-                <div style={{ display: "flex", gap: 10 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 999, flexShrink: 0, background: "var(--red-soft)", display: "grid", placeItems: "center" }}>
-                    <Rook size={16} color="var(--red)" />
-                  </div>
-                  <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg-2)", border: "1px solid var(--red)", fontSize: 13, color: "var(--ink-0)" }}>
-                    <p style={{ margin: 0 }}>{ASK_CLAW.errorGeneric}</p>
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      <Btn size="sm" kind="primary" onClick={() => { setError(null); if (messageHistory.length > 0) submitMessage(messageHistory[messageHistory.length - 1]); }}>{ASK_CLAW.errorRetry}</Btn>
-                      <Btn size="sm" kind="ghost" onClick={() => setError(null)}>Dismiss</Btn>
+                <div>
+                  <SystemRow text="Something went wrong" />
+                  <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 7,
+                      background: "var(--red-soft)",
+                      display: "grid", placeItems: "center", flexShrink: 0,
+                    }}>
+                      <Rook size={16} color="var(--red)" />
+                    </div>
+                    <div style={{
+                      padding: "10px 14px", borderRadius: 16, borderBottomLeftRadius: 4,
+                      background: "var(--bg-2)", border: "1px solid var(--line-soft)",
+                      fontSize: 14, color: "var(--ink-0)",
+                    }}>
+                      <p style={{ margin: 0 }}>{ASK_CLAW.errorGeneric}</p>
+                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                        <Btn size="sm" kind="primary" onClick={() => { setError(null); if (messageHistory.length > 0) submitMessage(messageHistory[messageHistory.length - 1]); }}>{ASK_CLAW.errorRetry}</Btn>
+                        <Btn size="sm" kind="ghost" onClick={() => setError(null)}>Dismiss</Btn>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -658,25 +944,104 @@ export function AskClaw() {
             </div>
           </div>
 
-          {/* Composer */}
-          <div style={{ padding: "14px 24px", borderTop: "1px solid var(--line)" }}>
+          {/* ─── Composer ─── */}
+          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--line)" }}>
+            {/* Suggestion chips (shown after messages, not during thinking) */}
             {messages.length > 0 && !isThinking && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10, maxWidth: 760, margin: "0 auto 10px" }}>
                 {suggestions.map((s) => (
                   <button key={s} onClick={() => submitMessage(s)} disabled={isThinking}
-                    style={{ padding: "5px 12px", fontSize: 11, borderRadius: 999, border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--ink-2)", cursor: "pointer" }}>
+                    style={{
+                      padding: "5px 12px", fontSize: 11, borderRadius: 999,
+                      border: "1px solid var(--line)", background: "var(--bg-2)",
+                      color: "var(--ink-2)", cursor: "pointer",
+                    }}>
                     {s}
                   </button>
                 ))}
               </div>
             )}
-            <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", gap: 8, alignItems: "flex-end", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 12, padding: 10 }}>
-              <textarea ref={inputRef} id="ask-claw-input" data-ask-claw-input rows={1}
-                value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleInputKeyDown}
-                placeholder="Ask Rook anything -- 'is FileManager safe?', 'block all network for shell-runner'..."
+            <div style={{
+              maxWidth: 760, margin: "0 auto",
+              borderRadius: 14,
+              border: `1px solid ${composerFocused ? "var(--accent)" : "var(--line)"}`,
+              background: "var(--bg-1)",
+              transition: "border-color 0.15s",
+              overflow: "hidden",
+            }}>
+              {/* Textarea */}
+              <textarea
+                ref={inputRef}
+                id="ask-claw-input"
+                data-ask-claw-input
+                rows={1}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleInputKeyDown}
+                onFocus={() => setComposerFocused(true)}
+                onBlur={() => setComposerFocused(false)}
+                placeholder={"Ask Rook anything\u2026"}
                 disabled={isThinking}
-                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--ink-0)", fontSize: 13, resize: "none", minHeight: 22, maxHeight: 120, lineHeight: 1.5 }} />
-              <Btn kind={inputValue.trim() ? "primary" : "soft"} icon="send" onClick={() => submitMessage(inputValue)} disabled={!inputValue.trim() || isThinking}>Send</Btn>
+                style={{
+                  width: "100%", display: "block",
+                  background: "transparent", border: "none", outline: "none",
+                  color: "var(--ink-0)", fontSize: 14, lineHeight: 1.5,
+                  resize: "none", padding: "12px 14px",
+                  minHeight: 22, maxHeight: 120,
+                }}
+              />
+              {/* Bottom row */}
+              <div style={{
+                display: "flex", alignItems: "center",
+                padding: "8px 10px",
+                borderTop: "1px solid var(--line-soft)",
+              }}>
+                <div style={{ display: "flex", gap: 2 }}>
+                  <button
+                    title="Add context"
+                    style={{
+                      width: 30, height: 30, borderRadius: 6,
+                      display: "grid", placeItems: "center",
+                      background: "transparent", border: "none",
+                      color: "var(--ink-3)", cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-2)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <Icon name="paperclip" size={15} color="var(--ink-3)" />
+                  </button>
+                  <button
+                    title="Suggest a question"
+                    style={{
+                      width: 30, height: 30, borderRadius: 6,
+                      display: "grid", placeItems: "center",
+                      background: "transparent", border: "none",
+                      color: "var(--ink-3)", cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-2)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <Icon name="sparkles" size={15} color="var(--ink-3)" />
+                  </button>
+                </div>
+                <div style={{ flex: 1 }} />
+                <button
+                  onClick={() => submitMessage(inputValue)}
+                  disabled={!inputValue.trim() || isThinking}
+                  style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    background: inputValue.trim() ? "var(--accent)" : "var(--bg-3)",
+                    color: "white",
+                    display: "grid", placeItems: "center",
+                    cursor: inputValue.trim() ? "pointer" : "default",
+                    opacity: inputValue.trim() ? 1 : 0.4,
+                    border: "none",
+                    transition: "background 0.15s, opacity 0.15s",
+                  }}
+                >
+                  <Icon name="send" size={15} color="white" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,10 +1,9 @@
-//! Secure API key storage via macOS Keychain with in-memory fallback for testing.
+//! API key storage with file-based default and in-memory fallback for testing.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
-#[cfg(target_os = "macos")]
-use anyhow::Context;
 use anyhow::Result;
 
 /// Supported LLM providers.
@@ -12,6 +11,7 @@ use anyhow::Result;
 pub enum Provider {
     Anthropic,
     OpenAi,
+    Google,
     Custom { base_url: String },
 }
 
@@ -21,6 +21,7 @@ impl Provider {
         match self {
             Provider::Anthropic => "com.rookbot.api-key.anthropic".to_string(),
             Provider::OpenAi => "com.rookbot.api-key.openai".to_string(),
+            Provider::Google => "com.rookbot.api-key.google".to_string(),
             Provider::Custom { base_url } => {
                 format!("com.rookbot.api-key.custom.{}", base_url)
             }
@@ -32,6 +33,7 @@ impl Provider {
         match self {
             Provider::Anthropic => "Anthropic".to_string(),
             Provider::OpenAi => "OpenAI".to_string(),
+            Provider::Google => "Google".to_string(),
             Provider::Custom { base_url } => format!("Custom ({})", base_url),
         }
     }
@@ -42,14 +44,26 @@ impl Provider {
             Some(Provider::Anthropic)
         } else if key.starts_with("sk-") {
             Some(Provider::OpenAi)
+        } else if key.starts_with("AIza") {
+            Some(Provider::Google)
         } else {
             None
         }
     }
 
+    /// Environment variable name for this provider's API key.
+    pub fn env_var_name(&self) -> Option<&'static str> {
+        match self {
+            Provider::Anthropic => Some("ANTHROPIC_API_KEY"),
+            Provider::OpenAi => Some("OPENAI_API_KEY"),
+            Provider::Google => Some("GOOGLE_API_KEY"),
+            Provider::Custom { .. } => None,
+        }
+    }
+
     /// All known built-in providers.
     pub fn all_builtin() -> Vec<Provider> {
-        vec![Provider::Anthropic, Provider::OpenAi]
+        vec![Provider::Anthropic, Provider::OpenAi, Provider::Google]
     }
 }
 
@@ -68,73 +82,127 @@ pub trait KeyStore: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
-// macOS Keychain implementation
+// File-based key store (~/.config/rookbot/credentials)
 // ---------------------------------------------------------------------------
 
-#[cfg(target_os = "macos")]
-pub struct KeychainManager;
-
-#[cfg(target_os = "macos")]
-impl Default for KeychainManager {
-    fn default() -> Self {
-        Self
-    }
+pub struct FileKeyStore {
+    path: PathBuf,
 }
 
-#[cfg(target_os = "macos")]
-impl KeychainManager {
+impl FileKeyStore {
     pub fn new() -> Self {
-        Self
+        let home = std::env::var_os("HOME").expect("HOME not set");
+        Self {
+            path: PathBuf::from(home).join(".config/rookbot/credentials"),
+        }
+    }
+
+    /// Provider key used inside the credentials file.
+    fn file_key(provider: &Provider) -> String {
+        match provider {
+            Provider::Anthropic => "anthropic".to_string(),
+            Provider::OpenAi => "openai".to_string(),
+            Provider::Google => "google".to_string(),
+            Provider::Custom { base_url } => format!("custom.{base_url}"),
+        }
+    }
+
+    fn read_all(&self) -> HashMap<String, String> {
+        let contents = match std::fs::read_to_string(&self.path) {
+            Ok(c) => c,
+            Err(_) => return HashMap::new(),
+        };
+        let mut map = HashMap::new();
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                map.insert(k.trim().to_string(), v.trim().to_string());
+            }
+        }
+        map
+    }
+
+    fn write_all(&self, map: &HashMap<String, String>) -> Result<()> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut contents = String::from("# rookbot API credentials\n");
+        let mut keys: Vec<_> = map.iter().collect();
+        keys.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (k, v) in keys {
+            contents.push_str(&format!("{k}={v}\n"));
+        }
+
+        std::fs::write(&self.path, &contents)?;
+
+        // Restrict file permissions to owner-only (0600).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        Ok(())
     }
 }
 
-#[cfg(target_os = "macos")]
-impl KeyStore for KeychainManager {
+impl Default for FileKeyStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl KeyStore for FileKeyStore {
     fn store(&self, provider: &Provider, key: &str) -> Result<()> {
-        use security_framework::passwords::{delete_generic_password, set_generic_password};
-
-        let service = provider.service_name();
-        let account = "api-key";
-
-        // Delete existing entry first (ignore errors if not found).
-        let _ = delete_generic_password(&service, account);
-        set_generic_password(&service, account, key.as_bytes())
-            .context("Failed to store API key in Keychain")?;
-
-        tracing::info!(provider = %provider.display_name(), "API key stored in Keychain");
+        let mut map = self.read_all();
+        map.insert(Self::file_key(provider), key.to_string());
+        self.write_all(&map)?;
+        tracing::info!(provider = %provider.display_name(), "API key stored");
         Ok(())
     }
 
     fn get(&self, provider: &Provider) -> Result<String> {
-        use security_framework::passwords::get_generic_password;
+        // Check environment variable first.
+        if let Some(var) = provider.env_var_name() {
+            if let Ok(val) = std::env::var(var) {
+                if !val.is_empty() {
+                    return Ok(val);
+                }
+            }
+        }
 
-        let service = provider.service_name();
-        let account = "api-key";
-
-        let bytes =
-            get_generic_password(&service, account).context("API key not found in Keychain")?;
-        let key = String::from_utf8(bytes).context("API key is not valid UTF-8")?;
-        Ok(key)
+        let map = self.read_all();
+        map.get(&Self::file_key(provider))
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!("No API key configured for {}", provider.display_name())
+            })
     }
 
     fn delete(&self, provider: &Provider) -> Result<()> {
-        use security_framework::passwords::delete_generic_password;
-
-        let service = provider.service_name();
-        let account = "api-key";
-
-        delete_generic_password(&service, account)
-            .context("Failed to delete API key from Keychain")?;
-
-        tracing::info!(provider = %provider.display_name(), "API key removed from Keychain");
+        let mut map = self.read_all();
+        map.remove(&Self::file_key(provider));
+        self.write_all(&map)?;
+        tracing::info!(provider = %provider.display_name(), "API key removed");
         Ok(())
     }
 
     fn list(&self) -> Vec<(String, bool)> {
+        let map = self.read_all();
         Provider::all_builtin()
             .into_iter()
             .map(|p| {
-                let configured = self.get(&p).is_ok();
+                // Check env var or file.
+                let from_env = p
+                    .env_var_name()
+                    .and_then(|v| std::env::var(v).ok())
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(false);
+                let configured = from_env || map.contains_key(&Self::file_key(&p));
                 (p.display_name(), configured)
             })
             .collect()
@@ -171,6 +239,15 @@ impl KeyStore for MemoryKeyStore {
     }
 
     fn get(&self, provider: &Provider) -> Result<String> {
+        // Check environment variable first.
+        if let Some(var) = provider.env_var_name() {
+            if let Ok(val) = std::env::var(var) {
+                if !val.is_empty() {
+                    return Ok(val);
+                }
+            }
+        }
+
         let keys = self.keys.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         keys.get(&provider.service_name())
             .cloned()
@@ -195,17 +272,9 @@ impl KeyStore for MemoryKeyStore {
     }
 }
 
-/// Return the platform-appropriate default key store.
-/// On macOS: KeychainManager. Otherwise (or for tests): MemoryKeyStore.
+/// Return the default key store (file-based at ~/.config/rookbot/credentials).
 pub fn default_keystore() -> Box<dyn KeyStore> {
-    #[cfg(target_os = "macos")]
-    {
-        Box::new(KeychainManager::new())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Box::new(MemoryKeyStore::new())
-    }
+    Box::new(FileKeyStore::new())
 }
 
 #[cfg(test)]

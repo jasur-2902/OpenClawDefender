@@ -168,13 +168,77 @@ impl HttpLlmClient {
         })
     }
 
+    async fn call_google(&self, request: &LlmRequest, api_key: &str) -> Result<LlmResponse> {
+        let start = Instant::now();
+
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            request.model
+        );
+
+        let prompt = if request.system_prompt.is_empty() {
+            request.user_prompt.clone()
+        } else {
+            format!("{}\n\n{}", request.system_prompt, request.user_prompt)
+        };
+
+        let body = serde_json::json!({
+            "contents": [{
+                "parts": [{ "text": prompt }]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": request.max_tokens,
+                "temperature": request.temperature
+            }
+        });
+
+        let resp = self
+            .http
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if status.as_u16() == 429 || status.is_server_error() {
+            anyhow::bail!("Google API returned {status}");
+        }
+
+        let resp_body: GoogleResponse = resp.error_for_status()?.json().await?;
+
+        let content = resp_body
+            .candidates
+            .as_ref()
+            .and_then(|c| c.first())
+            .and_then(|c| c.content.parts.first())
+            .map(|p| p.text.clone())
+            .unwrap_or_default();
+
+        let (input_tokens, output_tokens) = match resp_body.usage_metadata {
+            Some(u) => (u.prompt_token_count, u.candidates_token_count),
+            None => (0, 0),
+        };
+
+        Ok(LlmResponse {
+            content,
+            input_tokens,
+            output_tokens,
+            model: request.model.clone(),
+            latency_ms: start.elapsed().as_millis() as u64,
+        })
+    }
+
     /// Execute a request with one retry on transient errors (429, 5xx).
-    async fn call_with_retry(&self, request: &LlmRequest) -> Result<LlmResponse> {
+    /// Unlike `complete()`, this surfaces errors instead of returning a fallback.
+    pub async fn call_with_retry(&self, request: &LlmRequest) -> Result<LlmResponse> {
         let api_key = self.keychain.get(&request.provider)?;
 
         let result = match &request.provider {
             Provider::Anthropic => self.call_anthropic(request, &api_key).await,
             Provider::OpenAi => self.call_openai(request, &api_key, None).await,
+            Provider::Google => self.call_google(request, &api_key).await,
             Provider::Custom { base_url } => {
                 self.call_openai(request, &api_key, Some(base_url)).await
             }
@@ -196,6 +260,7 @@ impl HttpLlmClient {
                     match &request.provider {
                         Provider::Anthropic => self.call_anthropic(request, &api_key).await,
                         Provider::OpenAi => self.call_openai(request, &api_key, None).await,
+                        Provider::Google => self.call_google(request, &api_key).await,
                         Provider::Custom { base_url } => {
                             self.call_openai(request, &api_key, Some(base_url)).await
                         }
@@ -314,6 +379,36 @@ struct OpenAiMessage {
 struct OpenAiUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
+}
+
+#[derive(Deserialize)]
+struct GoogleResponse {
+    candidates: Option<Vec<GoogleCandidate>>,
+    #[serde(rename = "usageMetadata")]
+    usage_metadata: Option<GoogleUsage>,
+}
+
+#[derive(Deserialize)]
+struct GoogleCandidate {
+    content: GoogleContent,
+}
+
+#[derive(Deserialize)]
+struct GoogleContent {
+    parts: Vec<GooglePart>,
+}
+
+#[derive(Deserialize)]
+struct GooglePart {
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct GoogleUsage {
+    #[serde(rename = "promptTokenCount", default)]
+    prompt_token_count: u32,
+    #[serde(rename = "candidatesTokenCount", default)]
+    candidates_token_count: u32,
 }
 
 #[cfg(test)]

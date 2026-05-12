@@ -1,6 +1,7 @@
 pub mod alerts;
 mod commands;
 mod daemon;
+pub mod demo_data;
 mod event_stream;
 mod events;
 pub mod ipc_client;
@@ -28,6 +29,8 @@ pub fn run() {
         ))
         .manage(AppState::default())
         .setup(|app| {
+            // Initialize demo mode cache from config
+            demo_data::refresh_demo_mode();
             // Set up system tray
             if let Err(e) = tray::setup_tray(app.handle()) {
                 tracing::error!("Failed to setup tray: {}", e);

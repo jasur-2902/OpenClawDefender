@@ -1,0 +1,1376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>RookBot — Tools &amp; Scans</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"/>
+  <style>
+/* ── Design Tokens ─────────────────────────────────────────── */
+:root {
+  color-scheme: light dark;
+
+  --accent-h: 220;
+  --accent: oklch(0.62 0.18 var(--accent-h));
+  --accent-soft: oklch(0.62 0.18 var(--accent-h) / 0.10);
+  --accent-line: oklch(0.62 0.18 var(--accent-h) / 0.30);
+  --accent-ink: oklch(0.20 0.05 var(--accent-h));
+
+  --bg-0: oklch(0.965 0.003 250);
+  --bg-1: oklch(1.00 0 0);
+  --bg-2: oklch(0.965 0.003 250);
+  --bg-3: oklch(0.93 0.004 250);
+  --bg-4: oklch(0.88 0.005 250);
+
+  --line: oklch(0.90 0.004 250);
+  --line-soft: oklch(0.94 0.003 250);
+  --line-strong: oklch(0.82 0.005 250);
+
+  --ink-0: oklch(0.18 0.01 250);
+  --ink-1: oklch(0.32 0.012 250);
+  --ink-2: oklch(0.50 0.012 250);
+  --ink-3: oklch(0.62 0.012 250);
+  --ink-4: oklch(0.74 0.010 250);
+
+  --green: oklch(0.62 0.16 152);
+  --green-soft: oklch(0.62 0.16 152 / 0.12);
+  --amber: oklch(0.72 0.15 78);
+  --amber-soft: oklch(0.72 0.15 78 / 0.14);
+  --red: oklch(0.60 0.20 22);
+  --red-soft: oklch(0.60 0.20 22 / 0.10);
+  --violet: oklch(0.58 0.18 295);
+  --violet-soft: oklch(0.58 0.18 295 / 0.10);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 22px;
+
+  --font-ui: "Inter Tight", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.06);
+  --shadow-md: 0 4px 16px oklch(0 0 0 / 0.08);
+  --shadow-lg: 0 16px 40px oklch(0 0 0 / 0.10);
+}
+
+[data-theme="dark"] {
+  --bg-0: oklch(0.16 0.008 250);
+  --bg-1: oklch(0.20 0.008 250);
+  --bg-2: oklch(0.24 0.010 250);
+  --bg-3: oklch(0.28 0.010 250);
+  --bg-4: oklch(0.32 0.012 250);
+
+  --line: oklch(0.30 0.010 250);
+  --line-soft: oklch(0.26 0.008 250);
+  --line-strong: oklch(0.40 0.012 250);
+
+  --ink-0: oklch(0.94 0.005 250);
+  --ink-1: oklch(0.82 0.008 250);
+  --ink-2: oklch(0.64 0.008 250);
+  --ink-3: oklch(0.50 0.008 250);
+  --ink-4: oklch(0.38 0.006 250);
+
+  --accent: oklch(0.70 0.16 var(--accent-h));
+  --accent-soft: oklch(0.70 0.16 var(--accent-h) / 0.14);
+  --accent-line: oklch(0.70 0.16 var(--accent-h) / 0.30);
+
+  --green: oklch(0.70 0.14 152);
+  --green-soft: oklch(0.70 0.14 152 / 0.14);
+  --amber: oklch(0.78 0.13 78);
+  --amber-soft: oklch(0.78 0.13 78 / 0.16);
+  --red: oklch(0.68 0.18 22);
+  --red-soft: oklch(0.68 0.18 22 / 0.14);
+  --violet: oklch(0.68 0.16 295);
+  --violet-soft: oklch(0.68 0.16 295 / 0.14);
+
+  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.20);
+  --shadow-md: 0 4px 16px oklch(0 0 0 / 0.30);
+  --shadow-lg: 0 16px 40px oklch(0 0 0 / 0.40);
+}
+
+/* ── Reset & Base ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-0);
+  color: var(--ink-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; padding: 0; }
+input, textarea, select { font-family: inherit; color: inherit; }
+.mono { font-family: var(--font-mono); font-feature-settings: "ss02"; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+.cd-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.cd-scroll::-webkit-scrollbar-track { background: transparent; }
+.cd-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0 0 0 / 0.18); border-radius: 999px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+[data-theme="dark"] .cd-scroll::-webkit-scrollbar-thumb { background: oklch(1 0 0 / 0.12); background-clip: padding-box; }
+
+/* ── Animations ────────────────────────────────────────────── */
+@keyframes cdPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.cd-pulse { animation: cdPulse 1.6s ease-in-out infinite; }
+
+@keyframes cdPulseDot {
+  0% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  100% { box-shadow: 0 0 0 8px transparent; opacity: 0.3; }
+}
+.cd-pulse-dot::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  animation: cdPulseDot 1.6s ease-out infinite;
+}
+
+@keyframes cdSlideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.cd-slide-in { animation: cdSlideIn 0.32s cubic-bezier(.2,.7,.2,1); }
+
+@keyframes cdShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.cd-shimmer {
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.06), transparent);
+  background-size: 200% 100%; animation: cdShimmer 2s linear infinite;
+}
+[data-theme="dark"] .cd-shimmer {
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.04), transparent);
+  background-size: 200% 100%;
+}
+
+@keyframes cdBlink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+.cd-caret { display: inline-block; width: 8px; height: 1em; background: var(--accent); vertical-align: -2px; margin-left: 2px; animation: cdBlink 1s steps(1) infinite; }
+
+@keyframes rookSlide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(calc(var(--board-w, 600px) - 100%)); }
+  100% { transform: translateX(-100%); }
+}
+.rook-slide { animation: rookSlide 6s ease-in-out infinite; }
+
+@keyframes cdSpin { to { transform: rotate(360deg); } }
+.cd-spin { animation: cdSpin 0.9s linear infinite; }
+
+/* ── Layout Shell ──────────────────────────────────────────── */
+#root { height: 100%; display: grid; grid-template-columns: 220px 1fr; overflow: hidden; }
+#root.collapsed { grid-template-columns: 60px 1fr; }
+
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <script type="text/babel">
+// ═══════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════
+
+const TOOLS = [
+  {
+    id: "claude-desktop", name: "Claude Desktop", vendor: "Anthropic", version: "4.2.1",
+    installDate: "2025-11-14", authMethod: "OAuth 2.0", risk: "low",
+    permissions: { filesystem: ["~/Documents", "~/Downloads"], network: ["api.anthropic.com", "cdn.anthropic.com"], env: [], shell: false },
+    lastUsed: "2026-05-03T14:32:00Z", frequency: [12, 18, 24, 16, 22, 30, 28, 25, 19, 14, 20, 26, 32, 28],
+    events24h: 412, anomalyScore: 0.08, trust: "trusted", wrapped: true,
+    mcpServers: [
+      { name: "filesystem-mcp", status: "running", calls: 89, wrapped: true },
+      { name: "web-search-mcp", status: "running", calls: 34, wrapped: true },
+    ],
+    capabilities: ["filesystem", "network"],
+    recentMoves: [
+      { t: "14:32:18", action: "read_file", target: "~/Documents/api-spec.md", verdict: "ALLOW", notation: "Rf3" },
+      { t: "14:31:02", action: "web_search", target: "anthropic API docs", verdict: "ALLOW", notation: "Rd3" },
+      { t: "14:28:44", action: "write_file", target: "~/Documents/notes.md", verdict: "ALLOW", notation: "Ra7" },
+    ],
+  },
+  {
+    id: "cursor", name: "Cursor IDE", vendor: "Anysphere", version: "0.48.2",
+    installDate: "2025-09-21", authMethod: "API Key", risk: "medium",
+    permissions: { filesystem: ["~/work/**", "~/.config/cursor"], network: ["api.cursor.sh", "*.github.com", "registry.npmjs.org"], env: ["PATH", "HOME", "NODE_ENV"], shell: true },
+    lastUsed: "2026-05-03T14:28:00Z", frequency: [44, 52, 38, 61, 55, 48, 72, 68, 59, 43, 50, 64, 71, 58],
+    events24h: 1284, anomalyScore: 0.42, trust: "trusted", wrapped: true,
+    mcpServers: [
+      { name: "github-mcp", status: "running", calls: 233, wrapped: true },
+      { name: "terminal-mcp", status: "running", calls: 156, wrapped: true },
+      { name: "postgres-mcp", status: "stopped", calls: 67, wrapped: true },
+    ],
+    capabilities: ["filesystem", "git", "shell", "network"],
+    recentMoves: [
+      { t: "14:28:14", action: "execve", target: "npm install", verdict: "ALLOW", notation: "Nc5" },
+      { t: "14:26:09", action: "git_push", target: "origin/main", verdict: "ALLOW", notation: "Nb3" },
+      { t: "14:24:55", action: "tcp_connect", target: "registry.npmjs.org:443", verdict: "ALLOW", notation: "Ne4" },
+      { t: "14:22:31", action: "read_file", target: "~/work/api/src/index.ts", verdict: "ALLOW", notation: "Nf6" },
+    ],
+  },
+  {
+    id: "windsurf", name: "Windsurf", vendor: "Codeium", version: "1.12.0",
+    installDate: "2026-01-08", authMethod: "OAuth 2.0", risk: "medium",
+    permissions: { filesystem: ["~/projects/**"], network: ["api.codeium.com", "telemetry.codeium.com"], env: ["PATH"], shell: true },
+    lastUsed: "2026-05-03T11:45:00Z", frequency: [8, 12, 6, 14, 10, 8, 16, 12, 9, 7, 11, 15, 13, 10],
+    events24h: 189, anomalyScore: 0.18, trust: "trusted", wrapped: true,
+    mcpServers: [
+      { name: "cascade-mcp", status: "running", calls: 42, wrapped: true },
+    ],
+    capabilities: ["filesystem", "shell", "network"],
+    recentMoves: [
+      { t: "11:45:22", action: "write_file", target: "~/projects/app/src/lib.rs", verdict: "ALLOW", notation: "Bb5" },
+      { t: "11:44:01", action: "execve", target: "cargo build", verdict: "ALLOW", notation: "Bc4" },
+    ],
+  },
+  {
+    id: "shell-runner", name: "shell-runner", vendor: "Unknown", version: "0.3.1",
+    installDate: "2026-04-29", authMethod: "None", risk: "high",
+    permissions: { filesystem: ["/tmp/**", "~/.*"], network: ["*"], env: ["*"], shell: true },
+    lastUsed: "2026-05-03T14:32:00Z", frequency: [2, 0, 1, 0, 3, 8, 12, 6, 1, 0, 2, 14, 9, 4],
+    events24h: 14, anomalyScore: 0.84, trust: "untrusted", wrapped: false,
+    mcpServers: [],
+    capabilities: ["shell", "network", "process"],
+    recentMoves: [
+      { t: "14:32:06", action: "execve", target: "bash -c 'curl ... | sh'", verdict: "BLOCK", notation: "Qxd7+" },
+      { t: "14:31:58", action: "dns_query", target: "paste.evil-c2.example", verdict: "BLOCK", notation: "Qh5+" },
+      { t: "14:31:46", action: "tcp_connect", target: "185.220.101.34:443", verdict: "BLOCK", notation: "Qa4+" },
+      { t: "14:28:11", action: "execve", target: "curl from /tmp", verdict: "ALLOW", notation: "Qb6" },
+    ],
+  },
+  {
+    id: "claude-code", name: "Claude Code", vendor: "Anthropic", version: "1.0.34",
+    installDate: "2026-02-15", authMethod: "OAuth 2.0", risk: "medium",
+    permissions: { filesystem: ["~/work/**", "~/.claude/**"], network: ["api.anthropic.com"], env: ["PATH", "HOME", "SHELL"], shell: true },
+    lastUsed: "2026-05-03T13:10:00Z", frequency: [6, 8, 10, 14, 12, 9, 16, 20, 18, 11, 8, 14, 22, 17],
+    events24h: 342, anomalyScore: 0.15, trust: "trusted", wrapped: true,
+    mcpServers: [
+      { name: "filesystem-mcp", status: "running", calls: 201, wrapped: true },
+    ],
+    capabilities: ["filesystem", "shell", "network"],
+    recentMoves: [
+      { t: "13:10:44", action: "write_file", target: "~/work/api/src/handler.rs", verdict: "ALLOW", notation: "Bb4" },
+      { t: "13:09:22", action: "execve", target: "cargo test", verdict: "ALLOW", notation: "Bc3" },
+    ],
+  },
+  {
+    id: "codex-cli", name: "Codex CLI", vendor: "OpenAI", version: "0.1.2",
+    installDate: "2026-04-22", authMethod: "API Key", risk: "low",
+    permissions: { filesystem: ["~/work/**"], network: ["api.openai.com"], env: ["OPENAI_API_KEY"], shell: false },
+    lastUsed: "2026-05-02T16:42:00Z", frequency: [2, 4, 3, 6, 5, 2, 4, 8, 6, 3, 2, 5, 7, 4],
+    events24h: 28, anomalyScore: 0.05, trust: "trusted", wrapped: true,
+    mcpServers: [],
+    capabilities: ["filesystem", "network"],
+    recentMoves: [
+      { t: "16:42:11", action: "read_file", target: "~/work/api/README.md", verdict: "ALLOW", notation: "Rf1" },
+    ],
+  },
+];
+
+const SCANS = [
+  {
+    id: "scan_047", type: "ai", status: "running", startedAt: "2026-05-03T14:30:00Z",
+    completedAt: null, duration: null, scope: "All tools", threatsFound: 2, progress: 62,
+    currentStage: "Network Posture",
+    stages: [
+      { name: "Inventory", status: "done", findings: 0, ms: 1240 },
+      { name: "Config Audit", status: "done", findings: 3, ms: 4810 },
+      { name: "Network Posture", status: "running", findings: 1, ms: null },
+      { name: "Behavioral", status: "pending", findings: null, ms: null },
+      { name: "Verdict", status: "pending", findings: null, ms: null },
+    ],
+    moves: [
+      { t: "00:00", type: "info", desc: "Playbook 'MCP Security Audit' started", notation: "1. e4" },
+      { t: "00:01", type: "tool", desc: "list_servers() -> 6 servers discovered", notation: "1... e5" },
+      { t: "00:03", type: "tool", desc: "read_policy('/etc/rookbot/config.toml')", notation: "2. Nf3" },
+      { t: "00:05", type: "info", desc: "Stage 1 complete: Inventory (1.2s)", notation: "2... Nc6" },
+      { t: "00:06", type: "tool", desc: "inspect_capabilities('shell-runner')", notation: "3. Bb5" },
+      { t: "00:07", type: "threat", desc: "shell-runner has CAP_NET_RAW -- Bxd7+ blocked", notation: "3... a6", response: "Revoke CAP_NET_RAW" },
+      { t: "00:09", type: "tool", desc: "scan_dns_resolvers()", notation: "4. Ba4" },
+      { t: "00:10", type: "threat", desc: "8.8.8.8 hardcoded in 3 servers -- Rd8# fired", notation: "4... Nf6", response: "Route via resolv.conf" },
+      { t: "00:12", type: "tool", desc: "trace_filesystem_scope('filemanager-mcp')", notation: "5. O-O" },
+      { t: "00:13", type: "threat", desc: "FileManager MCP can read entire $HOME", notation: "5... Be7", response: "Scope to ~/Documents" },
+      { t: "00:15", type: "info", desc: "Stage 2 complete: Config Audit (4.8s)", notation: "6. Re1" },
+      { t: "00:16", type: "tool", desc: "probe_egress_patterns()...", notation: "6... b5" },
+    ],
+  },
+  {
+    id: "scan_046", type: "quick", status: "completed", startedAt: "2026-05-03T09:15:00Z",
+    completedAt: "2026-05-03T09:15:28Z", duration: 28, scope: "All tools", threatsFound: 1, progress: 100,
+    stages: [
+      { name: "Inventory", status: "done", findings: 0, ms: 890 },
+      { name: "Config Audit", status: "done", findings: 1, ms: 3200 },
+      { name: "Network Posture", status: "done", findings: 0, ms: 2100 },
+      { name: "Behavioral", status: "done", findings: 0, ms: 4800 },
+      { name: "Verdict", status: "done", findings: 0, ms: 1200 },
+    ],
+    moves: [
+      { t: "00:00", type: "info", desc: "Quick scan initiated -- all tools", notation: "1. d4" },
+      { t: "00:04", type: "info", desc: "Inventory: 6 servers, 5 wrapped", notation: "1... d5" },
+      { t: "00:12", type: "threat", desc: "shell-runner still unwrapped", notation: "2. c4 dxc4", response: "Wrap recommended" },
+      { t: "00:28", type: "info", desc: "Scan complete. 1 finding, 0 critical.", notation: "3. e3" },
+    ],
+  },
+  {
+    id: "scan_045", type: "ai", status: "completed", startedAt: "2026-05-02T16:00:00Z",
+    completedAt: "2026-05-02T16:02:14Z", duration: 134, scope: "shell-runner", threatsFound: 4, progress: 100,
+    stages: [
+      { name: "Inventory", status: "done", findings: 0, ms: 600 },
+      { name: "Config Audit", status: "done", findings: 2, ms: 5400 },
+      { name: "Network Posture", status: "done", findings: 1, ms: 8200 },
+      { name: "Behavioral", status: "done", findings: 1, ms: 12400 },
+      { name: "Verdict", status: "done", findings: 0, ms: 2800 },
+    ],
+    moves: [
+      { t: "00:00", type: "info", desc: "Deep scan: shell-runner (Claude-powered)", notation: "1. e4" },
+      { t: "00:08", type: "threat", desc: "No auth method configured -- Nxf7 intercepted", notation: "1... e5 2. Nf3 d6", response: "Require API key" },
+      { t: "00:22", type: "threat", desc: "Wildcard network permissions -- Qh5+ blocked", notation: "3. Bc4 Bg4?", response: "Restrict to known hosts" },
+      { t: "00:48", type: "threat", desc: "Egress to Tor relay attempted in baseline", notation: "4. Bxf7+ Ke7", response: "Block + alert" },
+      { t: "01:14", type: "threat", desc: "Anomalous process spawn pattern detected", notation: "5. Qb3 Qe7", response: "Flag for review" },
+      { t: "02:14", type: "info", desc: "Verdict: HIGH RISK. 4 findings, 1 critical.", notation: "6. Nc3" },
+    ],
+  },
+  {
+    id: "scan_044", type: "quick", status: "completed", startedAt: "2026-05-01T10:30:00Z",
+    completedAt: "2026-05-01T10:30:22Z", duration: 22, scope: "All tools", threatsFound: 0, progress: 100,
+    stages: [
+      { name: "Inventory", status: "done", findings: 0, ms: 780 },
+      { name: "Config Audit", status: "done", findings: 0, ms: 2800 },
+      { name: "Network Posture", status: "done", findings: 0, ms: 1900 },
+      { name: "Behavioral", status: "done", findings: 0, ms: 3600 },
+      { name: "Verdict", status: "done", findings: 0, ms: 980 },
+    ],
+    moves: [
+      { t: "00:00", type: "info", desc: "Quick scan initiated", notation: "1. Nf3" },
+      { t: "00:22", type: "info", desc: "All clear. No findings.", notation: "1... d5 2. g3" },
+    ],
+  },
+  {
+    id: "scan_043", type: "ai", status: "completed", startedAt: "2026-04-30T14:00:00Z",
+    completedAt: "2026-04-30T14:01:48Z", duration: 108, scope: "Cursor IDE", threatsFound: 2, progress: 100,
+    stages: [
+      { name: "Inventory", status: "done", findings: 0, ms: 900 },
+      { name: "Config Audit", status: "done", findings: 1, ms: 6100 },
+      { name: "Network Posture", status: "done", findings: 1, ms: 7300 },
+      { name: "Behavioral", status: "done", findings: 0, ms: 9800 },
+      { name: "Verdict", status: "done", findings: 0, ms: 2100 },
+    ],
+    moves: [
+      { t: "00:00", type: "info", desc: "Deep scan: Cursor IDE", notation: "1. c4" },
+      { t: "00:18", type: "threat", desc: "Telemetry to 3 undisclosed endpoints", notation: "1... e6 2. Nc3 d5", response: "Block telemetry hosts" },
+      { t: "00:44", type: "threat", desc: "Shell access unbounded for terminal-mcp", notation: "3. d4 Nf6", response: "Restrict to project dir" },
+      { t: "01:48", type: "info", desc: "Verdict: MEDIUM RISK. 2 findings.", notation: "4. Bg5" },
+    ],
+  },
+];
+
+const severityColor = (s) => ({ critical: "var(--red)", high: "var(--red)", medium: "var(--amber)", low: "var(--green)", info: "var(--ink-2)" }[s] || "var(--ink-2)");
+
+// ═══════════════════════════════════════════════════════════════
+// ATOMS
+// ═══════════════════════════════════════════════════════════════
+
+const Rook = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 45 45" fill={color} style={{ display: "block" }}>
+    <path d="M9 36h27v-3H9zM12 33v-3h21v3zM11 14V8h4v3h4V8h7v3h4V8h4v6l-3 3v9H14l-3-3z"/>
+    <path d="M14 17h17v9H14z" opacity="0.92"/>
+  </svg>
+);
+
+const ChessPiece = ({ kind = "rook", size = 32, style: extraStyle }) => {
+  const paths = {
+    rook: <g><path d="M9 36h27v-3H9zM12 33v-3h21v3zM11 14V8h4v3h4V8h7v3h4V8h4v6l-3 3v9H14l-3-3z"/><path d="M14 17h17v9H14z" opacity="0.92"/></g>,
+    pawn: <g><circle cx="22.5" cy="12" r="4.5"/><path d="M18 16c-1 2 0 4 2 5-3 1-5 4-5 8h15c0-4-2-7-5-8 2-1 3-3 2-5z"/><path d="M13 36h19v-3H13zM14 33v-3h17v3z"/></g>,
+    knight: <g><path d="M22 8c4 0 9 3 10 9 .5 3-.5 6-1 8l-1 5H14l1-3c.5-2 0-3-1-4l-3 1c-2 .5-3-1-2-3 1-1.5 3-2 5-2.5l-1-3c-.5-2 .5-4 2-5l1 1c0-2 2-3 6-3.5z"/><circle cx="18" cy="14" r="1.2" fill="var(--bg-1)"/><path d="M11 36h23v-3H11zM13 33v-3h19v3z"/></g>,
+    bishop: <g><path d="M22.5 5c-2 0-3.5 1.5-3.5 3.5 0 1 .5 1.8 1.2 2.3-3 1.5-5 5-5 9.2 0 4 2 7 7.3 8 5.3-1 7.3-4 7.3-8 0-4.2-2-7.7-5-9.2.7-.5 1.2-1.3 1.2-2.3 0-2-1.5-3.5-3.5-3.5z"/><path d="M20.5 13h4v3h-4z" fill="var(--bg-1)" opacity="0.9"/><path d="M14 30c1.5-3 5-3 8.5-3s7 0 8.5 3M11 36h23v-3H11zM13 33v-3h19v3z"/></g>,
+    queen: <g><circle cx="9" cy="13" r="2"/><circle cx="22.5" cy="11" r="2"/><circle cx="36" cy="13" r="2"/><circle cx="15" cy="9" r="2"/><circle cx="30" cy="9" r="2"/><path d="M9 15l4 11h19l4-11-6 4-3.5-7-4 7-4-7-3.5 7z"/><path d="M11 28h23v3H11zM12 31h21v3H12zM10 34h25v3H10z"/></g>,
+  };
+  return (
+    <svg viewBox="0 0 45 45" width={size} height={size} fill="currentColor" style={{ display: "block", ...extraStyle }}>
+      {paths[kind] || paths.pawn}
+    </svg>
+  );
+};
+
+const riskPiece = (risk) => ({ low: "pawn", medium: "knight", high: "queen" }[risk] || "pawn");
+const riskColor = (risk) => ({ low: "var(--green)", medium: "var(--amber)", high: "var(--red)" }[risk] || "var(--ink-2)");
+
+const Dot = ({ color = "var(--accent)", size = 8, pulse = false, style: s }) => (
+  <span style={{ display: "inline-block", width: size, height: size, borderRadius: 999, background: color, position: "relative", ...s }} className={pulse ? "cd-pulse-dot" : ""}/>
+);
+
+const Badge = ({ children, color = "var(--ink-2)", mono = false, style: s }) => (
+  <span style={{
+    display: "inline-flex", alignItems: "center", gap: 5,
+    fontFamily: mono ? "var(--font-mono)" : "var(--font-ui)",
+    fontSize: 10.5, fontWeight: 600, letterSpacing: mono ? 0 : 0.4,
+    textTransform: mono ? "none" : "uppercase",
+    padding: "3px 7px", borderRadius: 4,
+    color, background: `color-mix(in oklch, ${color} 14%, transparent)`,
+    border: `1px solid color-mix(in oklch, ${color} 28%, transparent)`, ...s,
+  }}>{children}</span>
+);
+
+const VerdictPill = ({ verdict }) => {
+  const isBlock = verdict === "BLOCK";
+  return (
+    <span className="mono" style={{
+      fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6,
+      padding: "3px 7px", borderRadius: 4,
+      color: isBlock ? "var(--red)" : "var(--green)",
+      background: isBlock ? "var(--red-soft)" : "var(--green-soft)",
+      border: `1px solid color-mix(in oklch, ${isBlock ? "var(--red)" : "var(--green)"} 32%, transparent)`,
+    }}>{verdict}</span>
+  );
+};
+
+const Icon = ({ name, size = 18, stroke: sw = 1.6, color = "currentColor", style: s }) => {
+  const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: sw, strokeLinecap: "round", strokeLinejoin: "round", style: { display: "block", ...s } };
+  switch (name) {
+    case "home": return <svg {...p}><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg>;
+    case "activity": return <svg {...p}><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>;
+    case "alert": return <svg {...p}><path d="M12 3l9 16H3z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".7" fill={color}/></svg>;
+    case "scan": return <svg {...p}><circle cx="11" cy="11" r="6"/><path d="M16 16l5 5"/></svg>;
+    case "tools": return <svg {...p}><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>;
+    case "settings": return <svg {...p}><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>;
+    case "shield": return <svg {...p}><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>;
+    case "search": return <svg {...p}><circle cx="11" cy="11" r="6"/><path d="M16 16l5 5"/></svg>;
+    case "chevron": return <svg {...p}><path d="M9 6l6 6-6 6"/></svg>;
+    case "x": return <svg {...p}><path d="M5 5l14 14M19 5L5 19"/></svg>;
+    case "check": return <svg {...p}><path d="M5 12l5 5 9-11"/></svg>;
+    case "play": return <svg {...p}><path d="M6 4l13 8-13 8z" fill={color}/></svg>;
+    case "pause": return <svg {...p}><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;
+    case "filter": return <svg {...p}><path d="M3 5h18l-7 9v6l-4-2v-4z"/></svg>;
+    case "refresh": return <svg {...p}><path d="M4 12a8 8 0 0114-5l3 3M3 17l3-3a8 8 0 0014-5"/></svg>;
+    case "lock": return <svg {...p}><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>;
+    case "key": return <svg {...p}><circle cx="8" cy="15" r="3"/><path d="M11 13l9-9M16 8l3 3"/></svg>;
+    case "network": return <svg {...p}><circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M12 8.5l-7 7M12 8.5l7 7"/></svg>;
+    case "grid": return <svg {...p}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>;
+    case "list": return <svg {...p}><path d="M3 6h18M3 12h18M3 18h18"/></svg>;
+    case "clock": return <svg {...p}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
+    case "sidebar": return <svg {...p}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>;
+    case "audit": return <svg {...p}><path d="M5 3h11l4 4v14H5z"/><path d="M9 12h7M9 16h7M9 8h4"/></svg>;
+    case "sandbox": return <svg {...p}><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 8V5M8 5h8"/></svg>;
+    case "ban": return <svg {...p}><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>;
+    case "sun": return <svg {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>;
+    case "moon": return <svg {...p}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>;
+    default: return <svg {...p}><circle cx="12" cy="12" r="3"/></svg>;
+  }
+};
+
+const Sparkline = ({ data, color = "var(--accent)", width = 120, height = 32 }) => {
+  const max = Math.max(...data, 1);
+  const step = width / (data.length - 1);
+  const pts = data.map((v, i) => [i * step, height - (v / max) * (height - 4) - 2]);
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      <path d={`${d} L${width} ${height} L0 ${height} Z`} fill={color} opacity="0.12"/>
+      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+};
+
+const Btn = ({ children, kind = "ghost", size = "md", icon, onClick, style: s, disabled }) => {
+  const sizes = { sm: { p: "5px 10px", fs: 12, r: 6 }, md: { p: "7px 14px", fs: 13, r: 7 }, lg: { p: "10px 18px", fs: 14, r: 8 } };
+  const sz = sizes[size];
+  const kinds = {
+    primary: { bg: "var(--accent)", c: "white", b: "var(--accent)" },
+    ghost: { bg: "transparent", c: "var(--ink-1)", b: "transparent" },
+    soft: { bg: "var(--bg-2)", c: "var(--ink-0)", b: "var(--line)" },
+    danger: { bg: "var(--red)", c: "white", b: "var(--red)" },
+    accent: { bg: "var(--accent-soft)", c: "var(--accent)", b: "transparent" },
+  };
+  const k = kinds[kind];
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: sz.p, fontSize: sz.fs, fontWeight: 500,
+      background: k.bg, color: k.c, border: `1px solid ${k.b}`,
+      borderRadius: sz.r, opacity: disabled ? 0.4 : 1,
+      cursor: disabled ? "not-allowed" : "pointer", ...s,
+    }}>
+      {icon && <Icon name={icon} size={13.5}/>}
+      {children}
+    </button>
+  );
+};
+
+const SectionTitle = ({ children, sub }) => (
+  <div style={{ marginBottom: 22 }}>
+    <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: -0.5, color: "var(--ink-0)" }}>{children}</h1>
+    {sub && <div style={{ marginTop: 6, fontSize: 14, color: "var(--ink-2)" }}>{sub}</div>}
+  </div>
+);
+
+const Card = ({ title, action, children, padded = true, style: s }) => (
+  <div style={{
+    background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 12,
+    overflow: "hidden", boxShadow: "0 1px 2px oklch(0 0 0 / 0.04)", ...s,
+  }}>
+    {title && (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--line-soft)" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-0)" }}>{title}</div>
+        {action}
+      </div>
+    )}
+    <div style={{ padding: padded ? 16 : 0 }}>{children}</div>
+  </div>
+);
+
+const KV = ({ k, v, mono = false }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0", borderBottom: "1px solid var(--line-soft)", gap: 16 }}>
+    <span style={{ color: "var(--ink-2)", fontSize: 12 }}>{k}</span>
+    <span style={{ fontFamily: mono ? "var(--font-mono)" : "var(--font-ui)", fontSize: 12, color: "var(--ink-0)", textAlign: "right" }}>{v}</span>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+// RISK ICON — controlled by tweak
+// ═══════════════════════════════════════════════════════════════
+
+const RiskIcon = ({ risk, style: iconStyle, size = 26, tweaks }) => {
+  const c = riskColor(risk);
+  if (tweaks.riskIconStyle === "dots") {
+    const sz = { low: 8, medium: 10, high: 12 }[risk] || 8;
+    return <Dot color={c} size={sz} pulse={risk === "high"} style={iconStyle}/>;
+  }
+  if (tweaks.riskIconStyle === "bars") {
+    const bars = { low: 1, medium: 2, high: 3 }[risk] || 1;
+    return (
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: size, ...iconStyle }}>
+        {[1,2,3].map(i => (
+          <div key={i} style={{
+            width: 4, borderRadius: 2,
+            height: `${(i / 3) * 100}%`,
+            background: i <= bars ? c : "var(--bg-3)",
+          }}/>
+        ))}
+      </div>
+    );
+  }
+  // Default: chess pieces
+  return (
+    <div style={{ color: c, ...iconStyle }}>
+      <ChessPiece kind={riskPiece(risk)} size={size}/>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TOOLS PAGE
+// ═══════════════════════════════════════════════════════════════
+
+const ToolsPage = ({ tweaks, onSelectTool, selectedTool }) => {
+  const [search, setSearch] = React.useState("");
+  const [riskFilter, setRiskFilter] = React.useState("all");
+  const [vendorFilter, setVendorFilter] = React.useState("all");
+
+  const vendors = ["all", ...new Set(TOOLS.map(t => t.vendor))];
+  const filtered = TOOLS.filter(t => {
+    if (riskFilter !== "all" && t.risk !== riskFilter) return false;
+    if (vendorFilter !== "all" && t.vendor !== vendorFilter) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      return t.name.toLowerCase().includes(s) || t.vendor.toLowerCase().includes(s) || t.id.toLowerCase().includes(s);
+    }
+    return true;
+  });
+
+  const isCard = tweaks.toolDensity === "card";
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: selectedTool ? "1fr 380px" : "1fr", height: "100%", overflow: "hidden" }}>
+      <div className="cd-scroll" style={{ padding: 24, overflowY: "auto" }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+            <SectionTitle sub="Every MCP server, CLI tool, and AI agent connected to this machine.">Tools</SectionTitle>
+          </div>
+
+          {/* Toolbar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: "0 0 220px" }}>
+              <Icon name="search" size={13} color="var(--ink-3)" style={{ position: "absolute", left: 9, top: 8 }}/>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tools..."
+                style={{ width: "100%", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px 6px 28px", fontSize: 12.5, color: "var(--ink-0)", outline: "none" }}/>
+            </div>
+            <FilterPill label="risk" value={riskFilter} options={["all","low","medium","high"]} onChange={setRiskFilter}/>
+            <FilterPill label="vendor" value={vendorFilter} options={vendors} onChange={setVendorFilter}/>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+              <button onClick={() => {}} title="List view" style={{
+                padding: 6, borderRadius: 5,
+                background: !isCard ? "var(--accent-soft)" : "transparent",
+                color: !isCard ? "var(--accent)" : "var(--ink-3)",
+              }}><Icon name="list" size={14}/></button>
+              <button onClick={() => {}} title="Card view" style={{
+                padding: 6, borderRadius: 5,
+                background: isCard ? "var(--accent-soft)" : "transparent",
+                color: isCard ? "var(--accent)" : "var(--ink-3)",
+              }}><Icon name="grid" size={14}/></button>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{
+            padding: "10px 16px", marginBottom: 16, borderRadius: 10,
+            background: "color-mix(in oklch, var(--green) 8%, var(--bg-1))",
+            border: "1px solid color-mix(in oklch, var(--green) 20%, transparent)",
+            fontSize: 13, color: "var(--ink-1)", display: "flex", alignItems: "center", gap: 8,
+          }}>
+            <Icon name="shield" size={15} color="var(--green)"/>
+            <span>
+              <strong>{TOOLS.length}</strong> tools detected &middot; <strong>{TOOLS.filter(t => t.wrapped).length}</strong> wrapped &middot; <strong style={{ color: "var(--red)" }}>{TOOLS.filter(t => !t.wrapped).length}</strong> exposed
+            </span>
+          </div>
+
+          {/* Tool list/grid */}
+          {isCard ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+              {filtered.map(tool => <ToolCard key={tool.id} tool={tool} tweaks={tweaks} selected={selectedTool?.id === tool.id} onSelect={() => onSelectTool(tool)}/>)}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filtered.map(tool => <ToolRow key={tool.id} tool={tool} tweaks={tweaks} selected={selectedTool?.id === tool.id} onSelect={() => onSelectTool(tool)}/>)}
+            </div>
+          )}
+
+          {filtered.length === 0 && (
+            <div style={{ textAlign: "center", padding: 48, color: "var(--ink-3)", fontSize: 13 }}>No tools match your filters.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Side panel */}
+      {selectedTool && <ToolDetailPanel tool={selectedTool} tweaks={tweaks} onClose={() => onSelectTool(null)}/>}
+    </div>
+  );
+};
+
+const FilterPill = ({ label, value, options, onChange }) => (
+  <label style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", borderRadius: 6, fontSize: 12, color: "var(--ink-2)", background: "var(--bg-2)" }}>
+    <span style={{ color: "var(--ink-3)" }}>{label}:</span>
+    <select value={value} onChange={e => onChange(e.target.value)} style={{ background: "transparent", border: "none", color: "var(--ink-0)", fontSize: 12, outline: "none" }}>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  </label>
+);
+
+const ToolRow = ({ tool, tweaks, selected, onSelect }) => {
+  const rc = riskColor(tool.risk);
+  return (
+    <button onClick={onSelect} style={{
+      width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 14,
+      padding: "14px 16px",
+      background: selected ? "var(--accent-soft)" : "var(--bg-1)",
+      border: `1px solid ${selected ? "var(--accent-line)" : "var(--line)"}`,
+      borderRadius: 10, cursor: "pointer",
+      transition: "border-color 0.12s",
+    }}
+      onMouseEnter={e => !selected && (e.currentTarget.style.borderColor = "var(--line-strong)")}
+      onMouseLeave={e => !selected && (e.currentTarget.style.borderColor = "var(--line)")}
+    >
+      <div style={{ width: 40, height: 40, borderRadius: 9, background: "var(--bg-2)", border: "1px solid var(--line)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+        <RiskIcon risk={tool.risk} tweaks={tweaks} size={22}/>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{tool.name}</span>
+          <Badge color={rc}>{tool.risk}</Badge>
+          {!tool.wrapped && <Badge color="var(--red)">EXPOSED</Badge>}
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }}>
+          {tool.vendor} &middot; v{tool.version} &middot; {tool.mcpServers.length} MCP server{tool.mcpServers.length !== 1 ? "s" : ""}
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+        <Sparkline data={tool.frequency} color={rc} width={80} height={24}/>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--ink-1)", fontVariantNumeric: "tabular-nums" }}>{tool.events24h}</div>
+          <div style={{ fontSize: 10, color: "var(--ink-3)" }}>events/24h</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-2)" }}>{fmtRelative(tool.lastUsed)}</div>
+        </div>
+      </div>
+      <Icon name="chevron" size={13} color="var(--ink-3)" style={{ flexShrink: 0 }}/>
+    </button>
+  );
+};
+
+const ToolCard = ({ tool, tweaks, selected, onSelect }) => {
+  const rc = riskColor(tool.risk);
+  return (
+    <button onClick={onSelect} style={{
+      textAlign: "left", padding: 16,
+      background: selected ? "var(--accent-soft)" : "var(--bg-1)",
+      border: `1px solid ${selected ? "var(--accent-line)" : "var(--line)"}`,
+      borderRadius: "var(--radius-lg)", cursor: "pointer",
+    }}
+      onMouseEnter={e => !selected && (e.currentTarget.style.borderColor = "var(--line-strong)")}
+      onMouseLeave={e => !selected && (e.currentTarget.style.borderColor = "var(--line)")}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 9, background: "var(--bg-2)", border: "1px solid var(--line)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+          <RiskIcon risk={tool.risk} tweaks={tweaks} size={24}/>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>{tool.name}</div>
+          <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>{tool.vendor}</div>
+        </div>
+        <Badge color={rc}>{tool.risk}</Badge>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-2)", marginBottom: 12 }}>
+        <span>v{tool.version}</span>
+        <span>&middot;</span>
+        <span>{tool.events24h} events</span>
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Dot color={tool.wrapped ? "var(--green)" : "var(--red)"} size={6}/>
+          {tool.wrapped ? "wrapped" : "exposed"}
+        </span>
+      </div>
+      <Sparkline data={tool.frequency} color={rc} width={260} height={28}/>
+      <div style={{ marginTop: 10, display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {tool.capabilities.map(c => (
+          <span key={c} className="mono" style={{ fontSize: 10, padding: "2px 6px", background: "var(--bg-2)", color: "var(--ink-2)", borderRadius: 3 }}>{c}</span>
+        ))}
+      </div>
+    </button>
+  );
+};
+
+const ToolDetailPanel = ({ tool, tweaks, onClose }) => {
+  const rc = riskColor(tool.risk);
+  return (
+    <aside className="cd-slide-in" style={{
+      borderLeft: "1px solid var(--line)", background: "var(--bg-1)",
+      overflowY: "auto", display: "flex", flexDirection: "column",
+    }}>
+      {/* Header */}
+      <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 9, background: "var(--bg-2)", border: "1px solid var(--line)", display: "grid", placeItems: "center" }}>
+          <RiskIcon risk={tool.risk} tweaks={tweaks} size={20}/>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{tool.name}</div>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)" }}>{tool.vendor} &middot; v{tool.version}</div>
+        </div>
+        <button onClick={onClose} style={{ padding: 4, borderRadius: 5, color: "var(--ink-2)" }}
+          onMouseEnter={e => e.currentTarget.style.background = "var(--bg-2)"}
+          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+        ><Icon name="x" size={14}/></button>
+      </div>
+
+      <div className="cd-scroll" style={{ flex: 1, overflowY: "auto", padding: 18, display: "grid", alignContent: "start", gap: 14 }}>
+        {/* Identity */}
+        <Card title="Identity">
+          <KV k="Install date" v={new Date(tool.installDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} mono/>
+          <KV k="Auth method" v={tool.authMethod} mono/>
+          <KV k="Trust level" v={tool.trust}/>
+          <KV k="Anomaly score" v={tool.anomalyScore.toFixed(2)} mono/>
+          <KV k="Last active" v={fmtRelative(tool.lastUsed)} mono/>
+        </Card>
+
+        {/* Permissions */}
+        <Card title="Permission scope">
+          <div style={{ display: "grid", gap: 10 }}>
+            <PermBlock label="Filesystem" items={tool.permissions.filesystem}/>
+            <PermBlock label="Network" items={tool.permissions.network}/>
+            {tool.permissions.env.length > 0 && <PermBlock label="Env vars" items={tool.permissions.env}/>}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+              <span style={{ color: "var(--ink-2)" }}>Shell access</span>
+              <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", color: tool.permissions.shell ? "var(--red)" : "var(--green)" }}>
+                {tool.permissions.shell ? "granted" : "denied"}
+              </span>
+            </div>
+          </div>
+        </Card>
+
+        {/* MCP Servers */}
+        {tool.mcpServers.length > 0 && (
+          <Card title={`MCP Servers (${tool.mcpServers.length})`} padded={false}>
+            {tool.mcpServers.map((srv, i) => (
+              <div key={srv.name} style={{
+                padding: "10px 16px", display: "flex", alignItems: "center", gap: 8,
+                borderBottom: i < tool.mcpServers.length - 1 ? "1px solid var(--line-soft)" : "none",
+                fontSize: 12, fontFamily: "var(--font-mono)",
+              }}>
+                <Dot color={srv.status === "running" ? "var(--green)" : "var(--ink-3)"} size={6}/>
+                <span style={{ flex: 1, color: "var(--ink-1)" }}>{srv.name}</span>
+                <span style={{ color: "var(--ink-3)" }}>{srv.calls} calls</span>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {/* Recent moves */}
+        <Card title="Recent moves" padded={false}>
+          {tool.recentMoves.map((m, i) => (
+            <div key={i} style={{
+              padding: "8px 16px", display: "flex", alignItems: "center", gap: 8,
+              borderBottom: i < tool.recentMoves.length - 1 ? "1px solid var(--line-soft)" : "none",
+              fontSize: 11.5,
+            }}>
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--ink-3)", width: 50 }}>{m.t}</span>
+              <span className="mono" style={{ color: "var(--accent)", width: 32, fontSize: 10.5, fontWeight: 600 }}>{m.notation}</span>
+              <span className="mono" style={{ color: "var(--ink-1)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {m.action} {m.target}
+              </span>
+              <VerdictPill verdict={m.verdict}/>
+            </div>
+          ))}
+        </Card>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn kind="soft" size="sm" icon="pause">Pause</Btn>
+          <Btn kind="soft" size="sm" icon="sandbox">Sandbox</Btn>
+          <Btn kind="danger" size="sm" icon="ban">Revoke</Btn>
+          <Btn kind="accent" size="sm" icon="audit">Audit log</Btn>
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+const PermBlock = ({ label, items }) => (
+  <div>
+    <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>{label}</div>
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+      {items.map(p => (
+        <span key={p} className="mono" style={{
+          fontSize: 10.5, padding: "3px 7px", borderRadius: 4,
+          background: "var(--bg-2)", color: "var(--ink-1)",
+          border: "1px solid var(--line-soft)",
+        }}>{p}</span>
+      ))}
+    </div>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+// SCANS PAGE
+// ═══════════════════════════════════════════════════════════════
+
+const ScansPage = ({ tweaks }) => {
+  const [sevFilter, setSevFilter] = React.useState("all");
+  const [scopeFilter, setScopeFilter] = React.useState("all");
+  const [expanded, setExpanded] = React.useState(null);
+  const [showScopePicker, setShowScopePicker] = React.useState(false);
+
+  const liveScan = SCANS.find(s => s.status === "running");
+  const pastScans = SCANS.filter(s => s.status !== "running");
+
+  const scopes = ["all", ...new Set(SCANS.map(s => s.scope))];
+  const filteredPast = pastScans.filter(s => {
+    if (scopeFilter !== "all" && s.scope !== scopeFilter) return false;
+    if (sevFilter !== "all") {
+      if (sevFilter === "critical" && s.threatsFound < 3) return false;
+      if (sevFilter === "clean" && s.threatsFound > 0) return false;
+    }
+    return true;
+  });
+
+  const isVertical = tweaks.timelineOrientation === "vertical";
+
+  return (
+    <div className="cd-scroll" style={{ padding: 24, overflowY: "auto", height: "100%" }}>
+      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+          <SectionTitle sub="Security scans Rookbot has run on your tools and system.">Scans</SectionTitle>
+          <div style={{ position: "relative" }}>
+            <Btn kind="primary" size="md" icon="scan" onClick={() => setShowScopePicker(!showScopePicker)}>Run scan</Btn>
+            {showScopePicker && <ScopePicker onClose={() => setShowScopePicker(false)}/>}
+          </div>
+        </div>
+
+        {/* Live scan banner */}
+        {liveScan && <LiveScanBanner scan={liveScan}/>}
+
+        {/* Filters */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+          <FilterPill label="severity" value={sevFilter} options={["all","critical","clean"]} onChange={setSevFilter}/>
+          <FilterPill label="scope" value={scopeFilter} options={scopes} onChange={setScopeFilter}/>
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ink-3)" }}>
+            {filteredPast.length} past scan{filteredPast.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        {/* Timeline */}
+        {isVertical ? (
+          <VerticalTimeline scans={filteredPast} expanded={expanded} setExpanded={setExpanded}/>
+        ) : (
+          <HorizontalTimeline scans={filteredPast} expanded={expanded} setExpanded={setExpanded}/>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const LiveScanBanner = ({ scan }) => (
+  <div className="cd-slide-in" style={{
+    padding: "14px 18px", marginBottom: 18, borderRadius: 12,
+    background: "var(--bg-1)", border: "1px solid var(--accent-line)",
+    position: "relative", overflow: "hidden",
+  }}>
+    <div className="cd-shimmer" style={{ position: "absolute", inset: 0 }}/>
+    <div style={{ position: "relative", zIndex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+        {/* Animated rook sliding along a board strip */}
+        <div style={{
+          width: 180, height: 28, borderRadius: 6, overflow: "hidden",
+          background: "var(--bg-2)", border: "1px solid var(--line)", position: "relative",
+          display: "flex",
+        }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} style={{
+              flex: 1, background: i % 2 === 0 ? "var(--bg-2)" : "color-mix(in oklch, var(--ink-3) 8%, var(--bg-2))",
+            }}/>
+          ))}
+          <div className="rook-slide" style={{ position: "absolute", top: 2, left: 0, "--board-w": "160px" }}>
+            <Rook size={24} color="var(--accent)"/>
+          </div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Scan in progress</span>
+            <Badge color="var(--accent)" mono><span className="cd-pulse">live</span></Badge>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
+            {scan.scope} &middot; Stage: {scan.currentStage} &middot; {scan.threatsFound} finding{scan.threatsFound !== 1 ? "s" : ""} so far
+          </div>
+        </div>
+        <Btn kind="ghost" icon="x" size="sm">Stop</Btn>
+      </div>
+      {/* Progress bar */}
+      <div style={{ height: 4, background: "var(--bg-3)", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ width: `${scan.progress}%`, height: "100%", background: "var(--accent)", transition: "width 0.5s ease" }}/>
+      </div>
+      {/* Stage chips */}
+      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+        {scan.stages.map((s, i) => (
+          <div key={i} style={{
+            flex: 1, padding: "6px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 500,
+            background: s.status === "running" ? "var(--accent-soft)" : s.status === "done" ? "var(--green-soft)" : "var(--bg-2)",
+            color: s.status === "running" ? "var(--accent)" : s.status === "done" ? "var(--green)" : "var(--ink-3)",
+            border: `1px solid ${s.status === "running" ? "var(--accent-line)" : s.status === "done" ? "color-mix(in oklch, var(--green) 30%, transparent)" : "var(--line-soft)"}`,
+            display: "flex", alignItems: "center", gap: 4,
+          }}>
+            {s.status === "done" && <Icon name="check" size={10} color="var(--green)"/>}
+            {s.status === "running" && <span className="cd-spin" style={{ width: 10, height: 10, border: "1.5px solid var(--accent)", borderTopColor: "transparent", borderRadius: 999, display: "inline-block" }}/>}
+            {s.name}
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const ScopePicker = ({ onClose }) => (
+  <>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 50 }}/>
+    <div className="cd-slide-in" style={{
+      position: "absolute", top: "100%", right: 0, marginTop: 6, width: 260,
+      background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
+      boxShadow: "var(--shadow-lg)", zIndex: 60, overflow: "hidden",
+    }}>
+      <div style={{ padding: "10px 14px", fontSize: 12, fontWeight: 600, color: "var(--ink-1)", borderBottom: "1px solid var(--line-soft)" }}>Scan scope</div>
+      {[
+        { label: "Full system", desc: "All tools, configs, network posture", icon: "shield" },
+        { label: "All MCP servers", desc: "Every connected MCP server", icon: "tools" },
+        { label: "Specific tool...", desc: "Pick a single tool to audit", icon: "scan" },
+      ].map((opt, i) => (
+        <button key={i} onClick={onClose} style={{
+          width: "100%", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10,
+          textAlign: "left", fontSize: 12.5, borderBottom: i < 2 ? "1px solid var(--line-soft)" : "none",
+        }}
+          onMouseEnter={e => e.currentTarget.style.background = "var(--accent-soft)"}
+          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+        >
+          <Icon name={opt.icon} size={14} color="var(--ink-2)"/>
+          <div>
+            <div style={{ fontWeight: 500, color: "var(--ink-0)" }}>{opt.label}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>{opt.desc}</div>
+          </div>
+        </button>
+      ))}
+    </div>
+  </>
+);
+
+const VerticalTimeline = ({ scans, expanded, setExpanded }) => (
+  <div style={{ display: "grid", gap: 12 }}>
+    {scans.map(scan => (
+      <ScanRow key={scan.id} scan={scan} isExpanded={expanded === scan.id} onToggle={() => setExpanded(expanded === scan.id ? null : scan.id)}/>
+    ))}
+  </div>
+);
+
+const HorizontalTimeline = ({ scans, expanded, setExpanded }) => (
+  <div>
+    <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }} className="cd-scroll">
+      {scans.map(scan => (
+        <div key={scan.id} style={{ flex: "0 0 280px" }}>
+          <ScanCard scan={scan} isExpanded={expanded === scan.id} onToggle={() => setExpanded(expanded === scan.id ? null : scan.id)}/>
+        </div>
+      ))}
+    </div>
+    {expanded && (
+      <div className="cd-slide-in" style={{ marginTop: 12 }}>
+        <ScanMoves scan={scans.find(s => s.id === expanded)}/>
+      </div>
+    )}
+  </div>
+);
+
+const ScanRow = ({ scan, isExpanded, onToggle }) => {
+  const d = new Date(scan.startedAt);
+  const threatColor = scan.threatsFound === 0 ? "var(--green)" : scan.threatsFound >= 3 ? "var(--red)" : "var(--amber)";
+  return (
+    <div style={{ background: "var(--bg-1)", border: `1px solid ${isExpanded ? "var(--accent-line)" : "var(--line)"}`, borderRadius: 10, overflow: "hidden" }}>
+      <button onClick={onToggle} style={{
+        width: "100%", padding: "14px 16px", display: "flex", alignItems: "center", gap: 14,
+        textAlign: "left", cursor: "pointer",
+      }}
+        onMouseEnter={e => !isExpanded && (e.currentTarget.style.background = "var(--accent-soft)")}
+        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+      >
+        <div style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: scan.type === "ai" ? "var(--violet-soft)" : "var(--bg-2)",
+          border: `1px solid ${scan.type === "ai" ? "color-mix(in oklch, var(--violet) 30%, transparent)" : "var(--line)"}`,
+          display: "grid", placeItems: "center", flexShrink: 0,
+        }}>
+          <Icon name="scan" size={14} color={scan.type === "ai" ? "var(--violet)" : "var(--ink-2)"}/>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{scan.scope}</span>
+            <Badge color={scan.type === "ai" ? "var(--violet)" : "var(--ink-2)"} mono>{scan.type === "ai" ? "deep" : "quick"}</Badge>
+          </div>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)" }}>
+            {fmtDate(scan.startedAt)} &middot; {scan.duration ? `${scan.duration}s` : "in progress"}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 16, fontWeight: 600, fontFamily: "var(--font-mono)", color: threatColor }}>{scan.threatsFound}</div>
+            <div style={{ fontSize: 10, color: "var(--ink-3)" }}>findings</div>
+          </div>
+          <Icon name="chevron" size={13} color="var(--ink-3)" style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}/>
+        </div>
+      </button>
+      {isExpanded && (
+        <div className="cd-slide-in" style={{ borderTop: "1px solid var(--line-soft)" }}>
+          <ScanMoves scan={scan}/>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ScanCard = ({ scan, isExpanded, onToggle }) => {
+  const threatColor = scan.threatsFound === 0 ? "var(--green)" : scan.threatsFound >= 3 ? "var(--red)" : "var(--amber)";
+  return (
+    <button onClick={onToggle} style={{
+      width: "100%", textAlign: "left", padding: 16,
+      background: isExpanded ? "var(--accent-soft)" : "var(--bg-1)",
+      border: `1px solid ${isExpanded ? "var(--accent-line)" : "var(--line)"}`,
+      borderRadius: 10, cursor: "pointer",
+    }}
+      onMouseEnter={e => !isExpanded && (e.currentTarget.style.borderColor = "var(--line-strong)")}
+      onMouseLeave={e => !isExpanded && (e.currentTarget.style.borderColor = "var(--line)")}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <Badge color={scan.type === "ai" ? "var(--violet)" : "var(--ink-2)"} mono>{scan.type === "ai" ? "deep" : "quick"}</Badge>
+        <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)" }}>{fmtDate(scan.startedAt)}</span>
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{scan.scope}</div>
+      <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)", marginBottom: 10 }}>
+        {scan.duration}s &middot; {scan.stages.length} stages
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: "var(--font-mono)", color: threatColor }}>{scan.threatsFound}</span>
+        <span style={{ fontSize: 12, color: "var(--ink-2)" }}>finding{scan.threatsFound !== 1 ? "s" : ""}</span>
+      </div>
+    </button>
+  );
+};
+
+const ScanMoves = ({ scan }) => {
+  if (!scan) return null;
+  return (
+    <div style={{ padding: "12px 16px" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-2)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>
+        Move log
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {scan.moves.map((m, i) => (
+          <div key={i} style={{
+            display: "flex", alignItems: "flex-start", gap: 10, padding: "6px 10px",
+            background: m.type === "threat" ? "var(--red-soft)" : "var(--bg-2)",
+            borderRadius: 6,
+            border: m.type === "threat" ? "1px solid color-mix(in oklch, var(--red) 20%, transparent)" : "1px solid transparent",
+          }}>
+            <span className="mono" style={{ color: "var(--ink-3)", fontSize: 10.5, width: 38, flexShrink: 0 }}>{m.t}</span>
+            <span className="mono" style={{
+              color: m.type === "threat" ? "var(--red)" : m.type === "tool" ? "var(--accent)" : "var(--ink-3)",
+              fontSize: 10.5, width: 48, flexShrink: 0, fontWeight: 600,
+            }}>
+              {m.type === "threat" ? "THREAT" : m.type === "tool" ? "EVAL" : "MOVE"}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: "var(--ink-0)" }}>{m.desc}</div>
+              {m.response && (
+                <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--green)", marginTop: 2 }}>
+                  Response: {m.response}
+                </div>
+              )}
+            </div>
+            <span className="mono" style={{ color: "var(--ink-3)", fontSize: 10, flexShrink: 0 }}>{m.notation}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// SHELL — Sidebar + Header + Theme Toggle
+// ═══════════════════════════════════════════════════════════════
+
+const NAV_ITEMS = [
+  { id: "tools", label: "Tools", icon: "tools" },
+  { id: "scans", label: "Scans", icon: "scan" },
+];
+
+const Sidebar = ({ current, onNav, collapsed, onToggle, dark, onDark }) => (
+  <aside style={{
+    background: "var(--bg-0)", borderRight: "1px solid var(--line)",
+    display: "flex", flexDirection: "column", overflow: "hidden",
+  }}>
+    <div style={{
+      padding: collapsed ? "16px 12px" : "14px 16px",
+      display: "flex", alignItems: "center", gap: 10,
+      height: 56, minHeight: 56,
+    }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: 7, background: "var(--accent)",
+        display: "grid", placeItems: "center", flexShrink: 0,
+        boxShadow: "0 1px 2px oklch(0 0 0 / 0.10), inset 0 1px 0 oklch(1 0 0 / 0.20)",
+      }}>
+        <Rook size={15} color="white"/>
+      </div>
+      {!collapsed && <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: -0.2, color: "var(--ink-0)" }}>RookBot</div>}
+    </div>
+
+    <nav style={{ flex: 1, padding: collapsed ? 8 : "4px 8px" }}>
+      {NAV_ITEMS.map(item => {
+        const active = current === item.id;
+        return (
+          <button key={item.id} onClick={() => onNav(item.id)} title={collapsed ? item.label : undefined}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              padding: collapsed ? "8px 0" : "7px 9px",
+              justifyContent: collapsed ? "center" : "flex-start",
+              borderRadius: 7, marginBottom: 1,
+              background: active ? "var(--accent)" : "transparent",
+              color: active ? "white" : "var(--ink-0)",
+              fontSize: 13, fontWeight: active ? 500 : 400,
+            }}
+            onMouseEnter={e => !active && (e.currentTarget.style.background = "oklch(0 0 0 / 0.05)")}
+            onMouseLeave={e => !active && (e.currentTarget.style.background = "transparent")}
+          >
+            <Icon name={item.icon} size={15} stroke={1.7} color={active ? "white" : "var(--ink-1)"}/>
+            {!collapsed && <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>}
+          </button>
+        );
+      })}
+    </nav>
+
+    <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+      <button onClick={onDark} style={{
+        width: "100%", padding: "6px 8px",
+        color: "var(--ink-3)", fontSize: 11.5,
+        display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 6,
+        borderRadius: 6,
+      }}
+        onMouseEnter={e => e.currentTarget.style.background = "oklch(0 0 0 / 0.04)"}
+        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+      >
+        <Icon name={dark ? "sun" : "moon"} size={13}/>
+        {!collapsed && (dark ? "Light mode" : "Dark mode")}
+      </button>
+      <button onClick={onToggle} style={{
+        width: "100%", padding: "6px 8px",
+        color: "var(--ink-3)", fontSize: 11.5,
+        display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 6,
+        borderRadius: 6,
+      }}
+        onMouseEnter={e => e.currentTarget.style.background = "oklch(0 0 0 / 0.04)"}
+        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+      >
+        <Icon name="sidebar" size={13}/>
+        {!collapsed && "Collapse"}
+      </button>
+    </div>
+  </aside>
+);
+
+const StatusHeader = ({ current }) => {
+  const titleMap = { tools: "Tools", scans: "Scans" };
+  return (
+    <header style={{
+      height: 44, minHeight: 44, background: "var(--bg-0)",
+      borderBottom: "1px solid var(--line)",
+      display: "flex", alignItems: "center", padding: "0 20px", gap: 12,
+    }}>
+      <div style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--ink-0)" }}>{titleMap[current] || ""}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <kbd style={{ fontSize: 10, color: "var(--ink-3)", padding: "2px 6px", borderRadius: 4, background: "var(--bg-2)", border: "1px solid var(--line)", fontFamily: "var(--font-ui)" }}>
+          /
+        </kbd>
+        <span style={{ fontSize: 11, color: "var(--ink-3)" }}>search</span>
+      </div>
+    </header>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TWEAKS PANEL
+// ═══════════════════════════════════════════════════════════════
+
+const TweaksPanel = ({ tweaks, setTweak }) => {
+  const [open, setOpen] = React.useState(true);
+
+  return open ? (
+    <div style={{
+      position: "fixed", right: 16, bottom: 16, zIndex: 999, width: 260,
+      background: "color-mix(in oklch, var(--bg-1) 90%, transparent)",
+      backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+      border: "1px solid var(--line)", borderRadius: 14,
+      boxShadow: "var(--shadow-lg)", overflow: "hidden",
+      fontSize: 11.5,
+    }}>
+      <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--line-soft)" }}>
+        <strong style={{ fontSize: 12 }}>Tweaks</strong>
+        <button onClick={() => setOpen(false)} style={{ color: "var(--ink-3)", fontSize: 13 }}>x</button>
+      </div>
+      <div style={{ padding: 14, display: "grid", gap: 12 }}>
+        <TweakLabel label="Risk icon style">
+          <TweakSeg value={tweaks.riskIconStyle} options={["pieces","dots","bars"]} onChange={v => setTweak("riskIconStyle", v)}/>
+        </TweakLabel>
+        <TweakLabel label="Tools density">
+          <TweakSeg value={tweaks.toolDensity} options={["list","card"]} onChange={v => setTweak("toolDensity", v)}/>
+        </TweakLabel>
+        <TweakLabel label="Scans timeline">
+          <TweakSeg value={tweaks.timelineOrientation} options={["vertical","horizontal"]} onChange={v => setTweak("timelineOrientation", v)}/>
+        </TweakLabel>
+      </div>
+    </div>
+  ) : (
+    <button onClick={() => setOpen(true)} style={{
+      position: "fixed", right: 16, bottom: 16, zIndex: 999,
+      width: 36, height: 36, borderRadius: 10,
+      background: "var(--bg-1)", border: "1px solid var(--line)",
+      boxShadow: "var(--shadow-md)", display: "grid", placeItems: "center",
+      color: "var(--ink-2)",
+    }}>
+      <Icon name="settings" size={16}/>
+    </button>
+  );
+};
+
+const TweakLabel = ({ label, children }) => (
+  <div>
+    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>{label}</div>
+    {children}
+  </div>
+);
+
+const TweakSeg = ({ value, options, onChange }) => {
+  const idx = options.indexOf(value);
+  const n = options.length;
+  return (
+    <div style={{ position: "relative", display: "flex", padding: 2, borderRadius: 7, background: "var(--bg-3)" }}>
+      <div style={{
+        position: "absolute", top: 2, bottom: 2, borderRadius: 5,
+        background: "var(--bg-1)", boxShadow: "var(--shadow-sm)",
+        transition: "left 0.15s, width 0.15s",
+        left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+        width: `calc((100% - 4px) / ${n})`,
+      }}/>
+      {options.map(o => (
+        <button key={o} onClick={() => onChange(o)} style={{
+          flex: 1, position: "relative", zIndex: 1, height: 22,
+          fontSize: 10.5, fontWeight: 500, color: o === value ? "var(--ink-0)" : "var(--ink-3)",
+          borderRadius: 5,
+        }}>{o}</button>
+      ))}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function fmtRelative(iso) {
+  const d = new Date(iso);
+  const now = new Date("2026-05-03T14:35:00Z"); // frozen "now" for prototype
+  const diffMs = now - d;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " +
+    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// APP
+// ═══════════════════════════════════════════════════════════════
+
+const App = () => {
+  const [page, setPage] = React.useState("tools");
+  const [collapsed, setCollapsed] = React.useState(false);
+  const [dark, setDark] = React.useState(false);
+  const [selectedTool, setSelectedTool] = React.useState(null);
+  const [tweaks, setTweaks] = React.useState({
+    riskIconStyle: "pieces",
+    toolDensity: "list",
+    timelineOrientation: "vertical",
+  });
+
+  const setTweak = (k, v) => setTweaks(prev => ({ ...prev, [k]: v }));
+
+  React.useEffect(() => {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  }, [dark]);
+
+  return (
+    <div id="root" className={collapsed ? "collapsed" : ""} style={{ height: "100%", display: "grid", gridTemplateColumns: collapsed ? "60px 1fr" : "220px 1fr", overflow: "hidden" }}>
+      <Sidebar current={page} onNav={(p) => { setPage(p); setSelectedTool(null); }} collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} dark={dark} onDark={() => setDark(!dark)}/>
+      <div style={{ display: "grid", gridTemplateRows: "auto 1fr", overflow: "hidden" }}>
+        <StatusHeader current={page}/>
+        <main style={{ overflow: "hidden", position: "relative" }}>
+          {page === "tools" && <ToolsPage tweaks={tweaks} onSelectTool={setSelectedTool} selectedTool={selectedTool}/>}
+          {page === "scans" && <ScansPage tweaks={tweaks}/>}
+        </main>
+      </div>
+      <TweaksPanel tweaks={tweaks} setTweak={setTweak}/>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>

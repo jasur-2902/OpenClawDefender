@@ -95,6 +95,7 @@ describe('Settings - Default Settings', () => {
     behavioral_threshold: 75,
     analysis_frequency: "all",
     security_level: "balanced",
+    demo_mode: false,
   };
 
   it('should have system as default theme', () => {

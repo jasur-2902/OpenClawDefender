@@ -756,7 +756,6 @@ dependencies = [
  "regex",
  "reqwest",
  "rusqlite",
- "security-framework",
  "serde",
  "serde_json",
  "sha2",
@@ -803,6 +802,7 @@ dependencies = [
  "ratatui",
  "serde_json",
  "tokio",
+ "toml",
  "tracing",
 ]
 

@@ -71,6 +71,7 @@ export function Layout() {
     fetchAlerts();
   }, [fetchAlerts]);
 
+
   // Record page visits for guidance nudge tracking
   useEffect(() => {
     const pageName =

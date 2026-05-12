@@ -210,6 +210,8 @@ pub struct AppSettings {
     pub security_level: String,
     /// Clipboard ClickFix monitor: opt-in, off by default.
     pub clipboard_monitor_enabled: bool,
+    /// Demo mode: show simulated data everywhere for demos and screenshots.
+    pub demo_mode: bool,
 }
 
 // --- Clipboard Monitor types ---

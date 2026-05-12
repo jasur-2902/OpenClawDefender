@@ -64,12 +64,7 @@ fn cmd_setup() -> Result<()> {
     let (provider, provider_name) = match choice {
         "1" => (Provider::Anthropic, "Anthropic"),
         "2" => (Provider::OpenAi, "OpenAI"),
-        "3" => {
-            println!();
-            println!("Google provider support coming soon.");
-            println!("For now, please choose Anthropic or OpenAI.");
-            return Ok(());
-        }
+        "3" => (Provider::Google, "Google"),
         _ => {
             println!("Invalid choice. Exiting setup.");
             return Ok(());
@@ -186,6 +181,7 @@ fn cmd_disconnect() -> Result<()> {
         let keystore = default_keystore();
         let _ = keystore.delete(&Provider::Anthropic);
         let _ = keystore.delete(&Provider::OpenAi);
+        let _ = keystore.delete(&Provider::Google);
         println!();
         println!("Cloud configuration removed.");
     } else {

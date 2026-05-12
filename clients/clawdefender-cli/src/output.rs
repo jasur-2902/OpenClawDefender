@@ -50,11 +50,11 @@ impl Output {
         }
     }
 
-    /// Print a section header with underline.
+    /// Print a section header with a heavy underline.
     pub fn header(&self, title: &str) {
         if self.mode == OutputMode::Human {
-            println!("{title}");
-            println!("{}", "=".repeat(title.len()));
+            println!("{}", self.bold(title));
+            println!("{}", "\u{2501}".repeat(36));
         }
     }
 
@@ -82,15 +82,18 @@ impl Output {
     /// Print an error.
     pub fn error(&self, msg: &str) {
         if self.mode != OutputMode::Quiet {
-            eprintln!("Error: {msg}");
+            eprintln!("{} {msg}", self.red("Error:"));
         }
     }
 
     /// Print a check result (for doctor-style commands).
     pub fn check(&self, label: &str, ok: bool) -> bool {
         if self.mode == OutputMode::Human {
-            let icon = if ok { "\u{2713}" } else { "\u{2717}" };
-            println!("  {icon}  {label}");
+            if ok {
+                println!("  {}  {}", self.green("\u{2713}"), label);
+            } else {
+                println!("  {}  {}", self.red("\u{2717}"), label);
+            }
         }
         ok
     }
@@ -98,7 +101,7 @@ impl Output {
     /// Print a hint/suggestion.
     pub fn hint(&self, msg: &str) {
         if self.mode == OutputMode::Human {
-            println!("     -> {msg}");
+            println!("     {} {}", self.dim("->"), self.dim(msg));
         }
     }
 
@@ -145,4 +148,73 @@ impl Output {
     pub fn is_json(&self) -> bool {
         self.mode == OutputMode::Json
     }
+
+    // ── ANSI color helpers (respect no_color flag) ──────────────
+
+    /// Wrap text in ANSI green.
+    pub fn green(&self, text: &str) -> String {
+        if self.no_color { text.to_string() } else { format!("\x1b[32m{}\x1b[0m", text) }
+    }
+
+    /// Wrap text in ANSI yellow.
+    pub fn yellow(&self, text: &str) -> String {
+        if self.no_color { text.to_string() } else { format!("\x1b[33m{}\x1b[0m", text) }
+    }
+
+    /// Wrap text in ANSI red.
+    pub fn red(&self, text: &str) -> String {
+        if self.no_color { text.to_string() } else { format!("\x1b[31m{}\x1b[0m", text) }
+    }
+
+    /// Wrap text in bold.
+    pub fn bold(&self, text: &str) -> String {
+        if self.no_color { text.to_string() } else { format!("\x1b[1m{}\x1b[0m", text) }
+    }
+
+    /// Wrap text in dim.
+    pub fn dim(&self, text: &str) -> String {
+        if self.no_color { text.to_string() } else { format!("\x1b[2m{}\x1b[0m", text) }
+    }
+
+    /// Wrap text in cyan.
+    pub fn cyan(&self, text: &str) -> String {
+        if self.no_color { text.to_string() } else { format!("\x1b[36m{}\x1b[0m", text) }
+    }
+}
+
+// ── Standalone ANSI helpers (check NO_COLOR env var) ────────────────
+
+/// Check if the terminal supports color output.
+pub fn supports_color() -> bool {
+    std::env::var_os("NO_COLOR").is_none()
+}
+
+/// Wrap text in ANSI green (standalone, checks NO_COLOR).
+pub fn ansi_green(text: &str) -> String {
+    if !supports_color() { text.to_string() } else { format!("\x1b[32m{}\x1b[0m", text) }
+}
+
+/// Wrap text in ANSI yellow (standalone, checks NO_COLOR).
+pub fn ansi_yellow(text: &str) -> String {
+    if !supports_color() { text.to_string() } else { format!("\x1b[33m{}\x1b[0m", text) }
+}
+
+/// Wrap text in ANSI red (standalone, checks NO_COLOR).
+pub fn ansi_red(text: &str) -> String {
+    if !supports_color() { text.to_string() } else { format!("\x1b[31m{}\x1b[0m", text) }
+}
+
+/// Wrap text in bold (standalone, checks NO_COLOR).
+pub fn ansi_bold(text: &str) -> String {
+    if !supports_color() { text.to_string() } else { format!("\x1b[1m{}\x1b[0m", text) }
+}
+
+/// Wrap text in dim (standalone, checks NO_COLOR).
+pub fn ansi_dim(text: &str) -> String {
+    if !supports_color() { text.to_string() } else { format!("\x1b[2m{}\x1b[0m", text) }
+}
+
+/// Wrap text in cyan (standalone, checks NO_COLOR).
+pub fn ansi_cyan(text: &str) -> String {
+    if !supports_color() { text.to_string() } else { format!("\x1b[36m{}\x1b[0m", text) }
 }

@@ -80,16 +80,17 @@ fn resolve_provider(name: &str, key: Option<&str>) -> Result<Provider> {
     match name.to_lowercase().as_str() {
         "anthropic" => Ok(Provider::Anthropic),
         "openai" => Ok(Provider::OpenAi),
+        "google" | "gemini" => Ok(Provider::Google),
         "auto" => {
             if let Some(k) = key {
                 Provider::detect_from_key(k).ok_or_else(|| {
                     anyhow::anyhow!(
                         "Cannot auto-detect provider from key prefix. \
-                         Use --provider anthropic or --provider openai."
+                         Use --provider anthropic, --provider openai, or --provider google."
                     )
                 })
             } else {
-                anyhow::bail!("Provider name required. Use: anthropic, openai")
+                anyhow::bail!("Provider name required. Use: anthropic, openai, google")
             }
         }
         other => {
@@ -100,7 +101,7 @@ fn resolve_provider(name: &str, key: Option<&str>) -> Result<Provider> {
                 })
             } else {
                 anyhow::bail!(
-                    "Unknown provider: {other}. Use: anthropic, openai, or a custom base URL."
+                    "Unknown provider: {other}. Use: anthropic, openai, google, or a custom base URL."
                 )
             }
         }

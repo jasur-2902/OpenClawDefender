@@ -29,18 +29,37 @@ fn ask_db_path() -> PathBuf {
         .join("ask.db")
 }
 
+/// Detect the first configured provider and return it with a default model.
+fn detect_configured_provider(
+    keystore: &dyn keychain::KeyStore,
+) -> Option<(keychain::Provider, &'static str)> {
+    let candidates: &[(keychain::Provider, &str)] = &[
+        (keychain::Provider::Anthropic, "claude-3-5-sonnet-20241022"),
+        (keychain::Provider::OpenAi, "gpt-4o-mini"),
+        (keychain::Provider::Google, "gemini-2.5-flash"),
+    ];
+    for (provider, model) in candidates {
+        if keystore.get(provider).is_ok() {
+            return Some((provider.clone(), model));
+        }
+    }
+    None
+}
+
 /// Run one-shot question mode.
 pub async fn ask_question(question: &str) -> Result<()> {
     let keystore = keychain::default_keystore();
-    let has_api_key = keystore.get(&keychain::Provider::Anthropic).is_ok();
 
-    if !has_api_key {
-        bail!(
-            "Cloud API key required for Ask Rook.\n\
-             Configure with: rookbot cloud setup\n\
-             Or use --chat for interactive mode with local fallback."
-        );
-    }
+    let (provider, model) = match detect_configured_provider(keystore.as_ref()) {
+        Some(pm) => pm,
+        None => {
+            bail!(
+                "Cloud API key required for Ask Rook.\n\
+                 Configure with: rookbot cloud setup\n\
+                 Or use --chat for interactive mode with local fallback."
+            );
+        }
+    };
 
     let client = Arc::new(HttpLlmClient::new(Arc::from(keystore)));
 
@@ -49,8 +68,8 @@ pub async fn ask_question(question: &str) -> Result<()> {
 
     // Create request
     let request = LlmRequest {
-        provider: keychain::Provider::Anthropic,
-        model: "claude-3-5-sonnet-20241022".to_string(),
+        provider,
+        model: model.to_string(),
         system_prompt: format!(
             "You are Rook, a security assistant for the ClawDefender security platform.\n\
              \n\
@@ -64,11 +83,12 @@ pub async fn ask_question(question: &str) -> Result<()> {
         temperature: 0.7,
     };
 
-    // Send request
+    // Send request — use call_with_retry to surface errors instead of
+    // silently returning "Analysis unavailable" via complete().
     print!("Thinking...");
     io::stdout().flush()?;
 
-    let response = client.complete(&request).await?;
+    let response = client.call_with_retry(&request).await?;
 
     // Clear "Thinking..." line
     print!("\r           \r");
@@ -93,7 +113,7 @@ pub async fn run_interactive_chat() -> Result<()> {
     }
 
     let keystore = keychain::default_keystore();
-    let has_api_key = keystore.get(&keychain::Provider::Anthropic).is_ok();
+    let has_api_key = detect_configured_provider(keystore.as_ref()).is_some();
 
     let client: Arc<dyn LlmClient> = if has_api_key {
         Arc::new(HttpLlmClient::new(Arc::from(keystore)))

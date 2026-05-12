@@ -1,19 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
-  ScanProgress,
   ScanFindingEvent,
   ScanStageCompleteEvent,
   ScanCompleteEvent,
+  PlaybookSummary,
 } from "../types";
-import { PlaybookSelector } from "../components/scanner/PlaybookSelector";
 import { LiveScanView } from "../components/scanner/LiveScanView";
 import { AiScanResults } from "../components/scanner/AiScanResults";
-import { useAiStatus } from "../hooks/useAiStatus";
 import { useScanStore } from "../stores/scanStore";
 import type { ScanHistoryEntry } from "../stores/scanStore";
-import { Icon, Badge, Btn, Card } from "../components/design";
+import { Icon, Badge, Btn, Card, ChessPiece } from "../components/design";
+import type { PieceKind } from "../components/design";
 
 // ---------------------------------------------------------------------------
 // Quick Scan types (existing rule-based scanner)
@@ -59,22 +58,6 @@ interface ScanResult {
   scan_type?: string;
 }
 
-const MODULES = [
-  // MCP Security
-  { id: "mcp-config-audit", label: "MCP Config Audit", icon: "shield", group: "mcp" },
-  { id: "policy-strength", label: "Policy Strength", icon: "lock", group: "mcp" },
-  { id: "server-reputation", label: "Server Reputation", icon: "search", group: "mcp" },
-  { id: "system-posture", label: "System Posture", icon: "monitor", group: "mcp" },
-  { id: "behavioral-anomaly", label: "Behavioral Anomaly", icon: "activity", group: "mcp" },
-  // System Security
-  { id: "tcc-audit", label: "TCC Permissions", icon: "key", group: "system" },
-  { id: "file-integrity", label: "File Integrity", icon: "file-check", group: "system" },
-  { id: "cis-benchmark", label: "CIS Compliance", icon: "check-square", group: "system" },
-  { id: "browser-audit", label: "Browser Extensions", icon: "globe", group: "system" },
-  { id: "clipboard-check", label: "Clipboard Security", icon: "clipboard", group: "system" },
-  { id: "memory-scan", label: "Memory Scan", icon: "cpu", group: "system" },
-] as const;
-
 const SEVERITY_CONFIG: Record<string, { color: string; bg: string; label: string; order: number; cssVar: string }> = {
   critical: { color: "text-red-400", bg: "bg-red-500/20", label: "CRITICAL", order: 0, cssVar: "var(--red)" },
   high: { color: "text-orange-400", bg: "bg-orange-500/20", label: "HIGH", order: 1, cssVar: "var(--amber)" },
@@ -89,13 +72,119 @@ interface AskClawEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Playbook-to-Chess-Piece mapping
+// ---------------------------------------------------------------------------
+
+interface PlaybookMeta {
+  piece: PieceKind;
+  label: string;
+  description: string;
+  color: string;
+}
+
+const PLAYBOOK_META: Record<string, PlaybookMeta> = {
+  mcp_security_audit: {
+    piece: "knight",
+    label: "Quick checkup",
+    description: "Fast MCP configuration check — reviews server configs, policies, and permissions for common security issues.",
+    color: "var(--accent)",
+  },
+  full_audit: {
+    piece: "queen",
+    label: "Full audit",
+    description: "Comprehensive security assessment — covers MCP config, system posture, credentials, and behavioral analysis.",
+    color: "var(--violet)",
+  },
+  system_hardening: {
+    piece: "rook",
+    label: "System hardening",
+    description: "Reviews system-level security settings and hardening measures.",
+    color: "var(--green)",
+  },
+  credential_exposure: {
+    piece: "pawn",
+    label: "Credential exposure",
+    description: "Scans for exposed credentials, tokens, and secrets in configurations.",
+    color: "var(--amber)",
+  },
+  network_security: {
+    piece: "bishop",
+    label: "Network security",
+    description: "Analyzes network-facing configurations and connection security.",
+    color: "var(--accent)",
+  },
+  behavioral_deep_dive: {
+    piece: "king",
+    label: "Behavioral analysis",
+    description: "Deep analysis of runtime behavior patterns and anomaly detection.",
+    color: "var(--red)",
+  },
+};
+
+const HERO_PLAYBOOK_IDS = ["mcp_security_audit", "full_audit"];
+const CUSTOM_PLAYBOOK_IDS = ["system_hardening", "credential_exposure", "network_security", "behavioral_deep_dive"];
+
+function formatDuration(secs: number): string {
+  if (secs < 60) return `~${secs}s`;
+  return `~${Math.ceil(secs / 60)} min`;
+}
+
+function formatCost(usd: number): string {
+  if (usd < 0.01) return "<$0.01";
+  return `~$${usd.toFixed(2)}`;
+}
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+// ---------------------------------------------------------------------------
 // Top-level Scanner component
 // ---------------------------------------------------------------------------
 
 export function Scanner() {
-  const activeTab = useScanStore((s) => s.activeTab);
-  const setActiveTab = useScanStore((s) => s.setActiveTab);
-  const { cloudActive, localActive } = useAiStatus();
+  const phase = useScanStore((s) => s.aiScanPhase);
+  const setPhase = useScanStore((s) => s.setAiScanPhase);
+  const scanId = useScanStore((s) => s.aiScanId);
+  const error = useScanStore((s) => s.aiScanError);
+  const setError = useScanStore((s) => s.setAiScanError);
+  const startNewAiScan = useScanStore((s) => s.startNewAiScan);
+  const resetAiScan = useScanStore((s) => s.resetAiScan);
+  const addScanHistory = useScanStore((s) => s.addScanHistory);
+  const activeScanType = useScanStore((s) => s.activeScanType);
+  const setActiveScanType = useScanStore((s) => s.setActiveScanType);
+  const setLastPlaybookId = useScanStore((s) => s.setLastPlaybookId);
+  const scanHistory = useScanStore((s) => s.scanHistory);
+
+  const [starting, setStarting] = useState(false);
+  const [playbooks, setPlaybooks] = useState<PlaybookSummary[]>([]);
+  const [playbooksLoading, setPlaybooksLoading] = useState(true);
+  const [customExpanded, setCustomExpanded] = useState(false);
+
+  const historySectionRef = useRef<HTMLDivElement>(null);
+
+  // ---- Fetch playbooks ----
+  useEffect(() => {
+    async function load() {
+      try {
+        const data = await invoke<PlaybookSummary[]>("get_scan_playbooks");
+        setPlaybooks(data);
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setPlaybooksLoading(false);
+      }
+    }
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- Global event listeners for Quick Scan live feed ----
   const addQuickScanActivity = useScanStore((s) => s.addQuickScanActivity);
@@ -147,84 +236,9 @@ export function Scanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tabs: { key: typeof activeTab; label: string; icon: string }[] = [
-    { key: "ai", label: "AI Scan", icon: "sparkles" },
-    { key: "quick", label: "Security Scan", icon: "shield" },
-    { key: "history", label: "History", icon: "history" },
-  ];
+  // ---- Handlers ----
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Header */}
-      <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: 10,
-          background: "var(--violet-soft)",
-          border: "1px solid color-mix(in oklch, var(--violet) 30%, transparent)",
-          display: "grid", placeItems: "center",
-        }}>
-          <Icon name="scan" size={18} color="var(--violet)" />
-        </div>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--ink-0)" }}>Security Scanner</h1>
-          <div style={{ fontSize: 11.5, color: "var(--ink-2)", marginTop: 2 }}>
-            {cloudActive
-              ? "Findings enriched with AI analysis"
-              : localActive
-                ? "Basic AI analysis available"
-                : "AI analysis unavailable"}
-          </div>
-        </div>
-
-        {/* Tab buttons */}
-        <div style={{ display: "flex", gap: 2, background: "var(--bg-2)", borderRadius: 8, padding: 2 }}>
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 5,
-                padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 500,
-                background: activeTab === t.key ? "var(--bg-0)" : "transparent",
-                color: activeTab === t.key ? "var(--ink-0)" : "var(--ink-2)",
-                border: activeTab === t.key ? "1px solid var(--line)" : "1px solid transparent",
-                boxShadow: activeTab === t.key ? "0 1px 2px oklch(0 0 0 / 0.04)" : "none",
-                cursor: "pointer",
-              }}
-            >
-              <Icon name={t.icon} size={13} />
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab content */}
-      <div style={{ flex: 1, overflow: "auto" }} className="cd-scroll">
-        {activeTab === "ai" && <AiScanTab />}
-        {activeTab === "quick" && <QuickScanTab />}
-        {activeTab === "history" && <ScanHistoryTab />}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// AI Scan Tab
-// ---------------------------------------------------------------------------
-
-function AiScanTab() {
-  const phase = useScanStore((s) => s.aiScanPhase);
-  const setPhase = useScanStore((s) => s.setAiScanPhase);
-  const scanId = useScanStore((s) => s.aiScanId);
-  const error = useScanStore((s) => s.aiScanError);
-  const setError = useScanStore((s) => s.setAiScanError);
-  const startNewAiScan = useScanStore((s) => s.startNewAiScan);
-  const resetAiScan = useScanStore((s) => s.resetAiScan);
-  const addScanHistory = useScanStore((s) => s.addScanHistory);
-  const [starting, setStarting] = useState(false);
-
-  async function handleStartScan(playbookId: string) {
+  async function handleStartAiScan(playbookId: string) {
     setError(null);
     setStarting(true);
     try {
@@ -232,6 +246,8 @@ function AiScanTab() {
         playbookId,
       });
       startNewAiScan(result.scan_id);
+      setActiveScanType("ai");
+      setLastPlaybookId(playbookId);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -241,12 +257,15 @@ function AiScanTab() {
 
   function handleComplete() {
     if (scanId) {
+      const meta = playbooks.find((p) => p.id === useScanStore.getState().lastPlaybookId);
       addScanHistory({
         scan_id: scanId,
         scan_type: "ai",
         status: "completed",
         findings_count: 0,
         started_at: new Date().toISOString(),
+        playbook_id: useScanStore.getState().lastPlaybookId ?? undefined,
+        playbook_name: meta?.name,
       });
     }
     setPhase("results");
@@ -260,212 +279,492 @@ function AiScanTab() {
     resetAiScan();
   }
 
+  function handleRerun(entry: ScanHistoryEntry) {
+    if (entry.scan_type === "ai" && entry.playbook_id) {
+      handleStartAiScan(entry.playbook_id);
+    }
+  }
+
+  function handleViewReport(entry: ScanHistoryEntry) {
+    if (entry.scan_type === "ai") {
+      useScanStore.getState().setAiScanId(entry.scan_id);
+      setActiveScanType("ai");
+      setPhase("results");
+    }
+  }
+
+  function scrollToHistory() {
+    historySectionRef.current?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  const getPlaybook = (id: string) => playbooks.find((p) => p.id === id);
+
+  // Available custom playbooks (only ones that exist in backend)
+  const customPlaybooks = CUSTOM_PLAYBOOK_IDS
+    .map((id) => ({ id, pb: getPlaybook(id), meta: PLAYBOOK_META[id] }))
+    .filter((x) => x.meta);
+
   return (
-    <div style={{ padding: 24 }}>
-      {error && (
-        <div style={{
-          padding: 14, marginBottom: 16, borderRadius: 10,
-          background: "var(--red-soft)", border: "1px solid color-mix(in oklch, var(--red) 30%, transparent)",
-          fontSize: 12.5, color: "var(--red)",
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Header */}
+      <ScanHeader onHistoryClick={scrollToHistory} />
+
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflow: "auto" }} className="cd-scroll">
+        <div style={{ padding: 24, display: "grid", gap: 24 }}>
+          {/* Error banner */}
+          {error && (
+            <div style={{
+              padding: 14, borderRadius: 10,
+              background: "var(--red-soft)", border: "1px solid color-mix(in oklch, var(--red) 30%, transparent)",
+              fontSize: 12.5, color: "var(--red)",
+            }}>
+              {error}
+            </div>
+          )}
+
+          {/* ---- SELECT PHASE ---- */}
+          {phase === "select" && (
+            <>
+              {/* Last Scan Banner */}
+              {scanHistory.length > 0 && (
+                <LastScanBanner
+                  entry={scanHistory[0]}
+                  onRerun={handleRerun}
+                  onViewReport={handleViewReport}
+                />
+              )}
+
+              {/* Hero Cards */}
+              <HeroCardsSection
+                playbooks={playbooks}
+                loading={playbooksLoading}
+                starting={starting}
+                onStart={handleStartAiScan}
+              />
+
+              {/* Custom Scan Section */}
+              {customPlaybooks.length > 0 && (
+                <CustomScanSection
+                  items={customPlaybooks}
+                  expanded={customExpanded}
+                  onToggle={() => setCustomExpanded(!customExpanded)}
+                  starting={starting}
+                  onStart={handleStartAiScan}
+                />
+              )}
+            </>
+          )}
+
+          {/* ---- SCANNING PHASE ---- */}
+          {phase === "scanning" && activeScanType === "ai" && scanId && (
+            <LiveScanView
+              scanId={scanId}
+              onComplete={handleComplete}
+              onCancel={handleCancel}
+            />
+          )}
+
+          {/* ---- RESULTS PHASE (AI) ---- */}
+          {phase === "results" && activeScanType === "ai" && scanId && (
+            <AiScanResults scanId={scanId} onNewScan={handleNewScan} />
+          )}
+
+          {/* ---- RESULTS PHASE (fallback — scanId but no activeScanType) ---- */}
+          {phase === "results" && !activeScanType && scanId && (
+            <AiScanResults scanId={scanId} onNewScan={handleNewScan} />
+          )}
+
+          {/* ---- SCAN HISTORY (always at bottom when in select) ---- */}
+          <div ref={historySectionRef}>
+            <ScanHistorySection
+              onViewReport={handleViewReport}
+              onRerun={handleRerun}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ScanHeader
+// ---------------------------------------------------------------------------
+
+function ScanHeader({ onHistoryClick }: { onHistoryClick: () => void }) {
+  return (
+    <div style={{
+      padding: "10px 24px",
+      borderBottom: "1px solid var(--line)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-end",
+    }}>
+      <Btn kind="ghost" size="sm" icon="history" onClick={onHistoryClick}>
+        History
+      </Btn>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LastScanBanner
+// ---------------------------------------------------------------------------
+
+function LastScanBanner({
+  entry,
+  onRerun,
+  onViewReport,
+}: {
+  entry: ScanHistoryEntry;
+  onRerun: (entry: ScanHistoryEntry) => void;
+  onViewReport: (entry: ScanHistoryEntry) => void;
+}) {
+  const typeLabel = entry.playbook_name
+    ?? (entry.scan_type === "ai" ? "AI Scan" : "Security Scan");
+
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      padding: "12px 16px",
+      borderRadius: 10,
+      background: "var(--bg-1)",
+      border: "1px solid var(--line)",
+    }}>
+      <Icon name="history" size={16} color="var(--ink-3)" />
+      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, color: "var(--ink-1)" }}>
+          Last scan &middot; {relativeTime(entry.started_at)}
+        </span>
+        <Badge color={entry.scan_type === "ai" ? "var(--accent)" : "var(--ink-2)"} mono>
+          {typeLabel}
+        </Badge>
+        <span style={{
+          fontSize: 12, fontFamily: "var(--font-mono)",
+          color: entry.findings_count > 0 ? "var(--amber)" : "var(--green)",
         }}>
-          {error}
+          {entry.findings_count} findings
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {entry.scan_type === "ai" && entry.playbook_id && (
+          <Btn kind="soft" size="sm" icon="refresh-cw" onClick={() => onRerun(entry)}>
+            Re-run
+          </Btn>
+        )}
+        {entry.scan_type === "ai" && (
+          <Btn kind="soft" size="sm" icon="file-text" onClick={() => onViewReport(entry)}>
+            View report
+          </Btn>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HeroCardsSection
+// ---------------------------------------------------------------------------
+
+function HeroCardsSection({
+  playbooks,
+  loading,
+  starting,
+  onStart,
+}: {
+  playbooks: PlaybookSummary[];
+  loading: boolean;
+  starting: boolean;
+  onStart: (playbookId: string) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      {HERO_PLAYBOOK_IDS.map((id) => {
+        const meta = PLAYBOOK_META[id];
+        const pb = playbooks.find((p) => p.id === id);
+        if (!meta) return null;
+        return (
+          <HeroCard
+            key={id}
+            piece={meta.piece}
+            color={meta.color}
+            title={meta.label}
+            description={meta.description}
+            stageCount={pb?.stage_count}
+            duration={pb ? formatDuration(pb.estimated_duration_secs) : undefined}
+            cost={pb ? formatCost(pb.estimated_cost_usd) : undefined}
+            loading={loading}
+            starting={starting}
+            onStart={() => onStart(id)}
+            isPrimary={id === "mcp_security_audit"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HeroCard
+// ---------------------------------------------------------------------------
+
+function HeroCard({
+  piece,
+  color,
+  title,
+  description,
+  stageCount,
+  duration,
+  cost,
+  loading,
+  starting,
+  onStart,
+  isPrimary,
+}: {
+  piece: PieceKind;
+  color: string;
+  title: string;
+  description: string;
+  stageCount?: number;
+  duration?: string;
+  cost?: string;
+  loading: boolean;
+  starting: boolean;
+  onStart: () => void;
+  isPrimary: boolean;
+}) {
+  return (
+    <div style={{
+      padding: 28,
+      borderRadius: 14,
+      background: "var(--bg-1)",
+      border: "1px solid var(--line)",
+      display: "flex",
+      flexDirection: "column",
+      gap: 16,
+    }}>
+      <div style={{
+        width: 52, height: 52, borderRadius: 14,
+        background: `color-mix(in oklch, ${color} 12%, transparent)`,
+        border: `1px solid color-mix(in oklch, ${color} 25%, transparent)`,
+        display: "grid", placeItems: "center",
+      }}>
+        <ChessPiece kind={piece} size={30} style={{ color }} />
+      </div>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--ink-0)" }}>
+          {title}
+        </h2>
+        <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          {description}
+        </p>
+      </div>
+      {!loading && stageCount != null && (
+        <div style={{
+          fontSize: 11.5, fontFamily: "var(--font-mono)",
+          color: "var(--ink-3)", letterSpacing: 0.2,
+        }}>
+          {stageCount} stages &middot; {duration} &middot; {cost}
         </div>
       )}
-
-      {phase === "select" && (
-        <Card title="AI-Powered Security Scan" action={<Badge color="var(--accent)" mono>AI</Badge>}>
-          <p style={{ fontSize: 12.5, color: "var(--ink-2)", marginBottom: 16 }}>
-            Choose a playbook to run an AI-driven security assessment. The AI agent will analyze
-            your MCP configuration, system posture, and security policies using real tools and
-            evidence collection.
-          </p>
-          <PlaybookSelector onStart={handleStartScan} disabled={starting} />
-        </Card>
+      {loading && (
+        <div style={{ fontSize: 11.5, color: "var(--ink-3)" }} className="cd-pulse">
+          Loading...
+        </div>
       )}
+      <Btn
+        kind={isPrimary ? "primary" : "accent"}
+        icon="play"
+        onClick={onStart}
+        disabled={starting || loading}
+        style={{ alignSelf: "flex-start" }}
+      >
+        {isPrimary ? "Start checkup" : "Start audit"}
+      </Btn>
+    </div>
+  );
+}
 
-      {phase === "scanning" && scanId && (
-        <LiveScanView
-          scanId={scanId}
-          onComplete={handleComplete}
-          onCancel={handleCancel}
-        />
-      )}
+// ---------------------------------------------------------------------------
+// CustomScanSection
+// ---------------------------------------------------------------------------
 
-      {phase === "results" && scanId && (
-        <AiScanResults scanId={scanId} onNewScan={handleNewScan} />
+function CustomScanSection({
+  items,
+  expanded,
+  onToggle,
+  starting,
+  onStart,
+}: {
+  items: { id: string; pb: PlaybookSummary | undefined; meta: PlaybookMeta }[];
+  expanded: boolean;
+  onToggle: () => void;
+  starting: boolean;
+  onStart: (playbookId: string) => void;
+}) {
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          background: "none", border: "none", cursor: "pointer",
+          padding: "8px 0", color: "var(--ink-1)", fontSize: 13, fontWeight: 500,
+        }}
+      >
+        <span style={{
+          display: "inline-block", transition: "transform 0.15s",
+          transform: expanded ? "rotate(90deg)" : "none",
+          color: "var(--ink-3)", fontSize: 11,
+        }}>
+          &#9654;
+        </span>
+        Custom scan ({items.length} playbooks)
+      </button>
+
+      {expanded && (
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr",
+          gap: 12, marginTop: 8,
+        }}>
+          {items.map(({ id, pb, meta }) => (
+            <PlaybookCard
+              key={id}
+              piece={meta.piece}
+              color={meta.color}
+              name={meta.label}
+              description={meta.description}
+              stageCount={pb?.stage_count}
+              duration={pb ? formatDuration(pb.estimated_duration_secs) : undefined}
+              cost={pb ? formatCost(pb.estimated_cost_usd) : undefined}
+              starting={starting}
+              onStart={() => onStart(id)}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Quick Scan Tab
+// PlaybookCard (smaller card for custom section)
 // ---------------------------------------------------------------------------
 
-function QuickScanTab() {
-  const [selectedModules, setSelectedModules] = useState<Set<string>>(
-    new Set(MODULES.map((m) => m.id))
+function PlaybookCard({
+  piece,
+  color,
+  name,
+  description,
+  stageCount,
+  duration,
+  cost,
+  starting,
+  onStart,
+}: {
+  piece: PieceKind;
+  color: string;
+  name: string;
+  description: string;
+  stageCount?: number;
+  duration?: string;
+  cost?: string;
+  starting: boolean;
+  onStart: () => void;
+}) {
+  return (
+    <div style={{
+      padding: 18,
+      borderRadius: 12,
+      background: "var(--bg-1)",
+      border: "1px solid var(--line)",
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: `color-mix(in oklch, ${color} 12%, transparent)`,
+          border: `1px solid color-mix(in oklch, ${color} 25%, transparent)`,
+          display: "grid", placeItems: "center", flexShrink: 0,
+        }}>
+          <ChessPiece kind={piece} size={20} style={{ color }} />
+        </div>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-0)" }}>{name}</span>
+      </div>
+      <p style={{ margin: 0, fontSize: 12, color: "var(--ink-2)", lineHeight: 1.4 }}>
+        {description}
+      </p>
+      {stageCount != null && (
+        <div style={{
+          fontSize: 10.5, fontFamily: "var(--font-mono)",
+          color: "var(--ink-3)", letterSpacing: 0.2,
+        }}>
+          {stageCount} stages &middot; {duration} &middot; {cost}
+        </div>
+      )}
+      <Btn kind="soft" size="sm" icon="play" onClick={onStart} disabled={starting} style={{ alignSelf: "flex-start" }}>
+        Start
+      </Btn>
+    </div>
   );
-  const [cloudEnrich, setCloudEnrich] = useState(false);
-  const { cloudActive } = useAiStatus();
-  const activeScan = useScanStore((s) => s.quickScanActiveScan);
-  const setActiveScan = useScanStore((s) => s.setQuickScanActiveScan);
-  const scanResult = useScanStore((s) => s.quickScanResult);
-  const setScanResult = useScanStore((s) => s.setQuickScanResult);
-  const addScanHistory = useScanStore((s) => s.addScanHistory);
-  const setQuickScanCurrentId = useScanStore((s) => s.setQuickScanCurrentId);
-  const clearQuickScanLiveFeed = useScanStore((s) => s.clearQuickScanLiveFeed);
-  const addQuickScanActivity = useScanStore((s) => s.addQuickScanActivity);
+}
 
-  const activity = useScanStore((s) => s.quickScanActivity);
-  const liveFindings = useScanStore((s) => s.quickScanLiveFindings);
+// ---------------------------------------------------------------------------
+// ScanHistorySection
+// ---------------------------------------------------------------------------
 
-  const [elapsed, setElapsed] = useState(0);
+function ScanHistorySection({
+  onViewReport,
+  onRerun,
+}: {
+  onViewReport: (entry: ScanHistoryEntry) => void;
+  onRerun: (entry: ScanHistoryEntry) => void;
+}) {
+  const scanHistory = useScanStore((s) => s.scanHistory);
+  const [selectedEntry, setSelectedEntry] = useState<ScanHistoryEntry | null>(null);
+  const [loadedResult, setLoadedResult] = useState<ScanResult | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [fixingAction, setFixingAction] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activityFeedRef = useRef<HTMLDivElement>(null);
-
   const [askClawState, setAskClawState] = useState<Map<string, AskClawEntry>>(new Map());
-  const [enrichingKeys, setEnrichingKeys] = useState<Set<string>>(new Set());
 
-  async function enrichFinding(moduleId: string, findingIndex: number) {
-    const key = `${moduleId}-${findingIndex}`;
-    setEnrichingKeys((prev) => new Set(prev).add(key));
-    try {
-      const analysis = await invoke<string>("enrich_scan_finding", {
-        scanId: scanResult?.scan_id ?? "",
-        moduleId,
-        findingIndex,
-      });
-      // Update scanResult in-place so the AI analysis shows up
-      if (scanResult) {
-        const updated = { ...scanResult, modules: scanResult.modules.map((m) => {
-          if (m.module_id !== moduleId) return m;
-          return { ...m, findings: m.findings.map((f, i) =>
-            i === findingIndex ? { ...f, ai_analysis: analysis } : f
-          )};
-        })};
-        setScanResult(updated);
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setEnrichingKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
+  async function selectEntry(entry: ScanHistoryEntry) {
+    if (selectedEntry?.scan_id === entry.scan_id) {
+      setSelectedEntry(null);
+      setLoadedResult(null);
+      return;
     }
-  }
 
-  useEffect(() => {
-    if (activityFeedRef.current) {
-      activityFeedRef.current.scrollTop = activityFeedRef.current.scrollHeight;
+    // AI scans: navigate to results view
+    if (entry.scan_type === "ai") {
+      onViewReport(entry);
+      return;
     }
-  }, [activity]);
 
-  useEffect(() => {
-    if (activeScan?.status === "running" && !timerRef.current) {
-      const startTime = Date.now() - elapsed * 1000;
-      timerRef.current = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTime) / 1000));
-        pollScan(activeScan.scan_id);
-      }, 500);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const pollScan = useCallback(async (scanId: string) => {
-    try {
-      const progress = await invoke<ScanProgress>("get_scan_progress", {
-        scanId,
-      });
-      setActiveScan(progress);
-      if (progress.status !== "running") {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-        addScanHistory({
-          scan_id: progress.scan_id,
-          scan_type: "quick",
-          status: progress.status,
-          findings_count: progress.findings_count,
-          started_at: new Date().toISOString(),
-        });
-        try {
-          const result = await invoke<ScanResult>("get_scan_results", {
-            scanId,
-          });
-          setScanResult(result);
-          const withFindings = new Set(
-            result.modules
-              .filter((m) => m.findings.length > 0)
-              .map((m) => m.module_id)
-          );
-          setExpandedModules(withFindings);
-        } catch {
-          // Results may not be ready yet
-        }
-      }
-    } catch (e) {
-      setError(String(e));
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
-  }, [setActiveScan, addScanHistory, setScanResult]);
-
-  async function startScan() {
+    // Quick scans: expand inline
+    setSelectedEntry(entry);
+    setLoadedResult(null);
     setError(null);
-    setElapsed(0);
-    setScanResult(null);
-    setExpandedModules(new Set());
-    clearQuickScanLiveFeed();
     setAskClawState(new Map());
+    setLoading(true);
     try {
-      const scanId = await invoke<string>("start_scan", {
-        serverCommand: "system-scan",
-        modules: Array.from(selectedModules),
-        timeout: 300,
-        cloudEnrich: cloudEnrich,
-      });
-      setQuickScanCurrentId(scanId);
-      setActiveScan({
-        scan_id: scanId,
-        status: "running",
-        progress_percent: 0,
-        modules_completed: 0,
-        modules_total: selectedModules.size,
-        findings_count: 0,
-        current_module: null,
-      });
-
-      addQuickScanActivity({ type: "info", message: `Scan started with ${selectedModules.size} modules` });
-
-      const startTime = Date.now();
-      timerRef.current = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTime) / 1000));
-        pollScan(scanId);
-      }, 500);
+      const result = await invoke<ScanResult>("get_scan_results", { scanId: entry.scan_id });
+      setLoadedResult(result);
+      const withFindings = new Set(
+        result.modules.filter((m) => m.findings.length > 0).map((m) => m.module_id)
+      );
+      setExpandedModules(withFindings);
     } catch (e) {
-      setError(String(e));
+      setError(`Could not load results: ${String(e)}`);
+    } finally {
+      setLoading(false);
     }
-  }
-
-  function toggleModule(id: string) {
-    setSelectedModules((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   function toggleExpanded(moduleId: string) {
@@ -487,7 +786,6 @@ function QuickScanTab() {
         server: finding.fix_action.server || "",
         actionType: finding.fix_action.action_type,
       });
-      setError(null);
       alert(result);
     } catch (e) {
       setError(String(e));
@@ -546,7 +844,6 @@ function QuickScanTab() {
     });
   }
 
-  const isScanning = activeScan?.status === "running";
   const sortedFindings = (findings: ScanFinding[]) =>
     [...findings].sort(
       (a, b) =>
@@ -554,290 +851,95 @@ function QuickScanTab() {
         (SEVERITY_CONFIG[b.severity]?.order ?? 99)
     );
 
-  const formatElapsed = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  };
-
   return (
-    <div style={{ padding: 24 }}>
-      {error && (
-        <div style={{
-          padding: 14, marginBottom: 16, borderRadius: 10,
-          background: "var(--red-soft)", border: "1px solid color-mix(in oklch, var(--red) 30%, transparent)",
-          fontSize: 12.5, color: "var(--red)",
-        }}>
-          {error}
-        </div>
-      )}
+    <div>
+      <h2 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 600, color: "var(--ink-0)" }}>Scan History</h2>
 
-      {/* Active scan: 2-column layout */}
-      {activeScan && isScanning ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 0, height: "calc(100vh - 140px)" }}>
-          {/* Left column: stages + feed + findings */}
-          <div style={{ overflowY: "auto", paddingRight: 20 }} className="cd-scroll">
-            {/* Stage cards */}
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(activeScan.modules_total, 5)}, 1fr)`, gap: 6, marginBottom: 18 }}>
-              {MODULES.filter((m) => selectedModules.has(m.id)).slice(0, activeScan.modules_total).map((m, i) => {
-                const isDone = i < activeScan.modules_completed;
-                const isRunning = i === activeScan.modules_completed && activeScan.status === "running";
-                return (
-                  <div key={m.id} style={{
-                    padding: "10px 12px",
-                    background: "var(--bg-1)",
-                    border: `1px solid ${isRunning ? "var(--accent-line)" : "var(--line)"}`,
-                    borderRadius: 8,
-                    position: "relative", overflow: "hidden",
-                  }}>
-                    {isRunning && <div className="cd-shimmer" style={{ position: "absolute", inset: 0 }} />}
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                      <div style={{
-                        width: 16, height: 16, borderRadius: 999,
-                        background: isDone ? "var(--green-soft)" : isRunning ? "var(--accent-soft)" : "var(--bg-3)",
-                        border: `1px solid ${isDone ? "color-mix(in oklch, var(--green) 40%, transparent)" : isRunning ? "var(--accent-line)" : "var(--line)"}`,
-                        display: "grid", placeItems: "center", fontSize: 9, fontFamily: "var(--font-mono)",
-                        color: isDone ? "var(--green)" : "var(--ink-3)",
-                      }}>
-                        {isDone ? "\u2713" : i + 1}
-                      </div>
-                      <span style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: 0.4 }}>
-                        Stage {i + 1}
+      {scanHistory.length === 0 ? (
+        <Card>
+          <div style={{ textAlign: "center", padding: "24px 0" }}>
+            <Icon name="history" size={28} color="var(--ink-3)" />
+            <p style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 10 }}>
+              No scans recorded yet. Start a scan above to see history here.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {scanHistory.map((entry) => {
+            const meta = entry.playbook_id ? PLAYBOOK_META[entry.playbook_id] : undefined;
+            return (
+              <div key={entry.scan_id}>
+                <button onClick={() => selectEntry(entry)} style={{
+                  width: "100%", textAlign: "left", cursor: "pointer",
+                  padding: "12px 16px", borderRadius: 10,
+                  background: "var(--bg-1)",
+                  border: `1px solid ${selectedEntry?.scan_id === entry.scan_id ? "var(--accent-line)" : "var(--line)"}`,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {meta && (
+                        <ChessPiece kind={meta.piece} size={16} style={{ color: meta.color }} />
+                      )}
+                      <Badge color={entry.status === "completed" ? "var(--green)" : entry.status === "failed" ? "var(--red)" : "var(--accent)"}>
+                        {entry.status}
+                      </Badge>
+                      <Badge color={entry.scan_type === "ai" ? "var(--accent)" : "var(--ink-2)"} mono>
+                        {entry.playbook_name ?? (entry.scan_type === "ai" ? "AI" : "Security")}
+                      </Badge>
+                      <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--ink-1)" }}>
+                        {entry.scan_id.slice(0, 16)}
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-1)" }}>{m.label}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
+                      <span style={{ color: entry.findings_count > 0 ? "var(--amber)" : "var(--ink-2)", fontWeight: entry.findings_count > 0 ? 500 : 400 }}>
+                        {entry.findings_count} findings
+                      </span>
+                      <span style={{ color: "var(--ink-3)", fontSize: 11 }}>{relativeTime(entry.started_at)}</span>
+                      {entry.scan_type === "ai" && entry.playbook_id && (
+                        <Btn kind="ghost" size="sm" icon="refresh-cw" onClick={(e) => { e.stopPropagation(); onRerun(entry); }}>
+                          Re-run
+                        </Btn>
+                      )}
+                      {entry.scan_type === "quick" && (
+                        <span style={{
+                          color: "var(--ink-3)", transition: "transform 0.15s", display: "inline-block",
+                          transform: selectedEntry?.scan_id === entry.scan_id ? "rotate(180deg)" : "none",
+                        }}>
+                          &#9660;
+                        </span>
+                      )}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                </button>
 
-            {/* Investigation feed */}
-            <Card
-              title="Investigation feed"
-              action={<Badge color="var(--violet)" mono><span className="cd-pulse">&#9679;</span> live</Badge>}
-              padded={false}
-            >
-              <div ref={activityFeedRef} className="cd-scroll" style={{ maxHeight: 280, overflowY: "auto", fontFamily: "var(--font-mono)", fontSize: 11.5, padding: "10px 14px" }}>
-                {activity.map((item) => (
-                  <div key={item.id} style={{ display: "flex", gap: 10, padding: "3px 0", color: "var(--ink-2)" }}>
-                    <span style={{ color: "var(--ink-4)", width: 60, fontSize: 10, flexShrink: 0 }}>
-                      {new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    </span>
-                    <span style={{
-                      width: 50, flexShrink: 0,
-                      color: item.type === "finding" ? "var(--amber)" : item.type === "stage" ? "var(--green)" : "var(--accent)",
-                    }}>
-                      [{item.type === "finding" ? "FIND" : item.type === "stage" ? "DONE" : "INFO"}]
-                    </span>
-                    <span style={{ color: item.type === "finding" ? "var(--ink-0)" : "var(--ink-1)" }}>{item.message}</span>
-                  </div>
-                ))}
-                {isScanning && (
-                  <div style={{ display: "flex", gap: 10, padding: "3px 0", alignItems: "center" }}>
-                    <span style={{ color: "var(--ink-4)", width: 60 }}>&mdash;</span>
-                    <span style={{ width: 50, color: "var(--accent)" }}>[TOOL]</span>
-                    <span style={{ color: "var(--ink-2)" }}>
-                      {activeScan.current_module ? `analyzing ${activeScan.current_module}` : "initializing"}
-                    </span>
-                    <span className="cd-caret" />
+                {selectedEntry?.scan_id === entry.scan_id && entry.scan_type === "quick" && (
+                  <div style={{ marginTop: 4, marginLeft: 16, paddingLeft: 16, borderLeft: "2px solid var(--accent-line)" }}>
+                    {loading && (
+                      <div style={{ padding: "16px 0", fontSize: 12.5, color: "var(--ink-2)" }} className="cd-pulse">
+                        Loading scan results...
+                      </div>
+                    )}
+                    {error && <div style={{ padding: "12px 0", fontSize: 12.5, color: "var(--ink-2)" }}>{error}</div>}
+                    {loadedResult && (
+                      <QuickScanResults
+                        scanResult={loadedResult}
+                        expandedModules={expandedModules}
+                        toggleExpanded={toggleExpanded}
+                        sortedFindings={sortedFindings}
+                        applyFix={applyFix}
+                        fixingAction={fixingAction}
+                        askClawState={askClawState}
+                        toggleAskClaw={toggleAskClaw}
+                        askClawAboutFinding={askClawAboutFinding}
+                        setAskClawState={setAskClawState}
+                      />
+                    )}
                   </div>
                 )}
               </div>
-            </Card>
-
-            {/* Live findings */}
-            {liveFindings.length > 0 && (
-              <div style={{ marginTop: 18 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                  <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>Findings</h2>
-                  <Badge color="var(--ink-2)" mono>{liveFindings.length}</Badge>
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {liveFindings.map((f) => {
-                    const cfg = SEVERITY_CONFIG[f.severity] || SEVERITY_CONFIG.low;
-                    return (
-                      <div key={f.id} className="cd-slide-in" style={{
-                        display: "flex", alignItems: "stretch", gap: 12, padding: 14,
-                        background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
-                      }}>
-                        <div style={{ width: 3, borderRadius: 2, background: cfg.cssVar }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <Badge color={cfg.cssVar}>{f.severity}</Badge>
-                            <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink-0)" }}>{f.title}</span>
-                          </div>
-                          <div style={{ fontSize: 11.5, color: "var(--ink-2)" }}>{f.stage}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Side rail */}
-          <aside style={{ borderLeft: "1px solid var(--line)", padding: 18, background: "var(--bg-1)", display: "grid", alignContent: "start", gap: 14 }}>
-            <div>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Elapsed</div>
-              <div style={{ fontSize: 22, fontFamily: "var(--font-mono)", marginTop: 2 }}>{formatElapsed(elapsed)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Modules</div>
-              <div style={{ fontSize: 13, fontFamily: "var(--font-mono)", marginTop: 2 }}>
-                {activeScan.modules_completed} / {activeScan.modules_total}
-              </div>
-              <div style={{ height: 4, background: "var(--bg-3)", borderRadius: 2, marginTop: 6, overflow: "hidden" }}>
-                <div style={{ width: `${activeScan.progress_percent}%`, height: "100%", background: "var(--accent)", transition: "width 0.3s" }} />
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Findings</div>
-              <div style={{ fontSize: 13, fontFamily: "var(--font-mono)", marginTop: 2, color: activeScan.findings_count > 0 ? "var(--amber)" : "var(--green)" }}>
-                {activeScan.findings_count}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Current</div>
-              <div style={{ fontSize: 12, marginTop: 2, color: "var(--ink-1)" }}>
-                {activeScan.current_module || "Initializing..."}
-              </div>
-            </div>
-            <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 14 }}>
-              <Btn kind="ghost" icon="x" onClick={() => {
-                if (timerRef.current) clearInterval(timerRef.current);
-                timerRef.current = null;
-                setActiveScan({ ...activeScan, status: "completed" as const });
-              }}>
-                Stop scan
-              </Btn>
-            </div>
-          </aside>
-        </div>
-      ) : (
-        /* Non-scanning state */
-        <div style={{ display: "grid", gap: 16 }}>
-          {/* Module selection */}
-          <Card title="Scan Modules" action={
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn kind="ghost" size="sm" onClick={() => setSelectedModules(new Set(MODULES.map((m) => m.id)))} disabled={isScanning || selectedModules.size === MODULES.length}>
-                Select all
-              </Btn>
-              <Btn kind="ghost" size="sm" onClick={() => setSelectedModules(new Set())} disabled={isScanning || selectedModules.size === 0}>
-                Clear
-              </Btn>
-            </div>
-          }>
-            {/* MCP Security */}
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>MCP Security</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-                {MODULES.filter((m) => m.group === "mcp").map((mod) => (
-                  <button key={mod.id} onClick={() => toggleModule(mod.id)} disabled={isScanning} style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500,
-                    background: selectedModules.has(mod.id) ? "var(--accent-soft)" : "var(--bg-2)",
-                    border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent-line)" : "var(--line)"}`,
-                    color: selectedModules.has(mod.id) ? "var(--accent)" : "var(--ink-2)",
-                    cursor: "pointer", textAlign: "left",
-                  }}>
-                    <div style={{
-                      width: 16, height: 16, borderRadius: 4, border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent)" : "var(--line)"}`,
-                      background: selectedModules.has(mod.id) ? "var(--accent)" : "transparent",
-                      display: "grid", placeItems: "center", fontSize: 10, color: "white",
-                    }}>
-                      {selectedModules.has(mod.id) && "\u2713"}
-                    </div>
-                    {mod.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* System Security */}
-            <div>
-              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>System Security</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-                {MODULES.filter((m) => m.group === "system").map((mod) => (
-                  <button key={mod.id} onClick={() => toggleModule(mod.id)} disabled={isScanning} style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500,
-                    background: selectedModules.has(mod.id) ? "var(--accent-soft)" : "var(--bg-2)",
-                    border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent-line)" : "var(--line)"}`,
-                    color: selectedModules.has(mod.id) ? "var(--accent)" : "var(--ink-2)",
-                    cursor: "pointer", textAlign: "left",
-                  }}>
-                    <div style={{
-                      width: 16, height: 16, borderRadius: 4, border: `1px solid ${selectedModules.has(mod.id) ? "var(--accent)" : "var(--line)"}`,
-                      background: selectedModules.has(mod.id) ? "var(--accent)" : "transparent",
-                      display: "grid", placeItems: "center", fontSize: 10, color: "white",
-                    }}>
-                      {selectedModules.has(mod.id) && "\u2713"}
-                    </div>
-                    {mod.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Cloud enrichment toggle */}
-            {cloudActive && (
-              <div style={{
-                marginTop: 16, padding: "10px 14px", borderRadius: 8,
-                background: cloudEnrich ? "color-mix(in oklch, var(--violet) 8%, transparent)" : "var(--bg-2)",
-                border: `1px solid ${cloudEnrich ? "color-mix(in oklch, var(--violet) 30%, transparent)" : "var(--line)"}`,
-                display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-              }} onClick={() => setCloudEnrich(!cloudEnrich)}>
-                <div style={{
-                  width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                  border: `1px solid ${cloudEnrich ? "var(--violet)" : "var(--line)"}`,
-                  background: cloudEnrich ? "var(--violet)" : "transparent",
-                  display: "grid", placeItems: "center", fontSize: 11, color: "white",
-                }}>
-                  {cloudEnrich && "\u2713"}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: cloudEnrich ? "var(--violet)" : "var(--ink-1)" }}>
-                    <Icon name="sparkles" size={12} color={cloudEnrich ? "var(--violet)" : "var(--ink-2)"} />{" "}
-                    Enrich with Cloud AI
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 }}>
-                    Cloud AI will analyze critical &amp; high severity findings for false-positive assessment
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginTop: 16 }}>
-              <Btn
-                kind="primary"
-                icon="play"
-                onClick={startScan}
-                disabled={isScanning || selectedModules.size === 0}
-                style={{ width: "100%", justifyContent: "center" }}
-              >
-                {isScanning ? "Scanning..." : `Run Security Scan (${selectedModules.size} modules)`}
-              </Btn>
-            </div>
-          </Card>
-
-          {/* Completed scan results */}
-          {scanResult && (
-            <QuickScanResults
-              scanResult={scanResult}
-              expandedModules={expandedModules}
-              toggleExpanded={toggleExpanded}
-              sortedFindings={sortedFindings}
-              applyFix={applyFix}
-              fixingAction={fixingAction}
-              askClawState={askClawState}
-              toggleAskClaw={toggleAskClaw}
-              askClawAboutFinding={askClawAboutFinding}
-              setAskClawState={setAskClawState}
-              onEnrichFinding={enrichFinding}
-              enrichingKeys={enrichingKeys}
-            />
-          )}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1107,215 +1209,6 @@ function AskClawPanel({
           >
             Send
           </Btn>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Scan History Tab
-// ---------------------------------------------------------------------------
-
-function ScanHistoryTab() {
-  const scanHistory = useScanStore((s) => s.scanHistory);
-  const [selectedEntry, setSelectedEntry] = useState<ScanHistoryEntry | null>(null);
-  const [loadedResult, setLoadedResult] = useState<ScanResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
-  const [fixingAction, setFixingAction] = useState<string | null>(null);
-  const [askClawState, setAskClawState] = useState<Map<string, AskClawEntry>>(new Map());
-
-  async function selectEntry(entry: ScanHistoryEntry) {
-    if (selectedEntry?.scan_id === entry.scan_id) {
-      setSelectedEntry(null);
-      setLoadedResult(null);
-      return;
-    }
-    setSelectedEntry(entry);
-    setLoadedResult(null);
-    setError(null);
-    setAskClawState(new Map());
-    setLoading(true);
-    try {
-      if (entry.scan_type === "quick") {
-        const result = await invoke<ScanResult>("get_scan_results", { scanId: entry.scan_id });
-        setLoadedResult(result);
-        const withFindings = new Set(
-          result.modules.filter((m) => m.findings.length > 0).map((m) => m.module_id)
-        );
-        setExpandedModules(withFindings);
-      } else {
-        setError("View AI scan results from the AI Scan tab.");
-      }
-    } catch (e) {
-      setError(`Could not load results: ${String(e)}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function toggleExpanded(moduleId: string) {
-    setExpandedModules((prev) => {
-      const next = new Set(prev);
-      if (next.has(moduleId)) next.delete(moduleId);
-      else next.add(moduleId);
-      return next;
-    });
-  }
-
-  async function applyFix(finding: ScanFinding) {
-    if (!finding.fix_action) return;
-    const key = `${finding.fix_action.action_type}:${finding.affected_resource}`;
-    setFixingAction(key);
-    try {
-      const result = await invoke<string>("apply_scan_fix", {
-        client: finding.fix_action.client || "",
-        server: finding.fix_action.server || "",
-        actionType: finding.fix_action.action_type,
-      });
-      alert(result);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setFixingAction(null);
-    }
-  }
-
-  async function askClawAboutFinding(findingKey: string, finding: ScanFinding, followUpQuestion?: string) {
-    setAskClawState((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(findingKey);
-      next.set(findingKey, { loading: true, response: existing?.response ?? null, followUp: "" });
-      return next;
-    });
-
-    const prompt = followUpQuestion
-      ? followUpQuestion
-      : `Analyze this security finding:\nSeverity: ${finding.severity} | Category: ${finding.category}\nFinding: ${finding.description}\nAffected: ${finding.affected_resource}\nSuggested fix: ${finding.fix_suggestion}\n\nIs this a real risk? What should I do?`;
-
-    const contextJson = JSON.stringify({
-      active_page: "scanner",
-      finding_severity: finding.severity,
-      finding_category: finding.category,
-      finding_description: finding.description,
-      affected_resource: finding.affected_resource,
-    });
-
-    try {
-      const raw = await invoke<string>("ask_claw_ai", { input: prompt, contextJson });
-      let message = raw;
-      try {
-        const parsed = JSON.parse(raw);
-        message = parsed.message ?? parsed.explanation ?? raw;
-      } catch { /* use raw string if not JSON */ }
-      setAskClawState((prev) => {
-        const next = new Map(prev);
-        next.set(findingKey, { loading: false, response: message, followUp: "" });
-        return next;
-      });
-    } catch (e) {
-      setAskClawState((prev) => {
-        const next = new Map(prev);
-        next.set(findingKey, { loading: false, response: `Error: ${String(e)}`, followUp: "" });
-        return next;
-      });
-    }
-  }
-
-  function toggleAskClaw(findingKey: string) {
-    setAskClawState((prev) => {
-      const next = new Map(prev);
-      if (next.has(findingKey)) next.delete(findingKey);
-      else next.set(findingKey, { loading: false, response: null, followUp: "" });
-      return next;
-    });
-  }
-
-  const sortedFindings = (findings: ScanFinding[]) =>
-    [...findings].sort(
-      (a, b) =>
-        (SEVERITY_CONFIG[a.severity]?.order ?? 99) -
-        (SEVERITY_CONFIG[b.severity]?.order ?? 99)
-    );
-
-  return (
-    <div style={{ padding: 24 }}>
-      <h2 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 600, color: "var(--ink-0)" }}>Scan History</h2>
-
-      {scanHistory.length === 0 ? (
-        <Card>
-          <div style={{ textAlign: "center", padding: "24px 0" }}>
-            <Icon name="history" size={28} color="var(--ink-3)" />
-            <p style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 10 }}>
-              No scans recorded yet. Run a Security Scan or AI Scan to see history here.
-            </p>
-          </div>
-        </Card>
-      ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {scanHistory.map((entry) => (
-            <div key={entry.scan_id}>
-              <button onClick={() => selectEntry(entry)} style={{
-                width: "100%", textAlign: "left", cursor: "pointer",
-                padding: "12px 16px", borderRadius: 10,
-                background: "var(--bg-1)",
-                border: `1px solid ${selectedEntry?.scan_id === entry.scan_id ? "var(--accent-line)" : "var(--line)"}`,
-              }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Badge color={entry.status === "completed" ? "var(--green)" : entry.status === "failed" ? "var(--red)" : "var(--accent)"}>
-                      {entry.status}
-                    </Badge>
-                    <Badge color={entry.scan_type === "ai" ? "var(--accent)" : "var(--ink-2)"} mono>
-                      {entry.scan_type === "ai" ? "AI" : "Security"}
-                    </Badge>
-                    <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--ink-1)" }}>
-                      {entry.scan_id.slice(0, 16)}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
-                    <span style={{ color: entry.findings_count > 0 ? "var(--amber)" : "var(--ink-2)", fontWeight: entry.findings_count > 0 ? 500 : 400 }}>
-                      {entry.findings_count} findings
-                    </span>
-                    <span style={{ color: "var(--ink-3)", fontSize: 11 }}>{new Date(entry.started_at).toLocaleString()}</span>
-                    <span style={{
-                      color: "var(--ink-3)", transition: "transform 0.15s", display: "inline-block",
-                      transform: selectedEntry?.scan_id === entry.scan_id ? "rotate(180deg)" : "none",
-                    }}>
-                      &#9660;
-                    </span>
-                  </div>
-                </div>
-              </button>
-
-              {selectedEntry?.scan_id === entry.scan_id && (
-                <div style={{ marginTop: 4, marginLeft: 16, paddingLeft: 16, borderLeft: "2px solid var(--accent-line)" }}>
-                  {loading && (
-                    <div style={{ padding: "16px 0", fontSize: 12.5, color: "var(--ink-2)" }} className="cd-pulse">
-                      Loading scan results...
-                    </div>
-                  )}
-                  {error && <div style={{ padding: "12px 0", fontSize: 12.5, color: "var(--ink-2)" }}>{error}</div>}
-                  {loadedResult && (
-                    <QuickScanResults
-                      scanResult={loadedResult}
-                      expandedModules={expandedModules}
-                      toggleExpanded={toggleExpanded}
-                      sortedFindings={sortedFindings}
-                      applyFix={applyFix}
-                      fixingAction={fixingAction}
-                      askClawState={askClawState}
-                      toggleAskClaw={toggleAskClaw}
-                      askClawAboutFinding={askClawAboutFinding}
-                      setAskClawState={setAskClawState}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
         </div>
       )}
     </div>

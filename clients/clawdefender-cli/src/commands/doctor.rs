@@ -13,14 +13,16 @@ use crate::output::Output;
 use super::{detect_servers_key, is_wrapped, known_clients, read_config};
 
 pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
-    out.header("Rookbot Doctor");
+    // ── Title ───────────────────────────────────────────────────
+    out.println(&format!("{}", out.bold("Rookbot Doctor")));
+    out.println(&"\u{2501}".repeat(36));
     out.blank();
 
     let mut issues: u32 = 0;
     let mut warnings: u32 = 0;
 
     // 0. Check macOS version.
-    out.println("System:");
+    out.println(&out.bold("System"));
     let macos_ok = check_macos_version(out);
     if !macos_ok {
         warnings += 1;
@@ -43,18 +45,26 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
     }
 
     // 3. Check policy file parses.
-    let policy_ok = if config.policy_path.exists() {
+    let (policy_ok, rule_count) = if config.policy_path.exists() {
         let content = std::fs::read_to_string(&config.policy_path);
         match content {
-            Ok(c) => clawdefender_core::policy::rule::parse_policy_toml(&c).is_ok(),
-            Err(_) => false,
+            Ok(c) => match clawdefender_core::policy::rule::parse_policy_toml(&c) {
+                Ok(rules) => (true, rules.len()),
+                Err(_) => (false, 0),
+            },
+            Err(_) => (false, 0),
         }
     } else {
-        false
+        (false, 0)
     };
-    if !out.check(
+    if policy_ok {
+        out.check(
+            &format!("Policy file loaded ({} rules)", rule_count),
+            true,
+        );
+    } else if !out.check(
         &format!("Policy file parses ({})", config.policy_path.display()),
-        policy_ok,
+        false,
     ) {
         issues += 1;
         if !config.policy_path.exists() {
@@ -77,10 +87,7 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
     } else {
         false
     };
-    if !out.check(
-        &format!("Audit log directory writable ({})", audit_dir.display()),
-        audit_writable,
-    ) {
+    if !out.check("Audit log directory writable", audit_writable) {
         issues += 1;
         if !audit_dir.exists() {
             out.hint("Run `rookbot init` to create the audit log directory.");
@@ -98,30 +105,37 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
 
     // 6. Check for MCP client installations.
     out.blank();
-    out.println("MCP Clients:");
+    out.println(&out.bold("MCP Clients"));
     let clients = known_clients();
     let mut any_client_found = false;
+    let mut client_names: Vec<String> = Vec::new();
     for client in &clients {
         let exists = client.config_path.exists();
         if exists {
             any_client_found = true;
+            client_names.push(client.display_name.to_string());
         }
         out.check(
-            &format!("{} ({})", client.display_name, client.config_path.display()),
+            &format!("{}", client.display_name),
             exists,
         );
     }
     if !any_client_found {
         warnings += 1;
         out.hint("Install Claude Desktop, Cursor, or VS Code to use Rookbot with MCP servers.");
+    } else {
+        out.println(&format!(
+            "     {}",
+            out.dim(&format!("Detected: {}", client_names.join(", ")))
+        ));
     }
 
     // 7. SLM checks.
     out.blank();
-    out.println("SLM (Small Language Model):");
+    out.println(&out.bold("SLM (Small Language Model)"));
 
     if !config.slm.enabled {
-        out.warn("SLM disabled in config");
+        out.check("SLM enabled in config", false);
         warnings += 1;
         out.hint("Enable SLM for local AI-powered policy analysis: set slm.enabled = true in config.toml");
     } else {
@@ -139,18 +153,18 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
     };
     if !out.check("SLM model installed", model_installed) {
         warnings += 1;
-        out.hint("Run `rookbot model download` to install a model.");
-        out.hint("Or `rookbot model list` to see available models.");
+        out.hint("Download one: rookbot model download qwen3-1.7b");
     }
 
     // Check for Apple Silicon (Metal GPU support).
     let is_arm = std::env::consts::ARCH == "aarch64";
     if !is_arm {
-        out.warn(&format!(
-            "No Metal GPU (arch: {}). CPU-only inference will be slower.",
+        out.check(&format!(
+            "Metal GPU available (arch: {})",
             std::env::consts::ARCH
-        ));
+        ), false);
         warnings += 1;
+        out.hint("CPU-only inference will be slower without Apple Silicon.");
     } else {
         out.check("Metal GPU available (Apple Silicon)", true);
     }
@@ -165,7 +179,7 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
 
     // 8. MCP server checks.
     out.blank();
-    out.println("MCP Server (Cooperative Security):");
+    out.println(&out.bold("MCP Server (Cooperative Security)"));
 
     out.check("MCP server enabled in config", config.mcp_server.enabled);
 
@@ -196,7 +210,7 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
 
     // 9. Guard API checks.
     out.blank();
-    out.println("Agent Guard:");
+    out.println(&out.bold("Agent Guard"));
 
     out.check("Guard API enabled in config", config.guard_api.enabled);
 
@@ -232,12 +246,12 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
 
     // 10. Threat intelligence checks.
     out.blank();
-    out.println("Threat Intelligence:");
+    out.println(&out.bold("Threat Intelligence"));
 
     if !config.threat_intel.enabled {
-        out.warn("Threat intelligence disabled in config");
+        out.check("Threat intelligence enabled", false);
         warnings += 1;
-        out.hint("Enable threat intelligence for community rules and IoC matching: set threat_intel.enabled = true");
+        out.hint("Enable for community rules and IoC matching: set threat_intel.enabled = true");
     } else {
         out.check("Threat intelligence enabled", true);
 
@@ -267,12 +281,12 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
 
     // 11. Network policy checks.
     out.blank();
-    out.println("Network Policy:");
+    out.println(&out.bold("Network Policy"));
 
     if !config.network_policy.enabled {
-        out.warn("Network policy engine disabled in config");
+        out.check("Network policy engine enabled", false);
         warnings += 1;
-        out.hint("Enable network policy for outbound connection control: set network_policy.enabled = true");
+        out.hint("Enable for outbound connection control: set network_policy.enabled = true");
     } else {
         out.check("Network policy engine enabled", true);
 
@@ -300,7 +314,7 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
 
     // 12. Check for wrapped servers.
     out.blank();
-    out.println("Wrapped Servers:");
+    out.println(&out.bold("Wrapped Servers"));
     let mut found_any = false;
     for client in &clients {
         if !client.config_path.exists() {
@@ -319,28 +333,36 @@ pub fn run(config: &ClawConfig, out: &Output) -> Result<()> {
         }
     }
     if !found_any {
-        out.println("  (none)");
-        out.hint("Wrap an MCP server: rookbot wrap <server-name>");
+        out.println(&format!("  {}", out.dim("(none)")));
+        out.hint("Protect a server: rookbot wrap <server-name>");
     }
 
-    // Summary.
+    // ── Summary ─────────────────────────────────────────────────
     out.blank();
+    out.println(&"\u{2501}".repeat(36));
     if issues == 0 && warnings == 0 {
-        out.println("All checks passed. Rookbot is ready.");
+        out.println(&format!(
+            "  {} {}",
+            out.green("\u{2713}"),
+            out.green("All checks passed. Rookbot is ready.")
+        ));
     } else {
         if issues > 0 {
             out.println(&format!(
-                "{} issue(s) found. Fix them to get Rookbot working correctly.",
-                issues
+                "  {} {}",
+                out.red(&format!("{} issue(s)", issues)),
+                "found. Fix them to get Rookbot working correctly."
             ));
         }
         if warnings > 0 {
             out.println(&format!(
-                "{} warning(s). These are optional but recommended.",
-                warnings
+                "  {} {}",
+                out.yellow(&format!("{} warning(s)", warnings)),
+                "These are optional but recommended."
             ));
         }
     }
+    out.blank();
 
     Ok(())
 }
@@ -371,7 +393,7 @@ fn check_macos_version(out: &Output) -> bool {
                 out.check(&format!("macOS version ({version})"), true);
                 true
             } else {
-                out.check(&format!("macOS version ({version}) — requires 13+"), false);
+                out.check(&format!("macOS version ({version}) -- requires 13+"), false);
                 out.hint(
                     "Rookbot requires macOS 13 (Ventura) or later for Endpoint Security support.",
                 );
@@ -379,7 +401,7 @@ fn check_macos_version(out: &Output) -> bool {
             }
         }
         _ => {
-            out.warn("Could not detect macOS version (not macOS?)");
+            out.check("macOS version detection", false);
             out.hint(
                 "Rookbot is designed for macOS. Some features may not work on other platforms.",
             );
@@ -400,7 +422,7 @@ fn check_fda(out: &Output, warnings: &mut u32) {
     if fda_probe {
         out.check("Full Disk Access (FDA) available", true);
     } else {
-        out.warn("Full Disk Access (FDA) may not be granted");
+        out.check("Full Disk Access (FDA) available", false);
         *warnings += 1;
         out.hint("Open System Settings > Privacy & Security > Full Disk Access");
         out.hint("Add your terminal app (Terminal.app, iTerm2, etc.) for eslogger to work.");
