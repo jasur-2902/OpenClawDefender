@@ -65,7 +65,7 @@ jobs:
           shasum -a 256 rookbot-macos-universal.tar.gz > rookbot-macos-universal.tar.gz.sha256
 
       - name: Upload macOS artifacts
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             target/universal-apple-darwin/release/rookbot-macos-universal.tar.gz
@@ -149,7 +149,7 @@ jobs:
           sha256sum rookbot-linux-x86_64.tar.gz > rookbot-linux-x86_64.tar.gz.sha256
 
       - name: Upload Linux x86_64 artifacts
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/rookbot-linux-x86_64.tar.gz*
 
@@ -193,7 +193,7 @@ jobs:
           sha256sum rookbot-linux-aarch64.tar.gz > rookbot-linux-aarch64.tar.gz.sha256
 
       - name: Upload Linux aarch64 artifacts
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/rookbot-linux-aarch64.tar.gz*
 
